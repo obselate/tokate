@@ -7,6 +7,75 @@ import Tokate
 
 internal class VerificationChecks {
     shared {
+        internal func Alternatives() {
+            using let temp = Temp()
+            let checkout = Path.Combine(temp.Root, "checkout")
+            let alternatives = Path.Combine(temp.Root, "alternatives")
+            Directory.CreateDirectory(Path.Combine(checkout, ".git"))
+            Directory.CreateDirectory(Path.Combine(checkout, "scripts"))
+            Directory.CreateDirectory(alternatives)
+            File.CreateSymbolicLink(Path.Combine(alternatives, "awk"), "/usr/bin/awk-real")
+            let secret = Path.Combine(temp.Root, "private")
+            File.WriteAllText(secret, "synthetic system configuration")
+            File.WriteAllText(
+                Path.Combine(checkout, "scripts/verify.sh"),
+                "set -eu\n/usr/bin/awk 'BEGIN { print \"standard-tool-started\" }'\n" +
+                    "test ! -e /etc/private\nif : > /etc/alternatives/unwanted; then exit 1; fi\n"
+            )
+            let result = Check.Run(
+                "/usr/bin/bwrap",
+                []string{
+                    "--die-with-parent",
+                    "--unshare-user",
+                    "--unshare-pid",
+                    "--ro-bind",
+                    "/",
+                    "/",
+                    "--proc",
+                    "/proc",
+                    "--bind",
+                    checkout,
+                    checkout,
+                    "--tmpfs",
+                    "/etc",
+                    "--ro-bind",
+                    alternatives,
+                    "/etc/alternatives",
+                    "--ro-bind",
+                    secret,
+                    "/etc/private",
+                    "--tmpfs",
+                    "/usr/bin",
+                    "--ro-bind",
+                    "/usr/bin/bash",
+                    "/usr/bin/bash",
+                    "--symlink",
+                    "bash",
+                    "/usr/bin/sh",
+                    "--ro-bind",
+                    "/usr/bin/bwrap",
+                    "/usr/bin/bwrap",
+                    "--ro-bind",
+                    "/usr/bin/setsid",
+                    "/usr/bin/setsid",
+                    "--ro-bind",
+                    "/usr/bin/awk",
+                    "/usr/bin/awk-real",
+                    "--symlink",
+                    "/etc/alternatives/awk",
+                    "/usr/bin/awk",
+                    "--",
+                    Environment.ProcessPath ?? throw Exception("Missing test executable"),
+                    "--verify-checkout",
+                    checkout
+                },
+                temp.Env
+            )
+            Check.Contains(Check.Success(result), "standard-tool-started")
+            Check.That(File.ReadAllText(secret) == "synthetic system configuration", "System sentinel changed")
+            Console.WriteLine("PASS verification starts system alternatives without exposing unrelated configuration")
+        }
+
         private func Refused(checkout string, expected string) {
             var refused bool
             try {
@@ -55,7 +124,6 @@ internal class VerificationChecks {
                         Refused(checkout, "real directories")
                     }
                     case "git-child-link" {
-                        // A dangling link must also be refused without following it.
                         File.CreateSymbolicLink(Path.Combine(git, "config"), sentinel + "-missing")
                         Refused(checkout, "Git symlinks")
                     }

@@ -167,7 +167,6 @@ internal class Fixture {
         Console.WriteLine(
             "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":100,\"cached_input_tokens\":\"synthetic-usage-secret\",\"output_tokens\":10,\"extra\":\"synthetic-usage-secret\"}}"
         )
-        // Independent verification must work after the coding harness is disabled.
         File.SetUnixFileMode(Path.Combine(Root, "codex-impl"), UnixFileMode.UserRead | UnixFileMode.UserWrite)
         return 0
     }

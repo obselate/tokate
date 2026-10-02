@@ -4,7 +4,6 @@ import System
 import System.Collections.Generic
 import System.IO
 
-// Owner commands do not use the coding harness or its permission profiles.
 internal class Verification {
     shared {
         private func DirectoryPath(path string) string {
@@ -86,15 +85,11 @@ internal class Verification {
             if !network {
                 args.Add("--unshare-net")
             }
-            // bubblewrap starts with an empty mount namespace. Never bind host /.
-            for path in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64"} {
+            for path in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/alternatives"} {
                 if Directory.Exists(path) {
                     args.AddRange([]string{"--ro-bind", path, path})
                 }
             }
-            // Explicit nonsecret runtime, trust-store and name-resolution files only.
-            // Binding the file also supports distribution-owned DNS/certificate symlinks
-            // without exposing the containing /run or /etc directories.
             for path in[]string{
                 "/etc/ld.so.cache",
                 "/etc/nsswitch.conf",

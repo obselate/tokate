@@ -34,6 +34,7 @@ func Main(args[]string) int32 {
             return 0
         }
         NativeFlow.All(binary)
+        VerificationChecks.Alternatives()
         VerificationChecks.Layouts()
         VerificationChecks.FailClosed()
         VerificationChecks.Cleanup()

@@ -111,7 +111,8 @@ harness retains its host file access outside the private temporary directory.
 Independent owner verification directly invokes Linux bubblewrap and does not
 discover or launch Codex. Each command starts with an empty mount namespace:
 the canonical checkout is writable, its actual `.git` directory is read-only,
-and `/usr`, `/bin`, `/sbin`, `/lib`, and `/lib64` are read-only when present.
+and `/usr`, `/bin`, `/sbin`, `/lib`, `/lib64`, and the system tool links in
+`/etc/alternatives` are read-only when present.
 Only explicit nonsecret loader, certificate-bundle and DNS files from `/etc`
 are mounted; host `/`, `/etc`, `/home`, `/run`, and `/var` are never mounted
 wholesale. Checkout/Git path symlinks, Git symlinks, alternate object stores,
