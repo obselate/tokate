@@ -7,8 +7,26 @@ bin/
 obj/
 artifacts/
 .tokate/
+.tokate-scratch/
+.codex/
+.config/
+.ssh/
+.aws/
+.private/
 .env
 .env.*
+auth.json
+credentials.json
+hosts.yml
+*.pem
+*.key
+*.pfx
+*.p12
+*.log
+*.jsonl
+*.dmp
+*.core
+*.map
 *.user
 
 /task.md

@@ -117,6 +117,23 @@ This document is not a claim about their retention practices.
 Source: [Core.gs](../src/Core.gs), [Workflow.gs](../src/Workflow.gs),
 [Worker.gs](../src/Worker.gs), [Publish.gs](../src/Publish.gs).
 
+## Public content audit and repository publication checks
+
+The [2026-10-02 public-content audit](public-content-audit.md) records the exact
+repository, history, deployed-site, release and conversation coverage. Raw Actions
+logs, uploaded Pages artifacts and part of public history were inaccessible. It
+does not claim a completed audit or prove that no secrets exist.
+
+This repository's ignore rules and public-content guard reduce accidental commits
+of local artifacts and reject recognized credential/path signatures, unexpected
+website files and image text/location metadata. Release packaging uses an explicit
+document inventory and fresh staging. These checks are heuristic, do not scrub
+arbitrary tool output, and do not change the host environment or run log/report
+behavior above. Ignore rules cannot remove already tracked files. The separate
+Pages workflow still needs an owner-approved guard before upload; see the
+[follow-up drafts](audit-follow-ups.md). Runtime data-boundary work remains with
+[issue #17](https://github.com/obselate/tokate/issues/17).
+
 Users should be able to compare this document with the source for the version
 they run. Update it whenever discovery, authentication, data handling, or
 publication behavior changes.

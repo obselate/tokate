@@ -146,6 +146,7 @@ Process groups are killed on timeout, cancellation, and normal completion to cle
 ## Build from source
 
 Requires .NET 10 and a NativeAOT toolchain (Clang and zlib development headers).
+Repository verification and release packaging also require Node.js 18 or newer.
 
 ```sh
 dotnet restore Tokate.gsproj --locked-mode
@@ -166,3 +167,8 @@ local Git repositories, and deterministic Codex and release-download fixtures.
 Tests cover contribution boundaries and install/update/removal without running
 inference, downloading a release, or modifying GitHub. No external test framework
 or Python runtime is required.
+
+Verification also runs the Node.js synthetic public-content tests and guard.
+Release packaging scans approved inputs and uses the explicit publication inventory
+in `scripts/publication-files.json`. See the [public-content audit](public-content-audit.md)
+for coverage, prevention limits and the pending Pages workflow gate.

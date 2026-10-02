@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+node --test tests/public-content.test.mjs
+node scripts/check-public-content.mjs
 dotnet restore Tokate.gsproj --locked-mode --nologo
 tokate_sdk_cache="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 dotnet "$tokate_sdk_cache/gsharp.net.sdk/0.4.591/tools/formatter/gsfmt.dll" --check src tests
