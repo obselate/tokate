@@ -18,4 +18,13 @@ jobs:
         with:
           global-json-file: global.json
       - run: sudo apt-get update && sudo apt-get install -y bubblewrap clang zlib1g-dev
+      - name: Permit bubblewrap user namespaces
+        run: |
+          sudo tee /etc/apparmor.d/bwrap <<'EOF'
+          abi <abi/4.0>,
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap
       - run: bash scripts/verify.sh

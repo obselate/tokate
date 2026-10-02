@@ -98,6 +98,11 @@ Managed run directories, harness homes and tool installations must be outside
 location meets this requirement. `doctor` uses a private directory under
 `/var/tmp` and removes it after the probe.
 
+The operating system must permit bubblewrap to create user namespaces. On
+Ubuntu 24.04, an administrator may need to enable an AppArmor profile for
+bubblewrap as described in the [Ubuntu release notes](https://discourse.ubuntu.com/t/ubuntu-24-04-lts-noble-numbat-release-notes/39890).
+Run `doctor` after setup. Tokate does not change system security settings.
+
 ## Quality and review
 
 The model whitelist controls eligible runs. It does not prove task correctness or cryptographically attest which model an arbitrary donor actually used.
