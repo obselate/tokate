@@ -193,6 +193,18 @@ internal class NativeFlow : IDisposable {
         Check.Success(unpinned)
         Check.Contains(unpinned.Output, "sandbox: ready")
         Check.That(!unpinned.Output.Contains("Repository global.json"), "Doctor claimed an absent SDK pin")
+        let outside = Path.Combine(Temp.Root, "outside-global.json")
+        File.Copy(Path.Combine(Directory.GetCurrentDirectory(), "global.json"), outside)
+        File.CreateSymbolicLink(global, outside)
+        for dangling in[]bool{false, true} {
+            if dangling {
+                File.Delete(outside)
+            }
+            let linked = Check.Run(Binary, []string{"doctor"}, env, cwd: Upstream)
+            Check.That(linked.Code == 1, "Doctor accepted a linked SDK file")
+            Check.Contains(linked.Output, "not a symbolic link")
+        }
+        File.Delete(global)
         NoInference()
     }
 

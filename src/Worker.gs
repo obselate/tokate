@@ -125,6 +125,9 @@ internal class Worker {
                 Directory.CreateDirectory(Path.Combine(checkout, ".tokate-scratch"))
                 File.WriteAllText(Path.Combine(checkout, ".git", "config"), "private")
                 let global = Path.Combine(Directory.GetCurrentDirectory(), "global.json")
+                if FileInfo(global).LinkTarget != nil {
+                    throw Exception("Repository global.json must be a regular file, not a symbolic link.")
+                }
                 let pinned = File.Exists(global)
                 if pinned {
                     File.Copy(global, Path.Combine(checkout, "global.json"))

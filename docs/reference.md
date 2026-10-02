@@ -100,7 +100,7 @@ Startup checks warn about missing tools. Owner commands work without Codex.
 `doctor` checks all tools and probes the real managed sandbox without login or
 inference. Run it from the repository root: when that directory contains
 `global.json`, the same probe also starts .NET/MSBuild using that file's SDK
-selection rules. Install the required SDK in a standard system path; a
+selection rules. Linked `global.json` files are refused. Install the required SDK in a standard system path; a
 home-directory SDK is unavailable inside the sandbox. This checks SDK startup,
 not dependency restore, the build, authentication, or model access. `NO_COLOR`
 disables styling. Redirected output is plain, and `policy` and `status` output
