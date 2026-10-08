@@ -187,7 +187,7 @@ internal class Cli {
             CliOption(
                 "verification-reserve",
                 "N",
-                "Managed verification reserve in seconds; positive and smaller than total; default: 0"
+                "Verification seconds; required with --unlimited, otherwise reserved within --seconds; default: 0"
             ),
             CliOption("fork", "LOGIN/REPO", "Explicit donor fork; otherwise discover one or create it once"),
             CliOption(
