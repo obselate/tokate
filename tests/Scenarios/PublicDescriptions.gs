@@ -94,10 +94,17 @@ internal class PublicDescriptions {
             let run = flow.Prepare()
             let head = flow.Candidate(claim)
             let path = Path.Combine(flow.Flow.Temp.Root, "summary.json")
-            File.WriteAllText(
-                path,
-                Summary("Add a result containing the external contribution text.", head).ToJsonString()
-            )
+            let ordinary = []string{
+                "Infer change-summary wording from the final diff.",
+                "Extend result text to name the verified behavior.",
+                "Check the published report for the final result sentence.",
+                "Require owner review before the candidate is merged."
+            }
+            let accepted = Summary("Add a result containing the external contribution text.", head)
+            for bullet in ordinary {
+                accepted["changes"]?.AsArray().Add(JsonValue.Create(bullet) as JsonNode)
+            }
+            File.WriteAllText(path, accepted.ToJsonString())
             let usable = File.ReadAllText(path)
             for invalid in[]string{
                 "{\"head\":\"" +
@@ -106,7 +113,19 @@ internal class PublicDescriptions {
                 Summary("Add final result content.", head).ToJsonString().Replace(
                     "Browser behavior was not checked.",
                     "Private log at https://internal.example.test"
-                )
+                ),
+                "{\"head\":\"" + head + "\",\"changes\":[],\"verification\":[],\"limitations\":[]}",
+                "{\"head\":\"" +
+                    head +
+                    "\",\"changes\":[\"Add final result content.\",7],\"verification\":[],\"limitations\":[]}",
+                "{\"head\":\"" +
+                    head +
+                    "\",\"changes\":[\"Fix the result using credential material.\"],\"verification\":[],\"limitations\":[]}",
+                "{\"head\":\"" +
+                    head +
+                    "\",\"changes\":[\"" +
+                    String('x', 201) +
+                    "\"],\"verification\":[],\"limitations\":[]}"
             } {
                 File.WriteAllText(path, invalid)
                 flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
@@ -138,6 +157,9 @@ internal class PublicDescriptions {
             flow.Coordinate(event)
             let body = Body(flow.Flow)
             Check.Contains(body, "- Add a result containing the external contribution text.")
+            for bullet in ordinary {
+                Check.Contains(body, "- " + bullet)
+            }
             Check.Contains(body, "coordinator did not observe execution")
             Check.Contains(body, "Original donor-reported tools")
             Check.That(!body.Contains("\"harness\""), "Raw tool JSON in public report")
@@ -333,80 +355,6 @@ internal class PublicDescriptions {
             }
         }
 
-        private func Artifact(changes JsonNode, head string = "") string {
-            let value = Check.Map(
-                "changes",
-                changes,
-                "verification",
-                Check.Json("[\"Fixture content check passed.\"]"),
-                "limitations",
-                Check.Json("[\"Browser behavior was not checked.\"]")
-            )
-            if head != "" {
-                value["head"] = JsonValue.Create(head)
-            }
-            return value.ToJsonString()
-        }
-
-        private func ChangeBullets(binary string) {
-            let ordinary = []string{
-                "Infer change-summary wording from the final diff.",
-                "Extend result text to name the verified behavior.",
-                "Check the published report for the final result sentence.",
-                "Require owner review before the candidate is merged."
-            }
-            {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let run = flow.Claim()
-                let items = JsonArray()
-                for bullet in ordinary {
-                    items.Add(JsonValue.Create(bullet) as JsonNode)
-                }
-                flow.Reload()
-                flow.State["public_summary"] = JsonValue.Create(Artifact(items))
-                flow.Save()
-                flow.Call([]string{"work", "--run", run})
-                let body = Body(flow)
-                for bullet in ordinary {
-                    Check.Contains(body, "- " + bullet)
-                }
-                Check.That(
-                    !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
-                    "Summary artifact committed with ordinary change bullets"
-                )
-            }
-            let oversized = String('x', 201)
-            for changes in[]JsonArray{
-                Check.Json("[\"Fix the result using credential material.\"]").AsArray(),
-                Check.Json("[\"Add final result content.\",7]").AsArray(),
-                Check.Json("[]").AsArray(),
-                Check.Json("[\"" + oversized + "\"]").AsArray()
-            } {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let run = flow.Claim()
-                flow.Reload()
-                flow.State["public_summary"] = JsonValue.Create(Artifact(changes))
-                flow.Save()
-                Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "summary")
-                flow.NoPr()
-            }
-            using let bound = NativeFixture(binary)
-            bound.Initialize()
-            bound.Approve()
-            let run = bound.Claim()
-            bound.Reload()
-            bound.State["public_summary"] = JsonValue.Create(
-                Artifact(Check.Json("[\"Add final result content.\"]"), String('a', 40))
-            )
-            bound.Save()
-            Check.Contains(bound.Call([]string{"work", "--run", run}, 1).Error, "summary")
-            bound.NoPr()
-        }
-
         private func Readiness(binary string) {
             using let flow = NativeFixture(binary)
             let run = PublishedContribution.Original(flow)
@@ -581,12 +529,6 @@ internal class PublicDescriptions {
                 (selected == "" && CiShard.Include("PublicDescriptions/MissingAndUnsafe")) {
                 MissingAndUnsafe(binary)
                 Console.WriteLine("PASS missing summary fallback and unsafe publication refusal")
-            }
-            if selected == "ChangeBullets" || (selected == "" && CiShard.Include("PublicDescriptions/ChangeBullets")) {
-                ChangeBullets(binary)
-                Console.WriteLine(
-                    "PASS ordinary public change bullets and refusal of unsafe, malformed, empty or head-bound bullets"
-                )
             }
             if selected == "Readiness" || (selected == "" && CiShard.Include("PublicDescriptions/Readiness")) {
                 Readiness(binary)
