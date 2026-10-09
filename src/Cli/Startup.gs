@@ -480,6 +480,7 @@ internal class Startup {
                     }
                     try {
                         let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
+                        runtime.Path = options.Need("harness-path")
                         runtime.Status = "ready"
                         runtime.Detail = J.Text(result, "version") +
                             (
