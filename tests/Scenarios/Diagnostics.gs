@@ -652,6 +652,122 @@ internal class Diagnostics {
             )
         }
 
+        private func Packages(binary string) {
+            for distro in[]string{"debian", "fedora", "arch", "alpine"} {
+                using let temp = Temp()
+                temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
+                for name in[]string{"setsid", "git", "curl", "tar"} {
+                    File.CreateSymbolicLink(Path.Combine(temp.Root, "bin", name), "/usr/bin/" + name)
+                }
+                let manager = switch distro {
+                    case "debian": "/usr/bin/apt-get"
+                    case "fedora": "/usr/bin/dnf"
+                    case "arch": "/usr/bin/pacman"
+                    default: "/sbin/apk"
+                }
+                let expected = switch distro {
+                    case "debian": "update\ninstall -y --no-install-recommends --no-upgrade gh\n"
+                    case "fedora": "install --assumeyes --setopt=install_weak_deps=False gh\n"
+                    case "arch": "-S --needed --noconfirm github-cli\n"
+                    default: "add --no-cache github-cli\n"
+                }
+                let release = Path.Combine(temp.Root, "os-release")
+                File.WriteAllText(release, "ID=" + distro + "\n")
+                let calls = Path.Combine(temp.Root, "calls")
+                let gh = Path.Combine(temp.Root, "bin/gh")
+                let installer = Path.Combine(temp.Root, "installer")
+                File.WriteAllText(
+                    installer,
+                    "#!/bin/sh\nprintf '%s\\n' \"$$*\" >> '" +
+                        calls +
+                        "'\n" +
+                        "[ \"$1\" = update ] && exit 0\n" +
+                        "[ -f '" +
+                        Path.Combine(temp.Root, "fail") +
+                        "' ] && exit 17\n" +
+                        "printf '#!/bin/sh\\nexit 0\\n' > '" +
+                        gh +
+                        "'\n/usr/bin/chmod 700 '" +
+                        gh +
+                        "'\n"
+                )
+                File.SetUnixFileMode(
+                    installer,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                )
+                let privilege = Path.Combine(temp.Root, "privilege")
+                File.WriteAllText(privilege, "#!/bin/sh\n[ \"$1\" = -n ] && shift\nexec \"$$@\"\n")
+                File.SetUnixFileMode(
+                    privilege,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                )
+                let args = List[string]{
+                    "--unshare-user",
+                    "--unshare-pid",
+                    "--unshare-net",
+                    "--ro-bind",
+                    "/",
+                    "/",
+                    "--proc",
+                    "/proc",
+                    "--dev",
+                    "/dev",
+                    "--bind",
+                    temp.Root,
+                    temp.Root,
+                    "--ro-bind",
+                    release,
+                    "/etc/os-release",
+                    "--tmpfs",
+                    "/usr/bin"
+                }
+                if (Directory.ResolveLinkTarget("/bin", true)?.FullName ?? "/bin") != "/usr/bin" {
+                    args.AddRange([]string{"--tmpfs", "/bin"})
+                }
+                if (Directory.ResolveLinkTarget("/sbin", true)?.FullName ?? "/sbin") != "/usr/bin" {
+                    args.AddRange([]string{"--tmpfs", "/sbin"})
+                }
+                for name in[]string{"sh", "env", "setsid", "unshare", "git", "curl", "tar", "chmod"} {
+                    args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/" + name), "/usr/bin/" + name})
+                }
+                args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/sh"), "/bin/sh"})
+                for name in[]string{"sudo", "doas"} {
+                    args.AddRange([]string{"--ro-bind", privilege, "/usr/bin/" + name})
+                }
+                args.AddRange(
+                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "--owner", "--fix", "--json"}
+                )
+                Check.Envelope(
+                    TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),
+                    "doctor",
+                    "error",
+                    "missing_tools"
+                )
+                Check.That(!File.Exists(calls), "Unconfirmed setup ran " + distro + " installer")
+                args.Add("--yes")
+                Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
+                Check.That(File.ReadAllText(calls) == expected, "Setup changed unrelated packages: " + distro)
+                Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
+                Check.That(File.ReadAllText(calls) == expected, "Setup reinstalled available tools: " + distro)
+                File.Delete(gh)
+                File.Delete(calls)
+                File.WriteAllText(Path.Combine(temp.Root, "fail"), "")
+                Check.Envelope(
+                    TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),
+                    "doctor",
+                    "error",
+                    "missing_tools"
+                )
+                Check.That(
+                    File.ReadAllText(calls) == expected && !File.Exists(gh),
+                    "Failed setup retried or upgraded: " + distro
+                )
+            }
+            Console.WriteLine(
+                "PASS confirmed dependency-only setup for APT, DNF, pacman and APK, with no upgrade fallback"
+            )
+        }
+
         internal func All(binary string, selected string = "") {
             Check.That(
                 selected == "" ||
@@ -659,6 +775,7 @@ internal class Diagnostics {
                     selected == "discovery" ||
                     selected == "sandbox" ||
                     selected == "fixed" ||
+                    selected == "packages" ||
                     selected == "metadata",
                 "Unknown diagnostics selector"
             )
@@ -676,6 +793,9 @@ internal class Diagnostics {
             }
             if selected == "" || selected == "metadata" {
                 Metadata(binary)
+            }
+            if selected == "" || selected == "packages" {
+                Packages(binary)
             }
         }
     }

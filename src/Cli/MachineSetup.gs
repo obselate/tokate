@@ -92,13 +92,13 @@ internal class MachineSetup {
         private func PackageArguments(manager string, packages List[string])[]string {
             let args = List[string]()
             if manager.EndsWith("apt-get") {
-                args.AddRange([]string{"install", "-y", "--no-install-recommends"})
+                args.AddRange([]string{"install", "-y", "--no-install-recommends", "--no-upgrade"})
             } else if manager.EndsWith("dnf") {
                 args.AddRange([]string{"install", "--assumeyes", "--setopt=install_weak_deps=False"})
             } else if manager.EndsWith("apk") {
                 args.AddRange([]string{"add", "--no-cache"})
             } else {
-                args.AddRange([]string{"-Syu", "--needed", "--noconfirm"})
+                args.AddRange([]string{"-S", "--needed", "--noconfirm"})
             }
             args.AddRange(packages)
             return args.ToArray()
@@ -198,12 +198,7 @@ internal class MachineSetup {
                         ". If already installed elsewhere, cancel and correct PATH. Run: " +
                         (manager.EndsWith("apt-get") ? command + "update, then ": "") +
                         command +
-                        String.Join(" ", PackageArguments(manager, packages)) +
-                        (
-                        manager.EndsWith(
-                            "pacman"
-                        ) ? ". This pacman transaction also synchronizes repositories and upgrades system packages.": ""
-                    )
+                        String.Join(" ", PackageArguments(manager, packages))
                 ) {
                     return false
                 }
