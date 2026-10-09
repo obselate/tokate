@@ -551,7 +551,7 @@ internal class WorkspacePreparation {
             ): branch.Code != 1 {
                 Reject(checkout)
             }
-            if run.Text("source") != "external" && run.Text("harness") != "pi" {
+            if run.Text("source") != "external" && run.Text("harness") == "codex" {
                 for file in Commands.Git(checkout, "ls-files").Split('\n') {
                     if file.StartsWith(".codex/") || file.Contains("/.codex/") {
                         throw Exception("Repository Codex configuration is not supported in donor runs")

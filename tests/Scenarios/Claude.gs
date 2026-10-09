@@ -18,6 +18,8 @@ internal class ClaudeChecks {
                 policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
                 policy["models"] = Check.Json("{\"claude-sonnet-5-5\":[\"high\"]}")
                 Check.SaveJson(policyPath, policy)
+                Directory.CreateDirectory(Path.Combine(flow.Upstream, ".codex"))
+                File.WriteAllText(Path.Combine(flow.Upstream, ".codex/config.toml"), "")
                 flow.Commit("Claude managed fixture")
                 flow.Approve()
                 let profile = Path.Combine(flow.Temp.Root, "claude-profile")
