@@ -49,6 +49,11 @@ internal class WorkspacePreparation {
             if run.Text("harness_path") != "" {
                 identity = Data.Hash(identity + ":" + run.Text("harness_path"))
             }
+            if run.Text("harness") == "claude" {
+                identity = Data.Hash(
+                    identity + ":" + run.Text("claude_profile") + ":" + run.Flag("claude_sole_use").ToString()
+                )
+            }
             identity = Data.Hash(identity + ":" + run.Text("attempt"))
             if ContributionHandoff.Has(run) {
                 identity = Data.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "handoff")))
@@ -115,7 +120,7 @@ internal class WorkspacePreparation {
                     Reject(directory)
                 }
             }
-            for key in "version,repo,issue,donor,donor_id,approval,base,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,network,harness,harness_path,provider,model,effort,selection,pi_endpoint,pi_root,pi_node,requested_fork,claim_request,handoff"
+            for key in "version,repo,issue,donor,donor_id,approval,base,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,network,harness,harness_path,provider,model,effort,selection,pi_endpoint,pi_root,pi_node,claude_profile,claude_sole_use,requested_fork,claim_request,handoff"
                 .Split(',') {
                 if !RequestData.Same(J.Get(pending.Element(), key), J.Get(run.Element(), key)) {
                     Reject(directory)
@@ -147,7 +152,10 @@ internal class WorkspacePreparation {
             if savedState != "preparing" && savedState != "claimed" {
                 throw Exception(failure)
             }
-            if fields.ContainsKey("codex_version") || fields.ContainsKey("pi_version") || fields.ContainsKey("commit") {
+            if fields.ContainsKey("codex_version") || fields.ContainsKey("pi_version") || fields.ContainsKey(
+                "claude_version"
+            ) ||
+                fields.ContainsKey("commit") {
                 throw Exception(failure)
             }
             let eventsPath = Path.Combine(directory, "events.jsonl")

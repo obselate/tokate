@@ -85,7 +85,7 @@ internal class Cli {
             ),
             CliOption("claude-profile", "DIR", "Private clean native-login profile; metadata and native status only"),
             CliOption("policy", "FILE", "Repository policy; default: .github/tokate.json in the selected checkout"),
-            CliOption("sole-use", "", "Attest this native-login profile is solely used for Claude capability checks"),
+            CliOption("sole-use", "", "Attest this native-login profile is solely used for Tokate donations"),
             CliOption("owner", "", "Diagnose owner GitHub tooling without Codex or donor sandboxes"),
             CliOption(
                 "set-default",
@@ -118,7 +118,7 @@ internal class Cli {
             CliOption(
                 "allowed-tools",
                 "TOOLS",
-                "Managed codex,pi preserves external permissions; exact harness/provider pairs replace the list"
+                "Managed codex,claude,pi preserves external permissions; exact harness/provider pairs replace the list"
             ),
             CliOption(
                 "eligibility",
@@ -150,13 +150,13 @@ internal class Cli {
                 "Owner-approved effort",
                 "off minimal low medium high xhigh max ultra absent"
             ),
-            CliOption("harness", "HARNESS", "Managed harness: codex or pi"),
+            CliOption("harness", "HARNESS", "Managed harness: codex, claude or pi"),
             CliOption("harness-path", "FILE", "Existing harness executable at an absolute custom path"),
             CliOption("profile", "NAME", "Named local donor profile; explicit compatible choices override it"),
             CliOption("endpoint", "URL", "Private pi no-auth loopback Chat Completions base URL"),
             CliOption("pi-root", "DIR", "Donor-installed pi node_modules directory; no installation"),
             CliOption("node", "FILE", "Donor-installed Node executable for pi"),
-            CliOption("provider", "PROVIDER", "Managed provider: openai or local-chat-completions"),
+            CliOption("provider", "PROVIDER", "Managed provider: openai, anthropic or local-chat-completions"),
             CliOption(
                 "availability",
                 "STATUS",
@@ -233,14 +233,14 @@ internal class Cli {
                 "claude-capabilities",
                 "claude,claude-profile,sole-use,model,effort,allow-network,file,path,policy",
                 "claude,claude-profile,model,effort",
-                "Check installed native Claude interfaces and personal login status without inference; managed execution stays disabled.",
+                "Check installed native Claude interfaces and personal login status without inference.",
                 "--claude FILE --claude-profile DIR --sole-use --model MODEL --effort EFFORT [--policy FILE] [--file REPORT]",
                 "claude-capabilities --claude /usr/local/bin/claude --claude-profile /private/native-login --sole-use --model MODEL --effort EFFORT",
                 effects: "local_read local_write"
             ),
             CliCommand(
                 "doctor",
-                "owner,managed,external,auth,harness,harness-path,pi-root,node,fix,yes,set-default",
+                "owner,managed,external,auth,harness,harness-path,pi-root,node,claude-profile,sole-use,fix,yes,set-default",
                 "",
                 "Check prerequisites; --fix offers confirmed setup; no inference.",
                 "[--owner|--managed|--external] [--harness HARNESS] [--auth] [--fix [--yes]] [--set-default]",
@@ -267,7 +267,7 @@ internal class Cli {
             ),
             CliCommand(
                 "defaults",
-                "profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path",
+                "profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use",
                 "",
                 "Save harness and model profiles, or use a named profile as the default; no inference.",
                 "set [--profile NAME] --harness HARNESS [options]\n       tokate defaults use --profile NAME\n       tokate defaults read|remove [--profile NAME]\n       tokate defaults list",
@@ -276,7 +276,7 @@ internal class Cli {
             ),
             CliCommand(
                 "select",
-                "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,availability,non-interactive",
+                "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use,availability,non-interactive",
                 "repo",
                 "Select under current owner policy and offline harness capabilities; no inference or reservation.",
                 "[--repo OWNER/REPO] [--model MODEL --effort EFFORT] [options]",
@@ -334,7 +334,7 @@ internal class Cli {
             ),
             CliCommand(
                 "prepare",
-                "run,repo,issue,state,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,availability,non-interactive,fork,seconds,verification-reserve,unlimited,allow-network,runs,continue-from,from-pr,yes",
+                "run,repo,issue,state,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use,availability,non-interactive,fork,seconds,verification-reserve,unlimited,allow-network,runs,continue-from,from-pr,yes",
                 "repo,issue,state,source",
                 "Prepare a fresh reserved v2 contribution, or resume recorded preparation; no inference, checks or publication.",
                 "[--repo OWNER/REPO] --issue N|URL --state SHA\n       --source external --tools FILE [options]\n       tokate prepare --issue N --state SHA --source tokate [selection options]\n       [--continue-from DIR --seconds N --verification-reserve N --yes]\n       tokate prepare --run DIR",
@@ -449,7 +449,7 @@ internal class Cli {
             ),
             CliCommand(
                 "claim",
-                "repo,issue,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,availability,non-interactive,seconds,verification-reserve,unlimited,fork,runs,allow-network,continue-from,from-pr",
+                "repo,issue,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use,availability,non-interactive,seconds,verification-reserve,unlimited,fork,runs,allow-network,continue-from,from-pr",
                 "repo,issue",
                 "Check donor readiness, reserve approved work and prepare a saved claim; no inference or PR publication.",
                 "[ISSUE_URL | --issue N|URL] [--repo OWNER/REPO]\n       [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --seconds N]",
@@ -459,7 +459,7 @@ internal class Cli {
             ),
             CliCommand(
                 "work",
-                "repo,issue,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,availability,non-interactive,yes,continue-truncated,seconds,verification-reserve,unlimited,fork,runs,allow-network,run,continue-from",
+                "repo,issue,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use,availability,non-interactive,yes,continue-truncated,seconds,verification-reserve,unlimited,fork,runs,allow-network,run,continue-from",
                 "repo,issue",
                 "Run the selected coding harness, verify work and show the publication step. Uses donor inference.",
                 "[OWNER/REPO | ISSUE_URL | --issue N|URL] [--repo OWNER/REPO]\n       [--profile NAME | --model MODEL --effort EFFORT] [--seconds N] [options]\n       tokate work --run DIR [--yes] [--non-interactive] [--continue-truncated]",
@@ -847,15 +847,16 @@ internal class Cli {
                     throw Exception("Choose one doctor scope: --owner, --managed or --external")
                 }
                 if args.Get("harness") != "" && args.Get("harness") != "codex" && args.Get("harness") != "pi" &&
+                    args.Get("harness") != "claude" &&
                     !(
                     args.Get("set-default") == "true" && Array.IndexOf(
                         DonorDefaults.Harnesses,
                         args.Get("harness")
                     ) >= 0
                 ) {
-                    throw Exception("Managed diagnostics support codex or pi")
+                    throw Exception("Managed diagnostics support codex, claude or pi")
                 }
-                for key in[]string{"harness", "harness-path", "pi-root", "node"} {
+                for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile", "sole-use"} {
                     if scopes > 0 && args.Get("managed") != "true" && args.Get(key) != "" {
                         throw Exception("Harness options require managed diagnostics")
                     }
@@ -988,6 +989,10 @@ internal class Cli {
                 if args.Subject == "set" && !partial {
                     DonorDefaults.NormalizePair(args)
                 }
+                if args.Subject == "set" && args.Get("harness") != "claude" &&
+                    (args.Get("claude-profile") != "" || args.Get("sole-use") != "") {
+                    throw Exception("Claude profile options require the claude harness")
+                }
                 for key in[]string{
                     "harness",
                     "provider",
@@ -996,7 +1001,9 @@ internal class Cli {
                     "endpoint",
                     "pi-root",
                     "node",
-                    "harness-path"
+                    "harness-path",
+                    "claude-profile",
+                    "sole-use"
                 } {
                     if args.Subject == "set" {
                         if !partial && (key == "harness" || key == "provider" || key == "model" || key == "effort") {

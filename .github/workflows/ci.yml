@@ -140,7 +140,7 @@ jobs:
           package-manager-cache: false
       - name: State installation-only coverage
         run: |
-          printf 'Claude, OMP and Hermes checks cover installation and version reporting only. Their managed Tokate adapters and integration coverage are missing.\n\n| Harness | Installed version | Coverage |\n| --- | --- | --- |\n' >> "$GITHUB_STEP_SUMMARY"
+          printf 'These steps cover installation and version reporting. Separate native proofs check Claude. OMP and Hermes managed adapters remain unavailable.\n\n| Harness | Installed version | Coverage |\n| --- | --- | --- |\n' >> "$GITHUB_STEP_SUMMARY"
           mkdir -p "$RUNNER_TEMP/harness-smoke/claude" "$RUNNER_TEMP/harness-smoke/omp" "$RUNNER_TEMP/harness-smoke/hermes"
       - name: Install latest Claude Code and report version only
         id: claude

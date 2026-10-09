@@ -12,7 +12,7 @@ including symlinks into it. No shell startup files or credential files are read.
 | --- | --- | --- |
 | Codex | [Native installer](https://learn.chatgpt.com/docs/config-file/environment-variables): `CODEX_INSTALL_DIR/codex`, default `~/.local/bin/codex`. Its package remains under `CODEX_HOME/packages/standalone`. npm and Bun entrypoints are also supported. | Supported, subject to doctor checks. |
 | Pi | [Official installer](https://pi.dev/install.sh): `PI_CODING_AGENT_DIR`, default `~/.pi/agent`. The launcher can be in the agent's `bin` directory or a selected user bin directory. npm, Bun and Nix installations are also supported. | Supported, subject to doctor checks. |
-| Claude | [Official setup](https://code.claude.com/docs/en/setup): native launcher `~/.local/bin/claude`, npm or distro packages. | Adapter unavailable. |
+| Claude | [Official setup](https://code.claude.com/docs/en/setup): unmodified native Linux x64 executable, normally `~/.local/bin/claude`. | Supported with a private sole-use personal Pro/Max profile. |
 | OMP | [Official installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh): `PI_INSTALL_DIR/omp`, default `~/.local/bin/omp`. Bun and Nix alternatives exist. | Adapter unavailable. |
 | Hermes | [Official setup](https://hermes-agent.nousresearch.com/docs/getting-started/installation/): use the `~/.local/bin/hermes` launcher. `--dir` selects source independently of `HERMES_HOME` data. | Adapter unavailable. |
 
@@ -29,4 +29,5 @@ global npm package cannot establish a wrapper's identity.
 
 Run `tokate doctor --managed --harness codex` or
 `tokate doctor --managed --harness pi`. These check startup and isolation without
-inference. An installed executable alone does not establish managed adapter support.
+inference. For Claude, use `tokate doctor --managed --harness claude
+--claude-profile DIR --sole-use`. An installed executable alone does not establish managed adapter support.

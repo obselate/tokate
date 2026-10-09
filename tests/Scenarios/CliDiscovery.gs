@@ -263,7 +263,7 @@ internal class CliDiscovery {
             }
             flow.Call(toolArgs.ToArray(), owner: true)
             let mixed = Check.Json(File.ReadAllText(policyPath))["allowed_tools"]?.ToJsonString() ?? ""
-            for name in[]string{"claude", "omp", "pi"} {
+            for name in[]string{"omp", "pi"} {
                 Check.Contains(mixed, "\"harness\":\"" + name + "\"")
             }
             toolArgs[6] = "claude/anthropic,hermes/openrouter"
@@ -278,7 +278,10 @@ internal class CliDiscovery {
             flow.Call(toolArgs.ToArray(), owner: true)
             policy = Check.Json(File.ReadAllText(policyPath))
             let kept = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
-            Check.That(kept.Count == 3, "Managed selection removed external permissions")
+            Check.That(
+                kept.Count == 2 && Check.Text(kept[0]?["harness"]) == "hermes",
+                "Managed selection removed external permissions"
+            )
             let beforeInvalidTool = File.ReadAllText(policyPath)
             toolArgs[6] = "claude/"
             flow.Call(toolArgs.ToArray(), 1, true)
@@ -1105,12 +1108,15 @@ internal class CliDiscovery {
                 } else {
                     command = "source '" +
                         path +
-                        "'; complete -C 'tokate work --mo'; complete -C 'tokate work --effort=hi'"
+                        "'; complete -C 'tokate work --mo'; complete -C 'tokate work --effort=hi'; complete -C 'tokate work --claude-pro'"
                     args = []string{"--no-config", "-c", command}
                 }
                 let output = Check.Success(TestProcess.Run("/usr/bin/" + shell, args, temp.Env))
                 Check.Contains(output, "--model")
                 Check.Contains(output, shell == "zsh" ? "--effort=": "--effort=high")
+                if shell == "fish" {
+                    Check.Contains(output, "--claude-profile")
+                }
                 if shell == "bash" {
                     Check.Contains(output, "--runs=" + Path.Combine(temp.Root, "run with spaces"))
                 }

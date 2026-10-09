@@ -45,6 +45,23 @@ not prove account availability or remaining allowance. `defaults list` shows sav
 choices. Add `--profile NAME` to keep several choices and select one per donation.
 Profiles store neither budgets nor network consent.
 
+### Claude Code
+
+Choose Claude Code in the donation wizard. It uses your installed native CLI and a
+private profile used only for Tokate donations. A new profile opens Claude's own
+sign-in flow. Use a personal Pro or Max subscription. Mixed settings, managed
+policy and API/cloud profiles are refused.
+
+For a saved choice, after native sign-in:
+
+```sh
+tokate defaults set --profile claude --harness claude --model MODEL --effort EFFORT \
+  --claude-profile /absolute/private/profile --sole-use
+```
+
+Use that profile with the same `claim`, `work` and `submit` commands below. Tokate
+never reads or copies its credentials. Login status does not prove model availability.
+
 ### Local inference with Pi
 
 Install current Pi and Node using [Pi's official instructions](https://pi.dev/).

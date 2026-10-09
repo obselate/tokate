@@ -253,18 +253,29 @@ internal class Policy {
                 !(
                 (J.Text(declarations[0], "harness") == "codex" && J.Text(declarations[0], "provider") == "openai") ||
                     (
+                    J.Text(declarations[0], "harness") == "claude" && J.Text(declarations[0], "provider") == "anthropic"
+                ) ||
+                    (
                     J.Text(declarations[0], "harness") == "pi" && J.Text(
                         declarations[0],
                         "provider"
                     ) == "local-chat-completions"
                 )
             ) {
-                throw Exception("Managed execution supports one codex/openai or pi/local-chat-completions declaration")
+                throw Exception(
+                    "Managed execution supports one codex/openai, claude/anthropic or pi/local-chat-completions declaration"
+                )
             }
         }
         for tool in declarations {
             if !AllowsTool(J.Text(tool, "harness"), J.Text(tool, "provider")) {
                 throw Exception("Declared harness/provider is not allowed by owner policy")
+            }
+            if source == "tokate" && J.Text(tool, "harness") == "claude" && !ClaudeCode.Pair(
+                J.Text(tool, "model"),
+                J.Text(tool, "effort")
+            ) {
+                throw Exception("Unsupported native Claude model/effort pair")
             }
             if source == "tokate" && J.Text(tool, "harness") == "pi" {
                 ValidatePi(J.Text(tool, "model"), J.Text(tool, "effort"), 1, false)

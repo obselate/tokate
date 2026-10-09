@@ -247,8 +247,11 @@ internal class DonorSelectionChecks {
             Select(flow, []string{"--model", "gpt-6.1-sol", "--effort", "minimal"}, 1)
             Set(flow, harness: "claude", provider: "anthropic")
             Select(flow, []string{}, 1)
-            let explicitChoice = Select(flow, []string{"--model", "gpt-6.1-sol", "--effort", "high"})
-            Check.That(Check.Text(explicitChoice["harness"]) == "codex", "Unsupported default changed harness")
+            let explicitChoice = Select(
+                flow,
+                []string{"--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"}
+            )
+            Check.That(Check.Text(explicitChoice["harness"]) == "codex", "Explicit harness override was ignored")
             flow.Call(
                 []string{
                     "select",
@@ -623,6 +626,8 @@ internal class DonorSelectionChecks {
             for pair in[][]string{
                 []string{"--harness=codex", "codex", "openai"},
                 []string{"--provider=openai", "codex", "openai"},
+                []string{"--harness=claude", "claude", "anthropic"},
+                []string{"--provider=anthropic", "claude", "anthropic"},
                 []string{"--harness=pi", "pi", "local-chat-completions"},
                 []string{"--provider=local-chat-completions", "pi", "local-chat-completions"}
             } {
@@ -671,8 +676,6 @@ internal class DonorSelectionChecks {
             )
             let original = File.ReadAllText(Settings(flow))
             for rejected in[][]string{
-                []string{"--harness=claude", "--model=gpt-6.1-sol", "--effort=high"},
-                []string{"--provider=anthropic", "--model=gpt-6.1-sol", "--effort=high"},
                 []string{"--harness=pi", "--model=gpt-6.1-sol", "--effort=absent"},
                 []string{
                     "--harness=codex",

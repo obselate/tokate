@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Text.Json
 
 internal class GuidedWork {
@@ -81,7 +82,18 @@ internal class GuidedWork {
             (policy.AllowsTool(J.Text(value, "harness"), J.Text(value, "provider")))
 
         internal func Profile(args Args, policy Policy) {
-            for key in[]string{"profile", "harness", "provider", "model", "effort", "endpoint", "pi-root", "node"} {
+            for key in[]string{
+                "profile",
+                "harness",
+                "provider",
+                "model",
+                "effort",
+                "endpoint",
+                "pi-root",
+                "node",
+                "claude-profile",
+                "sole-use"
+            } {
                 args.Values.Remove("--" + key)
             }
             args.SavedDefaults = JsonElement{}
@@ -120,6 +132,10 @@ internal class GuidedWork {
                 tools.Add("Codex | Subscription")
                 routes.Add("codex")
             }
+            if policy.AllowsTool("claude", "anthropic") {
+                tools.Add("Claude Code | Subscription")
+                routes.Add("claude")
+            }
             if policy.AllowsTool("pi", "local-chat-completions") {
                 tools.Add("Pi | Local")
                 routes.Add("pi")
@@ -136,7 +152,66 @@ internal class GuidedWork {
             args.Values["--harness"] = routes[tool - 1]
             DonorDefaults.NormalizePair(args)
             Startup.Check(args)
-            if args.Need("harness") == "pi" {
+            if args.Need("harness") == "claude" {
+                args.Values["--claude-profile"] = WizardScreen.Read(
+                    "Claude Code profile",
+                    "Use a private, sole-use native-login profile for your personal Pro or Max subscription.",
+                    "Profile directory",
+                    args.Get("claude-profile", Path.Combine(LocalPaths.StateDirectory(), "claude-profile")),
+                    "A new directory opens native Claude sign-in. Mixed settings and API profiles are refused."
+                )
+                if WizardScreen.Choose(
+                    "Claude Code profile",
+                    "Confirm this profile is used only for Tokate donations.",
+                    []string{"Use this sole-use profile", "Cancel"}
+                ) != 1 {
+                    throw OperationCanceledException("Cancelled")
+                }
+                args.Values["--sole-use"] = "true"
+                let profile = LocalPaths.RuntimePath(args.Need("claude-profile"))
+                args.Values["--claude-profile"] = profile
+                if !Directory.Exists(profile) {
+                    ClaudeCode.ManagedPolicy()
+                    Directory.CreateDirectory(
+                        profile,
+                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                    )
+                    WizardScreen.Close()
+                    ClaudeCode.Login(args)
+                }
+                let models = List[string]()
+                let efforts = List[string]()
+                labels.Clear()
+                if policy.ModelPolicy == "unrestricted" {
+                    args.Values["--model"] = WizardScreen.Read(
+                        "Claude Code model",
+                        "Choose the exact model identifier.",
+                        "Model ID"
+                    )
+                    args.Values["--effort"] = WizardScreen.Read(
+                        "Reasoning effort",
+                        "Choose a supported effort level.",
+                        "Effort"
+                    )
+                } else {
+                    for model in J.Get(policy.Value, "models").EnumerateObject() {
+                        for level in J.Items(model.Value) {
+                            let effort = level.GetString() ?? ""
+                            if ClaudeCode.Pair(model.Name, effort) {
+                                models.Add(model.Name)
+                                efforts.Add(effort)
+                                labels.Add("Anthropic | Claude Code | Subscription | " + model.Name + " / " + effort)
+                            }
+                        }
+                    }
+                    if labels.Count == 0 {
+                        throw Exception("The owner policy permits no supported Claude model and effort")
+                    }
+                    let selected = ModelChecklist.Pick(labels.ToArray())
+                    args.Values["--model"] = models[selected]
+                    args.Values["--effort"] = efforts[selected]
+                }
+            } else if args.Need("harness") == "pi" {
                 if args.Get("pi-root") == "" && args.Get("harness-path") == "" && LocalPaths.Harness("pi") == "" {
                     MachineSetup.Harness(args)
                 }
@@ -351,7 +426,7 @@ internal class GuidedWork {
                     J.Text(
                         selection,
                         "harness"
-                    ) == "pi" ? "Local inference uses your existing runtime and compute.": "Uses your Codex subscription. Extra-charge status is unknown."
+                    ) == "pi" ? "Local inference uses your existing runtime and compute.": "Uses your selected harness subscription. Extra-charge status is unknown."
                 ) +
                     "\nAvailability: " +
                     J.Text(selection, "availability")

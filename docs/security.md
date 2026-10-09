@@ -22,7 +22,8 @@ scanner, and there is no blanket `.env` exclusion inside an approved checkout.
 
 ## Authentication and discovery
 
-GitHub operations use `gh` and its credential helper. Codex owns its ChatGPT login.
+GitHub operations use `gh` and its credential helper. Codex and Claude Code own
+their native logins.
 Tokate forwards only specific authentication requirements to those host tools.
 It does not read credential files, mixed configuration or whole environments to
 infer model defaults. Pi receives generated model settings and an empty auth profile.
@@ -39,6 +40,12 @@ Unsupported sandbox controls fail before work instead of falling back to host ex
 Codex remains a trusted host harness. Pi's SDK runs inside a separate bubblewrap
 boundary with its selected runtime mounted read-only, private temporary storage,
 constrained file/shell tools, and no repository extensions, skills or automatic retries.
+Claude runs inside a separate whole-process boundary. Its native restricted file
+tools stay in the checkout. Its Bash sandbox blocks profile and control access,
+with no unsandboxed fallback. Only the trusted native CLI receives its sole-use
+login profile, which also retains native runtime state. Repository customizations and optional model fallbacks are disabled.
+Local interface checks and synthetic protocol tests do not attest remote model
+identity, effective effort or subscription entitlement.
 
 Verification runs in a disposable candidate copy. Ordered checks share that copy.
 They cannot write the saved checkout or Git metadata. Host credentials, sibling runs

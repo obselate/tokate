@@ -1,6 +1,7 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.Text
 
 internal class Completion {
@@ -116,9 +117,8 @@ internal class Completion {
                         let action = option.Choices != "" ? "(" + option.Choices + ")":
                         (option.Value == "DIR" ? "_directories": "")
                         text.Append(
-                            " '--" + option.Name + (option.Value == "" ? "": "=") + "[" + option.Describe(
-                                command.Name
-                            ) +
+                            " '--" + option.Name + (option.Value == "" ? "": "=") + "[" + option.Describe(command.Name)
+                                .Replace("'", "'\\''") +
                                 "]" +
                                 (option.Value == "" ? "": ":" + option.Value.Replace('|', '/') + ":" + action) +
                                 "'"
@@ -139,7 +139,10 @@ internal class Completion {
                         "complete -c tokate -n '__fish_use_subcommand' -a '" +
                             command.Name +
                             "' -d '" +
-                            command.Summary +
+                            command
+                            .Summary
+                            .Replace("\\", "\\\\")
+                            .Replace("'", "\\'") +
                             "'"
                     )
                     if command.Name == "help" {
@@ -155,19 +158,32 @@ internal class Completion {
                             "complete -c tokate -n '__fish_seen_subcommand_from defaults' -a 'set read remove list use'"
                         )
                     }
-                    for option in Cli.Options {
-                        if !command.Has(option.Name) {
+                }
+                for option in Cli.Options {
+                    let groups = Dictionary[string, List[string]]()
+                    for command in Cli.Commands {
+                        if command.Name == "--version" || !command.Has(option.Name) {
                             continue
                         }
+                        let description = option.Describe(command.Name)
+                        if !groups.ContainsKey(description) {
+                            groups[description] = List[string]()
+                        }
+                        groups[description].Add(command.Name)
+                    }
+                    for group in groups {
                         text.Append(
-                            "complete -c tokate -n '__fish_seen_subcommand_from " +
-                                command.Name +
+                            "complete -c tokate -n '__fish_seen_subcommand_from " + String.Join(" ", group.Value) +
                                 "' -l " +
                                 option.Name +
                                 (option.Name == "help" ? " -s h": "") +
                                 (option.Value == "" ? "": " -r") +
                                 " -d '" +
-                                option.Describe(command.Name) + "'"
+                                group
+                                .Key
+                                .Replace("\\", "\\\\")
+                                .Replace("'", "\\'") +
+                                "'"
                         )
                         if option.Choices != "" {
                             text.Append(" -a '" + option.Choices + "'")

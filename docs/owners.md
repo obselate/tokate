@@ -25,7 +25,7 @@ approve pull requests" in Actions settings. The coordinator does not execute don
 It can close PRs without current owner authorization. Review that behavior before
 enabling the workflow.
 
-New setup uses Trusted access. Select Codex (Subscription), Pi (Local), or both
+New setup uses Trusted access. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
 at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`. Omission preserves
 existing tools; new noninteractive setup defaults to Codex.
 

@@ -240,6 +240,7 @@ internal class AttemptContinuation {
             ) != "inference" ||
                 (
                 source.Text("harness") == "codex" ? source.Text("codex_version") == "":
+                source.Text("harness") == "claude" ? source.Text("claude_version") == "":
                 source.Text("harness") != "pi" || source.Text("pi_version") == ""
             ) ||
                 source.Text("commit") != "" || source.Number("pr") != 0 || source.Text("pr_url") != "" || source.Text(
@@ -281,7 +282,9 @@ internal class AttemptContinuation {
                 "effort",
                 "pi_endpoint",
                 "pi_root",
-                "pi_node"
+                "pi_node",
+                "claude_profile",
+                "claude_sole_use"
             } {
                 if source.Text(key) != run.Text(key) {
                     throw Exception("Continuation changed predecessor binding or selection: " + key)

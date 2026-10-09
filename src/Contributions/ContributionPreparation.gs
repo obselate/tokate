@@ -167,6 +167,10 @@ internal class ContributionPreparation {
                 if args.Get("harness-path") != "" {
                     run.Fields["harness_path"] = LocalPaths.RuntimePath(args.Need("harness-path"))
                 }
+                if J.Text(selection, "harness") == "claude" {
+                    run.Fields["claude_profile"] = args.Need("claude-profile")
+                    run.Fields["claude_sole_use"] = args.Get("sole-use") == "true"
+                }
                 if J.Text(selection, "harness") == "pi" {
                     run.Fields["pi_endpoint"] = PiBoundary.Endpoint(args.Need("endpoint"))
                     run.Fields["pi_root"] = args.Need("pi-root")

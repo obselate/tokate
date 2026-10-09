@@ -69,6 +69,7 @@ internal class MachineSetup {
             case "git": "git"
             case "gh": manager.EndsWith("pacman") || manager.EndsWith("apk") ? "github-cli": "gh"
             case "curl": "curl"
+            case "/usr/bin/socat": "socat"
             case "tar": "tar"
             case "bwrap": "bubblewrap"
             case "/usr/bin/bwrap": "bubblewrap"

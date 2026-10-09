@@ -115,7 +115,7 @@ internal class OwnerSetup {
                 }
                 Terminal.Message("Current allowed tools: " + String.Join(", ", current), error: true)
                 requested = Answer(
-                    "Managed tools: codex,pi keeps external permissions; use harness/provider pairs to replace all; Enter keeps current"
+                    "Managed tools: codex,claude,pi keeps external permissions; use harness/provider pairs to replace all; Enter keeps current"
                 )
             }
             if requested == "" {
@@ -287,11 +287,12 @@ internal class OwnerSetup {
                 if action == 4 {
                     let choice = WizardScreen.Choose(
                         "Allowed coding tools",
-                        "Owners need neither tool installed.",
+                        "Owners do not need these tools installed.",
                         []string{
                             "Codex | Subscription",
+                            "Claude Code | Subscription",
                             "Pi | Local",
-                            "Codex and Pi",
+                            "Codex, Claude Code and Pi",
                             "Edit exact harness/provider pairs"
                         }
                     )
@@ -299,11 +300,11 @@ internal class OwnerSetup {
                     for tool in J.Items(J.Get(value, "allowed_tools")) {
                         pairs.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider"))
                     }
-                    args.Values["--allowed-tools"] = choice == 4 ? Answer(
+                    args.Values["--allowed-tools"] = choice == 5 ? Answer(
                         "Allowed harness/provider pairs",
                         String.Join(",", pairs)
                     ):
-                    choice == 1 ? "codex": choice == 2 ? "pi": "codex,pi"
+                    choice == 1 ? "codex": choice == 2 ? "claude": choice == 3 ? "pi": "codex,claude,pi"
                     Tools(args, fields, false)
                     fields["allow_network"] = WizardScreen.Choose(
                         "Project network",
