@@ -40,6 +40,14 @@ internal class ClaudeCode {
 
         private func Profile(path string) string {
             let profile = LocalPaths.DirectoryPath(path)
+            var parent = profile
+            while parent != "" {
+                let git = Path.Combine(parent, ".git")
+                if File.Exists(git) || Directory.Exists(git) {
+                    throw Exception("Keep the Claude login profile outside Git repositories")
+                }
+                parent = Path.GetDirectoryName(parent) ?? ""
+            }
             if (
                 File.GetUnixFileMode(profile) & (
                     UnixFileMode.GroupRead | UnixFileMode.GroupWrite |
@@ -59,7 +67,21 @@ internal class ClaudeCode {
                 }
                 let kind = BitConverter.ToUInt16(status, 28) & 61440
                 if ((name == ".credentials.json" || name == ".claude.json") && kind == 32768) ||
-                    ((name == "backups" || name == "debug") && kind == 16384) {
+                    (
+                    Array.IndexOf(
+                        []string{
+                            "backups",
+                            "debug",
+                            ".cc-writes",
+                            "seed-admin",
+                            "session-env",
+                            "sessions",
+                            "shell-snapshots"
+                        },
+                        name
+                    ) >= 0 &&
+                        kind == 16384
+                ) {
                     continue
                 }
                 throw Exception(
@@ -114,8 +136,8 @@ internal class ClaudeCode {
                         "autoAllowBashIfSandboxed": false,
                         "excludedCommands": []string{},
                         "filesystem": map[string, Object?]{
-                            "denyRead": []string{"//tokate-profile", "//tokate-control", "//tmp/tokate-agent"},
-                            "denyWrite": []string{"//tokate-profile", "//tokate-control", "//tmp/tokate-agent"}
+                            "denyRead": []string{"/tokate-profile", "/tokate-control", "/tmp/tokate-agent"},
+                            "denyWrite": []string{"/tokate-profile", "/tokate-control", "/tmp/tokate-agent"}
                         },
                         "network": map[string, Object?]{
                             "allowedDomains": network ? []string{"*"}: []string{},
@@ -227,7 +249,11 @@ internal class ClaudeCode {
             )
         }
 
-        internal func Reports(text string, model string, effort string) JsonElement {
+        internal func Reports(text string, model string, effort string, directory string = "") JsonElement {
+            var started int32
+            var completed int32
+            var report = ""
+            var stop = ""
             let reports = map[string, Object?]{}
             for line in text.Split('\n') {
                 if String.IsNullOrWhiteSpace(line) {
@@ -235,7 +261,11 @@ internal class ClaudeCode {
                 }
                 let value = RequestData.Parse(line, 1024 * 1024)
                 let type = J.Text(value, "type")
+                if directory != "" && completed != 0 {
+                    throw Exception("Claude emitted events after completion")
+                }
                 if type == "system" && J.Text(value, "subtype") == "init" {
+                    started++
                     ReportField(reports, value, "model", model)
                     ReportField(reports, value, "permissionMode", "default")
                     ReportField(reports, value, "effort", effort)
@@ -243,8 +273,22 @@ internal class ClaudeCode {
                 }
                 if type == "assistant" {
                     ReportField(reports, J.Get(value, "message"), "model", model)
+                    stop = J.Text(J.Get(value, "message"), "stop_reason")
                 }
                 if type == "result" {
+                    completed++
+                    if directory != "" &&
+                        (
+                        started != 1 || completed != 1 || J.Text(value, "subtype") != "success" || J.Get(
+                            value,
+                            "is_error"
+                        )
+                            .ValueKind != JsonValueKind.False ||
+                            (stop != "" && stop != "end_turn" && stop != "stop_sequence")
+                    ) {
+                        throw Exception("Claude reported a failed or incomplete response; no retry or fallback")
+                    }
+                    report = J.Text(value, "result")
                     ReportField(reports, value, "model", model)
                     ReportField(reports, value, "effort", effort)
                     ReportField(reports, value, "effortLevel", effort)
@@ -264,6 +308,12 @@ internal class ClaudeCode {
                         }
                     }
                 }
+            }
+            if directory != "" {
+                if started != 1 || completed != 1 || String.IsNullOrWhiteSpace(report) {
+                    throw Exception("Claude did not return exactly one completed turn and report")
+                }
+                File.WriteAllText(Path.Combine(directory, "report.md"), report)
             }
             return J.Parse(J.Write(reports))
         }
@@ -327,21 +377,7 @@ internal class ClaudeCode {
             return UTF8Encoding(false, true).GetString(bytes)
         }
 
-        internal func Gate(args Args) JsonElement {
-            let model = args.Need("model")
-            let effort = args.Need("effort")
-            let policy = Policy(
-                File.ReadAllText(
-                    args.Get(
-                        "policy",
-                        Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
-                    )
-                )
-            )
-            if !policy.AllowsTool("claude", "anthropic") {
-                throw Exception("Claude/anthropic is not allowed by the repository policy; no inference started.")
-            }
-            policy.Validate(model, effort, 1, args.Get("allow-network") == "true")
+        internal func Runtime(args Args, budget RuntimeBudget? = nil, authenticate bool = true) JsonElement {
             ManagedPolicy()
             EnvironmentProfile()
             if args.Get("sole-use") != "true" {
@@ -349,7 +385,8 @@ internal class ClaudeCode {
                     "Confirm a clean sole-use native-login profile with --sole-use; mixed profile reuse is unsupported."
                 )
             }
-            if System
+            if !OperatingSystem.IsLinux() ||
+                System
                 .Runtime
                 .InteropServices
                 .RuntimeInformation
@@ -359,22 +396,26 @@ internal class ClaudeCode {
                     "Claude capability checks require Linux x64, bubblewrap, socat and setsid; no host fallback or installation."
                 )
             }
-            let binary = LocalPaths.CanonicalPath(args.Need("claude"))
+            let binary = LocalPaths.CanonicalPath(
+                LocalPaths.Harness("claude", args.Get("harness-path", args.Get("claude")))
+            )
             if !CodexRuntime.Native(binary) {
                 throw Exception(
                     "Claude requires an installed unmodified native Linux x64 executable; launchers are unsupported."
                 )
             }
             let profile = Profile(args.Need("claude-profile"))
-            let budget = RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 90)
-            let version = Native(binary, profile, []string{"--restricted", "--safe-mode", "--version"}, budget)
+            args.Values["--harness-path"] = binary
+            args.Values["--claude-profile"] = profile
+            let limit = budget ?? RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 90)
+            let version = Native(binary, profile, []string{"--restricted", "--safe-mode", "--version"}, limit)
             if version.Code != 0 || version.Truncated || version.ReadFailed || !Regex.IsMatch(
                 version.Output.Trim(),
                 "^[0-9]+\\.[0-9]+\\.[0-9]+ \\(Claude Code\\)\\z"
             ) {
                 throw Exception("Claude native version interface failed; no inference started.")
             }
-            let help = Native(binary, profile, []string{"--restricted", "--safe-mode", "--help"}, budget)
+            let help = Native(binary, profile, []string{"--restricted", "--safe-mode", "--help"}, limit)
             let required = []string{
                 "--restricted",
                 "--safe-mode",
@@ -403,39 +444,133 @@ internal class ClaudeCode {
                     throw Exception("Claude is missing required native control " + flag + "; no inference started.")
                 }
             }
-            let status = Native(
-                binary,
-                profile,
-                []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
-                budget
-            )
-            if status.Code != 0 || status.Truncated || status.ReadFailed {
-                throw Exception("Claude standalone restricted safe-mode auth status failed; no inference started.")
+            var authentication = JsonElement{}
+            if authenticate {
+                let status = Native(
+                    binary,
+                    profile,
+                    []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
+                    limit
+                )
+                if status.Code != 0 || status.Truncated || status.ReadFailed {
+                    throw Exception("Claude standalone restricted safe-mode auth status failed; no inference started.")
+                }
+                authentication = Authentication(RequestData.Parse(status.Output, 16384))
             }
-            let authentication = Authentication(RequestData.Parse(status.Output, 16384))
+            return J.Parse(
+                J.Write(
+                    map[string, Object?]{
+                        "version": version.Output.Trim(),
+                        "auth_status": authenticate ? authentication: J.Parse("null"),
+                        "required_interfaces": required
+                    }
+                )
+            )
+        }
+
+        internal func Login(args Args) {
+            ManagedPolicy()
+            EnvironmentProfile()
+            let binary = LocalPaths.CanonicalPath(LocalPaths.Harness("claude", args.Get("harness-path")))
+            if !CodexRuntime.Native(binary) {
+                throw Exception("Install native Claude Code before signing in")
+            }
+            let profile = Profile(args.Need("claude-profile"))
+            let boundary = ClaudeBoundary.Start(true, "/tmp/tokate-agent", "/tmp/tokate-tools")
+            for entry in EnvironmentControls() {
+                boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})
+            }
+            boundary.AddRange(
+                []string{
+                    "--setenv",
+                    "CLAUDE_CONFIG_DIR",
+                    "/tokate-profile",
+                    "--ro-bind",
+                    binary,
+                    "/tokate-runtime/claude",
+                    "--bind",
+                    profile,
+                    "/tokate-profile",
+                    "--dir",
+                    "/tmp/standalone",
+                    "--chdir",
+                    "/tmp/standalone",
+                    "--",
+                    "/tokate-runtime/claude",
+                    "--restricted",
+                    "--safe-mode",
+                    "auth",
+                    "login"
+                }
+            )
+            if Installation.Execute("/usr/bin/bwrap", boundary.ToArray()) != 0 {
+                throw Exception("Claude sign-in did not complete; no inference started")
+            }
+        }
+
+        internal func Pair(model string, effort string) bool ->
+        Regex.IsMatch(
+            model,
+            "^claude-(?:(?:opus|sonnet|haiku)-5-5|fable-5(?:-1)?|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6)(?:-[0-9]{8})?$"
+        ) &&
+            (
+            effort == "low" ||
+                effort == "medium" ||
+                effort == "high" ||
+                effort == "max" ||
+                (effort == "xhigh" && !Regex.IsMatch(model, "^claude-(?:opus|sonnet)-4-6(?:-|$)"))
+        )
+
+        internal func Gate(args Args) JsonElement {
+            let model = args.Need("model")
+            let effort = args.Need("effort")
+            let policy = Policy(
+                File.ReadAllText(
+                    args.Get(
+                        "policy",
+                        Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
+                    )
+                )
+            )
+            if !policy.AllowsTool("claude", "anthropic") {
+                throw Exception("Claude/anthropic is not allowed by the repository policy; no inference started.")
+            }
+            policy.Validate(model, effort, 1, args.Get("allow-network") == "true")
+            if !Pair(model, effort) {
+                throw Exception("Unsupported native Claude model/effort pair; no inference started.")
+            }
+            let runtime = Runtime(args)
             let environment = List[string]()
             for entry in EnvironmentControls() {
                 environment.Add(entry.Key + "=" + entry.Value)
             }
             let result = map[string, Object?]{
-                "version": version.Output.Trim(),
-                "auth_status": authentication,
+                "version": J.Text(runtime, "version"),
+                "auth_status": J.Get(runtime, "auth_status"),
                 "policy_hash": policy.Digest,
                 "requested": map[string, Object?]{"model": model, "effort": effort},
                 "invocation": Invocation(model, effort, args.Get("allow-network") == "true"),
                 "environment_controls": environment,
-                "required_interfaces": required,
-                "managed_execution_enabled": false,
+                "required_interfaces": J.Get(runtime, "required_interfaces"),
+                "managed_execution_enabled": true,
                 "limitations": []string{
-                    "Interfaces and local authentication schema only; remote entitlement, availability and effective controls are unproven.",
-                    "Managed Claude execution remains disabled pending whole-process, credential and command-network evidence and the workflow adapter."
+                    "Local authentication schema and required interfaces checked; remote entitlement and model availability are not proven.",
+                    "Native file restrictions and Bash sandboxing operate inside the whole-process boundary. Native reports are not remote identity attestations."
                 }
             }
             if args.Get("path") != "" {
-                result["configured_boundary"] = Boundary(binary, profile, args.Need("path"))
+                result["configured_boundary"] = Boundary(
+                    args.Need("harness-path"),
+                    args.Need("claude-profile"),
+                    args.Need("path")
+                )
             }
             if args.Get("file") != "" {
-                result["native_reports"] = Reports(Report(args.Need("file"), profile), model, effort)
+                result["native_reports"] = Reports(
+                    Report(args.Need("file"), args.Need("claude-profile")),
+                    model,
+                    effort
+                )
             }
             return J.Parse(J.Write(result))
         }

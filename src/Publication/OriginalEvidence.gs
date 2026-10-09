@@ -157,6 +157,8 @@ internal class OriginalEvidence {
                 "execution_seconds",
                 "elapsed_seconds",
                 "codex_version",
+                "pi_version",
+                "claude_version",
                 "inference_exit_code",
                 "turn_completed"
             } {

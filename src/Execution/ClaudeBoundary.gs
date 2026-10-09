@@ -37,8 +37,19 @@ internal class ClaudeBoundary {
                     args.AddRange([]string{"--ro-bind", path, path})
                 }
             }
-            for path in[]string{"/etc/ld.so.cache", "/etc/nsswitch.conf", "/etc/hosts", "/etc/resolv.conf"} {
+            for path in[]string{
+                "/etc/ld.so.cache",
+                "/etc/nsswitch.conf",
+                "/etc/hosts",
+                "/etc/resolv.conf",
+                "/etc/ssl/cert.pem"
+            } {
                 if File.Exists(path) {
+                    args.AddRange([]string{"--ro-bind", path, path})
+                }
+            }
+            for path in[]string{"/etc/ssl/certs", "/etc/pki/tls/certs", "/etc/pki/ca-trust/extracted"} {
+                if Directory.Exists(path) {
                     args.AddRange([]string{"--ro-bind", path, path})
                 }
             }

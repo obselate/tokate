@@ -133,13 +133,32 @@ def owned_case(root, network, case):
     data = gate(root, ['--path', str(checkout), *(['--allow-network'] if network else [])])
     if case == 'denied':
         print('Native Claude tested version: ' + data['version'], flush=True)
-    require(data['managed_execution_enabled'] is False, 'Managed inference was enabled')
+    require(data['managed_execution_enabled'] is True, 'Managed capability is missing')
     require(data['auth_status'] == {'loggedIn': True, 'authMethod': 'claude.ai', 'apiProvider': 'firstParty', 'subscriptionType': 'pro'},
             'Native auth status did not pass the approved schema')
     server = Fixture(root, case)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     boundary = data['configured_boundary']
+    require(all(flag in boundary for flag in ['--unshare-user', '--unshare-pid', '--unshare-ipc',
+                                               '--unshare-uts', '--clearenv', '--die-with-parent']),
+            'Whole-process boundary lost required isolation controls')
+    mounts = [(word, boundary[index + 2]) for index, word in enumerate(boundary)
+              if word in ('--bind', '--ro-bind', '--dev-bind')]
+    require({target for mode, target in mounts if mode != '--ro-bind'} == {str(checkout), '/tokate-profile'},
+            'Whole-process boundary exposed an extra writable host path')
+    allowed = {'/usr/bin', '/usr/lib', '/usr/share', '/bin', '/lib', '/lib64', '/etc/ld.so.cache',
+               '/etc/nsswitch.conf', '/etc/hosts', '/etc/resolv.conf', '/etc/ssl/cert.pem',
+               '/etc/ssl/certs', '/etc/pki/tls/certs', '/etc/pki/ca-trust/extracted', '/tokate-runtime/claude'}
+    require(all(target in allowed for mode, target in mounts if mode == '--ro-bind'),
+            'Whole-process boundary exposed an extra readable host path')
+    invocation = data['invocation']
+    settings = json.loads(invocation[invocation.index('--settings') + 1])
+    require('--restricted' in invocation and '--safe-mode' in invocation and
+            settings['sandbox']['filesystem']['denyRead'] ==
+            ['/tokate-profile', '/tokate-control', '/tmp/tokate-agent'] and
+            not settings['sandbox']['allowUnsandboxedCommands'],
+            'Native file, command or credential restrictions changed')
     split = boundary.index('--')
     boundary[split:split] = ['--setenv', 'ANTHROPIC_BASE_URL', f'http://127.0.0.1:{server.server_port}',
                             '--setenv', 'ANTHROPIC_API_KEY', 'synthetic-local-fixture-key']
@@ -178,8 +197,7 @@ def owned_case(root, network, case):
         return
     report = root / 'report.jsonl'
     report.write_text(output)
-    report_profile = root / 'report-profile'
-    new_profile(report_profile)
+    report_profile = root / 'profile'
     if case == 'error':
         refusal = gate(root, ['--file', str(report)], profile=report_profile, success=False)
         require('reported conflicting model' in refusal['error']['message'], 'Native error-report model conflict was not refused')
@@ -200,7 +218,7 @@ def owned_case(root, network, case):
             'Ordinary native fixture file tools failed')
     require('native fixture read' in str(server.tool_results[0].get('content')), 'Native Read did not return the fixture contents')
     require(bool(server.tool_results[-1].get('is_error')) == (not network), 'Command-network tool result was not the expected success or refusal')
-    print('PASS native Read, Write, Bash, helper, exact request and command-network ' + ('permitted' if network else 'denied'), flush=True)
+    print('PASS native profile reuse, Read, Write, Bash, helper, exact request and command-network ' + ('permitted' if network else 'denied'), flush=True)
     if 'effort' not in parsed and 'effortLevel' not in parsed:
         print('LIMIT native reports omit effort; requested effort is observed only in the local synthetic protocol request', flush=True)
 
@@ -262,8 +280,8 @@ def inside():
                 gate(current, success=False)
                 (profile / key).unlink()
         owned_case(current, network, case)
-    print('LIMIT fixture behavior and declared mounts do not prove remote subscription entitlement or all credential and helper isolation', flush=True)
-    print('Managed Claude inference remains disabled; no external service route or inference was used', flush=True)
+    print('LIMIT ordinary fixture behavior and declared boundaries do not attest remote entitlement or prove arbitrary containment attacks', flush=True)
+    print('PASS native configured file, command and whole-process controls; no external service route or inference was used', flush=True)
 
 
 def main():
@@ -296,7 +314,7 @@ def main():
                    '--inside', '--claude', '/tokate-control/claude', '--binary', '/tokate-control/tokate',
                    '--policy', '/tokate-control/policy.json']
         result = subprocess.run(command, timeout=300)
-        require(result.returncode == 0, 'Native Claude proof failed; managed execution remains disabled')
+        require(result.returncode == 0, 'Native Claude proof failed; do not publish managed support')
 
 
 if __name__ == '__main__':

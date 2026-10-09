@@ -7,7 +7,164 @@ import System.Text.Json.Nodes
 
 internal class ClaudeChecks {
     shared {
+        private func Managed(binary string) {
+            for mode in[]string{"normal", "incomplete", "conflict", "failed"} {
+                using let test = CoordinationFixture(binary)
+                test.Initialize(approve: false)
+                let flow = test.Flow
+                flow.Temp.Tool("claude")
+                let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
+                let policy = Check.Json(File.ReadAllText(policyPath))
+                policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
+                policy["models"] = Check.Json("{\"claude-sonnet-5-5\":[\"high\"]}")
+                Check.SaveJson(policyPath, policy)
+                Directory.CreateDirectory(Path.Combine(flow.Upstream, ".codex"))
+                File.WriteAllText(Path.Combine(flow.Upstream, ".codex/config.toml"), "")
+                flow.Commit("Claude managed fixture")
+                flow.Approve()
+                let profile = Path.Combine(flow.Temp.Root, "claude-profile")
+                Directory.CreateDirectory(
+                    profile,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                )
+                File.WriteAllText(Path.Combine(profile, ".claude.json"), mode)
+                File.WriteAllText(
+                    Path.Combine(profile, ".credentials.json"),
+                    Check.Map(
+                        "loggedIn",
+                        true,
+                        "authMethod",
+                        "claude.ai",
+                        "apiProvider",
+                        "firstParty",
+                        "subscriptionType",
+                        "pro"
+                    )
+                        .ToJsonString()
+                )
+                if mode == "normal" {
+                    flow.Temp.Env["TERM"] = "dumb"
+                    flow.Temp.Env["NO_COLOR"] = "1"
+                    let wizardProfile = Path.Combine(flow.Temp.Root, "wizard-profile")
+                    let cancelled = TestTerminal.Pty(
+                        binary,
+                        []string{
+                            "work",
+                            "owner/project",
+                            "--issue",
+                            "1",
+                            "--seconds",
+                            "60",
+                            "--verification-reserve",
+                            "20"
+                        },
+                        flow.Temp,
+                        100,
+                        "1\n" + wizardProfile + "\n1\n1\nq\n"
+                    )
+                    Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
+                    Check.Contains(cancelled.Output, "Claude Code | Subscription")
+                    Check.Contains(cancelled.Output, "Native fixture sign-in complete")
+                    Check.Contains(cancelled.Output, "Review donation")
+                    Check.That(
+                        !cancelled.Output.Contains("Uses your Codex subscription"),
+                        "Claude wizard claimed Codex billing"
+                    )
+                    flow.NoInference()
+                    flow.NoPr()
+                }
+                flow.Call(
+                    []string{
+                        "defaults",
+                        "set",
+                        "--profile",
+                        "claude",
+                        "--harness",
+                        "claude",
+                        "--model",
+                        "claude-sonnet-5-5",
+                        "--effort",
+                        "high",
+                        "--claude-profile",
+                        profile,
+                        "--sole-use"
+                    }
+                )
+                File.Delete(Path.Combine(flow.Bin, "codex"))
+                File.Delete(Path.Combine(flow.Bin, "codex-impl"))
+                let prepared = flow.Acquire(
+                    []string{
+                        "claim",
+                        "--repo",
+                        "owner/project",
+                        "--issue",
+                        "1",
+                        "--profile",
+                        "claude",
+                        "--seconds",
+                        "60",
+                        "--verification-reserve",
+                        "20",
+                        "--runs",
+                        Path.Combine(flow.Temp.Root, "runs")
+                    }
+                )
+                let index = prepared.Output.LastIndexOf("Run: ")
+                Check.That(index >= 0, "Claude claim did not return a run")
+                let run = prepared.Output.Substring(index + 5).Trim()
+                let original = File.ReadAllText(Path.Combine(profile, ".claude.json"))
+                flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, mode == "normal" ? 0: 1)
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(
+                    Check.Text(saved["claude_version"]) == "100.0.0 (Claude Code)",
+                    "Claude version was not recorded"
+                )
+                Check.That(
+                    Check.Text(saved["state"]) == (mode == "normal" ? "generated": "failed"),
+                    "Claude completion state is wrong"
+                )
+                Check.That(
+                    Check.Text(saved["observed_invocation"]?["model"]) == "claude-sonnet-5-5",
+                    "Claude invocation lost exact model"
+                )
+                Check.That(
+                    original == File.ReadAllText(Path.Combine(profile, ".claude.json")),
+                    "Task changed its native profile"
+                )
+                if mode == "normal" {
+                    Check.That(
+                        Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
+                        "Claude skipped independent verification"
+                    )
+                    Check.That(
+                        Check.Text(saved["usage"]?["cached_input_tokens"]) == "4",
+                        "Claude cache usage was not mapped"
+                    )
+                    let status = Check.Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+                    Check.That(
+                        Check.Text(status["data"]?["claude_version"]) == "100.0.0 (Claude Code)",
+                        "Claude status lost native version"
+                    )
+                    Check.That(Check.Text(saved["usage"]?["input_tokens"]) == "12", "Claude usage was not preserved")
+                    flow.Publish(run)
+                    Check.Contains(flow.Body(), "claude")
+                    Check.That(!flow.Body().Contains(profile), "Public summary disclosed the private profile")
+                } else {
+                    Check.That(
+                        saved["turn_completed"] == nil && saved["commit"] == nil,
+                        "Failed Claude turn was accepted"
+                    )
+                    flow.NoPr()
+                }
+                flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, 1)
+            }
+            Console.WriteLine(
+                "PASS Claude managed profile, claim, work, verification, publication and completion refusal"
+            )
+        }
+
         internal func All(binary string) {
+            Managed(binary)
             using let data = Temp()
             data.Tool("claude")
             let policyPath = Path.Combine(data.Root, "tokate.json")
@@ -65,8 +222,8 @@ internal class ClaudeChecks {
                     "Auth status did not retain exactly the four approved fields"
                 )
                 Check.That(
-                    !result.Output.Contains("PRIVATE_") && Check.Text(value["managed_execution_enabled"]) == "false",
-                    "Gate leaked organization metadata or enabled inference"
+                    !result.Output.Contains("PRIVATE_") && Check.Text(value["managed_execution_enabled"]) == "true",
+                    "Gate leaked organization metadata or lost managed capability"
                 )
                 Check.That(
                     Check.Text(value["version"]) == "100.0.0 (Claude Code)",

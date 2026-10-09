@@ -132,7 +132,7 @@ func Dispatch(options Args) int32 {
         if PublicOutput.Enabled {
             PublicOutput.ResultData = value
         } else {
-            Terminal.Json(value, "Claude capabilities; managed execution disabled")
+            Terminal.Json(value, "Claude capabilities; no inference started")
         }
         return 0
     }

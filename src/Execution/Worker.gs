@@ -285,9 +285,10 @@ internal class Worker {
                 )
             }
             if (
-                run.Fields.ContainsKey("codex_version") || run.Fields.ContainsKey("pi_version") || File.Exists(
-                    Path.Combine(directory, "events.jsonl")
-                ) ||
+                run.Fields.ContainsKey("codex_version") || run.Fields.ContainsKey("pi_version") ||
+                    run
+                    .Fields
+                    .ContainsKey("claude_version") || File.Exists(Path.Combine(directory, "events.jsonl")) ||
                     File.Exists(Path.Combine(directory, "report.md"))
             ) {
                 throw Exception("This destination attempt already started execution; no second inference is allowed")
@@ -308,6 +309,10 @@ internal class Worker {
             }
             RuntimeBudget.Validate(run)
             let prompt = TaskContext.Build(run, record)
+            if run.Text("harness") == "claude" {
+                ClaudeHarness.Execute(directory, run, record, prompt)
+                return
+            }
             if run.Text("harness") == "pi" {
                 PiHarness.Execute(directory, run, record, prompt, options.Get("continue-truncated") == "true")
                 return
