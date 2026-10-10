@@ -13,7 +13,7 @@ class Desktop : Cell {
     private let viewport ElementHandle = ElementHandle()
     private let contentViewport ElementHandle = ElementHandle()
     private var narrow bool
-    private let art Artwork
+    private let art ArtworkService
     private let twilight Anim[float64]
     private let loadingPulse Anim[float64]
     private var night bool
@@ -26,7 +26,7 @@ class Desktop : Cell {
     private var pulseElapsed int32 = -1
     private var pulsing bool
 
-    init(assets Artwork) {
+    init(assets ArtworkService) {
         art = assets
         app = DesktopSession(() -> Refresh(), next -> Navigate(next), path -> saved.Remember(path))
         ui = ThemedControls(
@@ -65,6 +65,7 @@ class Desktop : Cell {
 
     func Attach(window Window) {
         app.Window = window
+        art.Attach(UiDispatcher.ForWindow(window), () -> app.Refresh())
         window.SmoothScrolling = true
         window.WheelScrollScale = 2.0F
         window.OnClosing = () -> {
@@ -174,9 +175,9 @@ class Desktop : Cell {
             return Backdrop{Image: art.Backdrop, Effect: art.Effect}.Build()
         }
         let scene Landscape? = switch app.Page {
-            case "Donate": art.Donate
-            case "My project": art.Project
-            case "Saved work": art.Saved
+            case "Donate": art.Scene("donate")
+            case "My project": art.Scene("my-project")
+            case "Saved work": art.Scene("saved-work")
             default: nil
         }
         guard let landscape = scene else {

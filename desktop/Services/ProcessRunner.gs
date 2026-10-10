@@ -14,6 +14,17 @@ class ProcessResult {
     var ExitCode int32
 }
 
+func CommandStart(tool string, arguments[]string, directory string = "") ProcessStartInfo {
+    let start = ProcessStartInfo{FileName: tool}
+    if directory != "" {
+        start.WorkingDirectory = directory
+    }
+    for argument in arguments {
+        start.ArgumentList.Add(argument)
+    }
+    return start
+}
+
 @DllImport("libc", EntryPoint: "kill")
 func SignalCommand(pid int32, signal int32) int32;
 
@@ -41,6 +52,14 @@ class ProcessRunner {
 
     private let gate Object = Object()
     private let diagnostics StringBuilder = StringBuilder()
+    private let lines chan[string]?
+
+    /// Creates a runner. When `lines` is given, each complete diagnostics line is also offered to it.
+    /// Delivery is best effort: lines are dropped while the channel is full, and `RecentOutput` stays the
+    /// authoritative tail. The owner closes the channel; a runner may be reused for several commands.
+    init(lines chan[string]? = nil) {
+        this.lines = lines
+    }
     private var active Process?
     private var stopped bool
 
@@ -118,7 +137,7 @@ class ProcessRunner {
                 let stdout = process.StandardOutput
                 let stderr = process.StandardError
                 go ReadCommandStream(stdout, output)
-                go ReadCommandStream(stderr, diagnostics, true)
+                go ReadCommandStream(stderr, diagnostics, true, lines)
                 var finished = false
                 while !finished {
                     select {
@@ -177,11 +196,15 @@ class ProcessRunner {
     }
 }
 
-func ReadCommandStream(reader StreamReader, output StringBuilder, tail bool = false) {
+func ReadCommandStream(reader StreamReader, output StringBuilder, tail bool = false, lines chan[string]? = nil) {
+    let pending = StringBuilder()
     try {
         let buffer = [4096]char
         var count = await reader.ReadAsync(buffer, 0, buffer.Length)
         while count > 0 {
+            if let channel = lines {
+                OfferLines(channel, pending, buffer, count)
+            }
             lock output {
                 if tail && output.Length + count > 262144 {
                     output.Remove(0, output.Length + count - 262144)
@@ -191,4 +214,21 @@ func ReadCommandStream(reader StreamReader, output StringBuilder, tail bool = fa
             count = await reader.ReadAsync(buffer, 0, buffer.Length)
         }
     } catch (error IOException) { }
+    if let channel = lines {
+        if pending.Length > 0 {
+            channel.Writer.TryWrite(pending.ToString())
+        }
+    }
+}
+
+func OfferLines(channel chan[string], pending StringBuilder, buffer []char, count int32) {
+    for i in 0 ... count {
+        let c = buffer[i]
+        if c == '\n' {
+            channel.Writer.TryWrite(pending.ToString().TrimEnd('\r'))
+            pending.Clear()
+        } else if pending.Length < 65536 {
+            pending.Append(c)
+        }
+    }
 }

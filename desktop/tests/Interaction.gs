@@ -458,7 +458,7 @@ func TestDesktop() {
     using let heading = FontSource("Cormorant", 500, false, File.ReadAllBytes(Asset("cormorant.ttf")))
     body.Register()
     heading.Register()
-    using let art = Artwork()
+    using let art = ArtworkService()
     using let host = TestHost()
     let adapter = TestAccessibility()
     let desktop = Desktop(art)

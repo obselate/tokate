@@ -50,3 +50,10 @@ data struct CommandOutcome {
         return first != "" ? first: "Could not complete this action."
     }
 }
+
+/// A command outcome with the value decoded from its result. `Value` is the type's default when the
+/// command failed before decoding.
+data struct Reply[T] {
+    var Outcome CommandOutcome
+    var Value T
+}

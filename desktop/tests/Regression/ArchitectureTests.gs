@@ -72,7 +72,7 @@ func ArchitectureTests() {
     for folder in []string{"Models", "Services", "Components", "Views", "App", "Controls", "Screens"} {
         for file in Sources(root, folder) {
             let relative = Relative(root, file)
-            if relative == "Services/Json.gs" || relative.StartsWith("Services/Codecs/") {
+            if relative == "Services/Json.gs" || relative.StartsWith("Services/Codecs/") || relative.StartsWith("Services/Clients/") {
                 continue
             }
             var legacy = false

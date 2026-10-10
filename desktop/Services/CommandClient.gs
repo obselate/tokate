@@ -53,17 +53,6 @@ class TokateClient {
     }
 }
 
-func CommandStart(tool string, arguments[]string, directory string = "") ProcessStartInfo {
-    let start = ProcessStartInfo{FileName: tool}
-    if directory != "" {
-        start.WorkingDirectory = directory
-    }
-    for argument in arguments {
-        start.ArgumentList.Add(argument)
-    }
-    return start
-}
-
 func ReadJson(process ProcessResult) CommandResult {
     let result = CommandResult{Diagnostics: process.Diagnostics, Error: process.Error, ExitCode: process.ExitCode}
     if result.Error == "" {

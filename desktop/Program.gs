@@ -28,7 +28,7 @@ func Main() {
     body.Register()
     heading.Register()
     italic.Register()
-    using let art = Artwork()
+    using let art = ArtworkService()
     let root = Desktop(art)
     let window = Window{
         Title: "Tokate",
