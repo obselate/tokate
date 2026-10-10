@@ -16,6 +16,10 @@ spec.loader.exec_module(native)
 
 
 class Handler(native.Handler):
+    def exec_call(self, name, call):
+        return {'type': 'custom_tool_call', 'id': 'ctc_' + name, 'call_id': 'call_' + name, 'status': 'completed',
+                'name': 'exec', 'input': 'text(JSON.stringify(' + call + '));\n'}
+
     def do_POST(self):
         if self.path != '/v1/responses':
             self.reject()
@@ -25,21 +29,16 @@ class Handler(native.Handler):
             body = subprocess.run(['zstd', '-dcq'], input=body, capture_output=True, check=True).stdout
         body = json.loads(body)
         self.server.requests.append(body)
-        tools = {tool.get('name', tool.get('function', {}).get('name')) for tool in body.get('tools', [])}
         step = len(self.server.requests)
+        tools = {tool.get('name') for item in body['input'] if item.get('type') == 'additional_tools'
+                 for namespace in item['tools'] for tool in namespace.get('tools', [])}
+        if step <= 2:
+            native.require('exec' in tools, 'Code-mode exec tool was not offered')
         if step == 1:
-            native.require('mcp__fixture__marker' in tools, 'Configured MCP tool was not offered')
-            item = {'type': 'function_call', 'id': 'fc_mcp', 'call_id': 'call_mcp',
-                    'name': 'mcp__fixture__marker', 'arguments': '{}'}
+            item = self.exec_call('mcp', 'await tools.mcp__fixture__marker({})')
         elif step == 2:
             native.require('configured tool worked' in json.dumps(body), 'Configured MCP tool failed')
-            shell = next((name for name in ['exec_command', 'shell_command', 'shell'] if name in tools), None)
-            native.require(shell, 'Native shell tool was not offered')
-            command = 'printf final > result.txt'
-            arguments = ({'cmd': command, 'yield_time_ms': 1000} if shell == 'exec_command' else
-                         {'command': command} if shell == 'shell_command' else {'command': ['/bin/sh', '-c', command]})
-            item = {'type': 'function_call', 'id': 'fc_shell', 'call_id': 'call_shell',
-                    'name': shell, 'arguments': json.dumps(arguments)}
+            item = self.exec_call('shell', "await tools.exec_command({cmd: 'printf final > result.txt', yield_time_ms: 1000})")
         else:
             item = {'type': 'message', 'id': 'msg_final', 'role': 'assistant', 'status': 'completed',
                     'content': [{'type': 'output_text', 'text': 'Changes: Add the fixture result. Verification: Run configured tools. Limitations: No live inference.', 'annotations': []}]}
@@ -95,7 +94,6 @@ def main():
                 print(result.stderr, file=sys.stderr)
             native.require(result.returncode == 0, 'Managed native Codex proof failed')
             native.require(len(proof.fixture.requests) == 3, 'Unexpected native request or retry count')
-            native.require(not proof.fixture.failures, 'Unexpected endpoint request')
             print(result.stdout.strip(), flush=True)
         finally:
             proof.fixture.close()

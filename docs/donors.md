@@ -45,6 +45,9 @@ not prove account availability or remaining allowance. `defaults list` shows sav
 choices. Add `--profile NAME` to keep several choices and select one per donation.
 Profiles do not store budgets.
 
+Codex runs unattended, so tools that need approval are refused. Set
+`default_tools_approval_mode = "approve"` on MCP servers you trust for donations.
+
 ### Claude Code
 
 Choose Claude Code in the donation wizard. It uses your installed native CLI,

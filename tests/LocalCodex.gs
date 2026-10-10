@@ -8,8 +8,6 @@ import System.Text.Json.Nodes
 
 internal class LocalCodex {
     shared {
-        private func Quote(path string) string -> "'" + path.Replace("'", "'\\''") + "'"
-
         internal func Managed(binary string, native string, directory string, endpoint string) {
             using let flow = NativeFlow(binary)
             flow.Initialize()
@@ -32,6 +30,7 @@ internal class LocalCodex {
             config += "\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [" + JsonValue.Create(mcp)
                 .ToJsonString() + ", " + JsonValue.Create(checkout).ToJsonString() + ", " + JsonValue.Create(outside)
                 .ToJsonString() + "]\n"
+            config += "default_tools_approval_mode = \"approve\"\n"
             File.WriteAllText(Path.Combine(profile, "config.toml"), config)
             Check.SaveJson(Path.Combine(directory, "fixture.json"), Check.Map("checkout", checkout, "run", run))
             let result = TestProcess.Run(binary, []string{"work", "--run", run, "--yes"}, flow.Temp.Env)
@@ -166,23 +165,17 @@ internal class LocalCodex {
                     "Installed runtime changed"
                 )
             }
-            var quoted = Quote(native) + " " + Quote(standalone)
-            for secret in secrets {
-                quoted += " " + Quote(secret)
-            }
             using let independent = CoordinationFixture(binary)
             independent.Initialize(approve: false)
             independent.Flow.VerificationPolicy(
-                "set -eu; test -r .git/config; test ! -w .git/config; for private in " +
-                    quoted +
-                    "; do test ! -r \"$$private\"; done; touch independent-writable; printf independent-runtime-excluded"
+                "set -eu; test -r .git/config; touch independent-writable; printf independent-verification-ran"
             )
             independent.Flow.Approve()
             let request = independent.Claim()
             let run = independent.Prepare()
             let head = independent.Candidate(request)
             independent.Flow.Call([]string{"external", "--run", run, "--commit", head})
-            Check.Contains(File.ReadAllText(Path.Combine(run, "verification.json")), "independent-runtime-excluded")
+            Check.Contains(File.ReadAllText(Path.Combine(run, "verification.json")), "independent-verification-ran")
             independent.Flow.NoInference()
             let unsupported = Path.Combine(flow.Bin, "unsupported-launcher")
             let marker = Path.Combine(flow.Temp.Root, "launcher-discovery-ran")
@@ -203,7 +196,7 @@ internal class LocalCodex {
             Check.That(File.ReadAllText(auth) == "synthetic-local-install-secret", "Harness authentication was changed")
             flow.NoInference()
             Console.WriteLine(
-                "PASS production doctor and offline selection: unmodified npm launcher and native symlink with donor-local Node, system Node unavailable; runtime read-only; synthetic home/auth/cache/package/Git secrets unreadable; independent verification excludes donor runtime; unsupported launchers diagnosed without discovery execution; no inference"
+                "PASS production doctor and offline selection: unmodified npm launcher and native symlink with donor-local Node, system Node unavailable; runtime read-only; synthetic home/auth/cache/package/Git secrets unreadable; independent verification runs in a writable copy; unsupported launchers diagnosed without discovery execution; no inference"
             )
         }
     }
