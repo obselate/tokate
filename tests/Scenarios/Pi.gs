@@ -160,6 +160,14 @@ internal class PiChecks {
             args.AddRange([]string{"--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Unsupported pi provider")
             args.RemoveRange(args.Count - 2, 2)
+            flow.Call([]string{"defaults", "set", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"})
+            let defaultPath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
+            let savedDefault = File.ReadAllText(defaultPath)
+            Check.That(
+                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Saved Codex default changed the explicit Pi selection with an omitted provider"
+            )
+            Check.That(File.ReadAllText(defaultPath) == savedDefault, "Pi selection changed the saved Codex default")
             flow.Call(
                 []string{
                     "defaults",
@@ -186,6 +194,39 @@ internal class PiChecks {
             args.AddRange([]string{"--profile", "local", "--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Named donor profile conflicts")
             args.RemoveRange(args.Count - 4, 4)
+            flow.Call(
+                []string{
+                    "defaults",
+                    "set",
+                    "--profile",
+                    "local",
+                    "--harness",
+                    "pi",
+                    "--model",
+                    "saved-other-model",
+                    "--effort",
+                    "high",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1"
+                }
+            )
+            let profilePath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
+            let savedProfile = File.ReadAllText(profilePath)
+            args.AddRange([]string{"--profile", "local"})
+            expectedProfile["source"] = JsonValue.Create("saved donor profile local with explicit overrides")
+            Check.That(
+                JsonNode.DeepEquals(expectedProfile, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Omitted Pi provider changed the explicit model, effort or endpoint overrides"
+            )
+            Check.That(File.ReadAllText(profilePath) == savedProfile, "Pi selection changed the named profile")
+            args.RemoveRange(args.Count - 2, 2)
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Owner rejects Pi selection")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "exact pi/local-chat-completions permission")
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Restore Pi selection policy")
             args.AddRange([]string{"--node", pathNode})
             flow.Call(args.ToArray(), 1)
             args[args.Count - 1] = actualNode
