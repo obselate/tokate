@@ -49,6 +49,7 @@ class DesktopSession {
 
     func IssueSearch(filter IssueFilter) IssueSearchService -> IssueSearchService(
         filter,
+        app.Commands,
         app.Activity,
         app.Feedback,
         () -> app.RequestRefresh()

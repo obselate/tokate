@@ -13,7 +13,7 @@ class RootView : Cell {
     private let session DesktopSession
     private let ui ThemedControls
     private let donor DonationScreen
-    private let owner OwnerScreen
+    private let project ProjectView
     private let saved SavedWorkScreen
     private let welcome WelcomeView
     private let appearance AppearanceView
@@ -38,7 +38,8 @@ class RootView : Cell {
             value -> app.Window.FocusHints(value)
         )
         donor = DonationScreen(session, ui, path -> saved.Open(path), path -> saved.Remember(path))
-        owner = OwnerScreen(session, ui)
+        project = ProjectView(app.Owner)
+        app.Commands.RememberRun = path -> saved.Remember(path)
         saved = SavedWorkScreen(
             session,
             ui,
@@ -111,6 +112,25 @@ class RootView : Cell {
             window.Background = AppTheme.Current.Paper
         }
         app.Art.Paint(app.Theme.Twilight, app.Theme.Settings.OilPaint)
+    }
+
+    /// The shell state every page builds from this frame.
+    private func Page() PageContext {
+        let activity = app.Activity.Current
+        return PageContext{
+            Button: CommandButton{
+                Busy: activity.Busy,
+                Running: activity.Busy && activity.Visible && app.Navigation.Current == activity.Page && !activity.Streaming,
+                ActiveAction: activity.ActionName,
+                Stopping: activity.Stopping,
+                Pulse: loadingPulse.Value,
+                ActivityTitle: activity.Title,
+                OnCancel: () -> app.Activity.Cancel(),
+                OnActivate: label -> app.Activity.Activate(label),
+            },
+            Busy: activity.Busy,
+            Metrics: app.Window.Metrics,
+        }
     }
 
     private func NavigationItem(destination Destination) Blob -> NavItem{
@@ -210,7 +230,7 @@ class RootView : Cell {
         let page = app.Navigation.Current
         let content = switch page {
             case Destination.Donate: donor.Build()
-            case Destination.Project: owner.Build()
+            case Destination.Project: project.Build(Page())
             case Destination.Saved: saved.Build()
             case Destination.Appearance: appearance.Build()
             default: welcome.Build()
@@ -221,12 +241,12 @@ class RootView : Cell {
         let browsing = switch page {
             case Destination.Donate: donor.IsBrowsing
             case Destination.Saved: saved.IsBrowsing
-            case Destination.Project: owner.IsBrowsing
+            case Destination.Project: project.IsBrowsing
             default: false
         }
         let fill = !metrics.Short && (isWelcome || live || browsing)
         let frame = PageFrame{
-            Key: page == Destination.Donate ? donor.Key: page == Destination.Project ? owner.Key: Destinations.Label(page),
+            Key: page == Destination.Donate ? donor.Key: page == Destination.Project ? project.Key: Destinations.Label(page),
             Handle: app.Window.ContentViewport,
             Fill: fill,
             Wide: isWelcome,

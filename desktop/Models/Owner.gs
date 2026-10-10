@@ -135,3 +135,67 @@ data struct SetupPreview {
         let None SetupPreview = SetupPreview{Arguments: []string{}, Text: ""}
     }
 }
+
+/// Everything the owner page shows. Text typed into the setup editors lives in their components.
+data struct OwnerState {
+    var Input string
+    var Open bool
+    var Tab OwnerTab
+    var Project ProjectInfo
+    var Policy Policy
+    var Work []IssueWork
+    var Access AccessList
+    var Selected Issue?
+    var Setup SetupDraft
+    var Preview SetupPreview
+
+    prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
+
+    func WorkFor(number string) IssueWork? {
+        for item in Work {
+            if item.Issue == number {
+                return item
+            }
+        }
+        return nil
+    }
+
+    shared {
+        let Initial OwnerState = OwnerState{
+            Input: "",
+            Tab: OwnerTab.Contributions,
+            Project: ProjectInfo{Repository: "", Branch: ""},
+            Policy: Policy.Empty,
+            Work: []IssueWork{},
+            Access: AccessList.Empty,
+            Setup: SetupDraft.From(Policy.Empty) with{ModelPolicy = ""},
+            Preview: SetupPreview.None,
+        }
+    }
+}
+
+class SetupSteps {
+    shared {
+        let Names []string = []string{"Checks", "Permissions", "Review"}
+
+        func Next(step int32) string -> step == 0 ? "Set permissions": "Review setup"
+    }
+}
+
+class Eligibility {
+    shared {
+        let All []string = []string{"trusted", "open", "manual"}
+
+        func Label(mode string) string -> mode == "trusted" ? "Trusted donors": mode == "open" ? "Everyone": "Per issue"
+    }
+}
+
+class AccessOperations {
+    shared {
+        func Title(operation string, donor string) string -> operation == "init" ? "Initialize donor access": operation + " " + donor
+
+        func Detail(operation string, issue string) string -> operation == "trust" ?
+        "Permit this donor to claim issues with trusted eligibility.": operation == "grant" ?
+        "Permit this donor to claim issue #" + issue + ".": "Change this project's donor access."
+    }
+}

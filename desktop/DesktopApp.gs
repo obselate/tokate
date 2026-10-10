@@ -12,6 +12,8 @@ class DesktopApp {
     let Dialogs DialogService
     let Activity ActivityService
     let Theme ThemeService
+    let Commands CommandRunner
+    let Owner OwnerService
     let Root RootView
     private var pending bool
 
@@ -24,6 +26,8 @@ class DesktopApp {
         Dialogs = DialogService(changed)
         Activity = ActivityService(Window, Navigation, Feedback, changed)
         Theme = ThemeService(Window, changed)
+        Commands = CommandRunner(Activity, Feedback, Navigation)
+        Owner = OwnerService(Commands, Activity, Feedback, Dialogs, changed)
         Root = RootView(this)
     }
 
