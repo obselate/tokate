@@ -218,6 +218,10 @@ internal class ClaudeCode {
                 boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})
             }
             boundary.AddRange(
+                profile == "" ? []string{"--dir", "/tokate-profile"}:
+                []string{"--bind", profile, "/tokate-profile"}
+            )
+            boundary.AddRange(
                 []string{
                     "--setenv",
                     "CLAUDE_CONFIG_DIR",
@@ -225,9 +229,6 @@ internal class ClaudeCode {
                     "--ro-bind",
                     binary,
                     "/tokate-runtime/claude",
-                    "--bind",
-                    profile,
-                    "/tokate-profile",
                     "--dir",
                     "/tmp/standalone",
                     "--chdir",
@@ -377,7 +378,12 @@ internal class ClaudeCode {
             return UTF8Encoding(false, true).GetString(bytes)
         }
 
-        internal func Runtime(args Args, budget RuntimeBudget? = nil, authenticate bool = true) JsonElement {
+        internal func Runtime(
+            args Args,
+            budget RuntimeBudget? = nil,
+            authenticate bool = true,
+            login bool = false
+        ) JsonElement {
             ManagedPolicy()
             EnvironmentProfile()
             if args.Get("sole-use") != "true" {
@@ -404,18 +410,16 @@ internal class ClaudeCode {
                     "Claude requires an installed unmodified native Linux x64 executable; launchers are unsupported."
                 )
             }
-            let profile = Profile(args.Need("claude-profile"))
             args.Values["--harness-path"] = binary
-            args.Values["--claude-profile"] = profile
             let limit = budget ?? RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 90)
-            let version = Native(binary, profile, []string{"--restricted", "--safe-mode", "--version"}, limit)
+            let version = Native(binary, "", []string{"--version"}, limit)
             if version.Code != 0 || version.Truncated || version.ReadFailed || !Regex.IsMatch(
                 version.Output.Trim(),
                 "^[0-9]+\\.[0-9]+\\.[0-9]+ \\(Claude Code\\)\\z"
             ) {
                 throw Exception("Claude native version interface failed; no inference started.")
             }
-            let help = Native(binary, profile, []string{"--restricted", "--safe-mode", "--help"}, limit)
+            let help = Native(binary, "", []string{"--help"}, limit)
             let required = []string{
                 "--restricted",
                 "--safe-mode",
@@ -441,17 +445,53 @@ internal class ClaudeCode {
             }
             for flag in required {
                 if !Regex.IsMatch(help.Output, "(?m)^ {0,4}(?:-[A-Za-z], *)?" + Regex.Escape(flag) + "(?:[ ,<]|$)") {
-                    throw Exception("Claude is missing required native control " + flag + "; no inference started.")
+                    throw Exception(
+                        "Selected " + version.Output.Trim() +
+                            " at " +
+                            binary +
+                            " is missing " +
+                            flag +
+                            ". Update Claude Code through its installation method or select --harness-path FILE. No sign-in or inference started."
+                    )
                 }
             }
+            if login {
+                Terminal.Step("Using " + version.Output.Trim() + " at " + binary)
+            }
+            let requestedProfile = LocalPaths.RuntimePath(args.Need("claude-profile"))
+            if login && !Directory.Exists(requestedProfile) {
+                Directory.CreateDirectory(
+                    requestedProfile,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                )
+            }
+            let profile = Profile(requestedProfile)
+            args.Values["--claude-profile"] = profile
             var authentication = JsonElement{}
             if authenticate {
-                let status = Native(
+                var status = Native(
                     binary,
                     profile,
                     []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
                     limit
                 )
+                if login && !status.Truncated && !status.ReadFailed && (status.Code == 0 || status.Code == 1) {
+                    let value = RequestData.Parse(status.Output, 16384)
+                    if J.Get(value, "loggedIn").ValueKind == JsonValueKind.False && J.Text(
+                        value,
+                        "authMethod"
+                    ) == "none" &&
+                        J.Text(value, "apiProvider") == "firstParty" {
+                        WizardScreen.Close()
+                        Login(binary, profile)
+                        status = Native(
+                            binary,
+                            profile,
+                            []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
+                            RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 30)
+                        )
+                    }
+                }
                 if status.Code != 0 || status.Truncated || status.ReadFailed {
                     throw Exception("Claude standalone restricted safe-mode auth status failed; no inference started.")
                 }
@@ -468,14 +508,8 @@ internal class ClaudeCode {
             )
         }
 
-        internal func Login(args Args) {
+        private func Login(binary string, profile string) {
             ManagedPolicy()
-            EnvironmentProfile()
-            let binary = LocalPaths.CanonicalPath(LocalPaths.Harness("claude", args.Get("harness-path")))
-            if !CodexRuntime.Native(binary) {
-                throw Exception("Install native Claude Code before signing in")
-            }
-            let profile = Profile(args.Need("claude-profile"))
             let boundary = ClaudeBoundary.Start(true, "/tmp/tokate-agent", "/tmp/tokate-tools")
             for entry in EnvironmentControls() {
                 boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})

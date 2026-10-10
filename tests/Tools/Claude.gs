@@ -2,11 +2,35 @@ package TokateTests
 
 import System
 import System.IO
+import System.Text
 
 internal class ClaudeTool {
     shared {
+        internal let LegacyMarker string = "TOKATE_LEGACY_CLAUDE"
+
+        private func Legacy() bool {
+            using let file = File.OpenRead(Environment.ProcessPath ?? throw Exception("Missing test executable"))
+            file.Seek(-LegacyMarker.Length, SeekOrigin.End)
+            using let reader = BinaryReader(file)
+            return Encoding.UTF8.GetString(reader.ReadBytes(LegacyMarker.Length)) == LegacyMarker
+        }
+
         internal func Run(args[]string) int32 {
             let profile = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? ""
+            let legacy = Legacy()
+            if args.Length == 1 && (args[0] == "--version" || args[0] == "--help") {
+                Check.That(
+                    !File.Exists(Path.Combine(profile, ".credentials.json")),
+                    "Version/help exposed a login profile"
+                )
+            }
+            if args.Length == 1 && args[0] == "--version" {
+                Console.WriteLine(legacy ? "2.0.0 (Claude Code)": "100.0.0 (Claude Code)")
+                return 0
+            }
+            if legacy && (args.Length != 1 || args[0] != "--help") {
+                throw Exception("Legacy Claude received authentication or inference before capability refusal")
+            }
             if String.Join(" ", args) == "--restricted --safe-mode auth login" {
                 File.WriteAllText(Path.Combine(profile, ".claude.json"), "normal")
                 File.WriteAllText(
@@ -26,12 +50,7 @@ internal class ClaudeTool {
                 Console.WriteLine("Native fixture sign-in complete")
                 return 0
             }
-            let mode = File.ReadAllText(Path.Combine(profile, ".claude.json"))
-            if args.Length == 3 && args[2] == "--version" {
-                Console.WriteLine("100.0.0 (Claude Code)")
-                return 0
-            }
-            if args.Length == 3 && args[2] == "--help" {
+            if args.Length == 1 && args[0] == "--help" {
                 for flag in[]string{
                     "--restricted",
                     "--safe-mode",
@@ -52,12 +71,14 @@ internal class ClaudeTool {
                     "--verbose",
                     "--print"
                 } {
-                    if mode != "missing" || flag != "--permission-prompts" {
+                    if !legacy || flag != "--restricted" {
                         Console.WriteLine("  " + flag + " synthetic documented interface")
                     }
                 }
                 return 0
             }
+            let modePath = Path.Combine(profile, ".claude.json")
+            let mode = File.Exists(modePath) ? File.ReadAllText(modePath): "normal"
             if Array.IndexOf(args, "--print") >= 0 {
                 let prompt = Console.In.ReadToEnd()
                 Check.Contains(prompt, "Acceptance criteria")
@@ -129,7 +150,14 @@ internal class ClaudeTool {
                 !Directory.Exists(Path.Combine(Directory.GetCurrentDirectory(), ".git")),
                 "Auth status was exposed to a repository"
             )
-            Console.Write(File.ReadAllText(Path.Combine(profile, ".credentials.json")))
+            let credentials = Path.Combine(profile, ".credentials.json")
+            if !File.Exists(credentials) {
+                Console.WriteLine(
+                    Check.Map("loggedIn", false, "authMethod", "none", "apiProvider", "firstParty").ToJsonString()
+                )
+                return 1
+            }
+            Console.Write(File.ReadAllText(credentials))
             return mode == "exit" ? 1: 0
         }
     }

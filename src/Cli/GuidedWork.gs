@@ -168,17 +168,7 @@ internal class GuidedWork {
                     throw OperationCanceledException("Cancelled")
                 }
                 args.Values["--sole-use"] = "true"
-                let profile = LocalPaths.RuntimePath(args.Need("claude-profile"))
-                args.Values["--claude-profile"] = profile
-                if !Directory.Exists(profile) {
-                    ClaudeCode.ManagedPolicy()
-                    Directory.CreateDirectory(
-                        profile,
-                        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                    )
-                    WizardScreen.Close()
-                    ClaudeCode.Login(args)
-                }
+                ClaudeCode.Runtime(args, login: true)
                 let models = List[string]()
                 let efforts = List[string]()
                 labels.Clear()

@@ -45,8 +45,10 @@ internal class ClaudeChecks {
                 if mode == "normal" {
                     flow.Temp.Env["TERM"] = "dumb"
                     flow.Temp.Env["NO_COLOR"] = "1"
-                    let wizardProfile = Path.Combine(flow.Temp.Root, "wizard-profile")
-                    let cancelled = TestTerminal.Pty(
+                    let executable = Path.Combine(flow.Bin, "claude")
+                    File.AppendAllText(executable, ClaudeTool.LegacyMarker)
+                    let legacyProfile = Path.Combine(flow.Temp.Root, "legacy-profile")
+                    let rejected = TestTerminal.Pty(
                         binary,
                         []string{
                             "work",
@@ -60,18 +62,53 @@ internal class ClaudeChecks {
                         },
                         flow.Temp,
                         100,
-                        "1\n" + wizardProfile + "\n1\n1\nq\n"
+                        "1\n" + legacyProfile + "\n1\n"
                     )
-                    Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
-                    Check.Contains(cancelled.Output, "Claude Code | Subscription")
-                    Check.Contains(cancelled.Output, "Native fixture sign-in complete")
-                    Check.Contains(cancelled.Output, "Review donation")
+                    Check.That(rejected.Code == 1, rejected.Output + rejected.Error)
+                    Check.Contains(rejected.Output, "2.0.0 (Claude Code)")
+                    Check.Contains(rejected.Output.Replace("\r\n", " "), "Update Claude Code")
                     Check.That(
-                        !cancelled.Output.Contains("Uses your Codex subscription"),
-                        "Claude wizard claimed Codex billing"
+                        !Directory.Exists(legacyProfile) && !rejected.Output.Contains(
+                            "Native fixture sign-in complete"
+                        ),
+                        "Unsupported Claude reached login or created a profile"
                     )
-                    flow.NoInference()
-                    flow.NoPr()
+                    File.Copy(Environment.ProcessPath ?? throw Exception("Missing test executable"), executable, true)
+                    for existing in[]bool{false, true} {
+                        let wizardProfile = Path.Combine(flow.Temp.Root, existing ? "retry-profile": "wizard-profile")
+                        if existing {
+                            Directory.CreateDirectory(
+                                wizardProfile,
+                                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                            )
+                        }
+                        let cancelled = TestTerminal.Pty(
+                            binary,
+                            []string{
+                                "work",
+                                "owner/project",
+                                "--issue",
+                                "1",
+                                "--seconds",
+                                "60",
+                                "--verification-reserve",
+                                "20"
+                            },
+                            flow.Temp,
+                            100,
+                            "1\n" + wizardProfile + "\n1\n1\nq\n"
+                        )
+                        Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
+                        Check.Contains(cancelled.Output, "Claude Code | Subscription")
+                        Check.Contains(cancelled.Output, "Native fixture sign-in complete")
+                        Check.Contains(cancelled.Output, "Review donation")
+                        Check.That(
+                            !cancelled.Output.Contains("Uses your Codex subscription"),
+                            "Claude wizard claimed Codex billing"
+                        )
+                        flow.NoInference()
+                        flow.NoPr()
+                    }
                 }
                 flow.Call(
                     []string{
@@ -328,12 +365,12 @@ internal class ClaudeChecks {
                     .Contains("not allowed by the repository policy"),
                 "Model alias was not refused before native launch"
             )
-            File.WriteAllText(mode, "missing")
-            Check.That(
-                TestProcess.Run(binary, words, data.Env).Code == 1,
-                "Missing permission-prompts control was accepted"
-            )
-            File.WriteAllText(mode, "normal")
+            let executable = Path.Combine(data.Root, "bin/claude")
+            File.AppendAllText(executable, ClaudeTool.LegacyMarker)
+            let unsupported = TestProcess.Run(binary, words, data.Env)
+            Check.That(unsupported.Code == 1, "Missing restricted control was accepted")
+            Check.Contains(unsupported.Output, "Update Claude Code")
+            File.Copy(Environment.ProcessPath ?? throw Exception("Missing test executable"), executable, true)
             File.WriteAllText(Path.Combine(profile, "settings.json"), "{}")
             Check.That(TestProcess.Run(binary, words, data.Env).Code == 1, "Mixed settings profile was accepted")
             File.Delete(Path.Combine(profile, "settings.json"))
