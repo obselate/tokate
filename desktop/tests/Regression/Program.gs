@@ -45,6 +45,7 @@ func Main() int32 {
     ServiceTests()
     ShellTests()
     OwnerTests()
+    DonationTests()
     ArchitectureTests()
     if Regression.Failures > 0 {
         Console.Error.WriteLine(Regression.Failures.ToString() + " of " + Regression.Checks.ToString() + " checks failed")

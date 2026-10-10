@@ -38,7 +38,6 @@ func LegacyJsonSources() []string -> []string{
     "Controls/",
     "Screens/",
     "Services/CommandClient.gs",
-    "Services/ReservationReader.gs",
     "Services/SavedLoading.gs",
 }
 
@@ -46,7 +45,8 @@ func ArchitectureTests() {
     let root = DesktopRoot()
     for file in Sources(root, "Views") {
         let text = File.ReadAllText(file)
-        let primitive = Regex.Match(text, "\\b(Container|Text|Button|Image)\\s*\\{")
+        // Array literals such as `[]Container{...}` hold component results and are allowed.
+        let primitive = Regex.Match(text, "(?<!\\[\\])\\b(Container|Text|Button|Image)\\s*\\{")
         Regression.Check(!primitive.Success, "views use components only: " + Relative(root, file))
     }
 

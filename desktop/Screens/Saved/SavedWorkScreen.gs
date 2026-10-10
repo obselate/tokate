@@ -27,9 +27,9 @@ partial class SavedWorkScreen {
 
     private let app DesktopSession
     private let ui ThemedControls
-    private let startDonation Action[JsonElement, string]
+    private let startDonation Action[Run, string]
 
-    init(session DesktopSession, controls ThemedControls, start Action[JsonElement, string]) {
+    init(session DesktopSession, controls ThemedControls, start Action[Run, string]) {
         app = session
         ui = controls
         startDonation = start
@@ -263,7 +263,7 @@ partial class SavedWorkScreen {
 
     private func RunAction(command string) {
         if command == "work" {
-            startDonation(run, runDirectory)
+            startDonation(RunCodec.Run(run, runDirectory), runDirectory)
             return
         }
         let args = List[string]{command, "--run", runDirectory}

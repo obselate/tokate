@@ -44,6 +44,34 @@ class CommandRunner {
         completeOnError bool = false
     ) bool -> Cli[bool](arguments, data -> true, (reply Reply[bool]) -> finish(reply.Outcome), seconds, directory, completeOnError)
 
+    /// Runs a long Tokate CLI command whose diagnostics lines are offered to `lines`. `progress` runs on
+    /// every activity tick with the elapsed seconds. `finish` always runs, including after cancellation.
+    func Stream[T](
+        arguments []string,
+        decode Func[JsonElement, T],
+        lines chan[string],
+        progress Action[int32],
+        finish Action[Reply[T]],
+        seconds int32
+    ) bool {
+        let client = CliClient("tokate", lines)
+        guard let ticket = activity.Begin(arguments[0], client, true, progress) else {
+            return false
+        }
+        go RunCli(client, arguments, decode, seconds, "", ticket, Finisher(finish, true))
+        return true
+    }
+
+    /// Reads Codex's bundled model catalog.
+    func Codex(finish Action[Reply[[]CodexModel]], seconds int32 = 15) bool {
+        let catalog = CodexCatalog()
+        guard let ticket = activity.Begin("debug", catalog) else {
+            return false
+        }
+        go RunCodex(catalog, seconds, ticket, Finisher(finish, false))
+        return true
+    }
+
     /// Runs a GitHub CLI command and decodes its whole result.
     func GitHub[T](arguments []string, decode Func[JsonElement, T], finish Action[Reply[T]], seconds int32 = 120) bool {
         let client = GitHubClient()
@@ -100,5 +128,9 @@ class CommandRunner {
         finish Action[Reply[T]]
     ) {
         activity.Complete(ticket, client.Run[T](arguments, decode, seconds), finish)
+    }
+
+    private func RunCodex(catalog CodexCatalog, seconds int32, ticket ActivityTicket, finish Action[Reply[[]CodexModel]]) {
+        activity.Complete(ticket, catalog.Load(seconds), finish)
     }
 }

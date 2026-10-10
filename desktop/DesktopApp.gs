@@ -14,6 +14,7 @@ class DesktopApp {
     let Theme ThemeService
     let Commands CommandRunner
     let Owner OwnerService
+    let Donation DonationService
     let Root RootView
     private var pending bool
 
@@ -28,6 +29,7 @@ class DesktopApp {
         Theme = ThemeService(Window, changed)
         Commands = CommandRunner(Activity, Feedback, Navigation)
         Owner = OwnerService(Commands, Activity, Feedback, Dialogs, changed)
+        Donation = DonationService(Commands, Activity, Feedback, Dialogs, Navigation, Window, changed)
         Root = RootView(this)
     }
 

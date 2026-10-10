@@ -14,6 +14,13 @@ class DonationSteps {
         let Names []string = []string{"Issue", "Limits", "Review", "Donation"}
         let Numerals []string = []string{"I", "II", "III", "IV"}
 
+        func Index(step DonationStep) int32 -> switch step {
+            case DonationStep.Limits: 1
+            case DonationStep.Review: 2
+            case DonationStep.Donation: 3
+            default: 0
+        }
+
         func Heading(step DonationStep) string -> switch step {
             case DonationStep.Issue: "Choose an issue"
             case DonationStep.Limits: "Set your limits"
@@ -139,5 +146,51 @@ data struct DonationProgress {
         func ElapsedText(seconds int32) string -> (seconds / 3600).ToString("00") + ":" + (seconds / 60 % 60).ToString(
             "00"
         ) + ":" + (seconds % 60).ToString("00")
+    }
+}
+
+/// Everything the donate page shows: the chosen project and issue, the donor's selection and limits,
+/// and the reserved donation's progress.
+data struct DonationState {
+    var Step DonationStep
+    var Input string
+    var Repository string
+    var Account string
+    var Policy Policy
+    var Issue string
+    var IssueTitle string
+    var Draft DonationDraft
+    var Profiles []DonorProfile
+    var Models []CodexModel
+    var Progress DonationProgress
+
+    prop Identity string -> Repository + " #" + Issue
+
+    /// The reasoning efforts the selected Codex model supports.
+    func Efforts() []string {
+        for model in Models {
+            if model.Slug == Draft.Model {
+                return model.Efforts
+            }
+        }
+        return []string{}
+    }
+
+    shared {
+        let Presets []string = []string{"15", "30", "60"}
+
+        let Initial DonationState = DonationState{
+            Step: DonationStep.Issue,
+            Input: "",
+            Repository: "",
+            Account: "",
+            Policy: Policy.Empty,
+            Issue: "",
+            IssueTitle: "",
+            Draft: DonationDraft.Initial,
+            Profiles: []DonorProfile{},
+            Models: []CodexModel{},
+            Progress: DonationProgress.Empty,
+        }
     }
 }

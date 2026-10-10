@@ -7,9 +7,9 @@ import System.Diagnostics
 class ActivityTicket {
     let Runner Cancellable
     let Clock Stopwatch = Stopwatch.StartNew()
-    let Progress Action[int32, string]?
+    let Progress Action[int32]?
 
-    init(runner Cancellable, progress Action[int32, string]?) {
+    init(runner Cancellable, progress Action[int32]?) {
         Runner = runner
         Progress = progress
     }
@@ -50,13 +50,14 @@ class ActivityService {
         changed()
     }
 
-    /// Starts tracking a command, or returns nil when one is already running. Streaming activities poll
-    /// `runner.RecentOutput()` and pass it to `progress`.
+    /// Starts tracking a command, or returns nil when one is already running. Streaming activities show
+    /// their own output instead of a loading pulse; their `progress` runs on every tick with the elapsed
+    /// seconds so the page can collect new output.
     func Begin(
         command string,
         runner Cancellable,
         streaming bool = false,
-        progress Action[int32, string]? = nil
+        progress Action[int32]? = nil
     ) ActivityTicket? {
         if Current.Busy {
             return nil
@@ -68,7 +69,6 @@ class ActivityService {
             Busy = true,
             Title = Activity.TitleFor(command),
             Elapsed = 0,
-            Output = "",
             Stopping = false,
             Streaming = streaming,
             Page = chained ? Current.Page: navigation.Current,
@@ -79,12 +79,11 @@ class ActivityService {
             250,
             () -> {
                 let seconds = int32(ticket.Clock.Elapsed.TotalSeconds)
-                let output = streaming ? runner.RecentOutput(): ""
-                if !Current.Visible || Current.Elapsed != seconds || Current.Output != output {
-                    Current = Current with{Visible = true, Elapsed = seconds, Output = output}
-                    ticket.Progress?.Invoke(seconds, output)
+                if !Current.Visible || Current.Elapsed != seconds {
+                    Current = Current with{Visible = true, Elapsed = seconds}
                     changed()
                 }
+                ticket.Progress?.Invoke(seconds)
             }
         )
         changed()
@@ -97,10 +96,9 @@ class ActivityService {
     }
 
     private func Finish[R](ticket ActivityTicket, result R, finish Action[R]) {
-        let output = ticket.Runner.RecentOutput()
         let elapsed = int32(ticket.Clock.Elapsed.TotalSeconds)
-        Current = Current with{Output = output, Elapsed = elapsed}
-        ticket.Progress?.Invoke(elapsed, output)
+        Current = Current with{Elapsed = elapsed}
+        ticket.Progress?.Invoke(elapsed)
         timer?.Dispose()
         timer = nil
         Current = Current with{Busy = false}

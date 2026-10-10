@@ -12,7 +12,7 @@ class RootView : Cell {
     private let app DesktopApp
     private let session DesktopSession
     private let ui ThemedControls
-    private let donor DonationScreen
+    private let donate DonateView
     private let project ProjectView
     private let saved SavedWorkScreen
     private let welcome WelcomeView
@@ -37,15 +37,16 @@ class RootView : Cell {
             label -> app.Activity.Activate(label),
             value -> app.Window.FocusHints(value)
         )
-        donor = DonationScreen(session, ui, path -> saved.Open(path), path -> saved.Remember(path))
+        donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> saved.Open(path))
         project = ProjectView(app.Owner)
         app.Commands.RememberRun = path -> saved.Remember(path)
         saved = SavedWorkScreen(
             session,
             ui,
-            (value, path) -> {
-                donor.OpenDonation(value, path)
-                donor.StartDonation()
+            (run, path) -> {
+                Navigate(Destination.Donate)
+                app.Donation.Open(run, path)
+                app.Donation.Start()
             }
         )
         welcome = WelcomeView(app, next -> Navigate(next))
@@ -55,7 +56,7 @@ class RootView : Cell {
     /// Whether the window may close. Active commands keep it open with an explanation.
     func Closing() bool {
         if !app.Activity.Busy {
-            donor.Stop()
+            app.Donation.Stop()
             saved.StopSavedUpdates()
             return true
         }
@@ -129,7 +130,10 @@ class RootView : Cell {
                 OnActivate: label -> app.Activity.Activate(label),
             },
             Busy: activity.Busy,
+            BusyHere: activity.Busy && activity.Page == app.Navigation.Current,
             Metrics: app.Window.Metrics,
+            OnPopupKey: event -> app.Window.KeyNavigation(event),
+            OnPopupPointer: event -> app.Window.FocusHints(false),
         }
     }
 
@@ -229,24 +233,24 @@ class RootView : Cell {
         let metrics = app.Window.Metrics
         let page = app.Navigation.Current
         let content = switch page {
-            case Destination.Donate: donor.Build()
+            case Destination.Donate: donate.Build(Page())
             case Destination.Project: project.Build(Page())
             case Destination.Saved: saved.Build()
             case Destination.Appearance: appearance.Build()
             default: welcome.Build()
         }
         let isWelcome = page == Destination.Welcome
-        let donating = page == Destination.Donate && donor.IsDonating
-        let live = page == Destination.Donate && donor.IsLive
+        let donating = page == Destination.Donate && donate.IsDonating
+        let live = page == Destination.Donate && donate.IsLive
         let browsing = switch page {
-            case Destination.Donate: donor.IsBrowsing
+            case Destination.Donate: donate.IsBrowsing
             case Destination.Saved: saved.IsBrowsing
             case Destination.Project: project.IsBrowsing
             default: false
         }
         let fill = !metrics.Short && (isWelcome || live || browsing)
         let frame = PageFrame{
-            Key: page == Destination.Donate ? donor.Key: page == Destination.Project ? project.Key: Destinations.Label(page),
+            Key: page == Destination.Donate ? donate.Key: page == Destination.Project ? project.Key: Destinations.Label(page),
             Handle: app.Window.ContentViewport,
             Fill: fill,
             Wide: isWelcome,

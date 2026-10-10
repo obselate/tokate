@@ -29,6 +29,9 @@ class RunCodec {
             }
         }
 
+        /// Decodes a run, falling back to `path` when the data does not name its directory.
+        func Reader(path string) Func[JsonElement, Run] -> (data JsonElement) -> Run(data, path)
+
         func Reservation(state JsonElement) Reservation {
             let reservation = Json.Get(state, "reservation")
             return Reservation{

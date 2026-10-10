@@ -72,11 +72,10 @@ class DesktopSession {
         tool string = "tokate",
         directory string = "",
         seconds int32 = 120,
-        completeOnError bool = false,
-        progress Action[int32, string]? = nil
+        completeOnError bool = false
     ) {
         let next = CommandClient()
-        guard let ticket = app.Activity.Begin(arguments[0], next, progress != nil, progress) else {
+        guard let ticket = app.Activity.Begin(arguments[0], next) else {
             return
         }
         let finish = (result CommandResult) -> {

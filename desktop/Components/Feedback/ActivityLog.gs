@@ -18,14 +18,15 @@ data struct ActivityLogInput {
     var LineName string
     var Running bool
     var Short bool
-    var Leading []Blob
-    var Trailing []Blob
+    var Leading Func[[]Blob]?
+    var Trailing Func[[]Blob]?
     var FollowButton CommandButton
 }
 
 /// Streaming command output that follows new lines until the reader scrolls back. Home and End jump
-/// to either end, and "Follow live" resumes following while the command runs. The footer shows
-/// `Leading` on the left and `Trailing` on the right.
+/// to either end, and "Follow live" resumes following while the command runs. The footer shows the
+/// blobs `Leading` builds on the left and those `Trailing` builds on the right. They are builders because
+/// the log rebuilds on its own, and blobs from an earlier build must not be reused.
 open class ActivityLog : Cell[ActivityLogInput] {
     private let viewport ElementHandle = ElementHandle()
     private var scrollRange float64
@@ -117,7 +118,7 @@ open class ActivityLog : Cell[ActivityLogInput] {
                 event.PreventDefault()
             }
         }
-        let footer = Row{Children: input.Leading ?? []Blob{}, Gap: 16}.Build()
+        let footer = Row{Children: input.Leading?.Invoke() ?? []Blob{}, Gap: 16}.Build()
         footer.Padding = Edges{Left: 18, Right: 18, Top: 12, Bottom: 12}
         footer.Children.Add(Spacer{}.Build())
         if input.Running && !follow {
@@ -133,7 +134,7 @@ open class ActivityLog : Cell[ActivityLogInput] {
                 }).Build()
             )
         }
-        for item in input.Trailing ?? []Blob{} {
+        for item in input.Trailing?.Invoke() ?? []Blob{} {
             footer.Children.Add(item)
         }
         return Container{
@@ -147,6 +148,12 @@ open class ActivityLog : Cell[ActivityLogInput] {
     }
 
     shared {
-        func Mount(key string, input ActivityLogInput) Blob -> Cell.Mount[ActivityLogInput, ActivityLog](key, input)
+        /// Mounts the log in a container that fills the remaining height, so it can sit among unkeyed siblings.
+        func Mount(key string, input ActivityLogInput) Blob -> Container{
+            FlexGrow: input.Short ? 0: 1,
+            FlexBasis: input.Short ? Length.Auto: Length(0),
+            MinHeight: 0,
+            Children: []Blob{Cell.Mount[ActivityLogInput, ActivityLog](key, input)},
+        }
     }
 }

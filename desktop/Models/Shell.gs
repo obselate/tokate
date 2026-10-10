@@ -62,11 +62,10 @@ data struct Activity {
     var Stopping bool
     var Visible bool
     var Streaming bool
-    var Output string
     var Page Destination
 
     shared {
-        let Idle Activity = Activity{Title: "", ActionName: "", Output: "", Page: Destination.Welcome}
+        let Idle Activity = Activity{Title: "", ActionName: "", Page: Destination.Welcome}
 
         func TitleFor(command string) string -> switch command {
             case "claim": "Reserving donation"
