@@ -11,9 +11,11 @@ tokate doctor --owner --auth
 tokate init --repo OWNER/REPO
 ```
 
-Run setup inside your repository. Choose model restrictions, project verification
-commands, required CI checks and time limits. Review
-the proposed files before accepting. Commit the policy and workflow to the default
+Run setup inside a checkout of your repository, or pass `--path` to one. Setup
+starts from the policy on your default branch on GitHub, so existing settings carry
+over without repeating options. Choose model restrictions, project verification
+commands, required CI checks and time limits. Setup writes the files directly;
+review the diff, then commit and push the policy and workflow to the default
 branch before approving work. Keep fork CI read-only, without secrets, and require
 its checks in branch protection.
 

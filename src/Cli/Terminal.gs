@@ -44,7 +44,7 @@ internal class TerminalProgress : IDisposable {
 
     private func Update() {
         try {
-            var interval int32 = Live ? 1: 5
+            let interval int32 = Live ? 1: 5
             while true {
                 using let tick = after(TimeSpan.FromSeconds(interval))
                 select {
@@ -53,9 +53,6 @@ internal class TerminalProgress : IDisposable {
                     }
                     case <- tick {
                         Draw()
-                        if !Interactive && !Live {
-                            interval = Math.Min(86400, interval * 2)
-                        }
                     }
                 }
             }

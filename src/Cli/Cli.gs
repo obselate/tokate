@@ -15,12 +15,11 @@ internal class CliOption(name string, value string, description string, choices 
 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
-        case "yes" when(
-            command == "init" || command == "coordinator-setup"
-        ): "Apply the reviewed configuration files; no inference"
-        case "non-interactive" when(
-            command == "init" || command == "coordinator-setup"
-        ): "Never prompt; supply missing choices explicitly; preview unless --yes is given"
+        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files; no inference"
+        case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
+        case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
+        case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
+        case "repo" when command == "init": "Repository whose GitHub policy is read; default: the checkout's GitHub remote"
         case "seconds" when command == "external": "Separate positive verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "seconds" when(command == "work" || command == "claim"): "Explicit budget 1..86400 seconds"
@@ -281,9 +280,9 @@ internal class Cli {
             ),
             CliCommand(
                 "init",
-                "repo,path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,seconds,reservation-seconds,pr-text,close-message,non-interactive,yes",
+                "repo,path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,seconds,reservation-seconds,pr-text,close-message,non-interactive",
                 "repo",
-                "Preview and confirm owner policy and a pinned shared workflow; preserve existing customization.",
+                "Write owner policy and a pinned shared workflow into a checkout, starting from the policy on GitHub; options change only what they name.",
                 "[--repo OWNER/REPO] [--path DIR] [options]",
                 "init --repo owner/project"
                 ,
@@ -1053,7 +1052,7 @@ internal class Cli {
                     args.Need(option.Name)
                 }
             }
-            if command.Needs("repo") && args.Get("repo") == "" {
+            if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {
                 args.Values["--repo"] = RepositoryInput.Local()
             }
         }
