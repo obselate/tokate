@@ -33,14 +33,6 @@ func Sources(root string, folder string) []string {
 
 func Relative(root string, file string) string -> Path.GetRelativePath(root, file).Replace('\\', '/')
 
-func LegacyJsonSources() []string -> []string{
-    "App/",
-    "Controls/",
-    "Screens/",
-    "Services/CommandClient.gs",
-    "Services/SavedLoading.gs",
-}
-
 func ArchitectureTests() {
     let root = DesktopRoot()
     for file in Sources(root, "Views") {
@@ -69,19 +61,23 @@ func ArchitectureTests() {
         }
     }
 
-    for folder in []string{"Models", "Services", "Components", "Views", "App", "Controls", "Screens"} {
+    for folder in []string{"Models", "Services", "Components", "Views"} {
         for file in Sources(root, folder) {
             let relative = Relative(root, file)
             if relative == "Services/Json.gs" || relative.StartsWith("Services/Codecs/") || relative.StartsWith("Services/Clients/") {
                 continue
             }
-            var legacy = false
-            for prefix in LegacyJsonSources() {
-                legacy = legacy || relative.StartsWith(prefix)
-            }
-            if !legacy {
-                Regression.Check(!File.ReadAllText(file).Contains("JsonElement"), "only codecs read JSON: " + relative)
-            }
+            Regression.Check(!File.ReadAllText(file).Contains("JsonElement"), "only codecs read JSON: " + relative)
         }
+    }
+
+    for folder in []string{"Services/Features", "Services/Codecs", "Services/Clients"} {
+        for file in Sources(root, folder) {
+            Regression.Check(!File.ReadAllText(file).Contains("import Goo"), "feature services avoid Goo: " + Relative(root, file))
+        }
+    }
+
+    for folder in []string{"App", "Controls", "Screens"} {
+        Regression.Check(!Directory.Exists(Path.Combine(root, folder)), "the legacy " + folder + " folder is gone")
     }
 }

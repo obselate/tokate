@@ -561,15 +561,15 @@ func TestCommandLifecycle() {
     var child = 0
     try {
         let clock = Stopwatch.StartNew()
-        let result = CommandClient().Run(
+        let result = RunTool(
+            "/bin/sh",
             []string{
                 "-c",
                 "sleep 30 </dev/null >/dev/null 2>&1 & printf '%s' \"$$!\" > \"$1\"; trap 'exit 0' INT; while :; do sleep .05; done",
                 "fixture",
                 marker,
             },
-            "/bin/sh",
-            seconds: 1
+            1
         )
         Require(result.Error.Contains("timed out"), "Lifecycle probe did not time out")
         child = int32.Parse(File.ReadAllText(marker))
@@ -588,27 +588,33 @@ func TestCommandLifecycle() {
     }
 }
 
-func RunShutdownJob(runner CommandClient, marker string, ignore bool, finished Chan[CommandResult]) {
+/// Runs `tool` directly through a fresh process runner.
+func RunTool(tool string, arguments []string, seconds int32 = 120) ProcessResult -> ProcessRunner().Run(
+    CommandStart(tool, arguments),
+    seconds
+)
+
+func RunShutdownJob(marker string, ignore bool, finished Chan[ProcessResult]) {
     let trap = ignore ? "trap '' INT": "trap 'exit 0' INT"
-    finished <- runner.Run(
+    finished <- RunTool(
+        "/bin/sh",
         []string{
             "-c",
             trap + "; sleep 30 </dev/null >/dev/null 2>&1 & printf '%s' \"$$!\" > \"$1\"; while :; do sleep .05; done",
             "fixture",
             marker
         },
-        "/bin/sh",
-        seconds: 0
+        0
     )
 }
 
 func TestDesktopShutdown() {
     let root = Path.Combine(Path.GetTempPath(), "tokate-shutdown-" + Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(root)
-    let finished = Chan[CommandResult](2)
+    let finished = Chan[ProcessResult](2)
     try {
         for index in 0 ... 2 {
-            go RunShutdownJob(CommandClient(), Path.Combine(root, index.ToString()), index == 1, finished)
+            go RunShutdownJob(Path.Combine(root, index.ToString()), index == 1, finished)
         }
         let startup = Stopwatch.StartNew()
         using let pulse = tick(TimeSpan.FromMilliseconds(10))
@@ -627,10 +633,7 @@ func TestDesktopShutdown() {
             AwaitChildStopped(child)
         }
         Require(shutdown.Elapsed.TotalSeconds < 8, "Shutdown exceeded its cleanup deadline")
-        let rejected = CommandClient().Run(
-            []string{"-c", "touch \"$1\"; printf '{}'", "fixture", Path.Combine(root, "late")},
-            "/bin/sh"
-        )
+        let rejected = RunTool("/bin/sh", []string{"-c", "touch \"$1\"; printf '{}'", "fixture", Path.Combine(root, "late")})
         Require(
             rejected.Error.Contains("closing") && !File.Exists(Path.Combine(root, "late")),
             "Shutdown admitted a new command"
@@ -655,19 +658,18 @@ func Main(args[]string) {
     TestDesktop()
     WorkspaceFlow()
     TestCommandLifecycle()
-    let literal = CommandClient().Run([]string{"%s", "{\"value\":\"$(literal); *\"}"}, "/usr/bin/printf")
+    let literal = RunTool("/usr/bin/printf", []string{"%s", "{\"value\":\"$(literal); *\"}"})
     Require(
-        literal.Error == "" && TextOf(literal.Value, "value") == "$(literal); *",
+        literal.Error == "" && Json.Text(Json.Parse(literal.Output), "value") == "$(literal); *",
         "Command arguments were not literal"
     )
-    let unlimitedResult = CommandClient().Run([]string{"-c", "sleep .2; printf '{}'"}, "/bin/sh", seconds: 0)
+    let unlimitedResult = RunTool("/bin/sh", []string{"-c", "sleep .2; printf '{}'"}, 0)
     Require(unlimitedResult.Error == "" && unlimitedResult.ExitCode == 0, "Unlimited command expired")
-    let large = CommandClient().Run([]string{"-c", "1048577", "/dev/zero"}, "/usr/bin/head")
+    let large = RunTool("/usr/bin/head", []string{"-c", "1048577", "/dev/zero"})
     Require(large.Error.Contains("display limit"), "Oversized command output was not rejected")
-    let noisyRunner = CommandClient()
+    let noisyRunner = ProcessRunner()
     let noisy = noisyRunner.Run(
-        []string{"-c", "head -c 1048577 /dev/zero >&2; printf finished >&2; printf '{}'"},
-        "/bin/sh"
+        CommandStart("/bin/sh", []string{"-c", "head -c 1048577 /dev/zero >&2; printf finished >&2; printf '{}'"})
     )
     Require(
         noisy.Error == "" && noisy.ExitCode == 0 && noisyRunner.RecentOutput().EndsWith("finished"),
@@ -675,15 +677,15 @@ func Main(args[]string) {
     )
     let marker = Path.Combine(Path.GetTempPath(), "tokate-gui-cancel-" + Guid.NewGuid().ToString("N"))
     try {
-        let interrupted = CommandClient().Run(
+        let interrupted = RunTool(
+            "/bin/sh",
             []string{
                 "-c",
                 "trap 'printf interrupted > \"$1\"; exit 0' INT; while :; do sleep 0.05; done",
                 "fixture",
                 marker
             },
-            "/bin/sh",
-            seconds: 1
+            1
         )
         Require(
             interrupted.Error.Contains("timed out") && File.Exists(marker),
