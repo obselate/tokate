@@ -98,8 +98,6 @@ internal class Interactive {
                         "Model  " + J.Text(summary, "model") + " / " + J.Text(summary, "effort") +
                             "\nBudget  " +
                             RuntimeBudget.Description(Data.From(summary)) +
-                            "\nProject network  " +
-                            (J.Bool(summary, "network") ? "allowed": "offline") +
                             "\n\nUses your selected coding tool and allowance. Authority is rechecked before starting.",
                         []string{"Start donation", "Back"}
                     ) != 1 {

@@ -58,7 +58,7 @@ internal class Diagnostics {
                         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
                     )
                     File.CreateSymbolicLink(Path.Combine(temp.Root, "bin/codex"), launcher)
-                    for tool in[]string{"setsid", "git", "gh", "bwrap"} {
+                    for tool in[]string{"setsid", "git", "gh"} {
                         File.CreateSymbolicLink(Path.Combine(temp.Root, "bin", tool), "/usr/bin/" + tool)
                     }
                     let manifest = "{\"name\":\"@openai/codex\",\"version\":\"0.160.0\",\"bin\":{\"codex\":\"bin/codex.js\"},\"optionalDependencies\":{\"@openai/codex-linux-x64\":\"npm:@openai/codex@0.160.0-linux-x64\"}}"
@@ -194,7 +194,7 @@ internal class Diagnostics {
             }
             let owner = Call(binary, temp, []string{"doctor", "--owner"})
             Check.That(
-                Check.Text(owner["data"]?["scope"]) == "owner" && owner["data"]?["tools"]?.AsArray().Count == 7,
+                Check.Text(owner["data"]?["scope"]) == "owner" && owner["data"]?["tools"]?.AsArray().Count == 8,
                 "Owner checked donor tools"
             )
             Check.That(Check.Text(owner["data"]?["authentication_requested"]) == "false", "Implicit authentication")
@@ -241,7 +241,13 @@ internal class Diagnostics {
             let cannotStart = Call(binary, temp, []string{"doctor", "--managed"}, "error", "missing_tools")
             Check.Contains(Check.Text(Row(cannotStart, "codex")["detail"]), "could not start")
             Tool(temp, "codex", "test \"$1\" = --version && exit 0\nprintf '%s\\n' 'Logged in using ChatGPT'\nexit 0\n")
-            let donorAuth = Call(binary, temp, []string{"doctor", "--managed", "--auth"}, "error", "missing_tools")
+            let donorAuth = Call(
+                binary,
+                temp,
+                []string{"doctor", "--managed", "--auth"},
+                "error",
+                "verification_failed"
+            )
             Check.That(
                 Check.Text(Row(donorAuth, "codex-auth")["status"]) == "ready",
                 "Explicit ChatGPT status not checked"
@@ -367,12 +373,12 @@ internal class Diagnostics {
             File.WriteAllText(Path.Combine(flow.Temp.Root, "broken-helper"), "")
             for helper in[]string{
                 "/usr/bin/env",
+                "/usr/bin/setpriv",
                 "/usr/bin/unshare",
                 "/usr/bin/setsid",
-                "/usr/bin/bwrap",
                 "/usr/bin/cp"
             } {
-                let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/unshare"
+                let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/setpriv" || helper == "/usr/bin/unshare"
                 let owner = Check.Envelope(
                     FixedCall(binary, flow, helper, []string{"doctor", "--owner"}),
                     "doctor",
@@ -394,7 +400,7 @@ internal class Diagnostics {
                     )
                     Check.Contains(Check.Text(discovery["error"]?["message"]), "PID namespace")
                 }
-                if helper != "/usr/bin/bwrap" && helper != "/usr/bin/cp" {
+                if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
                         FixedCall(
                             binary,
@@ -419,9 +425,8 @@ internal class Diagnostics {
                     "missing_tools"
                 )
                 Check.That(
-                    Check.Text(Row(doctor, helper)["status"]) == "failed" && Check.Text(
-                        Row(doctor, "sandbox")["status"]
-                    ) == "skipped",
+                    Check.Text(Row(doctor, helper)["status"]) == "failed" &&
+                        (doctorScope != "--managed" || Check.Text(Row(doctor, "sandbox")["status"]) == "skipped"),
                     "Broken fixed helper was reported as a sandbox failure"
                 )
                 if helper == "/usr/bin/env" {
@@ -432,17 +437,13 @@ internal class Diagnostics {
                         "missing_tools"
                     )
                     Check.That(
-                        Check.Text(Row(external, helper)["status"]) == "failed" && Check.Text(
-                            Row(external, "sandbox")["status"]
-                        ) == "skipped",
+                        Check.Text(Row(external, helper)["status"]) == "failed",
                         "External diagnostics omitted the failed cleanup helper"
                     )
                 }
             }
             flow.NoInference()
-            Console.WriteLine(
-                "PASS fixed cleanup, catalog and sandbox helpers fail before dependent probes; no inference"
-            )
+            Console.WriteLine("PASS fixed cleanup, catalog and copy helpers fail before dependent probes; no inference")
         }
 
         private func Discovery(binary string) {
@@ -546,18 +547,17 @@ internal class Diagnostics {
                 flow.Temp.Env,
                 cwd: flow.Upstream
             )
-            let verification = Check.Envelope(external, "doctor", "ok")
-            Check.That(
-                Check.Text(Row(verification, "sandbox")["status"]) == "ready",
-                "Independent verification probe did not pass"
-            )
+            Check.Envelope(external, "doctor", "ok")
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")
             let curl = Path.Combine(flow.Bin, "curl")
             File.WriteAllText(curl, "#!/bin/sh\nprintf called > '" + installMarker + "'\nexit 17\n")
             File.SetUnixFileMode(curl, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let common = Check.Envelope(flow.Call([]string{"doctor", "--fix", "--yes", "--json"}), "doctor", "ok")
             Check.That(Check.Text(common["data"]?["scope"]) == "external", "Default doctor selected a harness")
-            Check.That(common["data"]?["harnesses"]?.AsArray().Count == 0, "Default doctor invented a harness")
+            for harness in common["data"]?["harnesses"]?.AsArray() ?? JsonArray() {
+                let path = Check.Text(harness["path"])
+                Check.That(!path.StartsWith(flow.Temp.Root) && File.Exists(path), "Default doctor invented a harness")
+            }
             Check.That(!File.Exists(installMarker), "Default doctor downloaded a harness")
             Check.Envelope(
                 flow.Call([]string{"doctor", "--managed", "--fix", "--yes", "--json"}, 1),
@@ -609,46 +609,9 @@ internal class Diagnostics {
             let remembered = Check.Envelope(flow.Call([]string{"doctor", "--json"}), "doctor", "ok")
             Check.That(Check.Text(remembered["data"]?["default_harness"]) == "omp", "Default was not reused")
             Check.That(!File.Exists(installMarker), "Remembering a default ran its harness")
-            flow.Temp.Env["TMPDIR"] = Path.Combine(flow.Temp.Root, "unavailable-temporary-storage")
-            let unavailable = Check.Envelope(
-                TestProcess.Run(binary, []string{"doctor", "--external", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
-                "doctor",
-                "error",
-                "verification_failed"
-            )
-            Check.That(
-                Check.Text(Row(unavailable, "sandbox")["status"]) == "failed",
-                "Failed independent sandbox preparation passed"
-            )
-            flow.Temp.Env.Remove("TMPDIR")
-            File.Copy(
-                Path.Combine(Directory.GetCurrentDirectory(), "global.json"),
-                Path.Combine(flow.Upstream, "global.json")
-            )
-            Check.Envelope(
-                TestProcess.Run(binary, []string{"doctor", "--external", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
-                "doctor",
-                "ok"
-            )
-            File.WriteAllText(
-                Path.Combine(flow.Upstream, "global.json"),
-                "{\"sdk\":{\"version\":\"99.0.100\",\"rollForward\":\"disable\"}}"
-            )
-            let pinned = Check.Envelope(
-                TestProcess.Run(binary, []string{"doctor", "--external", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
-                "doctor",
-                "error",
-                "missing_tools"
-            )
-            Check.That(
-                Check.Text(Row(pinned, "sandbox")["status"]) == "ready" && Check.Text(
-                    Row(pinned, "toolchain")["status"]
-                ) == "failed",
-                "Toolchain and sandbox failures were conflated"
-            )
             flow.NoInference()
             Console.WriteLine(
-                "PASS managed and independent sandbox diagnostics, failed isolation and pinned toolchain; no Codex for external verification"
+                "PASS managed sandbox diagnostics, failed isolation and harness discovery; no Codex for external diagnostics"
             )
         }
 
@@ -727,7 +690,7 @@ internal class Diagnostics {
                 if (Directory.ResolveLinkTarget("/sbin", true)?.FullName ?? "/sbin") != "/usr/bin" {
                     args.AddRange([]string{"--tmpfs", "/sbin"})
                 }
-                for name in[]string{"sh", "env", "setsid", "unshare", "git", "curl", "tar", "chmod"} {
+                for name in[]string{"sh", "env", "setsid", "setpriv", "unshare", "git", "curl", "tar", "chmod"} {
                     args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/" + name), "/usr/bin/" + name})
                 }
                 args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/sh"), "/bin/sh"})

@@ -1,6 +1,7 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
@@ -114,10 +115,6 @@ internal class Policy {
         if (ModelPolicy == "whitelist" && count == 0) || maxSeconds < 1 || maxSeconds > 86400 {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
-        let networkKind = J.Get(Value, "allow_network").ValueKind
-        if networkKind != JsonValueKind.True && networkKind != JsonValueKind.False {
-            throw Exception("allow_network must be boolean")
-        }
         let unlimited = J.Get(Value, "allow_unlimited").ValueKind
         if unlimited != JsonValueKind.Undefined && unlimited != JsonValueKind.True && unlimited != JsonValueKind.False {
             throw Exception("allow_unlimited must be boolean")
@@ -190,6 +187,28 @@ internal class Policy {
         return false
     }
 
+    internal func AllowsModel(model string) bool -> ModelPolicy == "unrestricted" || J.Get(
+        J.Get(Value, "models"),
+        model
+    )
+        .ValueKind == JsonValueKind.Array
+
+    internal func AllowedModels(pattern string) List[string]? {
+        if ModelPolicy == "unrestricted" {
+            return nil
+        }
+        let models = List[string]()
+        let entries = J.Get(Value, "models")
+        if entries.ValueKind == JsonValueKind.Object {
+            for entry in entries.EnumerateObject() {
+                if Regex.IsMatch(entry.Name, pattern) {
+                    models.Add(entry.Name)
+                }
+            }
+        }
+        return models
+    }
+
     internal func ManagedPair(model string, effort string) bool -> Regex.IsMatch(
         model,
         "^[A-Za-z0-9][A-Za-z0-9._-]*$"
@@ -199,7 +218,7 @@ internal class Policy {
         model != "unknown" &&
         effort != "unknown"
 
-    internal func Validate(model string, effort string, seconds int32, network bool, external bool = false) {
+    internal func Validate(model string, effort string, seconds int32, external bool = false) {
         if !Regex.IsMatch(model, external ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$") ||
             !ValidEffort(effort) {
             throw Exception("Invalid model name or reasoning effort")
@@ -210,10 +229,10 @@ internal class Policy {
         if !Allows(model, effort) {
             throw Exception("Model/effort pair is not allowed by the repository policy")
         }
-        ValidateBudget(seconds, network)
+        ValidateBudget(seconds)
     }
 
-    internal func ValidatePi(model string, effort string, seconds int32, network bool) {
+    internal func ValidatePi(model string, effort string, seconds int32) {
         RequestData.ModelIdentifier(model)
         if !AllowsTool("pi", "local-chat-completions") ||
             !ValidEffort(effort) ||
@@ -225,18 +244,15 @@ internal class Policy {
                 "Managed pi requires version 2, exact pi/local-chat-completions permission, an exact model and allowed reasoning effort"
             )
         }
-        ValidateBudget(seconds, network)
+        ValidateBudget(seconds)
     }
 
-    internal func ValidateBudget(seconds int32, network bool, unlimited bool = false) {
+    internal func ValidateBudget(seconds int32, unlimited bool = false) {
         if unlimited && !J.Bool(Value, "allow_unlimited") {
             throw Exception("Repository policy does not allow unlimited coding")
         }
         if seconds < 1 || seconds > J.Number(Value, "max_seconds") {
             throw Exception("Runtime exceeds repository policy")
-        }
-        if network && !J.Bool(Value, "allow_network") {
-            throw Exception("Repository policy forbids command network access")
         }
     }
 
@@ -278,9 +294,9 @@ internal class Policy {
                 throw Exception("Unsupported native Claude model/effort pair")
             }
             if source == "tokate" && J.Text(tool, "harness") == "pi" {
-                ValidatePi(J.Text(tool, "model"), J.Text(tool, "effort"), 1, false)
+                ValidatePi(J.Text(tool, "model"), J.Text(tool, "effort"), 1)
             } else {
-                Validate(J.Text(tool, "model"), J.Text(tool, "effort"), 1, false, source == "external")
+                Validate(J.Text(tool, "model"), J.Text(tool, "effort"), 1, source == "external")
             }
         }
     }

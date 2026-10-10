@@ -41,8 +41,8 @@ After coordinator acceptance, use `tokate work --run DIR`, then `tokate submit -
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
-Before inference, obtain consent for the task, harness/model, time allocation and
-command network permission. Profiles do not authorize budgets or network access.
+Before inference, obtain consent for the task, harness/model and time allocation.
+Profiles do not authorize budgets.
 Do not retry, switch models or start another run because output is quiet. Inspect
 `status --run DIR` and use [recovery](docs/recovery.md) for failures or changes.
 If executing an approved donor task, stay within its permissions. Do not change

@@ -31,16 +31,10 @@ internal class PiChecks {
             if sdk == "" {
                 File.WriteAllText(
                     Path.Combine(installed, "package.json"),
-                    "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-runtime\",\"type\":\"module\"}"
+                    "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-runtime\",\"type\":\"module\",\"bin\":{\"pi\":\"dist/bundle/cli.js\"}}"
                 )
-                File.WriteAllText(
-                    Path.Combine(installed, "dist/index.js"),
-                    TestResources.Template("PiContinuation.mjs")
-                )
-                File.WriteAllText(
-                    Path.Combine(installed, "dist/bundle/cli.js"),
-                    "throw Error('launcher must not run');\n"
-                )
+                File.WriteAllText(Path.Combine(installed, "dist/index.js"), TestResources.Template("PiModels.mjs"))
+                File.WriteAllText(Path.Combine(installed, "dist/bundle/cli.js"), TestResources.Template("PiCli.mjs"))
             } else {
                 Check.Success(
                     TestProcess.Run(
@@ -244,14 +238,8 @@ internal class PiChecks {
             let catalogRejected = mode.StartsWith("catalog-") && mode != "catalog-metadata" && !mode.StartsWith(
                 "catalog-recheck-"
             )
-            let interrupted = mode == "cancel" || mode == "length-cancel" || mode == "unlimited-cancel"
+            let interrupted = mode == "cancel" || mode == "unlimited-cancel"
             let unlimited = mode.StartsWith("unlimited")
-            let continuation = mode == "continued" ||
-                mode == "repeated" ||
-                mode == "identity" ||
-                mode == "usage" ||
-                mode == "length-cancel" ||
-                mode == "length-timeout"
             let reasoning = mode == "reasoning" || mode == "reasoning-off"
             let effort = mode == "reasoning-off" ? "off": reasoning ? "high": "absent"
             using let cleanup = interrupted ? nil: flow
@@ -265,7 +253,6 @@ internal class PiChecks {
                 policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"off\"]}")
             }
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
-            policy["allow_network"] = JsonValue.Create(true)
             if unlimited {
                 policy["allow_unlimited"] = JsonValue.Create(true)
             }
@@ -273,14 +260,12 @@ internal class PiChecks {
             File.WriteAllText(policyPath, policy.ToJsonString())
             let custom = Path.Combine(flow.Flow.Upstream, ".pi")
             Directory.CreateDirectory(Path.Combine(custom, "extensions"))
-            File.WriteAllText(Path.Combine(custom, "SYSTEM.md"), "HOSTILE_CONTEXT_SENTINEL")
+            File.WriteAllText(Path.Combine(custom, "SYSTEM.md"), "CONFIGURED_CONTEXT_SENTINEL")
+            File.WriteAllText(Path.Combine(custom, "settings.json"), "{\"retry\":{\"enabled\":false}}")
             File.WriteAllText(
-                Path.Combine(custom, "settings.json"),
-                "{\"extensions\":[\"./extensions/hostile.js\"],\"retry\":{\"enabled\":true}}"
-            )
-            File.WriteAllText(
-                Path.Combine(custom, "extensions/hostile.js"),
-                "throw new Error('HOSTILE_EXTENSION_LOADED');"
+                Path.Combine(custom, "extensions/custom.js"),
+                "import { Type } from '@earendil-works/pi-ai';\n" +
+                    "export default function(pi) { pi.registerTool({ name: 'fixture_tool', label: 'Fixture', description: 'Check the configured extension.', parameters: Type.Object({}), async execute() { return { content: [{ type: 'text', text: 'configured extension worked' }], details: {} }; } }); }\n"
             )
             flow.Flow.Commit("Pi policy and untrusted customization fixture")
             flow.Flow.Approve()
@@ -290,8 +275,9 @@ internal class PiChecks {
             let agentDir = Path.Combine(flow.Flow.Temp.Root, "pi-agent")
             Directory.CreateDirectory(agentDir)
             flow.Flow.Temp.Env["PI_CODING_AGENT_DIR"] = agentDir
+            File.WriteAllText(Path.Combine(agentDir, "settings.json"), "{\"defaultProjectTrust\":\"always\"}")
             let models = Check.Json(
-                "{\"providers\":{\"synthetic\":{\"api\":\"openai-completions\",\"authHeader\":false,\"apiKey\":\"PRIVATE_CREDENTIAL_SENTINEL\",\"models\":[{\"id\":\"synthetic/model:exact\",\"name\":\"Synthetic\",\"contextWindow\":65536,\"maxTokens\":4096,\"reasoning\":false,\"input\":[\"text\"],\"compat\":{\"maxTokensField\":\"max_tokens\"}}]}}}"
+                "{\"providers\":{\"synthetic\":{\"api\":\"openai-completions\",\"authHeader\":false,\"apiKey\":\"tokate-no-auth\",\"models\":[{\"id\":\"synthetic/model:exact\",\"name\":\"Synthetic\",\"contextWindow\":65536,\"maxTokens\":4096,\"reasoning\":false,\"input\":[\"text\"],\"compat\":{\"maxTokensField\":\"max_tokens\"}}]}}}"
             )
             let provider = models["providers"]?["synthetic"] ?? throw Exception("Missing synthetic provider")
             provider["baseUrl"] = JsonValue.Create(endpoint)
@@ -335,22 +321,19 @@ internal class PiChecks {
                 "--endpoint",
                 endpoint,
                 "--seconds",
-                mode == "length-timeout" ? "20": "90",
+                "90",
                 "--verification-reserve",
-                mode == "length-timeout" ? "5": "30",
+                "30",
                 "--runs",
                 Path.Combine(flow.Flow.Temp.Root, "runs"),
                 "--non-interactive"
-            }
-            if mode == "on" {
-                args.Add("--allow-network")
             }
             if unlimited {
                 args.RemoveRange(args.IndexOf("--seconds"), 2)
                 args.Add("--unlimited")
                 args[args.IndexOf("--verification-reserve") + 1] = "8"
             }
-            if mode != "off" {
+            if mode != "profile" {
                 args.AddRange([]string{"--pi-root", root})
             }
             if catalogRejected {
@@ -387,7 +370,7 @@ internal class PiChecks {
                     []string{"work", "owner/project"},
                     flow.Flow.Temp,
                     80,
-                    "1\n1\n1\n1\n" + endpoint + "\nsynthetic/model:exact\n1\n1\nq\n"
+                    "1\n1\n1\n1\n" + endpoint + "\nsynthetic/model:exact\n1\nq\n"
                 )
                 Check.That(guided.Code == 1, guided.Output + guided.Error)
                 Check.Contains(guided.Output, "Reasoning effort")
@@ -414,28 +397,14 @@ internal class PiChecks {
                 )
                 Check.Contains(flow.Flow.Call([]string{"defaults", "read", "--profile", "reasoning"}).Output, "high")
             }
-            if mode == "off" {
-                let model = provider["models"]?[0] ?? throw Exception("Missing model")
-                for invalidCompat in[]string{
-                    "{\"maxTokensField\":\"invalid\"}",
-                    "{\"supportsDeveloperRole\":\"yes\"}",
-                    "{\"apiKey\":\"PRIVATE_CREDENTIAL_SENTINEL\"}"
-                } {
-                    model["compat"] = Check.Json(invalidCompat)
-                    File.WriteAllText(modelsPath, models.ToJsonString())
-                    let rejected = flow.Flow.Call(args.ToArray(), 1)
-                    Check.Contains(rejected.Error, "Pi requires one configured local model")
-                    Check.That(!rejected.Error.Contains("PRIVATE_CREDENTIAL_SENTINEL"), "Unsupported metadata leaked")
-                }
-                model["compat"] = Check.Json("{\"maxTokensField\":\"max_tokens\"}")
-                File.WriteAllText(modelsPath, models.ToJsonString())
+            if mode == "profile" {
                 for option in[]string{"--effort", "--model", "--endpoint"} {
                     let rejected = args.ToArray()
                     rejected[Array.IndexOf(rejected, option) + 1] = "unsupported"
                     flow.Flow.Call(rejected, 1)
                 }
             }
-            if mode == "off" {
+            if mode == "profile" {
                 provider["baseUrl"] = JsonValue.Create("http://127.0.0.1:1/v1")
                 File.WriteAllText(modelsPath, models.ToJsonString())
                 flow.Flow.Call(args.ToArray(), 1)
@@ -451,7 +420,7 @@ internal class PiChecks {
             File.Delete(Path.Combine(flow.Flow.Bin, "codex-impl"))
             let profilePath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
             var originalProfile = ""
-            if mode == "off" {
+            if mode == "profile" {
                 let stored = flow.Flow.Call(
                     []string{
                         "defaults",
@@ -506,7 +475,7 @@ internal class PiChecks {
             let index = prepared.Output.LastIndexOf("Run: ")
             Check.That(index >= 0, "Pi preparation did not return a run")
             let run = prepared.Output.Substring(index + 5).Trim()
-            if mode == "off" {
+            if mode == "profile" {
                 let state = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
                     Check.Text(state["selection"]?["source"]) == "saved donor profile local with explicit overrides" &&
@@ -519,36 +488,18 @@ internal class PiChecks {
             let checkout = Path.Combine(run, "checkout")
             let gitPath = Path.Combine(checkout, ".git/config")
             let git = File.ReadAllText(gitPath)
-            let secret = Path.Combine(flow.Flow.Temp.Root, "private-credential")
-            File.WriteAllText(secret, "PRIVATE_CREDENTIAL_SENTINEL")
             File.WriteAllText(
                 Path.Combine(directory, "fixture.json"),
-                Check.Map(
-                    "checkout",
-                    checkout,
-                    "run",
-                    run,
-                    "private",
-                    secret,
-                    "outside",
-                    Path.Combine(flow.Flow.Temp.Root, "denied-write")
-                )
-                    .ToJsonString()
+                Check.Map("checkout", checkout, "run", run).ToJsonString()
             )
             let success = mode == "unlimited" ||
                 reasoning ||
-                mode == "off" ||
                 mode == "on" ||
+                mode == "profile" ||
                 mode == "compact" ||
-                mode == "continued" ||
+                mode == "compact-failed" ||
                 mode == "catalog-metadata"
-            let work = List[string]{"work", "--run", run, "--non-interactive"}
-            if mode != "off" {
-                work.Add("--yes")
-            }
-            if continuation {
-                work.Add("--continue-truncated")
-            }
+            let work = List[string]{"work", "--run", run, "--non-interactive", "--yes"}
             var worked Result
             if mode == "on" {
                 flow.Flow.Temp.Env["TERM"] = "xterm-256color"
@@ -630,10 +581,6 @@ internal class PiChecks {
                 "Pi lost selected effort"
             )
             Check.That(
-                Check.Text(saved["observed_invocation"]?["length_continuation_limit"]) == (continuation ? "1": "0"),
-                "Pi did not record the work invocation's continuation allowance"
-            )
-            Check.That(
                 Check.Text(saved["observed_invocation"]?["context_window"]) == "65536" && Check.Text(
                     saved["observed_invocation"]?["max_tokens"]
                 ) == "8192",
@@ -653,31 +600,13 @@ internal class PiChecks {
                     File.ReadAllText(Path.Combine(checkout, "result.txt")) == "final",
                     "Pi tool changes were lost"
                 )
-                if mode == "continued" {
-                    let report = File.ReadAllText(Path.Combine(run, "report.md"))
-                    Check.Contains(report, "Changes: synthetic edits.")
-                    Check.Contains(report, "Verification: constrained tools.")
-                    Check.Contains(report, "Limitations: no inference.")
-                    Check.That(
-                        !report.Contains("PRIVATE_PARTIAL_LENGTH_SENTINEL"),
-                        "Partial output became the final report"
-                    )
-                }
-                if mode == "on" || mode == "continued" {
+                if mode == "on" {
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
                     flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
                     flow.Flow.Reload()
                     Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
-                    if mode == "continued" {
-                        Check.That(
-                            !Check.Text(flow.Flow.State["pulls"]?[0]?["body"]).Contains(
-                                "PRIVATE_PARTIAL_LENGTH_SENTINEL"
-                            ),
-                            "Private partial output escaped into the draft PR"
-                        )
-                    }
                 }
             } else {
                 Check.That(saved["turn_completed"] == nil, "Failed Pi response fabricated completion")
@@ -685,15 +614,9 @@ internal class PiChecks {
                     saved["commit"] == nil && saved["verification"] == nil,
                     "Failed Pi inference reached verification or publication"
                 )
-                if mode == "repeated" {
-                    Check.That(
-                        File.ReadAllText(Path.Combine(checkout, "result.txt")) == "final",
-                        "Exhausted continuation discarded the prior tool edit"
-                    )
-                }
             }
             let child = Path.Combine(checkout, "child-identity")
-            if (success && mode != "unlimited" && mode != "continued") || (interrupted && mode != "length-cancel") {
+            if (success && mode != "unlimited") || interrupted {
                 Check.That(File.Exists(child), "Pi cleanup proof did not start its child")
             }
             if File.Exists(child) {
@@ -703,8 +626,6 @@ internal class PiChecks {
                 !File.Exists(Path.Combine(checkout, "timeout-escaped")),
                 "Pi tool timeout left a live descendant"
             )
-            Check.That(File.ReadAllText(secret) == "PRIVATE_CREDENTIAL_SENTINEL", "Pi changed private data")
-            Check.That(!File.Exists(Path.Combine(flow.Flow.Temp.Root, "denied-write")), "Pi wrote outside the checkout")
             Check.That(!File.Exists(Path.Combine(checkout, "truncated-executed")), "Pi executed a truncated tool call")
             Check.That(File.ReadAllText(gitPath) == git, "Pi changed Git metadata")
             flow.Flow.NoInference()

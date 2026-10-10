@@ -1,6 +1,5 @@
 package Tokate
 
-import Gsharp.Extensions.Json
 import System
 import System.Collections.Generic
 import System.IO
@@ -8,123 +7,100 @@ import System.Text.Json
 
 internal class PiEvidence {
     shared {
-        internal func Failure(output string) string {
-            try {
-                let lines = output.Trim().Split('\n')
-                let item = RequestData.Parse(lines[lines.Length - 1], 1024)
-                if J.Text(item, "type") == "pi.failed" {
-                    if J.Text(item, "reason") == "length" {
-                        return "Pi response reached its configured output length limit. Inspect private partial text and usage. This failed run cannot resume."
-                    }
-                    if J.Text(item, "reason") == "compaction" {
-                        return "Pi context compaction failed; inspect private captured evidence. No retry or fallback"
-                    }
-                }
-            } catch (error Exception) { }
-            return "Pi did not complete; inspect private captured evidence. No retry or fallback"
-        }
-
-        internal func Completed(
-            directory string,
-            output string,
-            model string,
-            effort string,
-            continuationLimit int32
-        ) Dictionary[string, Object?] {
-            var completed int32
-            var started int32
-            var continued int32
+        internal func Completed(directory string, output string, model string, provider string) Dictionary[
+            string,
+            Object?
+        ] {
+            var started bool
+            var settled bool
             var lastStop = ""
             var report = ""
-            let usage = map[string, Object?]{}
+            var input int64
+            var cached int64
+            var generated int64
             for line in output.Split('\n') {
                 if String.IsNullOrWhiteSpace(line) {
                     continue
                 }
                 let item = RequestData.Parse(line, 4 * 1024 * 1024)
                 let kind = J.Text(item, "type")
-                if kind == "pi.started" && started == 0 && completed == 0 {
-                    started++
-                    if J.Text(item, "model") != model || J.Text(item, "provider") != "local-chat-completions" || J.Text(
-                        item,
-                        "effort"
-                    ) != effort {
-                        throw Exception("Pi invocation identity differs from exact selection")
+                if settled &&
+                    (
+                    kind == "agent_start" ||
+                        kind == "turn_start" ||
+                        kind == "message_start" ||
+                        kind == "message_end" ||
+                        kind == "agent_settled"
+                ) {
+                    throw Exception("Pi emitted events after its settled result")
+                }
+                if kind == "agent_start" {
+                    started = true
+                } else if kind == "message_end" && J.Text(J.Get(item, "message"), "role") == "assistant" {
+                    let message = J.Get(item, "message")
+                    if !started || J.Text(message, "model") != model || J.Text(message, "provider") != provider {
+                        throw Exception("Pi response differs from the selected model or provider")
                     }
-                    if (item.GetInt32OrNil("length_continuation_limit") ?? -1) != continuationLimit {
-                        throw Exception("Pi continuation allowance differs from donor authorization")
+                    let responseModel = J.Get(message, "responseModel")
+                    if responseModel.ValueKind == JsonValueKind.String && responseModel.GetString() != model {
+                        throw Exception("Pi reported a different response model")
                     }
-                } else if kind == "pi.event" && started == 1 && completed == 0 {
-                    let event = J.Text(item, "event")
-                    if event == "assistant_end" {
-                        if lastStop == "length" {
-                            throw Exception("Pi continued without explicit length authorization")
+                    lastStop = J.Text(message, "stopReason")
+                    report = ""
+                    for part in J.Items(J.Get(message, "content")) {
+                        if J.Text(part, "type") == "text" {
+                            report += J.Text(part, "text")
                         }
-                        if J.Text(item, "model") != model || J.Text(item, "provider") != "tokate-local" {
-                            throw Exception("Pi response identity differs from exact selection")
-                        }
-                        let responseModel = J.Get(item, "response_model")
-                        if responseModel.ValueKind != JsonValueKind.Null &&
-                            responseModel.ValueKind != JsonValueKind.Undefined &&
-                            (responseModel.ValueKind != JsonValueKind.String || responseModel.GetString() != model) {
-                            throw Exception("Pi response identity differs from exact selection")
-                        }
-                        lastStop = J.Text(item, "stop_reason")
-                        if lastStop != "stop" && lastStop != "toolUse" && lastStop != "length" {
-                            throw Exception("Pi reported a failed or incomplete response")
-                        }
-                        let reported = J.Get(item, "usage")
-                        for key in[]string{"input", "cacheRead", "output"} {
-                            let value = J.Get(reported, key)
-                            var count int64
-                            if value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out count) ||
-                                count < 0 ||
-                                count > 9007199254740991 {
-                                throw Exception("Invalid harness-reported pi usage")
-                            }
-                        }
-                    } else if event == "length_continuation" {
-                        if continuationLimit != 1 ||
-                            continued != 0 ||
-                            lastStop != "length" ||
-                            (item.GetInt32OrNil("count") ?? -1) != 1 ||
-                            (item.GetInt32OrNil("limit") ?? -1) != continuationLimit {
-                            throw Exception("Pi exceeded donor length continuation authorization")
-                        }
-                        continued++
-                        lastStop = ""
                     }
-                } else if kind == "pi.completed" && started == 1 && completed == 0 {
-                    completed++
-                    if J.Text(item, "model") != model || J.Text(item, "stop_reason") != "stop" || lastStop != "stop" {
-                        throw Exception("Pi reported a failed or incomplete response")
+                    let usage = J.Get(message, "usage")
+                    input = Count(usage, "input", input)
+                    cached = Count(usage, "cacheRead", cached)
+                    generated = Count(usage, "output", generated)
+                } else if kind == "compaction_end" {
+                    let usage = J.Get(J.Get(item, "result"), "usage")
+                    if usage.ValueKind == JsonValueKind.Object {
+                        input = Count(usage, "input", input)
+                        cached = Count(usage, "cacheRead", cached)
+                        generated = Count(usage, "output", generated)
                     }
-                    if continued > continuationLimit ||
-                        (item.GetInt32OrNil("length_continuations") ?? -1) != continued {
-                        throw Exception("Pi continuation evidence differs from donor authorization")
+                } else if kind == "agent_settled" {
+                    if lastStop == "length" {
+                        throw Exception(
+                            "Pi response reached its configured output length limit; inspect the saved partial work"
+                        )
                     }
-                    report = J.Text(item, "report")
-                    let reported = J.Get(item, "usage")
-                    RequestData.Keys(reported, "input_tokens,cached_input_tokens,output_tokens")
-                    for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                        let value = J.Get(reported, key)
-                        var count int64
-                        if value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out count) ||
-                            count < 0 ||
-                            count > 9007199254740991 {
-                            throw Exception("Invalid harness-reported pi usage")
-                        }
-                        usage[key] = count
+                    if !started || J.Get(item, "aborted")
+                        .ValueKind != JsonValueKind.False ||
+                        lastStop != "stop" ||
+                        String.IsNullOrWhiteSpace(report) {
+                        throw Exception("Pi did not return a completed response within the donor's allowance")
                     }
-                } else {
-                    throw Exception("Malformed or failed pi completion evidence")
+                    settled = true
                 }
             }
-            if started != 1 || completed != 1 || String.IsNullOrWhiteSpace(report) {
-                throw Exception("Pi did not return exactly one completed turn and report")
+            if !settled {
+                throw Exception("Pi did not report a settled run")
             }
             File.WriteAllText(Path.Combine(directory, "report.md"), report)
-            return usage
+            return map[string, Object?]{
+                "input_tokens": input,
+                "cached_input_tokens": cached,
+                "output_tokens": generated
+            }
+        }
+
+        private func Count(value JsonElement, key string, total int64) int64 {
+            let number = J.Get(value, key)
+            var count int64
+            if number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out count) ||
+                count < 0 ||
+                count > 9007199254740991 {
+                throw Exception("Invalid harness-reported Pi usage")
+            }
+            if total > 9007199254740991 - count {
+                throw Exception("Pi usage exceeds its safe integer range")
+            }
+            return total + count
         }
     }
 }

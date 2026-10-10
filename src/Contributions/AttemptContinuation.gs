@@ -284,7 +284,6 @@ internal class AttemptContinuation {
                 "pi_root",
                 "pi_node",
                 "claude_profile",
-                "claude_sole_use"
             } {
                 if source.Text(key) != run.Text(key) {
                     throw Exception("Continuation changed predecessor binding or selection: " + key)

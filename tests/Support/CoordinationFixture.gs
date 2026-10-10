@@ -192,7 +192,6 @@ internal open class CoordinationFixture : IDisposable {
         source string = "external",
         code int32 = 0,
         seconds string = "30",
-        network bool = false,
         reserve string = "",
         unlimited bool = false
     ) string {
@@ -220,9 +219,6 @@ internal open class CoordinationFixture : IDisposable {
         if unlimited {
             args.RemoveRange(args.IndexOf("--seconds"), 2)
             args.Add("--unlimited")
-        }
-        if network {
-            args.Add("--allow-network")
         }
         let result = Flow.Call(args.ToArray(), code)
         if code != 0 {

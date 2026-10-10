@@ -222,6 +222,8 @@ jobs:
           printf '| Harness | Tested version | Coverage |\n| --- | --- | --- |\n| Node | %s | Runtime |\n| Codex | %s | Native integration |\n' "$node_version" "$codex_version" >> "$GITHUB_STEP_SUMMARY"
       - name: Prove latest native Codex tools and isolation without inference
         run: python3 scripts/native-proof.py --codex "$TOKATE_CODEX"
+      - name: Prove configured Codex MCP in a managed run
+        run: python3 scripts/codex-proof.py --codex "$TOKATE_CODEX"
       - name: Prove the same Codex installation with donor-local Node
         run: python3 scripts/local-codex-proof.py --prefix "$TOKATE_HARNESS_PREFIX" --node "$TOKATE_NODE"
       - name: Prove latest native Claude capabilities without inference

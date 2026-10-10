@@ -428,7 +428,6 @@ internal class Amendment {
                                 results,
                                 command,
                                 checkout,
-                                run.Flag("network") && J.Bool(policy.Value, "allow_network"),
                                 remaining,
                                 budget: budget,
                                 workspace: workspace
@@ -517,9 +516,8 @@ internal class Amendment {
             let record = J.Get(authority, "record")
             let policy = Policy(J.Write(J.Get(record, "policy")))
             Tools(policy, J.Get(amendment.Element(), "tools"))
-            if amendment.Number("seconds") < 1 || amendment.Number("seconds") > J.Number(policy.Value, "max_seconds") ||
-                (run.Flag("network") && !J.Bool(policy.Value, "allow_network")) {
-                throw Exception("Amendment budget or network exceeds current owner policy")
+            if amendment.Number("seconds") < 1 || amendment.Number("seconds") > J.Number(policy.Value, "max_seconds") {
+                throw Exception("Amendment budget exceeds current owner policy")
             }
             Verification.Results(amendment, record)
             let checkout = Verification.Validate(Path.Combine(directory, "checkout"))

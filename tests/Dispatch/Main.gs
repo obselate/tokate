@@ -37,14 +37,17 @@ func Main(args[]string) int32 {
             case "--omp-boundary" when args.Length == 5 {
                 OmpProof.Boundary(args[1], args[2], args[3], args[4])
             }
-            case "--nix-runtime" when args.Length == 4 {
-                NixChecks.Run(binary, args[1], args[2], args[3])
+            case "--nix-runtime" when args.Length == 2 {
+                NixChecks.Run(binary, args[1])
             }
             case "--pi-runtime" when(args.Length == 1 || args.Length == 2) {
                 PiChecks.Runtime(binary, args.Length == 2 ? args[1]: "")
             }
             case "--pi-proof" when args.Length == 6 {
                 PiChecks.Run(binary, args[1], args[2], args[3], args[4], args[5])
+            }
+            case "--codex-proof" when args.Length == 4 {
+                LocalCodex.Managed(binary, args[1], args[2], args[3])
             }
             case "--local-codex" when args.Length == 4 {
                 LocalCodex.All(binary, args[1], args[2], args[3])
@@ -57,9 +60,6 @@ func Main(args[]string) int32 {
             }
             case "--protected-paths" when args.Length == 1 {
                 ProtectedPathChecks.All(binary)
-            }
-            case "--runtime-files-parent" when args.Length == 2 {
-                VerificationChecks.RuntimeFilesParent(binary, args[1])
             }
             case "--suite" when args.Length == 2 {
                 SuiteCatalog.Select(binary, args[1])

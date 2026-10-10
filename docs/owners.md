@@ -12,7 +12,7 @@ tokate init --repo OWNER/REPO
 ```
 
 Run setup inside your repository. Choose model restrictions, project verification
-commands, required CI checks, time limits and command network permission. Review
+commands, required CI checks and time limits. Review
 the proposed files before accepting. Commit the policy and workflow to the default
 branch before approving work. Keep fork CI read-only, without secrets, and require
 its checks in branch protection.

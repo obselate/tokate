@@ -248,7 +248,6 @@ internal class Terminal {
             results List[Object],
             command JsonElement,
             directory string,
-            network bool,
             seconds int32,
             budget RuntimeBudget? = nil,
             progressBudget RuntimeBudget? = nil,
@@ -270,10 +269,8 @@ internal class Terminal {
                         results,
                         command,
                         workspace?.Checkout ?? directory,
-                        network,
                         seconds,
-                        budget,
-                        workspace?.Original ?? ""
+                        budget
                     )
                 }
                 Message(

@@ -37,7 +37,7 @@ internal class CodexRuntime {
                     seconds: 10,
                     isolated: true
                 )
-                for flag in[]string{"--model", "--config", "--ignore-user-config", "--strict-config"} {
+                for flag in[]string{"--model", "--config"} {
                     if controls.Code != 0 || !controls.Output.Contains(flag) {
                         throw Exception(
                             "Native Codex does not expose the required explicit controls; no compatible pair"

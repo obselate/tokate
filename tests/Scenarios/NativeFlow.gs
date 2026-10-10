@@ -23,7 +23,6 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(help.Error == "", "Help emitted prerequisite warnings")
         Check.That(!(help.Output + help.Error).Contains('\u001b'), "Redirected output contains ANSI")
         let doctor = Call([]string{"doctor"}, 1)
-        Check.Contains(doctor.Output, "sandbox: skipped")
         for name in[]string{"git", "gh", "setsid"} {
             Check.Contains(doctor.Output, name + ": missing")
         }
@@ -56,16 +55,16 @@ internal partial class NativeFlow : NativeFixture {
         let env = Dictionary[string, string](Temp.Env)
         let global = Path.Combine(Upstream, "global.json")
         File.Copy(Path.Combine(Directory.GetCurrentDirectory(), "global.json"), global)
-        let ready = TestProcess.Run(Binary, []string{"doctor"}, env, cwd: Upstream)
+        let ready = TestProcess.Run(Binary, []string{"doctor", "--managed"}, env, cwd: Upstream)
         Check.Success(ready)
         Check.Contains(ready.Output, "Repository global.json SDK/MSBuild starts inside the sandbox")
         File.WriteAllText(global, "{\"sdk\":{\"version\":\"99.0.100\",\"rollForward\":\"disable\"}}")
-        let missing = TestProcess.Run(Binary, []string{"doctor"}, env, cwd: Upstream)
+        let missing = TestProcess.Run(Binary, []string{"doctor", "--managed"}, env, cwd: Upstream)
         Check.That(missing.Code == 1, "Doctor accepted unavailable pinned SDK")
         Check.Contains(missing.Output, "toolchain: failed")
         Check.Contains(missing.Output, "standard system path")
         File.Delete(global)
-        let unpinned = TestProcess.Run(Binary, []string{"doctor"}, env, cwd: Upstream)
+        let unpinned = TestProcess.Run(Binary, []string{"doctor", "--managed"}, env, cwd: Upstream)
         Check.Success(unpinned)
         Check.Contains(unpinned.Output, "sandbox: ready")
         Check.That(!unpinned.Output.Contains("Repository global.json"), "Doctor claimed an absent SDK pin")
@@ -76,7 +75,7 @@ internal partial class NativeFlow : NativeFixture {
             if dangling {
                 File.Delete(outside)
             }
-            let linked = TestProcess.Run(Binary, []string{"doctor"}, env, cwd: Upstream)
+            let linked = TestProcess.Run(Binary, []string{"doctor", "--managed"}, env, cwd: Upstream)
             Check.That(linked.Code == 1, "Doctor accepted a linked SDK file")
             Check.Contains(linked.Output, "not a symbolic link")
         }
@@ -181,7 +180,7 @@ internal partial class NativeFlow : NativeFixture {
     }
 
     private func EventDelimiters() {
-        let started = "{\"type\":\"turn.started\"}"
+        let started = "{\"type\":\"turn.started\"}\n{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}"
         let completed = "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":7,\"output_tokens\":3}}"
         let streams = []string{
             String('\n', 1024 * 1024) + started + "\n \t\r\n" + completed + "\n\n",
@@ -445,50 +444,6 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(directories.Length == 1, "Rejected repository configuration lost preparation")
         Check.Contains(Call([]string{"prepare", "--run", directories[0]}, 1).Error, "Repository Codex configuration")
         NoInference()
-    }
-
-    internal func TemporaryIsolation() {
-        let sentinel = Path.Combine("/tmp", Path.GetFileName(Temp.Root) + "-sentinel")
-        File.WriteAllText(sentinel, "synthetic host temporary data")
-        try {
-            let path = Path.Combine(Upstream, ".github/tokate.json")
-            let policy = Check.Json(File.ReadAllText(path))
-            policy["verification"] = Check.Json(
-                "[[\"/bin/sh\",\"-c\",\"test -f result.txt && test ! -e " + sentinel + "\"]]"
-            )
-            File.WriteAllText(path, policy.ToJsonString())
-            Commit("Verify fresh temporary namespace")
-            Git("-C", Path.Combine(Bin, "fork"), "fetch", Upstream, "main")
-            Approve()
-            let run = Claim()
-            Mode("temporary_isolation")
-            State["temporary_sentinel"] = JsonValue.Create(sentinel)
-            Save()
-            Call([]string{"work", "--run", run})
-            Check.That(File.ReadAllText(sentinel) == "synthetic host temporary data", "Host temporary data changed")
-        } finally {
-            File.Delete(sentinel)
-        }
-    }
-
-    internal func TemporaryHomeRejected() {
-        let home = Path.Combine("/tmp", Path.GetFileName(Temp.Root) + "-home")
-        Directory.CreateDirectory(home)
-        try {
-            Approve()
-            let run = Claim()
-            Temp.Env["HOME"] = home
-            Check.Contains(Call([]string{"work", "--run", run}, 1).Error, "must be outside /tmp")
-            Check.That(!File.Exists(Path.Combine(run, "private-probe")), "Failed startup retained private probe marker")
-            Check.That(
-                File.Exists(Path.Combine(run, "run.json")) && Directory.Exists(Path.Combine(run, "checkout")),
-                "Failed startup removed recovery evidence or donor checkout"
-            )
-            NoInference()
-            NoPr()
-        } finally {
-            Directory.Delete(home, true)
-        }
     }
 
     internal func PublicContent(run string) {
@@ -819,195 +774,19 @@ internal partial class NativeFlow : NativeFixture {
         NoPr()
     }
 
-    private func BoundaryWork(run string, results Chan[Exception?]) {
-        try {
-            Call([]string{"work", "--run", run})
-            results <- nil
-        } catch (error Exception) {
-            results <- error
-        }
-    }
-
-    private func BoundaryRun(run string) {
-        let results = Chan[Exception?](1)
-        let pins = List[SafeFileHandle]()
-        let identities = List[string]()
-        let release = Path.Combine(Bin, "namespace-release")
-        var failure Exception?
-        var drained bool
-        var released bool
-        go BoundaryWork(run, results)
-        try {
-            let ready = Path.Combine(Bin, "namespace-ready")
-            let clock = Stopwatch.StartNew()
-            while !File.Exists(ready) && clock.Elapsed.TotalSeconds < 5 {
-                select {
-                    case <- after(TimeSpan.FromMilliseconds(10.0)) { }
-                }
-            }
-            Check.That(File.Exists(ready), "Owned task namespace readiness timed out")
-            let innerPid = File.ReadAllText(ready).Trim()
-            let expectedPid = File.ReadAllText(Path.Combine(run, "checkout/expected-pid-namespace"))
-            let hostPid = TestProcess.ResolveHostPid(expectedPid + " " + innerPid)
-            Check.That(hostPid != "", "Cannot resolve owned task host PID")
-            for name in[]string{"pid", "user", "ipc", "uts", "mnt", "net"} {
-                let pin = File.OpenHandle(
-                    "/proc/" + hostPid + "/ns/" + name,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.Read
-                )
-                pins.Add(pin)
-                let identity = File.ReadAllText(Path.Combine(run, "checkout", "expected-" + name + "-namespace"))
-                identities.Add(identity)
-                Check.That(
-                    FileInfo("/proc/self/fd/" + pin.DangerousGetHandle().ToString()).LinkTarget == identity,
-                    "Owned task namespace pin did not match " + name
-                )
-            }
-            File.WriteAllText(release, "release")
-            released = true
-            let workFailure = <-results
-            drained = true
-            if let error = workFailure {
-                throw error
-            }
-            var index int32
-            for pin in pins {
-                Check.That(
-                    !pin.IsClosed && FileInfo(
-                        "/proc/self/fd/" + pin.DangerousGetHandle().ToString()
-                    ).LinkTarget == identities[index],
-                    "Task namespace pin expired before verification returned"
-                )
-                index++
-            }
-        } catch (error Exception) {
-            failure = error
-        } finally {
-            if !released {
-                try {
-                    File.WriteAllText(release, "release")
-                } catch (error Exception) {
-                    failure = failure ?? error
-                }
-            }
-            if !drained {
-                let error = <-results
-                failure = failure ?? error
-            }
-            for pin in pins {
-                try {
-                    pin.Dispose()
-                } catch (error Exception) {
-                    failure = failure ?? error
-                }
-            }
-        }
-        if let error = failure {
-            throw error
-        }
-    }
-
-    internal func VerificationBoundary() {
-        let temporary = Path.Combine("/tmp", Path.GetFileName(Temp.Root) + "-private")
-        let persistent = Path.Combine(Temp.Root, "private")
-        File.WriteAllText(temporary, "synthetic host tmp credential")
-        File.WriteAllText(persistent, "synthetic sibling contribution")
-        let socketPath = Path.Combine(Temp.Root, "private.socket")
-        using let socket = Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
-        let socketAddress = socketPath.Length < 100 ? socketPath:
-        Path.GetRelativePath(Directory.GetCurrentDirectory(), socketPath)
-        socket.Bind(UnixDomainSocketEndPoint(socketAddress))
-        socket.Listen(1)
-        try {
-            let script = "set -eEu\n" +
-                "trap 'printf \"VerificationBoundary failed probe line=%s namespace=%s saved=%s current=%s\\n\" \"$$LINENO\" \"$${ns-}\" \"$$(if [ -n \"$${ns-}\" ]; then cat expected-$$ns-namespace; fi)\" \"$$(if [ -n \"$${ns-}\" ]; then readlink /proc/self/ns/$$ns; fi)\" >&2' ERR\n" +
-                "test -f result.txt\n" +
-                "test \"$$PATH\" = /usr/local/bin:/usr/bin:/bin\n" +
-                "test \"$$HOME\" = \"/tmp/tokate-home\" && test \"$$TMPDIR\" = \"$$HOME\"\n" +
-                "test ! -e \"$$HOME/agent-cache.json\"\n" +
-                "mkdir -p \"$$HOME/.cache/browser\" && printf unformatted > \"$$HOME/.cache/browser/cache.json\"\n" +
-                "test -z \"$$(find . -name cache.json -o -name agent-cache.json -o -name .tokate-scratch)\"\n" +
-                "test -z \"$${GH_TOKEN-}$${GITHUB_TOKEN-}$${CODEX_HOME-}$${GH_CONFIG_DIR-}$${OPENAI_API_KEY-}$${UNRELATED_DONOR_VALUE-}$${DBUS_SESSION_BUS_ADDRESS-}$${XDG_RUNTIME_DIR-}$${GIT_CONFIG_COUNT-}\"\n" +
-                "for file in " +
-                temporary +
-                " " +
-                persistent +
-                " " +
-                socketPath +
-                " " +
-                Temp.Env["HOME"] +
-                " " +
-                Temp.Env["CODEX_HOME"] +
-                " " +
-                Temp.Env["GH_CONFIG_DIR"] +
-                " " +
-                Bin +
-                " ../run.json ../.lock ../events.jsonl ../stderr.log ../report.md /etc/passwd /etc/shadow /run /sys; do test ! -e \"$$file\"; done\n" +
-                "test ! -r outside-link\n" +
-                "test -z \"$$(tr '\\0' '\\n' < /proc/1/environ | /usr/bin/grep -E 'synthetic|tokate-e2e|CODEX_HOME|GH_TOKEN' || true)\"\n" +
-                "test \"$$(awk '/CapEff:/{print $$2}' /proc/self/status)\" = 0000000000000000\n" +
-                "for ns in pid user ipc uts mnt net; do test \"$$(readlink /proc/self/ns/$$ns)\" != \"$$(cat expected-$$ns-namespace)\"; done\n" +
-                "test -r .git/config && git status --porcelain | /usr/bin/grep result.txt\n" +
-                "if printf tampered >> .git/config; then exit 1; fi\n" +
-                "if rm .git/config; then exit 1; fi\n" +
-                "if mv .git .git-moved; then exit 1; fi\n" +
-                "if touch /usr/tokate-verification-write; then exit 1; fi\n" +
-                "touch /tmp/private /var/tmp/private \"$$TMPDIR/private\"\n" +
-                "bwrap --unshare-user --unshare-pid --ro-bind / / --tmpfs /tmp -- /bin/sh -c 'touch /tmp/nested-probe'\n" +
-                "printf verified-independent-boundary\n"
-            VerificationPolicy(script, second: "test ! -e \"$$HOME/.cache/browser/cache.json\"")
-            Approve()
-            let run = Claim()
-            Mode("verification_boundary")
-            try {
-                BoundaryRun(run)
-            } catch (error Exception) {
-                let evidence = Path.Combine(run, "verification.json")
-                if File.Exists(evidence) {
-                    using let reader = StreamReader(evidence)
-                    let buffer = [16384]char
-                    let count = reader.ReadBlock(buffer, 0, buffer.Length)
-                    Console.Error.WriteLine("VerificationBoundary synthetic verification: " + String(buffer, 0, count))
-                }
-                throw error
-            }
-            Check.Contains(File.ReadAllText(Path.Combine(run, "verification.json")), "verified-independent-boundary")
-            Check.That(File.ReadAllText(temporary) == "synthetic host tmp credential", "Host tmp changed")
-            Check.That(File.ReadAllText(persistent) == "synthetic sibling contribution", "Sibling contribution changed")
-            Check.That(
-                (File.GetUnixFileMode(Path.Combine(Bin, "codex-impl")) & UnixFileMode.UserExecute) == 0,
-                "Fixture harness was not disabled"
-            )
-        } finally {
-            File.Delete(temporary)
-        }
-    }
-
     internal func VerificationNetwork() {
         let listener = TcpListener(IPAddress.Loopback, 0)
         listener.Start()
         try {
             let port = (listener.LocalEndpoint as IPEndPoint)?.Port.ToString() ?? throw Exception("No listener port")
-            for mode in[]string{"owner-denied", "donor-denied", "allowed"} {
-                using let flow = NativeFlow(Binary)
-                flow.Initialize()
-                let connect = "exec 3<>/dev/tcp/127.0.0.1/" + port
-                let script = mode == "allowed" ? connect: "if " + connect + "; then exit 1; fi"
-                flow.VerificationPolicy(script, mode != "owner-denied")
-                flow.Approve()
-                if mode == "owner-denied" {
-                    flow.Claim(code: 1, network: true)
-                    flow.NoInference()
-                }
-                let run = flow.Claim(network: mode == "allowed")
-                flow.Call([]string{"work", "--run", run})
-                Check.That(listener.Pending() == (mode == "allowed"), "Unexpected verification network access: " + mode)
-                if listener.Pending() {
-                    using let client = listener.AcceptTcpClient()
-                }
-            }
+            using let flow = NativeFlow(Binary)
+            flow.Initialize()
+            flow.VerificationPolicy("exec 3<>/dev/tcp/127.0.0.1/" + port)
+            flow.Approve()
+            let run = flow.Claim()
+            flow.Call([]string{"work", "--run", run})
+            Check.That(listener.Pending(), "Verification had no network access")
+            using let client = listener.AcceptTcpClient()
         } finally {
             listener.Stop()
         }

@@ -17,10 +17,7 @@ internal class DisposableVerificationChecks {
             let sentinel = Path.Combine(flow.Temp.Root, "host-private")
             File.WriteAllText(sentinel, "host-secret")
             let build = "set -eu; test -f result.txt; test \"$$(cat .env)\" = donor-private; " +
-                "test \"$$(cat donor-cache/data)\" = donor-cache; test ! -r " +
-                sentinel +
-                "; " +
-                "test -r .git/config; if touch .git/verification-write; then exit 1; fi; " +
+                "test \"$$(cat donor-cache/data)\" = donor-cache; test -r .git/config; " +
                 "mkdir build-output; dd if=/dev/zero of=build-output/generated bs=1048576 count=2 2>/dev/null; " +
                 "ln -s " +
                 flow
@@ -30,7 +27,6 @@ internal class DisposableVerificationChecks {
                 "printf changed-copy > .env; chmod 000 build-output; chmod 700 build-output; " +
                 "printf useful-build-evidence"
             let second = "set -eu; test -s build-output/generated; test \"$$(cat .env)\" = changed-copy; " +
-                "test ! -r build-output/host-link/host-private; " +
                 "printf 'synthetic-%s-output' verifier; printf 'synthetic-%s-error' verifier >&2; " +
                 "setsid /bin/sh -c 'while :; do printf +; echo beat >> heartbeat; sleep 0.05; done' </dev/null 2>/dev/null & " +
                 "while [ ! -s heartbeat ]; do sleep 0.01; done; printf useful-test-evidence; " +

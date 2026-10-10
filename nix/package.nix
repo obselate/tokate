@@ -1,5 +1,5 @@
 { lib, buildDotnetModule, dotnetCorePackages, clang, zlib, openssl,
-  gitMinimal, gh, bubblewrap, util-linux, coreutils, findutils, curl, gnutar, nix,
+  gitMinimal, gh, util-linux, coreutils, findutils, curl, gnutar, nix,
   source ? ../. }:
 
 buildDotnetModule {
@@ -35,7 +35,7 @@ buildDotnetModule {
   runtimeDeps = [ openssl zlib ];
   makeWrapperArgs = [
     "--prefix" "PATH" ":"
-    (lib.makeBinPath [ gitMinimal gh bubblewrap util-linux coreutils findutils curl gnutar nix ])
+    (lib.makeBinPath [ gitMinimal gh util-linux coreutils findutils curl gnutar nix ])
   ];
   postInstall = ''
     mkdir -p "$out/share/licenses/tokate"

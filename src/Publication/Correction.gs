@@ -364,7 +364,6 @@ internal class Correction {
                             results,
                             command,
                             checkout,
-                            run.Flag("network") && J.Bool(J.Get(record, "policy"), "allow_network"),
                             remaining,
                             budget: budget,
                             workspace: workspace

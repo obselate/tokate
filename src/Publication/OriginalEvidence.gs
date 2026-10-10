@@ -150,7 +150,6 @@ internal class OriginalEvidence {
                 "model",
                 "effort",
                 "seconds",
-                "network",
                 "source",
                 "tools",
                 "usage",

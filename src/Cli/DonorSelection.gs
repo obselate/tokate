@@ -67,7 +67,6 @@ internal class DonorSelection {
                 "node",
                 "harness-path",
                 "claude-profile",
-                "sole-use"
             } {
                 if args.Get(key) == "" && J.Text(saved, key) != "" {
                     args.Values["--" + key] = J.Text(saved, key)
@@ -79,10 +78,7 @@ internal class DonorSelection {
             DonorDefaults.NormalizePair(args)
             let harness = args.Get("harness", "codex")
             let provider = args.Get("provider", "openai")
-            if args.Get("continue-truncated") == "true" && harness != "pi" {
-                throw Exception("--continue-truncated requires managed Pi. No inference started.")
-            }
-            if harness != "claude" && (args.Get("claude-profile") != "" || args.Get("sole-use") != "") {
+            if harness != "claude" && (args.Get("claude-profile") != "") {
                 throw Exception("Claude profile options require the claude harness")
             }
             if harness != "pi" && (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
@@ -109,7 +105,7 @@ internal class DonorSelection {
             var effort = args.Get("effort", compatible ? J.Text(saved, "effort"): "")
             let explicitPair = args.Get("model") != "" || args.Get("effort") != ""
             var overridden = explicitPair
-            for key in[]string{"endpoint", "pi-root", "node", "harness-path", "claude-profile", "sole-use"} {
+            for key in[]string{"endpoint", "pi-root", "node", "harness-path", "claude-profile"} {
                 overridden = overridden || (args.Get(key) != "" && args.Get(key) != J.Text(saved, key))
             }
             var source = args.Get("profile") != "" ? "saved donor profile " + args.Get("profile") +
@@ -200,7 +196,7 @@ internal class DonorSelection {
                 source = "interactive donor choice"
                 availability = "unknown"
             }
-            policy.Validate(model, effort, 1, false)
+            policy.Validate(model, effort, 1)
             return J.Parse(
                 J.Write(
                     map[string, Object?]{
@@ -233,7 +229,7 @@ internal class DonorSelection {
                     ) +
                         args.Get("verification-reserve", "0") + " reserved for verification"
                 )
-                Terminal.Row("Command network", args.Get("allow-network") == "true" ? "allowed": "denied")
+                Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
                 Terminal.Row("Availability", J.Text(selection, "availability"))
                 Console.Error.Write(
                     args.Command == "claim" ? "Post this claim without inference? [y/N] ": "Post this claim and start this donation when accepted? [y/N] "
@@ -309,7 +305,7 @@ internal class DonorSelection {
                 (!policy.AllowsTool(harness, provider)) {
                 throw Exception(failure)
             }
-            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"), run.Flag("network"))
+            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"))
             let capabilities = CodexRuntime.Capabilities(run.Text("harness_path"))
             var supported HashSet[string]
             if !capabilities.TryGetValue(run.Text("model"), out supported) || !supported.Contains(run.Text("effort")) {

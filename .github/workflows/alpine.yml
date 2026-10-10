@@ -33,7 +33,7 @@ jobs:
             -v "$PWD:/src" -w /src \
             mcr.microsoft.com/dotnet/sdk:10.0.401-alpine3.24@sha256:3cc3bbbbf93d82104892f42aa9106b6be4d120346dea0649643a97c801525256 \
             /bin/sh -ec '
-              apk add --no-cache bash clang build-base zlib-dev git github-cli curl coreutils findutils tar util-linux-misc bubblewrap nodejs npm python3
+              apk add --no-cache bash clang build-base zlib-dev git github-cli curl coreutils findutils tar util-linux-misc setpriv bubblewrap nodejs npm python3
               adduser -D tester
               chown -R tester:tester /src
               su -s /bin/bash tester -c "bash scripts/alpine-ci.sh"

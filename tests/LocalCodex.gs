@@ -10,13 +10,58 @@ internal class LocalCodex {
     shared {
         private func Quote(path string) string -> "'" + path.Replace("'", "'\\''") + "'"
 
+        internal func Managed(binary string, native string, directory string, endpoint string) {
+            using let flow = NativeFlow(binary)
+            flow.Initialize()
+            flow.Approve()
+            File.Delete(Path.Combine(flow.Bin, "codex"))
+            File.CreateSymbolicLink(Path.Combine(flow.Bin, "codex"), native)
+            let profile = flow.Temp.Env["CODEX_HOME"]
+            File.Copy(Path.Combine(directory, "auth.json"), Path.Combine(profile, "auth.json"))
+            var config = "openai_base_url = " + JsonValue.Create(endpoint).ToJsonString() +
+                "\nchatgpt_base_url = " +
+                JsonValue
+                .Create(endpoint).ToJsonString() + "\n"
+            File.WriteAllText(Path.Combine(profile, "config.toml"), config)
+            let run = flow.Claim(seconds: "90", reserve: "30")
+            let checkout = Path.Combine(run, "checkout")
+            let outside = Path.Combine(flow.Temp.Root, "outside-secret")
+            File.WriteAllText(outside, "synthetic-private-value")
+            let mcp = Path.Combine(profile, "mcp.py")
+            File.Copy(Path.Combine(directory, "mcp.py"), mcp)
+            config += "\n[mcp_servers.fixture]\ncommand = \"/usr/bin/python3\"\nargs = [" + JsonValue.Create(mcp)
+                .ToJsonString() + ", " + JsonValue.Create(checkout).ToJsonString() + ", " + JsonValue.Create(outside)
+                .ToJsonString() + "]\n"
+            File.WriteAllText(Path.Combine(profile, "config.toml"), config)
+            Check.SaveJson(Path.Combine(directory, "fixture.json"), Check.Map("checkout", checkout, "run", run))
+            let result = TestProcess.Run(binary, []string{"work", "--run", run, "--yes"}, flow.Temp.Env)
+            File.WriteAllText(Path.Combine(directory, "result.txt"), result.Output + result.Error)
+            for name in[]string{"events.jsonl", "stderr.log", "run.json"} {
+                if File.Exists(Path.Combine(run, name)) {
+                    File.Copy(Path.Combine(run, name), Path.Combine(directory, name))
+                }
+            }
+            Check.Success(result)
+            Check.That(
+                File.ReadAllText(Path.Combine(checkout, "custom.txt")) == "configured tool worked",
+                "Configured Codex MCP did not run"
+            )
+            Check.That(!File.Exists(Path.Combine(checkout, ".git/private-marker")), "Private Git metadata escaped")
+            Check.That(File.ReadAllText(outside) == "synthetic-private-value", "Codex changed outside data")
+            flow.Publish(run)
+            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            Console.WriteLine("PASS native Codex configured MCP, sandbox, verification and draft submission")
+        }
+
         internal func All(binary string, launcher string, native string, standalone string) {
             using let flow = NativeFlow(binary)
             flow.Initialize()
-            let node = Environment.GetEnvironmentVariable("TOKATE_PROOF_NODE") ??
+            guard let node = Environment.GetEnvironmentVariable("TOKATE_PROOF_NODE") else {
                 throw Exception("Missing donor-local Node for installation proof")
-            let version = Environment.GetEnvironmentVariable("TOKATE_PROOF_VERSION") ??
+            }
+            guard let version = Environment.GetEnvironmentVariable("TOKATE_PROOF_VERSION") else {
                 throw Exception("Missing installed Codex version for installation proof")
+            }
             Check.Success(
                 TestProcess.Run(
                     "/bin/sh",

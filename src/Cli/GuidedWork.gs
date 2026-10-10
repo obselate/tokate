@@ -92,7 +92,6 @@ internal class GuidedWork {
                 "pi-root",
                 "node",
                 "claude-profile",
-                "sole-use"
             } {
                 args.Values.Remove("--" + key)
             }
@@ -153,22 +152,6 @@ internal class GuidedWork {
             DonorDefaults.NormalizePair(args)
             Startup.Check(args)
             if args.Need("harness") == "claude" {
-                args.Values["--claude-profile"] = WizardScreen.Read(
-                    "Claude Code profile",
-                    "Use a private, sole-use native-login profile for your personal Pro or Max subscription.",
-                    "Profile directory",
-                    args.Get("claude-profile", Path.Combine(LocalPaths.StateDirectory(), "claude-profile")),
-                    "A new directory opens native Claude sign-in. Mixed settings and API profiles are refused."
-                )
-                if WizardScreen.Choose(
-                    "Claude Code profile",
-                    "Confirm this profile is used only for Tokate donations.",
-                    []string{"Use this sole-use profile", "Cancel"}
-                ) != 1 {
-                    throw OperationCanceledException("Cancelled")
-                }
-                args.Values["--sole-use"] = "true"
-                ClaudeCode.Runtime(args, login: true)
                 let models = List[string]()
                 let efforts = List[string]()
                 labels.Clear()
@@ -328,21 +311,6 @@ internal class GuidedWork {
             }
         }
 
-        private func Network(args Args, policy Policy) {
-            args.Values.Remove("--allow-network")
-            if !J.Bool(policy.Value, "allow_network") {
-                return
-            }
-            if WizardScreen.Choose(
-                "Project network",
-                "Model connectivity is separate. Project commands may need network access to download build dependencies.",
-                []string{"Keep project commands offline", "Allow project command network access"},
-                selected: 1
-            ) == 2 {
-                args.Values["--allow-network"] = "true"
-            }
-        }
-
         internal func Fill(args Args) {
             if args.Help || args.Get("source") == "external" || !DonorSelection.Interactive(args) || args.Get(
                 "run"
@@ -384,9 +352,6 @@ internal class GuidedWork {
             if args.Get("profile") == "" && args.Get("harness") == "" && args.Get("model") == "" {
                 Profile(args, policy)
             }
-            if args.Get("allow-network") == "" {
-                Network(args, policy)
-            }
             DonorSelection.ApplyDefaults(args)
             while true {
                 Terminal.Step("Checking the selected coding tool...")
@@ -409,9 +374,7 @@ internal class GuidedWork {
                     "\nChecks   " +
                     (reserve / 60.0).ToString("0.##") +
                     " minutes reserved" +
-                    "\nNetwork  " +
-                    (args.Get("allow-network") == "true" ? "Project commands allowed": "Project commands offline") +
-                    "\n\n" +
+                    "\nYour configured tools and subagents remain enabled.\n\n" +
                     (
                     J.Text(
                         selection,
@@ -422,15 +385,9 @@ internal class GuidedWork {
                     J.Text(selection, "availability")
                 let options = args.Command == "claim" ? []string{
                     "Reserve for later, without starting AI",
-                    "Change tool or time limit",
-                    "Change network permission"
+                    "Change tool or time limit"
                 }:
-                []string{
-                    "Start donation",
-                    "Change tool or time limit",
-                    "Reserve for later, without starting AI",
-                    "Change network permission"
-                }
+                []string{"Start donation", "Change tool or time limit", "Reserve for later, without starting AI"}
                 let action = WizardScreen.Choose(
                     "Review donation",
                     body,
@@ -456,8 +413,6 @@ internal class GuidedWork {
                     if change == 2 {
                         Budget(args, J.Number(policy.Value, "max_seconds"), allowUnlimited)
                     }
-                } else {
-                    Network(args, policy)
                 }
             }
         }

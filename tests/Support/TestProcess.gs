@@ -97,9 +97,13 @@ internal class TestProcess {
         }
 
         internal func Collected(identity string, message string) {
+            Check.That(!Alive(identity), message)
+        }
+
+        internal func Alive(identity string) bool {
             let pid = ResolveHostPid(identity)
             let stat = pid == "" ? nil: Status("/proc/" + pid + "/stat")
-            Check.That(stat == nil || Fields(stat)[0] == "Z", message)
+            return stat != nil && Fields(stat)[0] != "Z"
         }
 
         internal func HeartbeatStopped(path string, milliseconds int32, message string) {

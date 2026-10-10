@@ -13,14 +13,7 @@ import System.Text.Json.Nodes
 
 internal partial class NativeFlow : NativeFixture {
     shared {
-        internal let SerialGroups[]string = []string{
-            "ReadTraffic",
-            "GitEvidence",
-            "TemporaryIsolation",
-            "TemporaryHomeRejected",
-            "VerificationBoundary",
-            "DisposableVerification"
-        }
+        internal let SerialGroups[]string = []string{"ReadTraffic", "GitEvidence", "DisposableVerification"}
 
         internal func All(binary string, selected string = "", parallel bool = false) {
             var matched bool
@@ -38,11 +31,6 @@ internal partial class NativeFlow : NativeFixture {
                 TestCase[NativeFlow]("EmptyProtectedPaths", async (value NativeFlow) -> value.EmptyProtectedPaths()),
                 TestCase[NativeFlow]("GitEvidence", async (value NativeFlow) -> value.GitEvidence()),
                 TestCase[NativeFlow]("RepositoryConfig", async (value NativeFlow) -> value.RepositoryConfig()),
-                TestCase[NativeFlow]("TemporaryIsolation", async (value NativeFlow) -> value.TemporaryIsolation()),
-                TestCase[NativeFlow](
-                    "TemporaryHomeRejected",
-                    async (value NativeFlow) -> value.TemporaryHomeRejected()
-                ),
                 TestCase[NativeFlow]("OutputBoundary", async (value NativeFlow) -> value.OutputBoundary()),
                 TestCase[NativeFlow]("ToolAuthentication", async (value NativeFlow) -> value.ToolAuthentication()),
                 TestCase[NativeFlow]("ConditionalClaim", async (value NativeFlow) -> value.ConditionalClaim()),
@@ -67,7 +55,6 @@ internal partial class NativeFlow : NativeFixture {
                     "DisposableVerification",
                     async (value NativeFlow) -> DisposableVerificationChecks.All(binary)
                 ),
-                TestCase[NativeFlow]("VerificationBoundary", async (value NativeFlow) -> value.VerificationBoundary()),
                 TestCase[NativeFlow]("VerificationNetwork", async (value NativeFlow) -> value.VerificationNetwork()),
             } {
                 let name = test.Name

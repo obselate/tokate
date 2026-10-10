@@ -11,84 +11,47 @@ import System.Text.RegularExpressions
 
 internal class ClaudeCode {
     shared {
-        internal func ManagedPolicy() {
-            let status = [256]byte
-            if RuntimeMetadataStat(-100, "/etc/claude-code", 256, 1, status) == 0 {
-                throw Exception(
-                    "Claude managed-policy presence is unsupported; no policy contents were read and no profile was exposed."
-                )
+        private func Profile(path string) string {
+            let profile = LocalPaths.RuntimePath(path)
+            let canonical = LocalPaths.CanonicalPath(profile)
+            if canonical == "/" || canonical == Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) {
+                throw Exception("Select a Claude configuration directory, not the entire home or filesystem")
             }
-            if Marshal.GetLastPInvokeError() != 2 {
-                throw Exception("Cannot inspect Claude managed-policy metadata; no profile was exposed.")
-            }
+            return profile
         }
 
-        private func EnvironmentProfile() {
-            for key in Environment.GetEnvironmentVariables().Keys {
-                let name = key.ToString() ?? ""
-                if name.StartsWith("ANTHROPIC_") || name.StartsWith("CLAUDE_CODE_USE_") ||
-                    name == "CLAUDE_CODE_OAUTH_TOKEN" ||
-                    name == "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR" ||
-                    name == "CLAUDE_CONFIG_DIR" ||
-                    name.StartsWith("AWS_") || name.StartsWith("GOOGLE_") || name.StartsWith("AZURE_") {
+        private func DefaultProfile() string -> Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".claude"
+        )
+
+        private let RequiredFlags[]string = []string{
+            "--permission-mode",
+            "--permission-prompts",
+            "--settings",
+            "--model",
+            "--effort",
+            "--output-format",
+            "--verbose",
+            "--print"
+        }
+
+        private func BypassPolicy() {
+            let files = List[string]{"/etc/claude-code/managed-settings.json"}
+            if Directory.Exists("/etc/claude-code/managed-settings.d") {
+                files.AddRange(Directory.GetFiles("/etc/claude-code/managed-settings.d", "*.json"))
+            }
+            for file in files {
+                if !File.Exists(file) {
+                    continue
+                }
+                let settings = J.Parse(File.ReadAllText(file))
+                if J.Text(J.Get(settings, "permissions"), "disableBypassPermissionsMode") == "disable" {
                     throw Exception(
-                        "API, environment-token, cloud and mixed Claude profiles are unsupported. Use a sole-use native-login profile in a clean environment."
+                        "Claude managed settings disable bypassPermissions mode, which unattended Tokate runs require. No inference started."
                     )
                 }
             }
-        }
-
-        private func Profile(path string) string {
-            let profile = LocalPaths.DirectoryPath(path)
-            var parent = profile
-            while parent != "" {
-                let git = Path.Combine(parent, ".git")
-                if File.Exists(git) || Directory.Exists(git) {
-                    throw Exception("Keep the Claude login profile outside Git repositories")
-                }
-                parent = Path.GetDirectoryName(parent) ?? ""
-            }
-            if (
-                File.GetUnixFileMode(profile) & (
-                    UnixFileMode.GroupRead | UnixFileMode.GroupWrite |
-                    UnixFileMode.GroupExecute | UnixFileMode.OtherRead | UnixFileMode.OtherWrite |
-                    UnixFileMode.OtherExecute
-                )
-            ) != 0 {
-                throw Exception("Claude requires a private sole-use native-login profile directory.")
-            }
-            var count int32
-            for entry in Directory.EnumerateFileSystemEntries(profile) {
-                count++
-                let name = Path.GetFileName(entry)
-                let status = [256]byte
-                if count > 64 || RuntimeMetadataStat(-100, entry, 256, 1, status) != 0 {
-                    throw Exception("Cannot inspect Claude profile metadata; no profile was exposed.")
-                }
-                let kind = BitConverter.ToUInt16(status, 28) & 61440
-                if ((name == ".credentials.json" || name == ".claude.json") && kind == 32768) ||
-                    (
-                    Array.IndexOf(
-                        []string{
-                            "backups",
-                            "debug",
-                            ".cc-writes",
-                            "seed-admin",
-                            "session-env",
-                            "sessions",
-                            "shell-snapshots"
-                        },
-                        name
-                    ) >= 0 &&
-                        kind == 16384
-                ) {
-                    continue
-                }
-                throw Exception(
-                    "Claude profile contains unsupported configuration or reuse metadata; settings and credential contents were not inspected."
-                )
-            }
-            return profile
         }
 
         internal func Authentication(value JsonElement) JsonElement {
@@ -104,148 +67,95 @@ internal class ClaudeCode {
 
         internal func EnvironmentControls() Dictionary[string, string] -> map[string, string]{
             "DISABLE_AUTOUPDATER": "1",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            "CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL": "1",
-            "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
             "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "1",
-            "CLAUDE_CODE_SUBPROCESS_ENV_SCRUB": "1",
-            "CLAUDE_CODE_DISABLE_FAST_MODE": "1",
             "CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK": "1",
             "CLAUDE_CODE_DISABLE_MODEL_ACCESS_FALLBACK": "1",
             "CLAUDE_CODE_DISABLE_NONSTREAMING_FALLBACK": "1",
             "CLAUDE_CODE_MAX_RETRIES": "0",
-            "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES": "0",
-            "DISABLE_COMPACT": "1"
+            "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES": "0"
         }
 
-        internal func Settings(model string, network bool) JsonElement -> J.Parse(
-            J.Write(
-                map[string, Object?]{
-                    "disableAllHooks": true,
-                    "autoMemoryEnabled": false,
-                    "fastMode": false,
-                    "ultracode": false,
-                    "switchModelsOnFlag": false,
-                    "fallbackModel": []string{},
-                    "modelOverrides": map[string, Object?]{},
-                    "availableModels": []string{model},
-                    "sandbox": map[string, Object?]{
-                        "enabled": true,
-                        "failIfUnavailable": true,
-                        "allowUnsandboxedCommands": false,
-                        "autoAllowBashIfSandboxed": false,
-                        "excludedCommands": []string{},
-                        "filesystem": map[string, Object?]{
-                            "denyRead": []string{"/tokate-profile", "/tokate-control", "/tmp/tokate-agent"},
-                            "denyWrite": []string{"/tokate-profile", "/tokate-control", "/tmp/tokate-agent"}
-                        },
-                        "network": map[string, Object?]{
-                            "allowedDomains": network ? []string{"*"}: []string{},
-                            "strictAllowlist": true,
-                            "allowLocalBinding": false,
-                            "allowAllUnixSockets": false
-                        }
+        internal let ModelPattern string = "^claude-(?:(?:opus|sonnet|haiku)-5-5|fable-5(?:-1)?|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6)(?:-[0-9]{8})?$"
+
+        internal func Settings(profile string, models List[string]?) JsonElement {
+            let settings = map[string, Object?]{
+                "switchModelsOnFlag": false,
+                "fallbackModel": []string{},
+                "modelOverrides": map[string, Object?]{},
+                "permissions": map[string, Object?]{"blockReadsOutsideWorkingDirectories": true},
+                "sandbox": map[string, Object?]{
+                    "enabled": true,
+                    "failIfUnavailable": true,
+                    "allowUnsandboxedCommands": false,
+                    "autoAllowBashIfSandboxed": false,
+                    "excludedCommands": []string{},
+                    "filesystem": map[string, Object?]{"denyRead": []string{profile}, "denyWrite": []string{profile}},
+                    "network": map[string, Object?]{
+                        "allowedDomains": []string{"*"},
+                        "strictAllowlist": true,
+                        "allowLocalBinding": true,
+                        "allowAllUnixSockets": false
                     }
                 }
-            )
-        )
+            }
+            if let allowed = models {
+                settings["availableModels"] = allowed
+            }
+            return J.Parse(J.Write(settings))
+        }
 
-        internal func Invocation(model string, effort string, network bool)[]string -> []string{
-            "--restricted",
-            "--safe-mode",
-            "--setting-sources",
-            "",
-            "--strict-mcp-config",
-            "--mcp-config",
-            "{\"mcpServers\":{}}",
-            "--disable-slash-commands",
-            "--no-chrome",
-            "--tools",
-            "Read,Write,Edit,Bash",
-            "--allowedTools",
-            "Read,Write,Edit,Bash",
+        internal func Invocation(model string, effort string, profile string, models List[string]?)[]string -> []string{
             "--permission-mode",
-            "default",
+            "bypassPermissions",
             "--permission-prompts",
             "none",
             "--settings",
-            Settings(model, network).GetRawText(),
+            Settings(profile, models).GetRawText(),
             "--model",
             model,
             "--effort",
             effort,
-            "--no-session-persistence",
             "--output-format",
             "stream-json",
             "--verbose",
             "--print"
         }
 
-        internal func Boundary(binary string, profile string, checkout string)[]string {
-            ManagedPolicy()
+        internal func Command(binary string, profile string, checkout string)[]string {
             let repository = LocalPaths.DirectoryPath(checkout)
             for path in[]string{binary, profile} {
-                if path == repository || path.StartsWith(repository + "/") || repository.StartsWith(path + "/") {
+                let canonical = LocalPaths.CanonicalPath(path)
+                if LocalPaths.Within(canonical, repository) || LocalPaths.Within(repository, canonical) {
                     throw Exception("Claude runtime and profile must be outside the selected checkout.")
                 }
             }
-            let boundary = ClaudeBoundary.Start(true, "/tmp/tokate-agent", "/tmp/tokate-tools")
+            let command = Variables(profile)
+            command.Add(binary)
+            return command.ToArray()
+        }
+
+        private func Variables(profile string) List[string] {
+            let values = List[string]()
             for entry in EnvironmentControls() {
-                boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})
+                values.Add(entry.Key + "=" + entry.Value)
             }
-            boundary.AddRange(
-                []string{
-                    "--setenv",
-                    "CLAUDE_CONFIG_DIR",
-                    "/tokate-profile",
-                    "--ro-bind",
-                    binary,
-                    "/tokate-runtime/claude",
-                    "--bind",
-                    profile,
-                    "/tokate-profile"
-                }
-            )
-            ClaudeBoundary.Repository(boundary, repository)
-            boundary.AddRange([]string{"--", "/tokate-runtime/claude"})
-            return boundary.ToArray()
+            if profile != "" && profile != DefaultProfile() {
+                values.Add("CLAUDE_CONFIG_DIR=" + profile)
+            }
+            return values
         }
 
         private func Native(binary string, profile string, args[]string, budget RuntimeBudget) CommandResult {
-            ManagedPolicy()
-            let boundary = ClaudeBoundary.Start(false, "/tmp/tokate-agent", "/tmp/tokate-tools")
-            for entry in EnvironmentControls() {
-                boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})
-            }
-            boundary.AddRange(
-                profile == "" ? []string{"--dir", "/tokate-profile"}:
-                []string{"--bind", profile, "/tokate-profile"}
-            )
-            boundary.AddRange(
-                []string{
-                    "--setenv",
-                    "CLAUDE_CONFIG_DIR",
-                    "/tokate-profile",
-                    "--ro-bind",
-                    binary,
-                    "/tokate-runtime/claude",
-                    "--dir",
-                    "/tmp/standalone",
-                    "--chdir",
-                    "/tmp/standalone",
-                    "--",
-                    "/tokate-runtime/claude"
-                }
-            )
-            boundary.AddRange(args)
+            let command = Variables(profile)
+            command.Add(binary)
+            command.AddRange(args)
             return Commands.Run(
-                "/usr/bin/bwrap",
-                boundary.ToArray(),
+                LocalPaths.NeedSystemTool("env"),
+                command.ToArray(),
+                "/",
                 seconds: 30,
-                isolated: true,
                 strictOutput: true,
                 budget: budget,
-                pidNamespace: true,
                 cancellation: Gsharp.Concurrency.Chan[bool](1)
             )
         }
@@ -261,14 +171,20 @@ internal class ClaudeCode {
                     continue
                 }
                 let value = RequestData.Parse(line, 1024 * 1024)
+                if J.Get(value, "parent_tool_use_id").ValueKind == JsonValueKind.String {
+                    continue
+                }
                 let type = J.Text(value, "type")
-                if directory != "" && completed != 0 {
+                if directory != "" &&
+                    completed != 0 &&
+                    (
+                    type == "assistant" || type == "result" || (type == "system" && J.Text(value, "subtype") == "init")
+                ) {
                     throw Exception("Claude emitted events after completion")
                 }
                 if type == "system" && J.Text(value, "subtype") == "init" {
                     started++
                     ReportField(reports, value, "model", model)
-                    ReportField(reports, value, "permissionMode", "default")
                     ReportField(reports, value, "effort", effort)
                     ReportField(reports, value, "effortLevel", effort)
                 }
@@ -299,14 +215,11 @@ internal class ClaudeCode {
                     }
                     let models = J.Get(value, "modelUsage")
                     if models.ValueKind == JsonValueKind.Object {
+                        let usageByModel = map[string, Object?]{}
                         for usageModel in models.EnumerateObject() {
-                            if usageModel.Name != model {
-                                throw Exception(
-                                    "Claude reported a conflicting usage model; no retry or fallback is allowed."
-                                )
-                            }
-                            reports["model_usage"] = NumericUsage(usageModel.Value)
+                            usageByModel[usageModel.Name] = NumericUsage(usageModel.Value)
                         }
+                        reports["model_usage"] = usageByModel
                     }
                 }
             }
@@ -378,29 +291,14 @@ internal class ClaudeCode {
             return UTF8Encoding(false, true).GetString(bytes)
         }
 
-        internal func Runtime(
-            args Args,
-            budget RuntimeBudget? = nil,
-            authenticate bool = true,
-            login bool = false
-        ) JsonElement {
-            ManagedPolicy()
-            EnvironmentProfile()
-            if args.Get("sole-use") != "true" {
-                throw Exception(
-                    "Confirm a clean sole-use native-login profile with --sole-use; mixed profile reuse is unsupported."
-                )
-            }
+        internal func Runtime(args Args, budget RuntimeBudget? = nil, authenticate bool = true) JsonElement {
             if !OperatingSystem.IsLinux() ||
                 System
                 .Runtime
                 .InteropServices
                 .RuntimeInformation
-                .ProcessArchitecture != Architecture.X64 ||
-                !File.Exists("/usr/bin/bwrap") || !File.Exists("/usr/bin/setsid") || !File.Exists("/usr/bin/socat") {
-                throw Exception(
-                    "Claude capability checks require Linux x64, bubblewrap, socat and setsid; no host fallback or installation."
-                )
+                .ProcessArchitecture != Architecture.X64 {
+                throw Exception("Claude capability checks require Linux x64; no host fallback or installation.")
             }
             let binary = LocalPaths.CanonicalPath(
                 LocalPaths.Harness("claude", args.Get("harness-path", args.Get("claude")))
@@ -420,30 +318,10 @@ internal class ClaudeCode {
                 throw Exception("Claude native version interface failed; no inference started.")
             }
             let help = Native(binary, "", []string{"--help"}, limit)
-            let required = []string{
-                "--restricted",
-                "--safe-mode",
-                "--setting-sources",
-                "--strict-mcp-config",
-                "--mcp-config",
-                "--disable-slash-commands",
-                "--no-chrome",
-                "--tools",
-                "--allowedTools",
-                "--permission-mode",
-                "--permission-prompts",
-                "--settings",
-                "--model",
-                "--effort",
-                "--no-session-persistence",
-                "--output-format",
-                "--verbose",
-                "--print"
-            }
             if help.Code != 0 || help.Truncated || help.ReadFailed {
                 throw Exception("Claude native help interface failed; no inference started.")
             }
-            for flag in required {
+            for flag in RequiredFlags {
                 if !Regex.IsMatch(help.Output, "(?m)^ {0,4}(?:-[A-Za-z], *)?" + Regex.Escape(flag) + "(?:[ ,<]|$)") {
                     throw Exception(
                         "Selected " + version.Output.Trim() +
@@ -451,49 +329,30 @@ internal class ClaudeCode {
                             binary +
                             " is missing " +
                             flag +
-                            ". Update Claude Code through its installation method or select --harness-path FILE. No sign-in or inference started."
+                            ". Update Claude Code through its installation method or select --harness-path FILE. No inference started."
                     )
                 }
             }
-            if login {
-                Terminal.Step("Using " + version.Output.Trim() + " at " + binary)
-            }
-            let requestedProfile = LocalPaths.RuntimePath(args.Need("claude-profile"))
-            if login && !Directory.Exists(requestedProfile) {
-                Directory.CreateDirectory(
-                    requestedProfile,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            BypassPolicy()
+            let requestedProfile = LocalPaths.RuntimePath(
+                args.Get("claude-profile", Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? DefaultProfile())
+            )
+            if !Directory.Exists(requestedProfile) {
+                throw CliFailure(
+                    "authentication_required",
+                    "Sign in with Claude Code, then retry. Tokate uses your existing Claude profile."
                 )
             }
             let profile = Profile(requestedProfile)
             args.Values["--claude-profile"] = profile
             var authentication = JsonElement{}
             if authenticate {
-                var status = Native(
-                    binary,
-                    profile,
-                    []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
-                    limit
-                )
-                if login && !status.Truncated && !status.ReadFailed && (status.Code == 0 || status.Code == 1) {
-                    let value = RequestData.Parse(status.Output, 16384)
-                    if J.Get(value, "loggedIn").ValueKind == JsonValueKind.False && J.Text(
-                        value,
-                        "authMethod"
-                    ) == "none" &&
-                        J.Text(value, "apiProvider") == "firstParty" {
-                        WizardScreen.Close()
-                        Login(binary, profile)
-                        status = Native(
-                            binary,
-                            profile,
-                            []string{"--restricted", "--safe-mode", "auth", "status", "--json"},
-                            RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 30)
-                        )
-                    }
-                }
+                let status = Native(binary, profile, []string{"auth", "status"}, limit)
                 if status.Code != 0 || status.Truncated || status.ReadFailed {
-                    throw Exception("Claude standalone restricted safe-mode auth status failed; no inference started.")
+                    throw CliFailure(
+                        "authentication_required",
+                        "Claude auth status did not confirm a login. Sign in with Claude Code, then retry."
+                    )
                 }
                 authentication = Authentication(RequestData.Parse(status.Output, 16384))
             }
@@ -501,52 +360,14 @@ internal class ClaudeCode {
                 J.Write(
                     map[string, Object?]{
                         "version": version.Output.Trim(),
-                        "auth_status": authenticate ? authentication: J.Parse("null"),
-                        "required_interfaces": required
+                        "auth_status": authenticate ? authentication: J.Parse("null")
                     }
                 )
             )
         }
 
-        private func Login(binary string, profile string) {
-            ManagedPolicy()
-            let boundary = ClaudeBoundary.Start(true, "/tmp/tokate-agent", "/tmp/tokate-tools")
-            for entry in EnvironmentControls() {
-                boundary.AddRange([]string{"--setenv", entry.Key, entry.Value})
-            }
-            boundary.AddRange(
-                []string{
-                    "--setenv",
-                    "CLAUDE_CONFIG_DIR",
-                    "/tokate-profile",
-                    "--ro-bind",
-                    binary,
-                    "/tokate-runtime/claude",
-                    "--bind",
-                    profile,
-                    "/tokate-profile",
-                    "--dir",
-                    "/tmp/standalone",
-                    "--chdir",
-                    "/tmp/standalone",
-                    "--",
-                    "/tokate-runtime/claude",
-                    "--restricted",
-                    "--safe-mode",
-                    "auth",
-                    "login"
-                }
-            )
-            if Installation.Execute("/usr/bin/bwrap", boundary.ToArray()) != 0 {
-                throw Exception("Claude sign-in did not complete; no inference started")
-            }
-        }
-
         internal func Pair(model string, effort string) bool ->
-        Regex.IsMatch(
-            model,
-            "^claude-(?:(?:opus|sonnet|haiku)-5-5|fable-5(?:-1)?|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6)(?:-[0-9]{8})?$"
-        ) &&
+        Regex.IsMatch(model, ModelPattern) &&
             (
             effort == "low" ||
                 effort == "medium" ||
@@ -569,7 +390,7 @@ internal class ClaudeCode {
             if !policy.AllowsTool("claude", "anthropic") {
                 throw Exception("Claude/anthropic is not allowed by the repository policy; no inference started.")
             }
-            policy.Validate(model, effort, 1, args.Get("allow-network") == "true")
+            policy.Validate(model, effort, 1)
             if !Pair(model, effort) {
                 throw Exception("Unsupported native Claude model/effort pair; no inference started.")
             }
@@ -583,17 +404,21 @@ internal class ClaudeCode {
                 "auth_status": J.Get(runtime, "auth_status"),
                 "policy_hash": policy.Digest,
                 "requested": map[string, Object?]{"model": model, "effort": effort},
-                "invocation": Invocation(model, effort, args.Get("allow-network") == "true"),
+                "invocation": Invocation(
+                    model,
+                    effort,
+                    args.Need("claude-profile"),
+                    policy.AllowedModels(ModelPattern)
+                ),
                 "environment_controls": environment,
-                "required_interfaces": J.Get(runtime, "required_interfaces"),
                 "managed_execution_enabled": true,
                 "limitations": []string{
                     "Local authentication schema and required interfaces checked; remote entitlement and model availability are not proven.",
-                    "Native file restrictions and Bash sandboxing operate inside the whole-process boundary. Native reports are not remote identity attestations."
+                    "File restrictions and Bash sandboxing are Claude Code's own. Native reports are not remote identity attestations."
                 }
             }
             if args.Get("path") != "" {
-                result["configured_boundary"] = Boundary(
+                result["configured_command"] = Command(
                     args.Need("harness-path"),
                     args.Need("claude-profile"),
                     args.Need("path")

@@ -26,7 +26,6 @@ internal class DonorDefaults {
                     "node",
                     "harness-path",
                     "claude-profile",
-                    "sole-use"
                 } {
                     if args.Get(key) == "" && J.Text(saved, key) != "" {
                         args.Values["--" + key] = J.Text(saved, key)
@@ -87,21 +86,19 @@ internal class DonorDefaults {
                 }
                 return JsonElement{}
             }
-            RequestData.Keys(
-                value,
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use"
-            )
+            if J.Get(value, "sole-use").ValueKind != JsonValueKind.Undefined {
+                value = J.Parse(
+                    J.Write(J.Select(value, "harness,provider,model,effort,endpoint,pi-root,node,harness-path"))
+                )
+            }
+            RequestData.Keys(value, "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile")
             for field in value.EnumerateObject() {
                 if field.Value.ValueKind != JsonValueKind.String {
                     throw Exception("Donor profile fields must be strings")
                 }
             }
-            if (J.Text(value, "claude-profile") != "" || J.Text(value, "sole-use") != "") &&
-                (
-                J.Text(value, "harness") != "claude" ||
-                    (J.Text(value, "sole-use") != "" && J.Text(value, "sole-use") != "true")
-            ) {
-                throw Exception("Claude profile options require the claude harness and sole-use confirmation")
+            if J.Text(value, "claude-profile") != "" && J.Text(value, "harness") != "claude" {
+                throw Exception("Claude profile options require the claude harness")
             }
             if J.Text(value, "claude-profile") != "" {
                 LocalPaths.RuntimePath(J.Text(value, "claude-profile"))
@@ -110,7 +107,7 @@ internal class DonorDefaults {
                 .ValueKind == JsonValueKind.Undefined
             RequestData.Token(J.Text(value, "harness"))
             if partial && J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "" {
-                let fields = J.Select(value, "harness,harness-path,claude-profile,sole-use")
+                let fields = J.Select(value, "harness,harness-path,claude-profile")
                 fields["provider"] = "anthropic"
                 value = J.Parse(J.Write(fields))
             }
@@ -135,7 +132,7 @@ internal class DonorDefaults {
                         }
                     }
                 } else {
-                    RequestData.Keys(value, "harness,provider,harness-path,claude-profile,sole-use")
+                    RequestData.Keys(value, "harness,provider,harness-path,claude-profile")
                 }
                 return value
             }
@@ -153,7 +150,7 @@ internal class DonorDefaults {
                 }
             } else {
                 RequestData.Token(J.Text(value, "model"))
-                RequestData.Keys(value, "harness,provider,model,effort,harness-path,claude-profile,sole-use")
+                RequestData.Keys(value, "harness,provider,model,effort,harness-path,claude-profile")
             }
             if J.Text(value, "harness-path") != "" {
                 LocalPaths.RuntimePath(J.Text(value, "harness-path"))
@@ -260,19 +257,14 @@ internal class DonorDefaults {
                 }
                 let previous = Read(profile, allowMissing: true)
                 let choice = J.Text(previous, "harness") == harness && J.Text(previous, "provider") == provider ?
-                J.Select(
-                    previous,
-                    "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,sole-use"
-                ):
+                J.Select(previous, "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile"):
                 map[string, Object?]{"harness": harness}
                 if provider != "" {
                     choice["provider"] = provider
                 }
-                for key in[]string{"harness-path", "pi-root", "node", "endpoint", "claude-profile", "sole-use"} {
+                for key in[]string{"harness-path", "pi-root", "node", "endpoint", "claude-profile"} {
                     if args.Get(key) != "" {
-                        choice[key] = key == "sole-use" ? args.Get(key): key == "endpoint" ? PiBoundary.Endpoint(
-                            args.Get(key)
-                        ):
+                        choice[key] = key == "endpoint" ? PiBoundary.Endpoint(args.Get(key)):
                         LocalPaths.RuntimePath(args.Get(key))
                     }
                 }
@@ -296,9 +288,9 @@ internal class DonorDefaults {
                     }
                 }
             }
-            for key in[]string{"claude-profile", "sole-use"} {
+            for key in[]string{"claude-profile"} {
                 if args.Get(key) != "" {
-                    choice[key] = key == "claude-profile" ? LocalPaths.RuntimePath(args.Get(key)): args.Get(key)
+                    choice[key] = LocalPaths.RuntimePath(args.Get(key))
                 }
             }
             if args.Get("harness-path") != "" {

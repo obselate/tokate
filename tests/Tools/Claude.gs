@@ -6,48 +6,13 @@ import System.Text
 
 internal class ClaudeTool {
     shared {
-        internal let LegacyMarker string = "TOKATE_LEGACY_CLAUDE"
-
-        private func Legacy() bool {
-            using let file = File.OpenRead(Environment.ProcessPath ?? throw Exception("Missing test executable"))
-            file.Seek(-LegacyMarker.Length, SeekOrigin.End)
-            using let reader = BinaryReader(file)
-            return Encoding.UTF8.GetString(reader.ReadBytes(LegacyMarker.Length)) == LegacyMarker
-        }
-
         internal func Run(args[]string) int32 {
-            let profile = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? ""
-            let legacy = Legacy()
-            if args.Length == 1 && (args[0] == "--version" || args[0] == "--help") {
-                Check.That(
-                    !File.Exists(Path.Combine(profile, ".credentials.json")),
-                    "Version/help exposed a login profile"
-                )
-            }
+            let profile = Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR") ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".claude"
+            )
             if args.Length == 1 && args[0] == "--version" {
-                Console.WriteLine(legacy ? "2.0.0 (Claude Code)": "100.0.0 (Claude Code)")
-                return 0
-            }
-            if legacy && (args.Length != 1 || args[0] != "--help") {
-                throw Exception("Legacy Claude received authentication or inference before capability refusal")
-            }
-            if String.Join(" ", args) == "--restricted --safe-mode auth login" {
-                File.WriteAllText(Path.Combine(profile, ".claude.json"), "normal")
-                File.WriteAllText(
-                    Path.Combine(profile, ".credentials.json"),
-                    Check.Map(
-                        "loggedIn",
-                        true,
-                        "authMethod",
-                        "claude.ai",
-                        "apiProvider",
-                        "firstParty",
-                        "subscriptionType",
-                        "pro"
-                    )
-                        .ToJsonString()
-                )
-                Console.WriteLine("Native fixture sign-in complete")
+                Console.WriteLine("100.0.0 (Claude Code)")
                 return 0
             }
             if args.Length == 1 && args[0] == "--help" {
@@ -71,9 +36,7 @@ internal class ClaudeTool {
                     "--verbose",
                     "--print"
                 } {
-                    if !legacy || flag != "--restricted" {
-                        Console.WriteLine("  " + flag + " synthetic documented interface")
-                    }
+                    Console.WriteLine("  " + flag + " synthetic documented interface")
                 }
                 return 0
             }
@@ -85,8 +48,17 @@ internal class ClaudeTool {
                 let model = args[Array.IndexOf(args, "--model") + 1]
                 let effort = args[Array.IndexOf(args, "--effort") + 1]
                 Check.That(
-                    Array.IndexOf(args, "--restricted") >= 0 && Array.IndexOf(args, "--safe-mode") >= 0,
-                    "Managed Claude lost native restrictions"
+                    Array.IndexOf(args, "--restricted") < 0 && Array.IndexOf(args, "--safe-mode") < 0 && Array.IndexOf(
+                        args,
+                        "--tools"
+                    ) < 0 &&
+                        Array.IndexOf(args, "--strict-mcp-config") < 0,
+                    "Managed Claude disabled donor configuration or tools"
+                )
+                let settings = Check.Json(args[Array.IndexOf(args, "--settings") + 1])
+                Check.That(
+                    (settings["availableModels"]?.ToJsonString() ?? "").Contains("\"" + model + "\""),
+                    "Managed Claude settings omitted the owner's allowed models"
                 )
                 Check.That(
                     Environment.GetEnvironmentVariable("GH_TOKEN") == nil && Environment.GetEnvironmentVariable(
@@ -118,6 +90,17 @@ internal class ClaudeTool {
                     Check.Map(
                         "type",
                         "assistant",
+                        "parent_tool_use_id",
+                        "configured-agent",
+                        "message",
+                        Check.Map("model", "claude-haiku-5-5", "stop_reason", "end_turn")
+                    )
+                        .ToJsonString()
+                )
+                Console.WriteLine(
+                    Check.Map(
+                        "type",
+                        "assistant",
                         "message",
                         Check.Map("model", mode == "conflict" ? "claude-sonnet-4-6": model, "stop_reason", "end_turn")
                     )
@@ -135,7 +118,14 @@ internal class ClaudeTool {
                             "result",
                             "Claude fixture completed.",
                             "usage",
-                            Check.Map("input_tokens", 12, "output_tokens", 3, "cache_read_input_tokens", 4)
+                            Check.Map("input_tokens", 12, "output_tokens", 3, "cache_read_input_tokens", 4),
+                            "modelUsage",
+                            Check.Map(
+                                model,
+                                Check.Map("inputTokens", 10),
+                                "claude-haiku-5-5",
+                                Check.Map("inputTokens", 2)
+                            )
                         )
                             .ToJsonString()
                     )
@@ -143,8 +133,8 @@ internal class ClaudeTool {
                 return 0
             }
             Check.That(
-                String.Join(" ", args) == "--restricted --safe-mode auth status --json",
-                "Auth status was not standalone restricted safe mode"
+                String.Join(" ", args) == "auth status",
+                "Tokate must only inspect native authentication, never start its own login flow"
             )
             Check.That(
                 !Directory.Exists(Path.Combine(Directory.GetCurrentDirectory(), ".git")),

@@ -12,7 +12,7 @@ model services have their own data policies.
 | GitHub | Issue requests, coordination state, donor/tool declarations, commits, draft PRs, public summaries and receipts. |
 | Selected harness and model service | Approved task, owner instructions and repository context used during coding. |
 | Selected Pi endpoint | Local-model inference requests. A loopback endpoint may itself contact other services. |
-| Command destinations | Repository commands can use the network only when owner policy and donor consent both permit it. |
+| Command destinations | Harness tools, repository commands and verification have network access. |
 
 PR summaries come from a dedicated validated public artifact, not private reports,
 prompts or raw logs. Tool identity, usage and local check declarations are not remote
@@ -26,8 +26,8 @@ GitHub operations use `gh` and its credential helper. Codex and Claude Code own
 their native logins.
 Tokate forwards only specific authentication requirements to those host tools.
 It does not read credential files, mixed configuration or whole environments to
-infer model defaults. Pi receives generated model settings and an empty auth profile.
-The public `tokate-no-auth` value used for its loopback endpoint is not a credential.
+infer model defaults. Pi supplies nonsecret model metadata through its SDK and
+runs its normal CLI with the selected configuration.
 
 Host tools are trusted programs with their own file access. Narrow child environments
 are not whole-program isolation. Custom proxies, certificates and home-only build
@@ -35,22 +35,23 @@ caches may need system setup. Tokate does not expose arbitrary environment passt
 
 ## Execution boundaries
 
-Managed repository commands and independent verification use Linux isolation.
-Unsupported sandbox controls fail before work instead of falling back to host execution.
-Codex remains a trusted host harness. Pi's SDK runs inside a separate bubblewrap
-boundary with its selected runtime mounted read-only, private temporary storage,
-constrained file/shell tools, and no repository extensions, skills or automatic retries.
-Claude runs inside a separate whole-process boundary. Its native restricted file
-tools stay in the checkout. Its Bash sandbox blocks profile and control access,
-with no unsandboxed fallback. Only the trusted native CLI receives its sole-use
-login profile, which also retains native runtime state. Repository customizations and optional model fallbacks are disabled.
+Tokate does not sandbox harnesses or verification. Codex, Claude and Pi run as your
+own processes with your configuration, home and `PATH`. Tokate passes a Codex
+permission profile and Claude sandbox settings, and each harness enforces its own
+native sandboxing. Pi has no extra isolation; run local models and harnesses in
+podman or similar if you want it. Tokate wraps commands in `setpriv` and `unshare` only to
+collect descendants on timeout, cancellation or when Tokate itself is killed. Configured extensions can access the
+selected profile, including its credentials. Only use configurations and extensions
+you trust. Native project-trust settings still apply.
+The harness and its tools always have network access. Remote services reached
+through tools are outside the client sandbox.
 Local interface checks and synthetic protocol tests do not attest remote model
 identity, effective effort or subscription entitlement.
 
-Verification runs in a disposable candidate copy. Ordered checks share that copy.
-They cannot write the saved checkout or Git metadata. Host credentials, sibling runs
-and control files are outside the verification mounts. Command network access needs
-both owner permission and donor opt-in. Inference connectivity is separate.
+Owner verification runs directly in a disposable copy of the candidate under `/tmp`
+with a minimal environment (`PATH`, `HOME`, `LANG`; no GitHub or OpenAI credentials).
+Ordered checks share that copy. Verification has network access so dependency
+installs work, and its commands are trusted host programs.
 
 Tokate does not sandbox coding done through external tools. The kernel, installed
 tools and selected runtimes remain trusted. There are no CPU, RAM or disk quotas.

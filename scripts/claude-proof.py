@@ -38,10 +38,12 @@ def run(command, seconds=30):
                           env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': '/tmp/home'})
 
 
-def gate(root, extra=(), success=True, profile=None):
+def gate(root, extra=(), success=True, profile=None, default_profile=False):
     command = ['/tokate-control/tokate', 'claude-capabilities', '--claude', '/tokate-control/claude',
-               '--claude-profile', str(profile or root / 'profile'), '--sole-use', '--model', MODEL, '--effort', EFFORT,
+               '--model', MODEL, '--effort', EFFORT,
                '--policy', str(POLICY), '--json', *extra]
+    if not default_profile:
+        command += ['--claude-profile', str(profile or root / 'profile')]
     result = run(command)
     require((result.returncode == 0) == success, 'Native capability gate gave an unexpected result: ' + result.stderr[:1000])
     envelope = json.loads(result.stdout)
@@ -81,8 +83,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         require(body.get('model') == MODEL, 'Native CLI remapped the exact model')
         require(body.get('output_config', {}).get('effort') == EFFORT, 'Native CLI did not request the selected effort')
         names = {tool['name'] for tool in body.get('tools', [])}
-        require({'Read', 'Write', 'Bash'} <= names and names <= {'Read', 'Write', 'Edit', 'Bash', 'EndConversation'},
-                'Native CLI enabled unexpected automatic tools')
+        require({'Read', 'Write', 'Bash', 'mcp__fixture__marker'} <= names,
+                'Native CLI lost its built-in or configured tools')
         results = [block for message in body['messages'] if isinstance(message.get('content'), list)
                    for block in message['content'] if block.get('type') == 'tool_result']
         server.tool_results = results
@@ -96,7 +98,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             tool = ('Bash', {'command': 'printf started > lifecycle.txt; (while true; do printf x >> heartbeat.txt; sleep 0.1; done) & wait',
                              'timeout': 30000})
         else:
-            steps = [('Read', {'file_path': str(server.root / 'checkout/input.txt')}),
+            steps = [('mcp__fixture__marker', {}), ('Read', {'file_path': str(server.root / 'checkout/input.txt')}),
                      ('Write', {'file_path': str(server.root / 'checkout/output.txt'), 'content': 'native fixture write\n'}),
                      ('Bash', {'command': "printf progress > command.txt; sh -c 'printf helper > helper.txt'"}),
                      ('Bash', {'command': f"curl --noproxy '' --max-time 3 -fsS http://localhost:{server.server_port}/command"})]
@@ -128,10 +130,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
-def owned_case(root, network, case):
+def owned_case(root, case):
     checkout = root / 'checkout'
-    data = gate(root, ['--path', str(checkout), *(['--allow-network'] if network else [])])
-    if case == 'denied':
+    data = gate(root, ['--path', str(checkout)])
+    if case == 'permitted':
         print('Native Claude tested version: ' + data['version'], flush=True)
     require(data['managed_execution_enabled'] is True, 'Managed capability is missing')
     require(data['auth_status'] == {'loggedIn': True, 'authMethod': 'claude.ai', 'apiProvider': 'firstParty', 'subscriptionType': 'pro'},
@@ -139,34 +141,21 @@ def owned_case(root, network, case):
     server = Fixture(root, case)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    boundary = data['configured_boundary']
-    require(all(flag in boundary for flag in ['--unshare-user', '--unshare-pid', '--unshare-ipc',
-                                               '--unshare-uts', '--clearenv', '--die-with-parent']),
-            'Whole-process boundary lost required isolation controls')
-    mounts = [(word, boundary[index + 2]) for index, word in enumerate(boundary)
-              if word in ('--bind', '--ro-bind', '--dev-bind')]
-    require({target for mode, target in mounts if mode != '--ro-bind'} == {str(checkout), '/tokate-profile'},
-            'Whole-process boundary exposed an extra writable host path')
-    allowed = {'/usr/bin', '/usr/lib', '/usr/share', '/bin', '/lib', '/lib64', '/etc/ld.so.cache',
-               '/etc/nsswitch.conf', '/etc/hosts', '/etc/resolv.conf', '/etc/ssl/cert.pem',
-               '/etc/ssl/certs', '/etc/pki/tls/certs', '/etc/pki/ca-trust/extracted', '/tokate-runtime/claude'}
-    require(all(target in allowed for mode, target in mounts if mode == '--ro-bind'),
-            'Whole-process boundary exposed an extra readable host path')
+    command = data['configured_command']
+    require(command[-1] == '/tokate-control/claude' and 'CLAUDE_CONFIG_DIR=' + str(root / 'profile') in command,
+            'Configured command lost the selected runtime or profile')
     invocation = data['invocation']
     settings = json.loads(invocation[invocation.index('--settings') + 1])
-    require('--restricted' in invocation and '--safe-mode' in invocation and
-            settings['sandbox']['filesystem']['denyRead'] ==
-            ['/tokate-profile', '/tokate-control', '/tmp/tokate-agent'] and
+    require('--restricted' not in invocation and '--safe-mode' not in invocation and '--tools' not in invocation and
+            settings['sandbox']['filesystem']['denyRead'] == [str(root / 'profile')] and
             not settings['sandbox']['allowUnsandboxedCommands'],
             'Native file, command or credential restrictions changed')
-    split = boundary.index('--')
-    boundary[split:split] = ['--setenv', 'ANTHROPIC_BASE_URL', f'http://127.0.0.1:{server.server_port}',
-                            '--setenv', 'ANTHROPIC_API_KEY', 'synthetic-local-fixture-key']
-    boundary += data['invocation']
-    process = subprocess.Popen(['/usr/bin/bwrap', *boundary], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+    process = subprocess.Popen(['/usr/bin/env', f'ANTHROPIC_BASE_URL=http://127.0.0.1:{server.server_port}',
+                                'ANTHROPIC_API_KEY=synthetic-local-fixture-key', 'ENABLE_TOOL_SEARCH=false',
+                                *command, *invocation], cwd=checkout, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                stderr=subprocess.PIPE, text=True, start_new_session=True,
-                               env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'})
-    observed = process.args[-len(data['invocation']):]
+                               env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': '/tmp/home'})
+    observed = process.args[-len(invocation):]
     heartbeat = checkout / 'heartbeat.txt'
     try:
         process.stdin.write('Run the synthetic scripted fixture.\n')
@@ -199,26 +188,27 @@ def owned_case(root, network, case):
     report.write_text(output)
     report_profile = root / 'profile'
     if case == 'error':
-        refusal = gate(root, ['--file', str(report)], profile=report_profile, success=False)
-        require('reported conflicting model' in refusal['error']['message'], 'Native error-report model conflict was not refused')
         require(process.returncode != 0 and server.calls == 1, 'Native request failure retried or succeeded')
-        print('PASS native failed request without retry or fallback and conflicting error-report model refusal', flush=True)
+        print('PASS native failed request without retry or fallback', flush=True)
         return
     parsed = gate(root, ['--file', str(report)], profile=report_profile)['native_reports']
     require(observed[observed.index('--model') + 1] == data['requested']['model'] and
             observed[observed.index('--effort') + 1] == data['requested']['effort'], 'Observed invocation conflicts with requested choices')
-    require(parsed.get('model') == MODEL and parsed.get('permissionMode') == 'default', 'Native invocation reports conflict or are missing')
+    require(parsed.get('model') == MODEL, 'Native invocation model is missing')
     require(process.returncode == 0, 'Native fixture failed: ' + error[:1500])
-    require(server.calls == 5, 'Unexpected native fixture turn or retry count')
+    require(server.calls == 6, 'Unexpected native fixture turn or retry count')
+    require(not any(block.get('is_error') for block in server.tool_results[:4]),
+            'Native tools failed: ' + json.dumps(server.tool_results[:4])[:4000])
+    require((checkout / 'custom.txt').read_text() == 'configured tool worked', 'Configured MCP tool did not run')
     require((checkout / 'output.txt').read_text() == 'native fixture write\n', 'Native Write did not persist its fixture output')
     require((checkout / 'command.txt').read_text() == 'progress' and (checkout / 'helper.txt').read_text() == 'helper',
             'Ordinary repository command or helper failed')
-    require(server.gets == (1 if network else 0), 'Command-network permission did not reach the expected local fixture result: ' + str(server.tool_results[-1].get('content'))[:1200])
-    require(len(server.tool_results) == 4 and not any(block.get('is_error') for block in server.tool_results[:3]),
+    require(server.gets == 1, 'Command network did not reach the local fixture: ' + str(server.tool_results[-1].get('content'))[:1200])
+    require(len(server.tool_results) == 5 and not any(block.get('is_error') for block in server.tool_results[:4]),
             'Ordinary native fixture file tools failed')
-    require('native fixture read' in str(server.tool_results[0].get('content')), 'Native Read did not return the fixture contents')
-    require(bool(server.tool_results[-1].get('is_error')) == (not network), 'Command-network tool result was not the expected success or refusal')
-    print('PASS native profile reuse, Read, Write, Bash, helper, exact request and command-network ' + ('permitted' if network else 'denied'), flush=True)
+    require('native fixture read' in str(server.tool_results[1].get('content')), 'Native Read did not return the fixture contents')
+    require(not server.tool_results[-1].get('is_error'), 'Command-network tool result failed')
+    print('PASS native profile reuse, configured MCP, file tools, Bash and networking', flush=True)
     if 'effort' not in parsed and 'effortLevel' not in parsed:
         print('LIMIT native reports omit effort; requested effort is observed only in the local synthetic protocol request', flush=True)
 
@@ -232,56 +222,33 @@ def new_profile(profile, plan='pro'):
         'organizationName': 'synthetic-organization', 'emailAddress': 'synthetic-organization'}}))
 
 
-def managed_metadata(root):
-    policy = root / 'policy'
-    policy.mkdir()
-    (policy / 'managed-settings.json').write_text('{}')
-    command = ['/usr/bin/bwrap', '--die-with-parent', '--new-session', '--unshare-all', '--cap-drop', 'ALL',
-               '--clearenv', '--setenv', 'PATH', '/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8',
-               '--setenv', 'HOME', '/tmp/home', '--setenv', 'TERM', 'dumb', *system_mounts(),
-               '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/tmp/home', '--bind', str(root), '/fixture',
-               '--ro-bind', '/tokate-control', '/tokate-control', '--ro-bind', str(policy), '/etc/claude-code',
-               '--chdir', '/fixture', '--', '/tokate-control/tokate', 'claude-capabilities',
-               '--claude', '/tokate-control/claude', '--claude-profile', '/fixture/profile', '--sole-use',
-               '--model', MODEL, '--effort', EFFORT, '--policy', str(POLICY), '--json']
-    result = run(command)
-    require(result.returncode == 1 and 'managed-policy presence' in result.stdout,
-            'Managed-policy metadata was not refused before profile exposure')
-    blocked = root / 'blocked-policy-parent'
-    blocked.mkdir(mode=0o000)
-    position = command.index(str(policy))
-    command[position:position + 2] = [str(blocked), '/etc']
-    try:
-        result = run(command)
-        require(result.returncode == 1 and 'managed-policy metadata' in result.stdout,
-                'Managed-policy metadata inspection error was not refused: ' + result.stdout[-1200:] + result.stderr[-600:])
-    finally:
-        blocked.chmod(0o700)
-    print('PASS managed-policy metadata presence and inspection-error refusal before profile exposure', flush=True)
-
 
 def inside():
     root = Path('/fixture')
-    managed_metadata(root)
+    normal = Path('/tmp/home/.claude')
+    new_profile(normal)
+    (normal / '.claude.json').replace('/tmp/home/.claude.json')
+    require(gate(root, default_profile=True)['auth_status']['loggedIn'], 'Normal Claude login was not reused')
+    print('PASS existing default Claude login without separate profile or sign-in', flush=True)
     max_profile = root / 'max-status'
     new_profile(max_profile, 'max')
     require(gate(root, profile=max_profile)['auth_status']['subscriptionType'] == 'max', 'Native Max status was not accepted')
     print('PASS standalone native Max auth schema and organization field omission', flush=True)
-    for case, network in [('denied', False), ('permitted', True), ('error', False), ('cancel', False), ('timeout', False)]:
+    for case in ['permitted', 'error', 'cancel', 'timeout']:
         current = root / case
         profile = current / 'profile'
         new_profile(profile)
         checkout = current / 'checkout'
-        (checkout / '.git').mkdir(parents=True)
+        subprocess.run(['/usr/bin/git', 'init', '-q', str(checkout)], check=True)
         (checkout / 'input.txt').write_text('native fixture read\n')
-        if case == 'denied':
-            for key in ['settings.json', 'managed-settings.json']:
-                (profile / key).write_text('{}')
-                gate(current, success=False)
-                (profile / key).unlink()
-        owned_case(current, network, case)
+        (profile / 'mcp.py').write_bytes(Path('/tokate-control/mcp-fixture.py').read_bytes())
+        config = json.loads((profile / '.claude.json').read_text())
+        config['mcpServers'] = {'fixture': {'command': '/usr/bin/python3',
+            'args': [str(profile / 'mcp.py'), str(checkout)]}}
+        (profile / '.claude.json').write_text(json.dumps(config))
+        owned_case(current, case)
     print('LIMIT ordinary fixture behavior and declared boundaries do not attest remote entitlement or prove arbitrary containment attacks', flush=True)
-    print('PASS native configured file, command and whole-process controls; no external service route or inference was used', flush=True)
+    print('PASS native configured file and command controls; no external service route or inference was used', flush=True)
 
 
 def main():
@@ -308,6 +275,7 @@ def main():
                    '--clearenv', '--setenv', 'PATH', '/usr/bin:/bin', '--setenv', 'LANG', 'C.UTF-8', *system_mounts(),
                    '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/tmp/home',
                    '--bind', root, '/fixture', '--ro-bind', str(Path(__file__).resolve()), '/tokate-control/proof.py',
+                   '--ro-bind', str(Path(__file__).resolve().parent.parent / 'tests/Tools/mcp-fixture.py'), '/tokate-control/mcp-fixture.py',
                    '--ro-bind', str(POLICY), '/tokate-control/policy.json',
                    '--ro-bind', str(claude), '/tokate-control/claude', '--ro-bind', str(binary), '/tokate-control/tokate',
                    '--chdir', '/fixture', '--', '/usr/bin/python3', '/tokate-control/proof.py',

@@ -339,10 +339,9 @@ internal class PreparationChecks {
                     Check.Text(test.Flow.State["request_count"]) == requests.ToString(),
                     "Repeated reservation request posted another comment"
                 )
-                let comment = test
-                    .Flow
-                    .State["request_comments"]?[requests - 1] ??
+                guard let comment = test.Flow.State["request_comments"]?[requests - 1] else {
                     throw Exception("Missing request comment")
+                }
                 test.Coordinate(PostedEvent(test, comment))
                 let complete = Check.Json(test.Flow.Call(args).Output)
                 Check.That(
@@ -1451,7 +1450,6 @@ internal class PreparationChecks {
             Check.Contains(declined.Output, "Review donation")
             Check.Contains(declined.Output, "owner/project #1")
             Check.Contains(declined.Output, "1 minutes")
-            Check.Contains(declined.Output, "Project commands offline")
             Check.Contains(declined.Output, "Cancelled")
             Check.That(!declined.Output.Contains("rejected |"), "Guided menu offered an owner-rejected profile")
             flow.Reload()
