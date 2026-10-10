@@ -1,0 +1,1 @@
+{"profiles":{"fast":{"harness":"codex","model":"gpt-6.1-sol","effort":"low"},"local":{"harness":"pi","model":"qwen","effort":"absent","endpoint":"http://127.0.0.1:8080/v1"}}}

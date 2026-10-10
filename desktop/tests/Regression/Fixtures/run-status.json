@@ -1,0 +1,1 @@
+{"run":"/state/tokate/runs/abc","repo":"owner/repo","issue":42,"state":"generated","failure_reason":"","pr":7,"tools":[{"harness":"pi"}],"harness":"codex","model":"local-model","effort":"high","coding_seconds":1800,"verification_reserve":600,"seconds":2400,"unlimited":false,"network":true,"approval":"appr-1","donor_id":"12345","error":{"message":"Verification failed."}}

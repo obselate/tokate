@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"claim","status":"pending","exit_code":8,"data":{"run":"/state/tokate/runs/abc","state":"claim_pending"},"error":null,"next_actions":[["tokate","status","--run","/state/tokate/runs/abc"],["tokate","prepare","--run","/state/tokate/runs/abc"]],"truncated":false}
