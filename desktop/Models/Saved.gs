@@ -173,3 +173,35 @@ data struct AmendmentDraft {
         let Initial AmendmentDraft = AmendmentDraft{Commit: "", Summary: "", Tools: "", Verification: "30"}
     }
 }
+
+/// Everything the saved work page shows: the discovered runs, the visible page, and the selected run with
+/// its actions and amendment settings.
+data struct SavedWorkState {
+    var Loaded bool
+    var Importing bool
+    var Selected bool
+    var Reading bool
+    var Page int32
+    var Paths []string
+    var Rows []SavedRun
+    var RunPath string
+    var Run Run
+    var Actions []RunAction
+    var Amendment AmendmentDraft
+
+    prop Browsing bool -> Loaded && !Selected && !Importing
+
+    prop LastPage int32 -> IssueListing.LastPage(Paths.Length)
+
+    shared {
+        let Initial SavedWorkState = SavedWorkState{
+            Page: 1,
+            Paths: []string{},
+            Rows: []SavedRun{},
+            RunPath: "",
+            Run: Run.Empty,
+            Actions: []RunAction{},
+            Amendment: AmendmentDraft.Initial,
+        }
+    }
+}

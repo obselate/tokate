@@ -10,11 +10,9 @@ import System.Collections.Generic
 /// shell animations because Goo animations belong to a Cell.
 class RootView : Cell {
     private let app DesktopApp
-    private let session DesktopSession
-    private let ui ThemedControls
     private let donate DonateView
     private let project ProjectView
-    private let saved SavedWorkScreen
+    private let saved SavedView
     private let welcome WelcomeView
     private let appearance AppearanceView
     private let loadingPulse Anim[float64]
@@ -25,39 +23,24 @@ class RootView : Cell {
         this.app = app
         app.Theme.Bind(Animate(0.0))
         loadingPulse = Animate(1.0)
-        session = DesktopSession(
-            app,
-            () -> Refresh(),
-            next -> Navigate(Destinations.Parse(next)),
-            path -> saved.Remember(path)
-        )
-        ui = ThemedControls(
-            session.Refresh,
-            () -> app.Activity.Cancel(),
-            label -> app.Activity.Activate(label),
-            value -> app.Window.FocusHints(value)
-        )
-        donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> saved.Open(path))
+        donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> OpenSaved(path))
         project = ProjectView(app.Owner)
-        app.Commands.RememberRun = path -> saved.Remember(path)
-        saved = SavedWorkScreen(
-            session,
-            ui,
-            (run, path) -> {
-                Navigate(Destination.Donate)
-                app.Donation.Open(run, path)
-                app.Donation.Start()
-            }
-        )
+        saved = SavedView(app.Saved)
         welcome = WelcomeView(app, next -> Navigate(next))
         appearance = AppearanceView(app)
+        app.Commands.RememberRun = path -> app.Saved.Remember(path)
+        app.Saved.OnWork = (run, path) -> {
+            Navigate(Destination.Donate)
+            app.Donation.Open(run, path)
+            app.Donation.Start()
+        }
     }
 
     /// Whether the window may close. Active commands keep it open with an explanation.
     func Closing() bool {
         if !app.Activity.Busy {
             app.Donation.Stop()
-            saved.StopSavedUpdates()
+            app.Saved.StopUpdates()
             return true
         }
         app.Feedback.Show("A command is active. Cancel it before closing, then inspect the saved run.")
@@ -67,13 +50,20 @@ class RootView : Cell {
 
     func Navigate(next Destination) {
         if app.Navigation.Current == Destination.Saved && next != Destination.Saved {
-            saved.StopSavedUpdates()
+            app.Saved.StopUpdates()
         }
         app.Navigation.Go(next)
         app.Feedback.Clear()
         if next == Destination.Saved {
-            saved.Enter()
+            app.Saved.Enter()
         }
+    }
+
+    /// Shows the saved run at `path`.
+    private func OpenSaved(path string) {
+        app.Saved.SetRunPath(path)
+        Navigate(Destination.Saved)
+        app.Saved.LoadRun()
     }
 
     /// Advances the loading pulse and rebuilds.
@@ -94,21 +84,7 @@ class RootView : Cell {
     }
 
     private func Sync() {
-        let activity = app.Activity.Current
-        let metrics = app.Window.Metrics
         app.Theme.Apply()
-        ui.Twilight = app.Theme.Twilight
-        ui.LoadingPulse = loadingPulse.Value
-        ui.Busy = activity.Busy
-        ui.Loading = activity.Busy && activity.Visible && app.Navigation.Current == activity.Page && !activity.Streaming
-        ui.Stopping = activity.Stopping
-        ui.ActionName = activity.ActionName
-        ui.ActivityTitle = activity.Title
-        ui.KeyboardFocus = app.Window.FocusVisible
-        ui.Motion = app.Theme.Settings.Motion
-        ui.WindowWidth = metrics.WindowWidth
-        ui.WindowHeight = metrics.WindowHeight
-        ui.ContentWidth = metrics.ContentWidth
         if let window = app.Window.Window {
             window.Background = AppTheme.Current.Paper
         }
@@ -186,9 +162,6 @@ class RootView : Cell {
     }
 
     private func ConfirmationBody(confirmation Confirmation) Blob? {
-        if let content = session.ConfirmationContent {
-            return content()
-        }
         if !confirmation.HasSummary {
             return nil
         }
@@ -235,7 +208,7 @@ class RootView : Cell {
         let content = switch page {
             case Destination.Donate: donate.Build(Page())
             case Destination.Project: project.Build(Page())
-            case Destination.Saved: saved.Build()
+            case Destination.Saved: saved.Build(Page())
             case Destination.Appearance: appearance.Build()
             default: welcome.Build()
         }
