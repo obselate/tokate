@@ -300,9 +300,13 @@ internal class ClaudeCode {
                 .ProcessArchitecture != Architecture.X64 {
                 throw Exception("Claude capability checks require Linux x64; no host fallback or installation.")
             }
-            let binary = LocalPaths.CanonicalPath(
-                LocalPaths.Harness("claude", args.Get("harness-path", args.Get("claude")))
-            )
+            let found = LocalPaths.Harness("claude", args.Get("harness-path", args.Get("claude")))
+            if found == "" {
+                throw Exception(
+                    "Claude Code was not found. Install it with its native installer and sign in, or select --harness-path FILE. No inference started."
+                )
+            }
+            let binary = LocalPaths.CanonicalPath(found)
             if !CodexRuntime.Native(binary) {
                 throw Exception(
                     "Claude requires an installed unmodified native Linux x64 executable; launchers are unsupported."

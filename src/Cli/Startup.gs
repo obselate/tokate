@@ -35,6 +35,8 @@ internal class Startup {
                         case "/usr/bin/cp": "Install GNU coreutils in a system path or Nix profile for independent verification."
                         case "/usr/bin/find": "Install GNU findutils for independent verification."
                         case "/bin/bash": "Install Bash for Pi and Claude commands."
+                        case "bwrap": "Install bubblewrap and add bwrap to PATH for the Claude Code sandbox."
+                        case "socat": "Install socat and add socat to PATH for the Claude Code sandbox."
                         default: ""
                     }
                 }
@@ -129,6 +131,10 @@ internal class Startup {
                 if pi || claude {
                     names.Add("/bin/bash")
                 }
+                if claude {
+                    names.Add("bwrap")
+                    names.Add("socat")
+                }
             }
             if independent {
                 names.Add("/usr/bin/cp")
@@ -170,7 +176,7 @@ internal class Startup {
                     tool.Path = executable
                     let result = Commands.Run(
                         executable,
-                        []string{"--version"},
+                        []string{tool.Name == "socat" ? "-V": "--version"},
                         seconds: 10,
                         harness: tool.Name == "codex"
                     )

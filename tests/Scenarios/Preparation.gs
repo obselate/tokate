@@ -1473,7 +1473,10 @@ internal class PreparationChecks {
                     Check.That(budget.Code == 1, budget.Output + budget.Error)
                     Check.Contains(budget.Output, "Owner limit: " + (limit / 60).ToString() + " minutes")
                     Check.Contains(budget.Output, "Review donation")
-                    Check.That(!budget.Output.Contains("No time limit"), "Wizard advertised forbidden unlimited coding")
+                    Check.That(
+                        !budget.Output.Contains("Unlimited coding"),
+                        "Wizard advertised forbidden unlimited coding"
+                    )
                     let refused = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n240\n1\nq\n")
                     Check.That(refused.Code == 1, refused.Output + refused.Error)
                     Check.Contains(refused.Output, "Use positive whole minutes.")

@@ -233,6 +233,7 @@ internal class Coordinator {
             if live.Sha != state.Sha {
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
+            let previous = live.Sha
             if LeaseLifecycle.Transition(action) {
                 LeaseLifecycle.Owner(live, actor)
             }
@@ -266,7 +267,14 @@ internal class Coordinator {
                     error
                 )
             }
-            let acquired = CoordinationState.Load(repo, number)
+            var acquired = CoordinationState.Load(repo, number)
+            for attempt in 0 ... 5 {
+                if acquired.Sha != previous {
+                    break
+                }
+                ApiTransport.Settle()
+                acquired = CoordinationState.Load(repo, number)
+            }
             if acquired.Sha != state.Sha {
                 throw CliFailure(
                     "stale_approval",
