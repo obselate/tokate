@@ -1,0 +1,71 @@
+package TokateDesktop
+
+import Goo
+import System
+
+/// A navigation destination. Wide rails show a numeral and a vertical indicator; compact bars show a short
+/// caption with an underline.
+data struct NavItem {
+    var Title string
+    var Caption string
+    var Numeral string
+    var Selected bool
+    var Compact bool
+    var OnSelect Action?
+
+    func Build() Blob {
+        let p = AppTheme.Current
+        let choose = OnSelect
+        let button = Button{
+            Height: Compact ? 42: 50,
+            FlexGrow: Compact ? 1: 0,
+            FlexBasis: Compact ? Length(0): Length.Auto,
+            MinWidth: 0,
+            Padding: Edges{Left: Compact ? 6: 14, Right: Compact ? 6: 14},
+            BorderRadius: 5,
+            FlexDirection: FlexDirection.Row,
+            AlignItems: AlignItems.Center,
+            Gap: 16,
+            JustifyContent: Compact ? JustifyContent.Center: JustifyContent.FlexStart,
+            BackgroundColor: Selected ? p.Surface: Color.Transparent,
+            BorderWidth: 0,
+            BorderColor: Color.Transparent,
+            OnClick: () -> choose?.Invoke(),
+            Focusable: true,
+            Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: Title},
+            Hover: Style{BackgroundColor: p.Surface},
+            Focus: AppTheme.FocusStyle(),
+            Label{Content: Compact ? Caption: Title, Size: Compact ? 16: 19}.Build(),
+        }
+        let indicator = Container{
+            Position: PositionType.Absolute,
+            Left: 0,
+            BorderRadius: 1,
+            BackgroundColor: Selected ? p.Accent: Color.Transparent,
+        }
+        if Compact {
+            indicator.Right = 0
+            indicator.Bottom = 0
+            indicator.Height = 2
+        } else {
+            indicator.Top = 6
+            indicator.Bottom = 6
+            indicator.Width = 2
+        }
+        button.Children.Insert(0, indicator)
+        if !Compact {
+            button.Children.Insert(
+                1,
+                Text{
+                    Content: Numeral,
+                    Width: 36,
+                    FontFamily: AppTheme.HeadingFont,
+                    FontWeight: 500,
+                    FontSize: 26,
+                    Color: p.Accent,
+                }
+            )
+        }
+        return Interaction.Keyboard(button)
+    }
+}

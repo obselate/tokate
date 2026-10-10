@@ -47,17 +47,7 @@ partial class ThemedControls {
         return body
     }
 
-    func TablePanel() Container {
-        let panel = Panel()
-        panel.Padding = 8
-        panel.Gap = 0
-        panel.FlexGrow = Short() ? 0: 1
-        panel.FlexShrink = Short() ? 0: 1
-        panel.FlexBasis = Short() ? Length.Auto: Length(0)
-        panel.MinHeight = 0
-        panel.OverflowY = Short() ? Overflow.Visible: Overflow.Scroll
-        return panel
-    }
+    func TablePanel() Container -> ListPanel{Short: Short()}.Build()
 
     func IssueRows(state IssuePage, choose Action[JsonElement]) Blob {
         let panel = TablePanel()
@@ -104,23 +94,12 @@ partial class ThemedControls {
     func IssuePagination(state IssuePage, change Action[int32]) Blob ->
     PageNavigation(state.Page, Math.Min(1000, state.Total), state.Total.ToString() + " issues", change)
 
-    func PageNavigation(page int32, total int32, summary string, change Action[int32]) Blob {
-        let last = Math.Max(1, (total + IssuePage.Size - 1) / IssuePage.Size)
-        let buttons = Row(
-            []Blob{
-                Action("Previous page", () -> change(page - 1), disabled: page <= 1),
-                Action("Next page", () -> change(page + 1), disabled: page >= last),
-            }
-        )
-        buttons.JustifyContent = JustifyContent.FlexEnd
-        let pager = Container{
-            FlexDirection: ContentWidth < 540 ? FlexDirection.Column: FlexDirection.Row,
-            AlignItems: ContentWidth < 540 ? AlignItems.Stretch: AlignItems.Center,
-            Gap: 12,
-            Label("Page " + page.ToString() + " of " + last.ToString() + "  ·  " + summary, 17),
-            buttons,
-        }
-        buttons.FlexGrow = ContentWidth < 540 ? 0: 1
-        return pager
-    }
+    func PageNavigation(page int32, total int32, summary string, change Action[int32]) Blob -> Pager{
+        Button: Command(),
+        Page: page,
+        LastPage: IssueListing.LastPage(total),
+        Summary: summary,
+        Narrow: ContentWidth < 540,
+        OnChange: change,
+    }.Build()
 }

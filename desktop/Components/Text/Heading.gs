@@ -1,0 +1,29 @@
+package TokateDesktop
+
+import Goo
+
+/// Display text in the heading face. Zero size resolves to 42 and nil ink to the theme ink.
+data struct Heading {
+    var Content string
+    var Size float64
+    var Italic bool
+    var Ink Color?
+    var MaxLines int32
+
+    func Build() Text {
+        let text = Text{
+            Content: Content,
+            FontFamily: AppTheme.HeadingFont,
+            FontWeight: 500,
+            FontSize: Size == 0 ? 42: Size,
+            Color: Ink ?? AppTheme.Current.Ink,
+        }
+        if Italic {
+            text.FontStyle = FontStyle.Italic
+        }
+        if MaxLines > 0 {
+            text.TextMaxLines = MaxLines
+        }
+        return text
+    }
+}

@@ -13,7 +13,6 @@ class Desktop : Cell {
     private let viewport ElementHandle = ElementHandle()
     private let contentViewport ElementHandle = ElementHandle()
     private var narrow bool
-    private var chromeHover WindowChromeAction?
     private let art Artwork
     private let twilight Anim[float64]
     private let loadingPulse Anim[float64]
@@ -50,14 +49,10 @@ class Desktop : Cell {
         twilight = Animate(0.0)
         loadingPulse = Animate(1.0)
         viewport.MetricsChanged += metrics -> {
-            let next = metrics.BorderBox.Width < 1120
             if Math.Abs(ui.WindowWidth - metrics.BorderBox.Width) > 0.5 || Math.Abs(
                 ui.WindowHeight - metrics.BorderBox.Height
             ) > 0.5 {
-                ui.WindowWidth = metrics.BorderBox.Width
-                ui.WindowHeight = metrics.BorderBox.Height
-                narrow = next
-                app.Refresh()
+                Resize(metrics.BorderBox.Width, metrics.BorderBox.Height)
             }
         }
         contentViewport.MetricsChanged += metrics -> {
@@ -124,141 +119,59 @@ class Desktop : Cell {
         app.Refresh()
     }
 
-    private func Navigation(label string, index string) Blob {
-        let caption = ui.Compact() ? switch label {
+    private func Resize(width float64, height float64) {
+        ui.WindowWidth = width
+        ui.WindowHeight = height
+        narrow = width < 1120
+        app.Refresh()
+    }
+
+    private func Navigation(label string, index string) Blob -> NavItem{
+        Title: label,
+        Caption: switch label {
             case "Appearance": "Theme"
             case "My project": "Project"
             case "Saved work": "Saved"
             default: label
-        }: label
-        let button = Button{
-            Height: ui.Compact() ? 42: 50,
-            FlexGrow: ui.Compact() ? 1: 0,
-            FlexBasis: ui.Compact() ? Length(0): Length.Auto,
-            MinWidth: 0,
-            Padding: Edges{Left: ui.Compact() ? 6: 14, Right: ui.Compact() ? 6: 14},
-            BorderRadius: 5,
-            FlexDirection: FlexDirection.Row,
-            AlignItems: AlignItems.Center,
-            Gap: 16,
-            JustifyContent: ui.Compact() ? JustifyContent.Center: JustifyContent.FlexStart,
-            BackgroundColor: app.Page == label ? ui.Surface(): Color.Transparent,
-            BorderWidth: 0,
-            BorderColor: Color.Transparent,
-            OnClick: () -> app.Navigate(label),
-            Focusable: true,
-            Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: label},
-            Hover: Style{BackgroundColor: ui.Surface()},
-            Focus: ui.FocusStyle(),
-            ui.Label(caption, ui.Compact() ? 16: 19),
-        }
-        let indicator = Container{
-            Position: PositionType.Absolute,
-            Left: 0,
-            BorderRadius: 1,
-            BackgroundColor: app.Page == label ? ui.Accent(): Color.Transparent,
-        }
-        if ui.Compact() {
-            indicator.Right = 0
-            indicator.Bottom = 0
-            indicator.Height = 2
-        } else {
-            indicator.Top = 6
-            indicator.Bottom = 6
-            indicator.Width = 2
-        }
-        button.Children.Insert(0, indicator)
-        if !ui.Compact() {
-            button.Children.Insert(
-                1,
-                Text{
-                    Content: index,
-                    Width: 36,
-                    FontFamily: "Cormorant",
-                    FontWeight: 500,
-                    FontSize: 26,
-                    Color: ui.Accent()
-                }
-            )
-        }
-        return ui.Keyboard(button)
-    }
+        },
+        Numeral: index,
+        Selected: app.Page == label,
+        Compact: ui.Compact(),
+        OnSelect: () -> app.Navigate(label),
+    }.Build()
 
-    private func Sidebar() Blob {
-        if ui.Compact() {
-            return Container{
-                Key: "navigation",
-                Height: 46,
-                FlexShrink: 0,
-                FlexDirection: FlexDirection.Row,
-                Padding: Edges{Left: 8, Right: 8, Bottom: 4},
-                Gap: 2,
-                BackgroundColor: ui.Paper(),
-                BorderWidth: Edges{Bottom: 1},
-                BorderColor: ui.Line(),
-                Navigation("Welcome", "I"),
-                Navigation("Donate", "II"),
-                Navigation("My project", "III"),
-                Navigation("Saved work", "IV"),
-                Navigation("Appearance", "V"),
-            }
-        }
-        return Container{
-            Key: "navigation",
-            Width: narrow ? 202: 226,
-            FlexShrink: 0,
-            Padding: Edges{Left: 20, Right: 20, Top: 28, Bottom: 24},
-            BorderWidth: Edges{Right: 1},
-            BorderColor: ui.Line(),
-            Gap: 10,
-            Container{
-                FlexDirection: FlexDirection.Row,
-                Gap: 10,
-                AlignItems: AlignItems.Center,
-                JustifyContent: JustifyContent.Center,
-                Padding: Edges{Bottom: 16},
-                Container{Width: 25, Height: 36, art.Mark.Render()},
-                Text{Content: "tokate", FontFamily: "Newsreader", FontSize: narrow ? 34: 38, Color: ui.Accent()},
-            },
-            Container{Height: 1, BackgroundColor: ui.Line(), Margin: Edges{Bottom: 14}},
+    private func Sidebar() Blob -> NavRail{
+        Header: Wordmark{Mark: art.Mark.Render(), Narrow: narrow}.Build(),
+        Items: []Blob{
             Navigation("Welcome", "I"),
             Navigation("Donate", "II"),
             Navigation("My project", "III"),
             Navigation("Saved work", "IV"),
-            Container{FlexGrow: 1},
-            Navigation("Appearance", "V"),
-        }
-    }
+        },
+        Footer: []Blob{Navigation("Appearance", "V")},
+        Compact: ui.Compact(),
+        Narrow: narrow,
+    }.Build()
 
     private func HeroHeight() float64 -> ui.ContentWidth * 0.4
 
-    private func Painting(height float64, background bool = true) Blob ->
-    Container{
-        FlexGrow: height == 0 ? 1: 0,
-        FlexBasis: height == 0 ? Length(0): Length.Auto,
-        MinHeight: 0,
-        Cell.Mount[FrescoInput, Fresco](
-            "fresco",
-            FrescoInput{Art: art, Night: ui.Twilight, Height: height, Background: background}
-        )
-    }
+    private func Painting(height float64, background bool = true) Blob -> Fresco.Mount(
+        "fresco",
+        FrescoInput{
+            Backdrop: art.Backdrop,
+            Sun: art.Sun,
+            Moon: art.Moon,
+            Hands: art.Hands,
+            Effect: art.Effect,
+            Night: ui.Twilight,
+            Height: height,
+            Background: background,
+        }
+    )
 
     private func SectionBackground() Blob {
-        let background = Container{
-            Key: "background",
-            Position: PositionType.Absolute,
-            Left: 0,
-            Right: 0,
-            Top: 0,
-            Bottom: 0,
-            HitTestSelf: false,
-        }
         if app.Page == "Welcome" {
-            background.ShaderEffect = art.Effect
-            background.Children.Add(
-                Image{Source: art.Backdrop, Fit: ImageFit.Cover, Width: Percent(100), Height: Percent(100)}
-            )
-            return background
+            return Backdrop{Image: art.Backdrop, Effect: art.Effect}.Build()
         }
         let scene Landscape? = switch app.Page {
             case "Donate": art.Donate
@@ -266,81 +179,24 @@ class Desktop : Cell {
             case "Saved work": art.Saved
             default: nil
         }
-        if let landscape = scene {
-            background.ShaderEffect = art.LandscapeEffect
-            background.Opacity = 0.65
-            background.Children.Add(
-                Image{Source: landscape.Daylight, Fit: ImageFit.Cover, Width: Percent(100), Height: Percent(100)}
-            )
-            background.Children.Add(
-                Image{
-                    Source: landscape.Moonlight,
-                    Fit: ImageFit.Cover,
-                    Position: PositionType.Absolute,
-                    Left: 0,
-                    Right: 0,
-                    Top: 0,
-                    Bottom: 0,
-                    Opacity: ui.Twilight,
-                }
-            )
+        guard let landscape = scene else {
+            return Backdrop{}.Build()
         }
-        return background
+        return Backdrop{
+            Image: landscape.Daylight,
+            NightImage: landscape.Moonlight,
+            Effect: art.LandscapeEffect,
+            Twilight: ui.Twilight,
+            Opacity: 0.65,
+        }.Build()
     }
 
-    private func HomeCard(title string, target string) Blob -> ui.Keyboard(
-        Button{
-            FlexGrow: 1,
-            FlexBasis: 0,
-            MinWidth: 0,
-            MaxWidth: 360,
-            Height: ui.ContentWidth < 900 ? 72: 92,
-            Padding: Edges{Left: ui.ContentWidth < 900 ? 28: 62, Right: ui.ContentWidth < 900 ? 28: 62},
-            AlignItems: AlignItems.Center,
-            JustifyContent: JustifyContent.Center,
-            BorderRadius: 8,
-            BorderWidth: 0,
-            BackgroundColor: Color.Transparent,
-            OnClick: () -> app.Navigate(target),
-            Focusable: true,
-            Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: title},
-            Hover: Style{Opacity: 0.92},
-            Focus: ui.FocusStyle(),
-            Image{
-                Source: art.Stone,
-                Fit: ImageFit.Fill,
-                Position: PositionType.Absolute,
-                Left: 0,
-                Top: Percent(-21),
-                Width: Percent(100),
-                Height: Percent(142),
-            },
-            Text{
-                Content: title,
-                FontFamily: "Cormorant",
-                FontWeight: 500,
-                FontSize: ui.ContentWidth < 900 ? 18: 23,
-                Color: Color.Parse("#303B2B"),
-                TextAlign: TextAlign.Center,
-            },
-        }
-    )
-
-    private func HeroCopy() Blob -> Container{
-        Padding: Edges{Top: 24, Bottom: 16},
-        AlignItems: AlignItems.Center,
-        Gap: 10,
-        ui.Heading("Give your inference", Math.Clamp(ui.ContentWidth * 0.06, 36, 55)),
-        Text{
-            Content: "a purpose.",
-            FontFamily: "Cormorant",
-            FontWeight: 500,
-            FontStyle: FontStyle.Italic,
-            FontSize: Math.Clamp(ui.ContentWidth * 0.075, 45, 68),
-            Color: ui.Accent(),
-            Margin: Edges{Top: -20}
-        },
-    }
+    private func HomeCard(title string, target string) Blob -> StoneCard{
+        Title: title,
+        Stone: art.Stone,
+        Compact: ui.ContentWidth < 900,
+        OnClick: () -> app.Navigate(target),
+    }.Build()
 
     private func Home() Blob -> Container{
         Height: ui.Short() ? Length.Auto: Percent(100),
@@ -353,7 +209,7 @@ class Desktop : Cell {
             AlignSelf: AlignSelf.Center,
             Padding: Edges{Left: 24, Right: 24, Bottom: 32},
             Gap: 24,
-            HeroCopy(),
+            HeroTitle{Width: ui.ContentWidth, Title: "Give your inference", Accent: "a purpose."}.Build(),
             Container{
                 FlexDirection: FlexDirection.Row,
                 Gap: ui.ContentWidth < 900 ? 12: 24,
@@ -385,73 +241,29 @@ class Desktop : Cell {
         ),
     }
 
-    private func DialogButton(title string, content Blob) Button -> Button{
-        Height: 44,
-        Padding: Edges{Left: 16, Right: 16},
-        BorderWidth: 1,
-        BorderColor: ui.Line(),
-        BorderRadius: 5,
-        BackgroundColor: ui.Paper(),
-        Focusable: true,
-        Focus: ui.FocusStyle(),
-        Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: title},
-        content,
-    }
-
-    private func Dialog() Blob -> Cell.Mount[ModalDialog, ModalDialogHost](
-        "confirmation",
-        ModalDialog{
-            Open: app.Confirmation != nil,
-            KeyBindings: WidgetKeyBindings.Editing(app.Window?.PlatformInput),
-            Header: ui.Heading(app.ConfirmationTitle, 32),
-            Content: Container{
-                MinHeight: 0,
-                FlexShrink: 1,
-                OverflowY: Overflow.Scroll,
-                app.ConfirmationContent?.Invoke() ?? ui.Label(app.ConfirmationText),
-            },
-            AccessibilityName: app.ConfirmationTitle,
-            Width: Math.Min(580, ui.WindowWidth - 32),
-            Padding: ui.Compact() ? 20: 30,
-            Gap: ui.Short() ? 12: 20,
-            BackgroundColor: ui.Surface(),
-            BorderColor: ui.Line(),
-            CancelText: "Go back",
-            ConfirmText: app.ConfirmationLabel,
-            CancelContent: ui.Label("Go back"),
-            ConfirmContent: ui.Label(app.ConfirmationLabel),
-            CreateCancel: (options, content) -> DialogButton("Go back", content),
-            CreateConfirm: (options, content) -> DialogButton(app.ConfirmationLabel, content),
-            CreateRoot: (options, backdrop, panel) -> Container{
-                Position: PositionType.Absolute,
-                Left: 0,
-                Right: 0,
-                Top: 0,
-                Bottom: 0,
-                ZIndex: options.ZIndex,
-                AlignItems: AlignItems.Center,
-                JustifyContent: JustifyContent.Center,
-                OnKeyDown: event -> ui.KeyNavigation(event),
-                OnPointerDown: event -> ui.FocusHints(false),
-                backdrop,
-                panel,
-            },
-            OnCancel: () -> {
-                app.Confirmation = nil
-                app.Refresh()
-            },
-            OnClose: () -> {
-                app.Confirmation = nil
-                app.Refresh()
-            },
-            OnConfirm: () -> {
-                let action = app.Confirmation
-                app.Confirmation = nil
-                action?.Invoke()
-                app.Refresh()
-            },
-        }
-    )
+    private func Dialog() Blob -> ConfirmDialog{
+        Open: app.Confirmation != nil,
+        Title: app.ConfirmationTitle,
+        Text: app.ConfirmationText,
+        Content: app.ConfirmationContent?.Invoke(),
+        ConfirmLabel: app.ConfirmationLabel,
+        WindowWidth: ui.WindowWidth,
+        Compact: ui.Compact(),
+        Short: ui.Short(),
+        KeyBindings: WidgetKeyBindings.Editing(app.Window?.PlatformInput),
+        OnKeyDown: event -> ui.KeyNavigation(event),
+        OnPointerDown: event -> ui.FocusHints(false),
+        OnCancel: () -> {
+            app.Confirmation = nil
+            app.Refresh()
+        },
+        OnConfirm: () -> {
+            let action = app.Confirmation
+            app.Confirmation = nil
+            action?.Invoke()
+            app.Refresh()
+        },
+    }.Build()
 
     override func Build() Blob {
         ui.Twilight = twilight.Value
@@ -461,6 +273,7 @@ class Desktop : Cell {
         ui.Stopping = app.Stopping
         ui.ActionName = app.ActionName
         ui.ActivityTitle = app.Title
+        ui.Apply()
         if let window = app.Window {
             window.Background = ui.Paper()
         }
@@ -490,32 +303,19 @@ class Desktop : Cell {
             content.FlexBasis = 0
             content.MinHeight = 0
         }
-        let body = Container{
+        let fill = !ui.Short() && (welcome || live || browsing)
+        let body = PageFrame{
             Key: app.Page == "Donate" ? donor.Key: app.Page == "My project" ? owner.Key: app.Page,
             Handle: contentViewport,
-            Width: Percent(100),
-            Height: !ui.Short() && (welcome || live || browsing) ? Percent(100): Length.Auto,
-            FlexShrink: !ui.Short() && (welcome || live || browsing) ? 1: 0,
-            MinHeight: 0,
-            MaxWidth: welcome ? Percent(100): Length(1050),
-            AlignSelf: AlignSelf.Center,
-            Gap: 18,
-            content,
-        }
+            Fill: fill,
+            Wide: welcome,
+            Children: []Blob{content},
+        }.Build()
         if app.Message != "" && !donating && app.Page != "Donate" {
-            body.Children.Add(ui.Label(app.Message, 16, true))
+            body.Children.Add(Notice{Message: app.Message}.Build())
         }
         if app.Report != "" && !donating && app.Page != "Donate" {
-            body.Children.Add(
-                Text{
-                    Content: app.Report,
-                    FontFamily: "monospace",
-                    FontSize: 13,
-                    Color: ui.Ink(),
-                    MaxHeight: 300,
-                    OverflowY: Overflow.Scroll
-                }
-            )
+            body.Children.Add(ReportText{Content: app.Report}.Build())
         }
         let workspace = Container{
             Key: "workspace",
@@ -525,63 +325,15 @@ class Desktop : Cell {
             MinWidth: 0,
             MinHeight: 0,
             SectionBackground(),
-            WindowChrome{
-                Host: app.Window,
-                Height: 42,
-                BackgroundColor: welcome ? Color.Transparent: ui.Paper(),
-                BorderColor: Color.Transparent,
-                ControlColor: ui.Muted(),
-                HoverBackgroundColor: ui.Surface(),
-                CloseHoverBackgroundColor: ui.ThemeColor("#97492E", "#AA563A"),
-                EnableDoubleClick: true,
-                CreateControlContent: (options, command) -> MaterialIcons.Create(
-                    switch command {
-                        case WindowChromeAction.Minimize: "remove"
-                        case WindowChromeAction.Maximize: "crop_square"
-                        case WindowChromeAction.Restore: "filter_none"
-                        default: "close"
-                    },
-                    18,
-                    chromeHover == command ? (
-                        command == WindowChromeAction.Close ? Color.Parse("#FFF8EB"): ui.Ink()
-                    ): ui.Muted()
-                ),
-                CreateControl: (options, command, content, action) -> Button{
-                    Width: options.ControlWidth,
-                    Height: 32,
-                    Margin: Edges{Right: 4},
-                    BorderRadius: 4,
-                    Padding: 0,
-                    AlignItems: AlignItems.Center,
-                    JustifyContent: JustifyContent.Center,
-                    Focus: ui.FocusStyle(),
-                    OnPointerEnter: event -> {
-                        chromeHover = command
-                        app.Refresh()
-                    },
-                    OnPointerLeave: event -> {
-                        chromeHover = nil
-                        app.Refresh()
-                    },
-                    Hover: Style{
-                        BackgroundColor: command == WindowChromeAction.Close ? ui.ThemeColor(
-                            "#97492E",
-                            "#AA563A"
-                        ): ui.ThemeColor("#E4D4B8", "#35485F")
-                    },
-                },
-                TrailingContent: IconButton{
-                    Icon: MaterialIcons.Create(night ? "light_mode": "dark_mode", 20, ui.Accent()),
-                    AccessibilityName: night ? "Switch to daylight": "Switch to moonlight",
-                    OnClick: () -> ToggleTheme(),
-                    Width: 46,
-                    Height: 42,
-                    BorderRadius: 0,
-                    HoverBackgroundColor: ui.Surface(),
-                    ShowFocusHighlight: ui.KeyboardFocus,
-                    FocusOutlineColor: ui.Accent(),
-                }.Build(),
-            }.Build(),
+            WindowBar.Mount(
+                "chrome",
+                WindowBarInput{
+                    Host: app.Window,
+                    Transparent: welcome,
+                    Night: night,
+                    OnToggleTheme: () -> ToggleTheme(),
+                }
+            ),
             Container{
                 Key: "content-scroll",
                 FlexGrow: 1,
@@ -590,35 +342,22 @@ class Desktop : Cell {
                 MinWidth: 0,
                 MinHeight: 0,
                 OverflowX: Overflow.Hidden,
-                OverflowY: !ui.Short() && (welcome || live || browsing) ? Overflow.Hidden: Overflow.Scroll,
+                OverflowY: fill ? Overflow.Hidden: Overflow.Scroll,
                 Padding: welcome ? 0: ui.Compact() ? 16: 28,
                 body,
             },
         }
-        workspace.Children[1].Key = "chrome"
         if ui.Compact() {
             workspace.Children.Insert(2, Sidebar())
         }
-        let root = Container{
-            Width: Percent(100),
-            Height: Percent(100),
-            FlexDirection: FlexDirection.Row,
+        return AppFrame{
             Handle: viewport,
+            Navigation: ui.Compact() ? nil: Sidebar(),
+            Workspace: workspace,
+            Overlay: app.Confirmation != nil ? Dialog(): nil,
             KeyBindings: WidgetKeyBindings.Editing(app.Window?.PlatformInput),
             OnKeyDown: event -> ui.KeyNavigation(event),
             OnPointerDown: event -> ui.FocusHints(false),
-            Overflow: Overflow.Hidden,
-            BackgroundColor: ui.Paper(),
-            FontFamily: "Newsreader",
-            Color: ui.Ink(),
-            workspace,
-        }
-        if !ui.Compact() {
-            root.Children.Insert(0, Sidebar())
-        }
-        if app.Confirmation != nil {
-            root.Children.Add(Container{Key: "dialog", Width: 0, Height: 0, Dialog()})
-        }
-        return root
+        }.Build()
     }
 }

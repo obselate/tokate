@@ -4,12 +4,17 @@ import Goo
 import System
 
 data struct FrescoInput {
-    var Art Artwork
+    var Backdrop ImageSource
+    var Sun ImageSource
+    var Moon ImageSource
+    var Hands ImageSource
+    var Effect ShaderEffect
     var Night float64
     var Height float64
     var Background bool
 }
 
+/// The hands-and-sky painting. The sun and moon cross-fade with `Night`; zero height fills the parent.
 open class Fresco : Cell[FrescoInput] {
     private let viewport ElementHandle = ElementHandle()
     private var width float64 = 800
@@ -36,9 +41,9 @@ open class Fresco : Cell[FrescoInput] {
             Height: input.Height > 0 ? Length(input.Height): Percent(100),
             FlexShrink: 0,
             Overflow: input.Background ? Overflow.Hidden: Overflow.Visible,
-            ShaderEffect: input.Art.Effect,
+            ShaderEffect: input.Effect,
             Image{
-                Source: input.Art.Backdrop,
+                Source: input.Backdrop,
                 Opacity: input.Background ? 1: 0,
                 Fit: ImageFit.Cover,
                 Position: PositionType.Absolute,
@@ -54,7 +59,7 @@ open class Fresco : Cell[FrescoInput] {
                 Width: compositionWidth,
                 Height: compositionHeight,
                 Image{
-                    Source: input.Art.Sun,
+                    Source: input.Sun,
                     Opacity: 1 - input.Night,
                     Width: 190 * orbScale,
                     Height: 190 * orbScale,
@@ -64,7 +69,7 @@ open class Fresco : Cell[FrescoInput] {
                     Top: availableHeight - 210 * orbScale
                 },
                 Image{
-                    Source: input.Art.Moon,
+                    Source: input.Moon,
                     Opacity: input.Night,
                     Width: 190 * orbScale,
                     Height: 190 * orbScale,
@@ -74,7 +79,7 @@ open class Fresco : Cell[FrescoInput] {
                     Top: availableHeight - 210 * orbScale
                 },
                 Image{
-                    Source: input.Art.Hands,
+                    Source: input.Hands,
                     Width: compositionWidth,
                     Height: compositionHeight,
                     Fit: ImageFit.Contain,
@@ -83,6 +88,16 @@ open class Fresco : Cell[FrescoInput] {
                     Top: availableHeight - 254 * scale
                 },
             },
+        }
+    }
+
+    shared {
+        /// Mounts the painting in a flexible slot. Zero height fills the remaining space.
+        func Mount(key string, input FrescoInput) Blob -> Container{
+            FlexGrow: input.Height == 0 ? 1: 0,
+            FlexBasis: input.Height == 0 ? Length(0): Length.Auto,
+            MinHeight: 0,
+            Cell.Mount[FrescoInput, Fresco](key, input),
         }
     }
 }
