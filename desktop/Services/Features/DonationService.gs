@@ -13,16 +13,12 @@ class DonationService {
     private let navigation NavigationService
     private let window WindowService
     private let changed Action
-    private let output List[string] = List[string]()
+    private let output OutputTail = OutputTail(5000)
     private var lines chan[string]?
     private var approvalTimer IDisposable?
     private var approvalCheck CliClient?
     let Issues IssueSearchService
     var Current DonationState = DonationState.Initial
-
-    shared {
-        let OutputLimit int32 = 5000
-    }
 
     init(
         commands CommandRunner,
@@ -451,7 +447,8 @@ class DonationService {
                 Running = true,
                 Ready = false,
                 State = "Donation running",
-                Output = "",
+                Output = output.Lines,
+                OutputRevision = output.Revision,
                 Elapsed = 0,
             }
         )
@@ -465,22 +462,16 @@ class DonationService {
         )
     }
 
-    /// Moves the output lines that arrived since the last tick into the transcript, which keeps the
-    /// latest `OutputLimit` lines.
+    /// Appends the output lines that arrived since the last tick to the tail.
     private func Collect(seconds int32) {
-        var received = false
         if let channel = lines {
             while channel.Reader.TryRead(out var line) {
-                output.Add(line)
-                received = true
+                output.Append(line)
             }
         }
-        if output.Count > OutputLimit {
-            output.RemoveRange(0, output.Count - OutputLimit)
-        }
         let progress = Current.Progress
-        if received || progress.Elapsed != seconds {
-            SetProgress(progress with{Elapsed = seconds, Output = received ? String.Join("\n", output): progress.Output})
+        if progress.OutputRevision != output.Revision || progress.Elapsed != seconds {
+            SetProgress(progress with{Elapsed = seconds, Output = output.Lines, OutputRevision = output.Revision})
         }
     }
 
@@ -494,8 +485,8 @@ class DonationService {
             "Donation needs attention": "Donation finished",
         }
         if outcome.Failure != "" {
-            output.Add(outcome.Failure)
-            progress = progress with{Output = String.Join("\n", output)}
+            output.Append(outcome.Failure)
+            progress = progress with{Output = output.Lines, OutputRevision = output.Revision}
         } else if reply.Value.Path != "" {
             progress = progress with{Run = reply.Value}
         }

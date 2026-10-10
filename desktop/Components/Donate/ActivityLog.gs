@@ -5,14 +5,9 @@ import Goo.Widgets.Icons
 import System
 import System.Collections.Generic
 
-data struct LogLine {
-    var Index int32
-    var Content string
-    var Theme float64
-}
-
 data struct ActivityLogInput {
-    var Output string
+    var Lines IReadOnlyList[OutputLine]
+    var Revision int64
     var Placeholder string
     var Name string
     var LineName string
@@ -23,7 +18,8 @@ data struct ActivityLogInput {
     var FollowButton CommandButton
 }
 
-/// Streaming command output that follows new lines until the reader scrolls back. Home and End jump
+/// Streaming command output that follows new lines until the reader scrolls back. Only the visible lines
+/// are built, and a line is rebuilt only when it changes or the theme does. Home and End jump
 /// to either end, and "Follow live" resumes following while the command runs. The footer shows the
 /// blobs `Leading` builds on the left and those `Trailing` builds on the right. They are builders because
 /// the log rebuilds on its own, and blobs from an earlier build must not be reused.
@@ -32,9 +28,11 @@ open class ActivityLog : Cell[ActivityLogInput] {
     private var scrollRange float64
     private var offset float64
     private var follow bool = true
-    private var rendered string = ""
-    private var renderedTheme float64 = -1
-    private var lines List[LogLine] = List[LogLine]()
+    private var lines IReadOnlyList[OutputLine] = []OutputLine{}
+    private var rowTheme float64 = -1
+    private var rowName string = ""
+    private var row Func[OutputLine, Blob]? = nil
+    private let rowKey Func[OutputLine, string] = (line OutputLine) -> line.Key
 
     init() {
         viewport.MetricsChanged += metrics -> {
@@ -58,49 +56,45 @@ open class ActivityLog : Cell[ActivityLogInput] {
 
     private func ScrollToEnd() {
         if lines.Count > 0 {
-            viewport.ScrollToItem(lines[lines.Count - 1].Index.ToString())
+            viewport.ScrollToItem(lines[lines.Count - 1].Key)
         }
     }
 
-    protected override func Build(input ActivityLogInput) Blob {
-        let p = AppTheme.Current
-        if rendered != input.Output || renderedTheme != AppTheme.Twilight || lines.Count == 0 {
-            rendered = input.Output
-            renderedTheme = AppTheme.Twilight
-            let rows = List[LogLine]()
-            let text = (input.Output == "" ? input.Placeholder: input.Output).Split('\n')
-            for i in 0 ... text.Length {
-                if !String.IsNullOrWhiteSpace(text[i]) {
-                    rows.Add(LogLine{Index: i, Content: text[i].TrimEnd('\r'), Theme: renderedTheme})
-                }
+    /// The row builder, kept between builds so unchanged rows are reused. A new theme or name replaces it.
+    private func LineBuilder(name string) Func[OutputLine, Blob] {
+        if let current = row {
+            if rowTheme == AppTheme.Twilight && rowName == name {
+                return current
             }
-            lines = rows
         }
-        let lineName = input.LineName
-        let output = VirtualRows(
-            lines,
-            64,
-            (line LogLine) -> line.Index.ToString(),
-            (line LogLine) -> Container{
-                FlexDirection: FlexDirection.Row,
-                AlignItems: AlignItems.FlexStart,
-                Gap: 14,
-                Padding: Edges{Left: 22, Right: 22, Top: 16, Bottom: 16},
-                BorderWidth: Edges{Bottom: 1},
-                BorderColor: AppTheme.Current.Line,
-                MaterialIcons.Create("chevron_right", 18, AppTheme.Current.Accent),
-                Text{
-                    Content: line.Content,
-                    FontFamily: AppTheme.BodyFont,
-                    FontSize: 18,
-                    Color: AppTheme.Current.Ink,
-                    FlexGrow: 1,
-                    FlexBasis: 0,
-                    MinWidth: 0,
-                    Accessibility: Accessibility{Role: AccessibilityRole.Text, Name: lineName},
-                },
-            }
-        )
+        rowTheme = AppTheme.Twilight
+        rowName = name
+        let next = (line OutputLine) -> Container{
+            FlexDirection: FlexDirection.Row,
+            AlignItems: AlignItems.FlexStart,
+            Gap: 14,
+            Padding: Edges{Left: 22, Right: 22, Top: 16, Bottom: 16},
+            BorderWidth: Edges{Bottom: 1},
+            BorderColor: AppTheme.Current.Line,
+            MaterialIcons.Create("chevron_right", 18, AppTheme.Current.Accent),
+            Text{
+                Content: line.Content,
+                FontFamily: AppTheme.BodyFont,
+                FontSize: 18,
+                Color: AppTheme.Current.Ink,
+                FlexGrow: 1,
+                FlexBasis: 0,
+                MinWidth: 0,
+                Accessibility: Accessibility{Role: AccessibilityRole.Text, Name: name},
+            },
+        }
+        row = next
+        return next
+    }
+
+    protected override func Build(input ActivityLogInput) Blob {
+        lines = input.Lines.Count > 0 ? input.Lines: []OutputLine{OutputLine{Key: "placeholder", Content: input.Placeholder}}
+        let output = VirtualRows(lines, 64, rowKey, LineBuilder(input.LineName))
         output.Handle = viewport
         output.Accessibility = Accessibility{Role: AccessibilityRole.Generic, Name: input.Name}
         output.FlexGrow = input.Short ? 0: 1

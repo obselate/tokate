@@ -1,6 +1,7 @@
 package TokateDesktop
 
 import System
+import System.Collections.Generic
 
 enum DonationStep {
     Issue,
@@ -136,12 +137,13 @@ data struct DonationProgress {
     var Ready bool
     var Started bool
     var Running bool
-    var Output string
+    var Output IReadOnlyList[OutputLine]
+    var OutputRevision int64
     var Elapsed int32
     var State string
 
     shared {
-        let Empty DonationProgress = DonationProgress{Path: "", Run: Run.Empty, Output: "", State: ""}
+        let Empty DonationProgress = DonationProgress{Path: "", Run: Run.Empty, Output: []OutputLine{}, State: ""}
 
         func ElapsedText(seconds int32) string -> (seconds / 3600).ToString("00") + ":" + (seconds / 60 % 60).ToString(
             "00"

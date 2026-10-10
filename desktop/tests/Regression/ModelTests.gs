@@ -161,6 +161,23 @@ func ModelTests() {
         "setup minutes are validated"
     )
 
+    let tail = OutputTail(3)
+    tail.Append("one\r\n\n  \ntwo")
+    Regression.Check(tail.Lines.Count == 2 && tail.Lines[1].Content == "two", "output skips blank lines and carriage returns")
+    let revision = tail.Revision
+    tail.Append("   ")
+    Regression.Check(tail.Revision == revision, "blank output keeps the revision")
+    tail.Append("three")
+    tail.Append("four")
+    Regression.Check(
+        tail.Lines.Count == 3 && tail.Lines[0].Content == "two" && tail.Lines[2].Content == "four",
+        "output keeps the latest lines"
+    )
+    Regression.Check(tail.Lines[0].Key == "1" && tail.Lines[2].Key == "3", "output keys stay with their lines")
+    tail.Clear()
+    tail.Append("five")
+    Regression.Check(tail.Lines.Count == 1 && tail.Lines[0].Key == "5", "cleared output keeps keys unique")
+
     let start = AppTheme.Blend(AppTheme.Daylight, AppTheme.Moonlight, 0)
     Regression.Check(
         Math.Abs(start.Paper.R - AppTheme.Daylight.Paper.R) < 0.0001 &&

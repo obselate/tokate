@@ -49,7 +49,8 @@ data struct DonationRun {
             ActivityLog.Mount(
                 "donation-output",
                 ActivityLogInput{
-                    Output: Progress.Output,
+                    Lines: Progress.Output,
+                    Revision: Progress.OutputRevision,
                     Placeholder: "Starting donation...",
                     Name: "Donation output",
                     LineName: "Command output",
