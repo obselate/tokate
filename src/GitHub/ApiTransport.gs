@@ -188,6 +188,10 @@ internal class ApiTransport {
             Wait(Math.Max(2.0, NextPoll - Clock.Elapsed.TotalSeconds))
         }
 
+        internal func Settle() {
+            Wait(1.0)
+        }
+
         internal func Report() {
             Console.Error.WriteLine(
                 "Tokate API traffic: " + J.Write(
