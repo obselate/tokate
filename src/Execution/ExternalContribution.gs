@@ -148,7 +148,6 @@ internal class ExternalContribution {
                         "policy_hash",
                         "branch",
                         "seconds",
-                        "network",
                         "source"
                     } {
                         if !RequestData.Same(J.Get(saved.Element(), key), J.Get(run.Element(), key)) {
@@ -220,7 +219,7 @@ internal class ExternalContribution {
                 tools = RequestData.FileData(args.Need("tools"), 4096)
                 RequestData.Tools(tools)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
-                policy.ValidateBudget(seconds, run.Flag("network"))
+                policy.ValidateBudget(seconds)
                 policy.ValidateTools(tools, "external")
                 KeepTools(J.Get(run.Element(), "tools"), tools)
                 if J.Count(tools) == J.Count(J.Get(run.Element(), "tools")) {
@@ -331,7 +330,6 @@ internal class ExternalContribution {
                             results,
                             command,
                             checkout,
-                            run.Flag("network"),
                             remaining,
                             budget: budget,
                             workspace: workspace

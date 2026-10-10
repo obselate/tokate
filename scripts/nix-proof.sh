@@ -22,15 +22,13 @@ probe=$(nix build --impure --no-link --print-out-paths --expr '
   in pkgs.callPackage (source + "/nix/verification-probe.nix") {}
 ' --option allow-import-from-derivation false)
 nixpkgs=$(nix flake metadata --json . | python3 -c 'import json,sys; print(json.load(sys.stdin)["locks"]["nodes"]["nixpkgs"]["locked"]["rev"])')
-nix profile add --profile "$proof/tools" "github:NixOS/nixpkgs/$nixpkgs#codex" "github:NixOS/nixpkgs/$nixpkgs#hello" \
+nix profile add --profile "$proof/tools" "github:NixOS/nixpkgs/$nixpkgs#codex" \
   "github:NixOS/nixpkgs/$nixpkgs#bash" "github:NixOS/nixpkgs/$nixpkgs#bubblewrap" github:earendil-works/pi/stable
-unrelated=$(readlink -f "$proof/tools/bin/hello")
 nix profile add --profile "$proof/profile" .#default
 binary="$proof/profile/bin/tokate"
 payload="$proof/profile/lib/tokate/tokate"
 test -x "$payload"
-TOKATE_BINARY="$payload" artifacts/tests/tokate-tests --nix-runtime \
-  "$probe/bin/tokate-nix-probe" "$unrelated" "$(command -v nix-store)"
+TOKATE_BINARY="$payload" artifacts/tests/tokate-tests --nix-runtime "$probe/bin/tokate-nix-probe"
 test "$("$binary" --version)" = "tokate $(nix eval --raw .#default.version)"
 (cd "$proof"; "$binary" doctor --external --json) > "$proof/external.json"
 (cd "$proof"; "$binary" doctor --managed --harness-path "$proof/tools/bin/codex" --json) > "$proof/managed.json"

@@ -155,8 +155,7 @@ internal class ContributionPreparation {
             if args.Get("verification-reserve") != "" {
                 run.Fields["verification_reserve"] = RuntimeBudget.Reserve(args, run.Number("seconds"))
             }
-            run.Fields["network"] = args.Get("allow-network") == "true"
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("network"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
             if source == "tokate" {
                 let declared = J.Items(tools)[0]
                 run.Fields["model"] = J.Text(declared, "model")
@@ -169,7 +168,6 @@ internal class ContributionPreparation {
                 }
                 if J.Text(selection, "harness") == "claude" {
                     run.Fields["claude_profile"] = args.Need("claude-profile")
-                    run.Fields["claude_sole_use"] = args.Get("sole-use") == "true"
                 }
                 if J.Text(selection, "harness") == "pi" {
                     run.Fields["pi_endpoint"] = PiBoundary.Endpoint(args.Need("endpoint"))
@@ -307,7 +305,7 @@ internal class ContributionPreparation {
             ) {
                 throw CliFailure("invalid_state", "Pending claim selection differs from its declared tool")
             }
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("network"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
             RuntimeBudget.Validate(run)
             if run.Text("source") == "tokate" {
                 DonorSelection.Revalidate(run, policy)

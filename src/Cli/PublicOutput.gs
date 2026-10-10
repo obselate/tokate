@@ -119,7 +119,7 @@ internal class PublicOutput {
         internal func Policy(value JsonElement) Object {
             let result = J.Select(
                 value,
-                "version,max_seconds,allow_network,allow_unlimited,reservation_seconds,approval_scope,eligibility,target_branch,pr_text,close_message"
+                "version,max_seconds,allow_unlimited,reservation_seconds,approval_scope,eligibility,target_branch,pr_text,close_message"
             )
             result["close_message"] = Policy.CloseMessage(value)
             let mode = J.Text(value, "model_policy")
@@ -173,7 +173,7 @@ internal class PublicOutput {
             let value = run.Element()
             let result = J.Select(
                 value,
-                "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,effort,seconds,verification_reserve,unlimited,network,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
+                "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,effort,seconds,verification_reserve,unlimited,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
             )
             if run.Text("source") == "tokate" {
                 result["coding_seconds"] = run.Flag("unlimited") ? nil: run.Number("seconds") - run.Number(

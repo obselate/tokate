@@ -12,12 +12,17 @@ internal class PiCatalog : IDisposable {
         internal func Configure(flow NativeFixture, endpoint string) {
             let root = Path.Combine(flow.Temp.Root, "runtime/node_modules")
             let installed = Path.Combine(root, "@earendil-works/pi-coding-agent")
-            Directory.CreateDirectory(Path.Combine(installed, "dist"))
+            Directory.CreateDirectory(Path.Combine(installed, "dist/bundle"))
             File.WriteAllText(
                 Path.Combine(installed, "package.json"),
-                "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-continuation\",\"type\":\"module\"}"
+                "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-continuation\",\"type\":\"module\",\"bin\":{\"pi\":\"dist/bundle/cli.js\"}}"
             )
-            File.WriteAllText(Path.Combine(installed, "dist/index.js"), TestResources.Template("PiContinuation.mjs"))
+            File.WriteAllText(Path.Combine(installed, "dist/index.js"), TestResources.Template("PiModels.mjs"))
+            File.WriteAllText(Path.Combine(installed, "dist/bundle/cli.js"), TestResources.Template("PiCli.mjs"))
+            File.SetUnixFileMode(
+                Path.Combine(installed, "dist/bundle/cli.js"),
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            )
             let config = Path.Combine(flow.Temp.Root, "pi-models")
             Directory.CreateDirectory(config)
             flow.Temp.Env["PI_CODING_AGENT_DIR"] = config

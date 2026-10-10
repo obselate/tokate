@@ -8,7 +8,7 @@ import System.Text.Json.Nodes
 internal class ClaudeChecks {
     shared {
         private func Managed(binary string) {
-            for mode in[]string{"normal", "incomplete", "conflict", "failed"} {
+            for mode in[]string{"normal", "incomplete", "conflict", "failed", "subagent"} {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 let flow = test.Flow
@@ -16,13 +16,15 @@ internal class ClaudeChecks {
                 let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(policyPath))
                 policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
-                policy["models"] = Check.Json("{\"claude-sonnet-5-5\":[\"high\"]}")
+                policy["models"] = Check.Json(
+                    mode == "subagent" ? "{\"claude-sonnet-5-5\":[\"high\"]}": "{\"claude-sonnet-5-5\":[\"high\"],\"claude-haiku-5-5\":[\"low\"]}"
+                )
                 Check.SaveJson(policyPath, policy)
                 Directory.CreateDirectory(Path.Combine(flow.Upstream, ".codex"))
                 File.WriteAllText(Path.Combine(flow.Upstream, ".codex/config.toml"), "")
                 flow.Commit("Claude managed fixture")
                 flow.Approve()
-                let profile = Path.Combine(flow.Temp.Root, "claude-profile")
+                let profile = Path.Combine(flow.Temp.Env["HOME"], ".claude")
                 Directory.CreateDirectory(
                     profile,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
@@ -45,42 +47,11 @@ internal class ClaudeChecks {
                 if mode == "normal" {
                     flow.Temp.Env["TERM"] = "dumb"
                     flow.Temp.Env["NO_COLOR"] = "1"
-                    let executable = Path.Combine(flow.Bin, "claude")
-                    File.AppendAllText(executable, ClaudeTool.LegacyMarker)
-                    let legacyProfile = Path.Combine(flow.Temp.Root, "legacy-profile")
-                    let rejected = TestTerminal.Pty(
-                        binary,
-                        []string{
-                            "work",
-                            "owner/project",
-                            "--issue",
-                            "1",
-                            "--seconds",
-                            "60",
-                            "--verification-reserve",
-                            "20"
-                        },
-                        flow.Temp,
-                        100,
-                        "1\n" + legacyProfile + "\n1\n"
-                    )
-                    Check.That(rejected.Code == 1, rejected.Output + rejected.Error)
-                    Check.Contains(rejected.Output, "2.0.0 (Claude Code)")
-                    Check.Contains(rejected.Output.Replace("\r\n", " "), "Update Claude Code")
-                    Check.That(
-                        !Directory.Exists(legacyProfile) && !rejected.Output.Contains(
-                            "Native fixture sign-in complete"
-                        ),
-                        "Unsupported Claude reached login or created a profile"
-                    )
-                    File.Copy(Environment.ProcessPath ?? throw Exception("Missing test executable"), executable, true)
-                    for existing in[]bool{false, true} {
-                        let wizardProfile = Path.Combine(flow.Temp.Root, existing ? "retry-profile": "wizard-profile")
-                        if existing {
-                            Directory.CreateDirectory(
-                                wizardProfile,
-                                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                            )
+                    let credentials = Path.Combine(profile, ".credentials.json")
+                    let original = File.ReadAllText(credentials)
+                    for authenticated in[]bool{true, false} {
+                        if !authenticated {
+                            File.Delete(credentials)
                         }
                         let cancelled = TestTerminal.Pty(
                             binary,
@@ -96,12 +67,19 @@ internal class ClaudeChecks {
                             },
                             flow.Temp,
                             100,
-                            "1\n" + wizardProfile + "\n1\n1\nq\n"
+                            "1\n1\nq\n"
                         )
                         Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
                         Check.Contains(cancelled.Output, "Claude Code | Subscription")
-                        Check.Contains(cancelled.Output, "Native fixture sign-in complete")
-                        Check.Contains(cancelled.Output, "Review donation")
+                        Check.Contains(
+                            cancelled.Output.Replace("\r\n", " "),
+                            authenticated ? "Review donation": "Sign in with Claude Code"
+                        )
+                        Check.That(
+                            !cancelled.Output.Contains("Profile directory"),
+                            "Wizard demanded a separate login profile"
+                        )
+                        Check.That(!cancelled.Output.Contains("sole-use"), "Wizard demanded sole-use authentication")
                         Check.That(
                             !cancelled.Output.Contains("Uses your Codex subscription"),
                             "Claude wizard claimed Codex billing"
@@ -109,6 +87,7 @@ internal class ClaudeChecks {
                         flow.NoInference()
                         flow.NoPr()
                     }
+                    File.WriteAllText(credentials, original)
                 }
                 flow.Call(
                     []string{
@@ -124,7 +103,6 @@ internal class ClaudeChecks {
                         "high",
                         "--claude-profile",
                         profile,
-                        "--sole-use"
                     }
                 )
                 File.Delete(Path.Combine(flow.Bin, "codex"))
@@ -183,6 +161,10 @@ internal class ClaudeChecks {
                         "Claude status lost native version"
                     )
                     Check.That(Check.Text(saved["usage"]?["input_tokens"]) == "12", "Claude usage was not preserved")
+                    Check.That(
+                        Check.Text(saved["native_reports"]?["model_usage"]?["claude-haiku-5-5"]?["inputTokens"]) == "2",
+                        "Configured subagent usage was lost"
+                    )
                     flow.Publish(run)
                     Check.Contains(flow.Body(), "claude")
                     Check.That(!flow.Body().Contains(profile), "Public summary disclosed the private profile")
@@ -191,6 +173,9 @@ internal class ClaudeChecks {
                         saved["turn_completed"] == nil && saved["commit"] == nil,
                         "Failed Claude turn was accepted"
                     )
+                    if mode == "subagent" {
+                        Check.Contains(Check.Text(saved["error"]), "Claude used claude-haiku-5-5")
+                    }
                     flow.NoPr()
                 }
                 flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, 1)
@@ -237,7 +222,6 @@ internal class ClaudeChecks {
                 Path.Combine(data.Root, "bin/claude"),
                 "--claude-profile",
                 profile,
-                "--sole-use",
                 "--model",
                 "claude-opus-5-5",
                 "--effort",
@@ -279,27 +263,25 @@ internal class ClaudeChecks {
             Check.Envelope(TestProcess.Run(binary, local.ToArray(), data.Env), "claude-capabilities", "ok")
             policy["models"] = Check.Json("{\"claude-sonnet-5-5\":[\"medium\"]}")
             Check.SaveJson(policyPath, policy)
-            words[7] = "claude-sonnet-5-5"
-            words[9] = "medium"
+            words[6] = "claude-sonnet-5-5"
+            words[8] = "medium"
             let changed = Check.Envelope(TestProcess.Run(binary, words, data.Env), "claude-capabilities", "ok")["data"]
             Check.That(
-                Check.Text(changed?["requested"]?["model"]) == words[7] && Check.Text(
+                Check.Text(changed?["requested"]?["model"]) == words[6] && Check.Text(
                     changed?["requested"]?["effort"]
-                ) == words[9],
+                ) == words[8],
                 "Changed owner model/effort policy did not reach the native invocation"
             )
             let invocation = List[string]()
             for word in changed?["invocation"]?.AsArray() ?? throw Exception("Missing invocation") {
                 invocation.Add(Check.Text(word))
             }
-            Check.That(invocation[invocation.IndexOf("--model") + 1] == words[7], "Native model was not selected")
-            Check.That(invocation[invocation.IndexOf("--effort") + 1] == words[9], "Native effort was not selected")
-            let settings = Check.Json(invocation[invocation.IndexOf("--settings") + 1])
-            Check.That(Check.Text(settings["availableModels"]?[0]) == words[7], "Native model restriction was fixed")
+            Check.That(invocation[invocation.IndexOf("--model") + 1] == words[6], "Native model was not selected")
+            Check.That(invocation[invocation.IndexOf("--effort") + 1] == words[8], "Native effort was not selected")
             let changedReport = Path.Combine(data.Root, "selected.jsonl")
             File.WriteAllText(
                 changedReport,
-                Check.Map("type", "system", "subtype", "init", "model", words[7], "effort", words[9]).ToJsonString() +
+                Check.Map("type", "system", "subtype", "init", "model", words[6], "effort", words[8]).ToJsonString() +
                     "\n"
             )
             let reported = List[string](words)
@@ -310,9 +292,9 @@ internal class ClaudeChecks {
                 "ok"
             )
             Check.That(
-                Check.Text(evidence["data"]?["native_reports"]?["model"]) == words[7] && Check.Text(
+                Check.Text(evidence["data"]?["native_reports"]?["model"]) == words[6] && Check.Text(
                     evidence["data"]?["native_reports"]?["effort"]
-                ) == words[9],
+                ) == words[8],
                 "Matching reports were not accepted for the selected pair"
             )
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
@@ -324,8 +306,8 @@ internal class ClaudeChecks {
             policy["models"] = Check.Json("{\"claude-opus-5-5\":[\"high\"]}")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
             Check.SaveJson(policyPath, policy)
-            words[7] = "claude-opus-5-5"
-            words[9] = "high"
+            words[6] = "claude-opus-5-5"
+            words[8] = "high"
             for pair in[]string{
                 "loggedIn=false",
                 "loggedIn=true",
@@ -349,7 +331,7 @@ internal class ClaudeChecks {
             File.WriteAllText(statusPath, status.ToJsonString())
             for effort in[]string{"xhigh", "medium", "max"} {
                 let rejected = List[string](words)
-                rejected[9] = effort
+                rejected[8] = effort
                 let result = TestProcess.Run(binary, rejected.ToArray(), data.Env)
                 Check.That(
                     result.Code == 1 && result.Output.Contains("not allowed by the repository policy"),
@@ -357,7 +339,7 @@ internal class ClaudeChecks {
                 )
             }
             let alias = List[string](words)
-            alias[7] = "opus"
+            alias[6] = "opus"
             Check.That(
                 TestProcess
                     .Run(binary, alias.ToArray(), data.Env)
@@ -366,16 +348,14 @@ internal class ClaudeChecks {
                 "Model alias was not refused before native launch"
             )
             let executable = Path.Combine(data.Root, "bin/claude")
-            File.AppendAllText(executable, ClaudeTool.LegacyMarker)
-            let unsupported = TestProcess.Run(binary, words, data.Env)
-            Check.That(unsupported.Code == 1, "Missing restricted control was accepted")
-            Check.Contains(unsupported.Output, "Update Claude Code")
-            File.Copy(Environment.ProcessPath ?? throw Exception("Missing test executable"), executable, true)
             File.WriteAllText(Path.Combine(profile, "settings.json"), "{}")
-            Check.That(TestProcess.Run(binary, words, data.Env).Code == 1, "Mixed settings profile was accepted")
+            Check.That(TestProcess.Run(binary, words, data.Env).Code == 0, "Existing Claude settings were refused")
             File.Delete(Path.Combine(profile, "settings.json"))
             data.Env["ANTHROPIC_API_KEY"] = "synthetic-only"
-            Check.That(TestProcess.Run(binary, words, data.Env).Code == 1, "Environment-token profile was accepted")
+            Check.That(
+                TestProcess.Run(binary, words, data.Env).Code == 0,
+                "Unrelated environment prevented native login reuse"
+            )
             data.Env.Remove("ANTHROPIC_API_KEY")
             let report = Path.Combine(data.Root, "report.jsonl")
             let withReport = List[string](words)
@@ -401,12 +381,7 @@ internal class ClaudeChecks {
                 parsed?["effort"] == nil && Check.Text(parsed?["usage"]?["input_tokens"]) == "12",
                 "Reports invented effort or lost native usage"
             )
-            for field in[]string{
-                "\"model\":\"claude-sonnet-4-6\"",
-                "\"effort\":\"low\"",
-                "\"permissionMode\":\"dontAsk\"",
-                "\"modelUsage\":{\"claude-haiku-4-5\":{}}"
-            } {
+            for field in[]string{"\"model\":\"claude-sonnet-4-6\"", "\"effort\":\"low\""} {
                 File.WriteAllText(
                     report,
                     "{\"type\":\"system\",\"subtype\":\"init\"," + field + "}\n{\"type\":\"result\"," + field + "}\n"

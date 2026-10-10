@@ -297,11 +297,10 @@ internal open class NativeFixture : IDisposable {
         seconds string = "30",
         model string = "gpt-6.1-sol",
         code int32 = 0,
-        network bool = false,
         effort string = "high",
         reserve string = ""
     ) string {
-        let result = Acquire(ClaimArgs(seconds, model, effort, reserve, network), code)
+        let result = Acquire(ClaimArgs(seconds, model, effort, reserve), code)
         let index = result.Output.LastIndexOf("Run: ")
         return index < 0 ? "": result.Output.Substring(index + 5).Trim()
     }
@@ -311,7 +310,6 @@ internal open class NativeFixture : IDisposable {
         model string = "gpt-6.1-sol",
         effort string = "high",
         reserve string = "",
-        network bool = false,
         fork string = "",
         json bool = false
     )[]string {
@@ -326,9 +324,6 @@ internal open class NativeFixture : IDisposable {
         args.AddRange([]string{"--runs", Path.Combine(Temp.Root, "runs")})
         if reserve != "" {
             args.AddRange([]string{"--verification-reserve", reserve})
-        }
-        if network {
-            args.Add("--allow-network")
         }
         if json {
             args.Add("--json")
@@ -545,7 +540,7 @@ internal open class NativeFixture : IDisposable {
         Save()
     }
 
-    internal func VerificationPolicy(script string, network bool = false, second string = "") {
+    internal func VerificationPolicy(script string, second string = "") {
         let path = Path.Combine(Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(path))
         let commands = JsonArray()
@@ -559,7 +554,6 @@ internal open class NativeFixture : IDisposable {
             }
         }
         policy["verification"] = commands
-        policy["allow_network"] = JsonValue.Create(network)
         File.WriteAllText(path, policy.ToJsonString())
         Commit("Verify real independent boundary")
         Git("-C", Path.Combine(Bin, "fork"), "fetch", Upstream, "main")

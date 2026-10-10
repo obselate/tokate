@@ -10,7 +10,7 @@ tokate doctor --harness codex --fix
 ```
 
 Setup previews the required `apk` packages and asks before installation. It uses
-`doas` or `sudo` for ordinary users. GNU coreutils, findutils and util-linux-misc
+`doas` or `sudo` for ordinary users. GNU coreutils, findutils, util-linux-misc and setpriv
 provide the required options that BusyBox applets lack.
 
 Pi also needs Bash and Node.js 22.19 or newer with npm. Install Node through Alpine,
@@ -22,4 +22,4 @@ tokate doctor --harness pi --fix
 ```
 
 Custom harness and Node paths remain supported. Tokate does not change user
-namespace policy or run commands outside the sandbox when isolation fails.
+namespace policy.

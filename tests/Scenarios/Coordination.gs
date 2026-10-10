@@ -123,23 +123,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 File.WriteAllText(test.Tools, original.ToJsonString())
                 let fork = Path.Combine(test.Flow.Bin, "fork")
                 let branches = test.Flow.Git("-C", fork, "show-ref", "--heads")
-                for network in[]bool{false, true} {
-                    test.Prepare(code: 1, seconds: network ? "30": "3601", network: network)
-                    Check.That(
-                        !Directory.Exists(Path.Combine(test.Flow.Temp.Root, "runs")),
-                        "Forbidden budget or network access created a saved run"
-                    )
-                    test.Flow.Reload()
-                    Check.That(
-                        test.Flow.State["fork_creations"] == nil && test.Flow.Git(
-                            "-C",
-                            fork,
-                            "show-ref",
-                            "--heads"
-                        ) == branches,
-                        "Forbidden budget or network access created a fork or changed a branch"
-                    )
-                }
+                test.Prepare(code: 1, seconds: "3601")
+                Check.That(
+                    !Directory.Exists(Path.Combine(test.Flow.Temp.Root, "runs")),
+                    "Forbidden budget created a saved run"
+                )
+                test.Flow.Reload()
+                Check.That(
+                    test.Flow.State["fork_creations"] == nil && test.Flow.Git(
+                        "-C",
+                        fork,
+                        "show-ref",
+                        "--heads"
+                    ) == branches,
+                    "Forbidden budget created a fork or changed a branch"
+                )
                 test.Prepare("tokate", 1)
                 if mode == "unrestricted" {
                     let first = original[0] ?? throw Exception("Missing first tool")

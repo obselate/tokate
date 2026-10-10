@@ -55,7 +55,7 @@ internal class ContributionAuthority {
                 RepositoryAccess.ValidateRun(run)
             }
             RuntimeBudget.Validate(run)
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("network"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
             AttemptContinuation.Recheck(run, state)
             return record
         }

@@ -1,7 +1,7 @@
 # Donate work
 
 Use your own GitHub account and coding harness. Tokate needs Linux x86_64,
-glibc 2.34+ or [Alpine 3.24](alpine.md), Git, the GitHub CLI and bubblewrap with working user namespaces.
+glibc 2.34+ or [Alpine 3.24](alpine.md), Git, the GitHub CLI and util-linux `setpriv` and `unshare` with working user namespaces.
 Project build tools must be accessible from system paths. Keep managed runs and
 harness installations outside `/tmp`.
 
@@ -43,20 +43,22 @@ tokate select --repo OWNER/REPO
 Select an owner-allowed model and effort. The offline catalog and login check do
 not prove account availability or remaining allowance. `defaults list` shows saved
 choices. Add `--profile NAME` to keep several choices and select one per donation.
-Profiles store neither budgets nor network consent.
+Profiles do not store budgets.
+
+Codex runs unattended, so tools that need approval are refused. Set
+`default_tools_approval_mode = "approve"` on MCP servers you trust for donations.
 
 ### Claude Code
 
-Choose Claude Code in the donation wizard. It uses your installed native CLI and a
-private profile used only for Tokate donations. A new profile opens Claude's own
-sign-in flow. Use a personal Pro or Max subscription. Mixed settings, managed
-policy and API/cloud profiles are refused.
+Choose Claude Code in the donation wizard. It uses your installed native CLI,
+existing login, settings and tools. Sign in through Claude Code first with your
+personal Pro or Max subscription. `--claude-profile DIR` selects an existing
+configuration directory when needed.
 
 For a saved choice, after native sign-in:
 
 ```sh
-tokate defaults set --profile claude --harness claude --model MODEL --effort EFFORT \
-  --claude-profile /absolute/private/profile --sole-use
+tokate defaults set --profile claude --harness claude --model MODEL --effort EFFORT
 ```
 
 Use that profile with the same `claim`, `work` and `submit` commands below. Tokate
@@ -76,7 +78,7 @@ tokate defaults set --profile local --harness pi --model 'MODEL_ID' \
 tokate select --repo OWNER/REPO --profile local
 ```
 
-Tokate discovers the SDK and Node from supported npm or managed Pi installations.
+Tokate discovers the CLI and Node from supported npm or managed Pi installations.
 For a custom layout, supply absolute `--pi-root` and `--node` paths. There is no
 `/usr/bin/node` requirement. Pi's nonsecret SDK metadata must supply the configured
 context and output limits. The endpoint must advertise the exact model at
@@ -86,7 +88,7 @@ endpoints, authentication and paid Pi providers are not supported by this route.
 ## Claim, work and submit
 
 In a terminal, start with `tokate work OWNER/REPO`. Choose an available approved
-issue, tool and budget. Review the task, model and network permissions before confirming.
+issue, tool and budget. Review the task, model and budget before confirming.
 
 To reserve without starting inference, for example for one hour with 20 minutes
 reserved for verification:
@@ -111,9 +113,10 @@ only when you need to select one explicitly. You do not need to write request JS
 After coordinator publication, repeat `submit --run RUN_DIRECTORY` to save the PR locally.
 
 `--seconds` caps coding plus verification time, not tokens or server billing.
-Command network access defaults off. Downloads need both owner permission and
-`--allow-network` on the new claim. Inference connectivity is separate. There is no
-automatic retry, continuation or model fallback. Review [data and isolation limits](security.md).
+The harness, its tools and owner verification always have network access, which
+cloud and local model servers both need. Native harness settings control its retries and context handling
+within the budget; Tokate never restarts a failed run automatically.
+Review [data and isolation limits](security.md).
 
 ## Check progress
 

@@ -199,8 +199,6 @@ internal class CliDiscovery {
                     "manual",
                     "--base-branch",
                     "release",
-                    "--network",
-                    "allow",
                     "--seconds",
                     "5400",
                     "--reservation-seconds",
@@ -218,7 +216,7 @@ internal class CliDiscovery {
             policy = Check.Json(restricted)
             Check.That(
                 Check.Text(policy["target_branch"]) == "release" && Check.Text(policy["max_seconds"]) == "5400" &&
-                    Check.Text(policy["allow_network"]) == "true",
+                    policy["allow_network"] == nil,
                 "Noninteractive settings were not applied"
             )
             flow.Call(
@@ -309,7 +307,7 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "whitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n\n\n\n/usr/bin/true\n\nverify, build\n\ny\n"
+                "whitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n\n\n/usr/bin/true\n\nverify, build\n\ny\n"
             )
             Check.Success(terminal)
             Check.That(
@@ -386,7 +384,7 @@ internal class CliDiscovery {
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let calls = Path.Combine(temp.Root, "calls")
-            for name in[]string{"git", "gh", "codex", "setsid", "bwrap"} {
+            for name in[]string{"git", "gh", "codex", "setsid"} {
                 let tool = Path.Combine(bin, name)
                 File.WriteAllText(
                     tool,
@@ -538,19 +536,13 @@ internal class CliDiscovery {
                 Check.That(Check.Text(command?["inference"]) == "false", "Non-inference command advertised inference")
             }
             let workMetadata = Check.Envelope(Call(binary, []string{"help", "work", "--json"}, temp), "help", "ok")
-            for name in[]string{"seconds", "runs", "fork", "allow-network"} {
+            for name in[]string{"seconds", "runs", "fork", "verification-reserve"} {
                 var listed bool
                 for input in workMetadata["data"]?["commands"]?[0]?["exclusive_run_inputs"]?.AsArray() ?? JsonArray() {
                     listed = listed || Check.Text(input) == name
                 }
                 Check.That(listed, "Metadata omitted --run conflict: " + name)
-                let argv = name == "allow-network" ? []string{
-                    "work",
-                    "--run",
-                    "saved",
-                    "--allow-network",
-                    "--json"
-                }: []string{"work", "--run", "saved", "--" + name, "1", "--json"}
+                let argv = []string{"work", "--run", "saved", "--" + name, "1", "--json"}
                 let rejected = Check.Envelope(Call(binary, argv, temp, 1), "work", "error", "invalid_arguments")
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--run conflicts with --" + name)
             }
@@ -601,7 +593,7 @@ internal class CliDiscovery {
             temp.Env["PATH"] = empty
             let doctor = TestProcess.Run(binary, []string{"doctor", "--json"}, temp.Env)
             let diagnosis = Check.Envelope(doctor, "doctor", "error", "missing_tools")
-            Check.That(diagnosis["data"]?["tools"]?.AsArray().Count == 9, "Doctor omitted common checks")
+            Check.That(diagnosis["data"]?["tools"]?.AsArray().Count == 8, "Doctor omitted common checks")
             Check.That(!doctor.Output.Contains("Tokate environment"), "Doctor emitted prose stdout")
             let blocked = Check.Envelope(
                 TestProcess.Run(binary, []string{"policy", "--repo", "owner/project", "--json"}, temp.Env),
@@ -973,7 +965,7 @@ internal class CliDiscovery {
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let log = Path.Combine(temp.Root, "calls")
-            for name in[]string{"git", "gh", "codex", "setsid", "bwrap"} {
+            for name in[]string{"git", "gh", "codex", "setsid"} {
                 let tool = Path.Combine(bin, name)
                 File.WriteAllText(
                     tool,
@@ -1024,7 +1016,7 @@ internal class CliDiscovery {
                 []string{"work", "--model="},
                 []string{"work", "--model", "--help"},
                 []string{"checks", "--watch=true"},
-                []string{"work", "--allow-network=false"},
+                []string{"work", "--unlimited=false"},
                 []string{"checks", "--run=x", "--pr=1"},
                 []string{"checks", "--run=x", "--repo=owner/project"},
                 []string{"work", "--run=x", "--seconds=1"},

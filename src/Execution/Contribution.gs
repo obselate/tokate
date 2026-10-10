@@ -72,7 +72,6 @@ internal class Contribution {
                         verification,
                         command,
                         checkout,
-                        run.Flag("network") && J.Bool(J.Get(record, "policy"), "allow_network"),
                         seconds,
                         total,
                         workspace: workspace

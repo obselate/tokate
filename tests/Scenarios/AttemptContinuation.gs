@@ -99,7 +99,6 @@ internal class AttemptContinuationChecks {
             let policy = Check.Json(File.ReadAllText(path))
             policy["approval_scope"] = JsonValue.Create("task")
             policy["eligibility"] = JsonValue.Create("trusted")
-            policy["allow_network"] = JsonValue.Create(true)
             policy["verification"] = Check.Json(
                 "[[\"/bin/bash\",\"-c\",\"test -f result.txt && test \\\"$$(cat tracked.txt)\\\" = preserved && test \\\"$$(cat imported.txt)\\\" = untracked && test \\\"$$(git show HEAD:tracked.txt)\\\" = approved\"]]"
             )
@@ -122,7 +121,6 @@ internal class AttemptContinuationChecks {
                     endpoint: endpoint
                 )
             )
-            args.Add("--allow-network")
             let source = Prepare(test, args.ToArray())
             if actual != "" {
                 test.Flow.Reload()
@@ -261,10 +259,8 @@ internal class AttemptContinuationChecks {
                 "Continuation did not preserve identity with a new attempt directory"
             )
             Check.That(
-                Check.Text(run["seconds"]) == "40" && Check.Text(run["verification_reserve"]) == "12" && Check.Text(
-                    run["network"]
-                ) == "false",
-                "Continuation inherited budgets or network consent"
+                Check.Text(run["seconds"]) == "40" && Check.Text(run["verification_reserve"]) == "12",
+                "Continuation inherited budgets"
             )
             Check.That(
                 run["usage"] == nil && run["turn_completed"] == nil && run["verification"] == nil && !File.Exists(

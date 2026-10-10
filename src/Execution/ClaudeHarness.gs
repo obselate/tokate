@@ -6,6 +6,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.IO
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class ClaudeHarness {
     shared {
@@ -15,7 +16,7 @@ internal class ClaudeHarness {
             }
             let model = args.Need("model")
             let effort = args.Need("effort")
-            policy.Validate(model, effort, 1, false)
+            policy.Validate(model, effort, 1)
             if !ClaudeCode.Pair(model, effort) {
                 throw Exception("Unsupported native Claude model/effort pair; no inference started.")
             }
@@ -33,7 +34,7 @@ internal class ClaudeHarness {
                         "source": source,
                         "policy_hash": policy.Digest,
                         "policy_eligible": true,
-                        "capability": "native restricted file tools and sandboxed commands inside whole-process isolation",
+                        "capability": "native configured tools inside whole-process isolation",
                         "availability": "unknown",
                         "availability_evidence": "Native login status and explicit controls do not prove model availability or remote identity",
                         "version": J.Text(runtime, "version")
@@ -44,11 +45,11 @@ internal class ClaudeHarness {
 
         internal func ValidateSaved(run Data, policy Policy) {
             policy.ValidateTools(J.Get(run.Element(), "tools"), "tokate")
-            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"), run.Flag("network"))
-            if !run.Flag("claude_sole_use") || !Path.IsPathFullyQualified(run.Text("claude_profile")) ||
-                !Path
-                .IsPathFullyQualified(run.Text("harness_path")) {
-                throw Exception("Saved Claude run requires its original sole-use native-login profile and executable")
+            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"))
+            if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
+                run.Text("harness_path")
+            ) {
+                throw Exception("Saved Claude run requires its original native-login profile and executable")
             }
         }
 
@@ -83,8 +84,7 @@ internal class ClaudeHarness {
                     "--harness-path",
                     run.Text("harness_path"),
                     "--claude-profile",
-                    run.Text("claude_profile"),
-                    "--sole-use"
+                    run.Text("claude_profile")
                 }
             )
             let runtime = ClaudeCode.Runtime(options, coding)
@@ -94,8 +94,14 @@ internal class ClaudeHarness {
                 throw Exception("Saved Claude runtime changed; no substitution")
             }
             let checkout = Path.Combine(directory, "checkout")
-            let args = List[string](ClaudeCode.Boundary(run.Text("harness_path"), run.Text("claude_profile"), checkout))
-            let invocation = ClaudeCode.Invocation(run.Text("model"), run.Text("effort"), run.Flag("network"))
+            let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
+            let policy = Policy(J.Write(J.Get(record, "policy")))
+            let invocation = ClaudeCode.Invocation(
+                run.Text("model"),
+                run.Text("effort"),
+                run.Text("claude_profile"),
+                policy.AllowedModels(ClaudeCode.ModelPattern)
+            )
             args.AddRange(invocation)
             ContributionAuthority.Recheck(run)
             WorkspacePreparation.Ready(directory, run)
@@ -126,18 +132,16 @@ internal class ClaudeHarness {
                         activity = line -> Activity(line)
                     }
                     result = Commands.Run(
-                        "/usr/bin/bwrap",
+                        LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
                         checkout,
                         prompt,
                         run.Flag("unlimited") ? 0: run.Number("seconds"),
-                        isolated: true,
                         cancellation: Chan[bool](1),
                         strictOutput: true,
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
                         budget: coding,
-                        pidNamespace: true,
                         outputLine: activity
                     )
                 }
@@ -147,6 +151,19 @@ internal class ClaudeHarness {
                 let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), directory)
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     throw Exception("Claude did not complete; inspect private captured evidence. No retry or fallback")
+                }
+                let models = J.Get(reports, "model_usage")
+                if models.ValueKind == JsonValueKind.Object {
+                    for used in models.EnumerateObject() {
+                        let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
+                        if !policy.AllowsModel(name) && !policy.AllowsModel(used.Name) {
+                            throw Exception(
+                                "Claude used " +
+                                    used.Name +
+                                    ", which the repository policy does not allow. Remove it from your Claude subagent or model settings."
+                            )
+                        }
+                    }
                 }
                 let usage = J.Select(J.Get(reports, "usage"), "input_tokens,output_tokens")
                 let cached = J.Get(J.Get(reports, "usage"), "cache_read_input_tokens")

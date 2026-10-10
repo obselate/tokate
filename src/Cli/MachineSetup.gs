@@ -69,10 +69,7 @@ internal class MachineSetup {
             case "git": "git"
             case "gh": manager.EndsWith("pacman") || manager.EndsWith("apk") ? "github-cli": "gh"
             case "curl": "curl"
-            case "/usr/bin/socat": "socat"
             case "tar": "tar"
-            case "bwrap": "bubblewrap"
-            case "/usr/bin/bwrap": "bubblewrap"
             case "setsid": manager.EndsWith("dnf") ? "util-linux-core": manager.EndsWith(
                 "apk"
             ) ? "util-linux-misc": "util-linux"
@@ -82,6 +79,7 @@ internal class MachineSetup {
             case "/usr/bin/unshare": manager.EndsWith("dnf") ? "util-linux-core": manager.EndsWith(
                 "apk"
             ) ? "util-linux-misc": "util-linux"
+            case "/usr/bin/setpriv": manager.EndsWith("apk") ? "setpriv": "util-linux"
             case "/usr/bin/env": "coreutils"
             case "/usr/bin/cp": "coreutils"
             case "/usr/bin/find": "findutils"
@@ -168,7 +166,7 @@ internal class MachineSetup {
             if packages.Count > 0 {
                 if NixManaged() || NixHost() {
                     Terminal.Message(
-                        "Nix manages these prerequisites. Add git, gh, bubblewrap, util-linux, coreutils and findutils to your Nix configuration or profile, then rerun doctor.",
+                        "Nix manages these prerequisites. Add git, gh, util-linux, coreutils and findutils to your Nix configuration or profile, then rerun doctor.",
                         error: true
                     )
                     return false

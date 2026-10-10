@@ -25,7 +25,7 @@ def start(path, home=False):
             binary, "init", "--repo", "owner/project", "--path", path,
             "--model-policy", "whitelist", "--allowed-tools", "codex,pi", "--verification", '[["/usr/bin/true"]]',
             "--required-checks", '["verify"]', "--eligibility", "trusted",
-            "--base-branch", "main", "--network", "deny", "--seconds", "60",
+            "--base-branch", "main", "--seconds", "60",
             "--reservation-seconds", "300", "--pr-text", "Owner notes", "--yes",
         ])
     resize(fd, 100, 24)

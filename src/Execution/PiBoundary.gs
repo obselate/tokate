@@ -23,118 +23,6 @@ internal class PiBoundary {
             return uri.AbsoluteUri
         }
 
-        internal func Boundary(checkout string, root string, node string, control string, network bool) List[string] {
-            Verification.Validate(checkout)
-            let bash = LocalPaths.NeedSystemTool("bash", checkout)
-            let bwrap = LocalPaths.NeedSystemTool("bwrap", checkout)
-            let tools = NixRuntime.Tools(checkout, []string{node, bash, bwrap})
-            let runtime = List[string](tools)
-            runtime.Add(root)
-            for path in[]string{root, node, control} {
-                if path == checkout || path.StartsWith(checkout + "/") {
-                    throw Exception("Pi runtime and control files must be outside the writable checkout")
-                }
-            }
-            let args = List[string]{
-                "--die-with-parent",
-                "--new-session",
-                "--unshare-user",
-                "--unshare-pid",
-                "--unshare-ipc",
-                "--unshare-uts",
-                "--cap-drop",
-                "ALL",
-                "--clearenv",
-                "--setenv",
-                "PATH",
-                NixRuntime.SearchPath(tools.ToArray()),
-                "--setenv",
-                "HOME",
-                "/tmp/tokate-agent",
-                "--setenv",
-                "TMPDIR",
-                "/tmp/tokate-tools",
-                "--setenv",
-                "LANG",
-                "C.UTF-8",
-                "--setenv",
-                "PI_OFFLINE",
-                "1",
-                "--setenv",
-                "TOKATE_BASH",
-                bash,
-                "--setenv",
-                "TOKATE_BWRAP",
-                bwrap
-            }
-            if !network {
-                args.Add("--unshare-net")
-            }
-            let certificates = LocalPaths.Certificates()
-            if certificates != "" {
-                for name in[]string{"SSL_CERT_FILE", "GIT_SSL_CAINFO", "CURL_CA_BUNDLE", "NODE_EXTRA_CA_CERTS"} {
-                    args.AddRange([]string{"--setenv", name, certificates})
-                }
-            }
-            for path in[]string{"/usr/bin", "/usr/lib", "/usr/share", "/bin", "/lib", "/lib64"} {
-                if Directory.Exists(path) {
-                    args.AddRange([]string{"--ro-bind", path, path})
-                }
-            }
-            for path in NixRuntime.Paths(runtime.ToArray(), checkout) {
-                args.AddRange([]string{"--ro-bind", path, path})
-            }
-            for path in[]string{
-                "/etc/ld.so.cache",
-                "/etc/nsswitch.conf",
-                "/etc/hosts",
-                "/etc/resolv.conf",
-                "/etc/ssl/certs/ca-certificates.crt",
-                "/etc/ssl/cert.pem",
-                "/etc/pki/tls/certs/ca-bundle.crt",
-                "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
-            } {
-                if File.Exists(path) {
-                    args.AddRange([]string{"--ro-bind", path, path})
-                }
-            }
-            args.AddRange(
-                []string{
-                    "--proc",
-                    "/proc",
-                    "--dev",
-                    "/dev",
-                    "--tmpfs",
-                    "/tmp",
-                    "--dir",
-                    "/tmp/tokate-agent",
-                    "--dir",
-                    "/tmp/tokate-tools",
-                    "--ro-bind",
-                    root,
-                    "/tokate-runtime/node_modules",
-                    "--ro-bind",
-                    node,
-                    "/tokate-node",
-                    "--ro-bind",
-                    control,
-                    "/tokate-control",
-                    "--bind",
-                    checkout,
-                    checkout,
-                    "--tmpfs",
-                    Path.Combine(checkout, ".git"),
-                    "--chmod",
-                    "000",
-                    Path.Combine(checkout, ".git"),
-                    "--chdir",
-                    checkout,
-                    "--"
-                }
-            )
-            return args
-        }
-
         internal func ModelSettings(
             root string,
             node string,
@@ -180,7 +68,7 @@ internal class PiBoundary {
                     )
                 }
                 let limits = RequestData.Parse(result.Output.Trim(), 4096)
-                RequestData.Keys(limits, "contextWindow,maxTokens,reasoning,thinkingLevelMap,compat,efforts")
+                RequestData.Keys(limits, "provider,contextWindow,maxTokens,reasoning,efforts")
                 let contextWindow = J.Number(limits, "contextWindow")
                 let maxTokens = J.Number(limits, "maxTokens")
                 if contextWindow < 1 || maxTokens < 1 || maxTokens > contextWindow {
@@ -203,104 +91,37 @@ internal class PiBoundary {
             )
         }
 
-        internal func Control(control string, model string, endpoint string, settings JsonElement) {
-            Directory.CreateDirectory(
-                control,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
-            File.WriteAllText(Path.Combine(control, "bridge.mjs"), ApplicationInfo.Resource("pi-bridge.mjs"))
-            File.WriteAllText(
-                Path.Combine(control, "models.json"),
-                J.Write(
-                    map[string, Object?]{
-                        "providers": map[string, Object?]{
-                            "tokate-local": map[string, Object?]{
-                                "baseUrl": endpoint,
-                                "api": "openai-completions",
-                                "apiKey": "tokate-no-auth",
-                                "authHeader": false,
-                                "models": []Object{
-                                    map[string, Object?]{
-                                        "id": model,
-                                        "name": model,
-                                        "reasoning": J.Get(settings, "reasoning"),
-                                        "thinkingLevelMap": J.Get(settings, "thinkingLevelMap"),
-                                        "input": []string{"text"},
-                                        "contextWindow": J.Number(settings, "contextWindow"),
-                                        "maxTokens": J.Number(settings, "maxTokens"),
-                                        "cost": map[string, Object?]{
-                                            "input": 0,
-                                            "output": 0,
-                                            "cacheRead": 0,
-                                            "cacheWrite": 0
-                                        },
-                                        "compat": J.Get(settings, "compat")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                )
-            )
+        internal func Cli(executable string, node string) List[string] {
+            let command = List[string]{"PI_CODING_AGENT_DIR=" + LocalPaths.PiDirectory()}
+            if executable.EndsWith(".js") || executable.EndsWith(".mjs") || executable.EndsWith(".cjs") {
+                command.Add(node)
+            }
+            command.Add(executable)
+            return command
         }
 
         internal func Probe(root string, node string, budget RuntimeBudget? = nil) JsonElement {
-            let storage = Directory.CreateDirectory(
-                Path.Combine("/tmp", "tokate-pi-probe-" + Guid.NewGuid().ToString("N")),
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
-            try {
-                let checkout = Path.Combine(storage.FullName, "checkout")
-                Directory.CreateDirectory(Path.Combine(checkout, ".git"))
-                File.WriteAllText(Path.Combine(checkout, ".git/config"), "synthetic-private")
-                File.WriteAllText(Path.Combine(storage.FullName, "credential-sentinel"), "synthetic-private")
-                let control = Path.Combine(storage.FullName, "control")
-                Control(
-                    control,
-                    "tokate-probe",
-                    "http://127.0.0.1:1/v1",
-                    J.Parse(
-                        "{\"contextWindow\":32768,\"maxTokens\":4096,\"reasoning\":false,\"thinkingLevelMap\":{},\"compat\":{\"supportsReasoningEffort\":false,\"thinkingFormat\":\"openai\"}}"
-                    )
-                )
-                let args = Boundary(checkout, root, node, control, false)
-                args.AddRange(
-                    []string{
-                        "/tokate-node",
-                        "/tokate-control/bridge.mjs",
-                        "probe",
-                        checkout,
-                        "tokate-probe",
-                        "false",
-                        Path.Combine(storage.FullName, "credential-sentinel")
-                    }
-                )
-                let result = Commands.Run(
-                    LocalPaths.NeedSystemTool("bwrap", checkout),
-                    args.ToArray(),
-                    checkout,
-                    seconds: 30,
-                    isolated: true,
-                    budget: budget,
-                    pidNamespace: true
-                )
-                if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw LinuxSandbox.ProbeFailure(
-                        result,
-                        "Pi SDK or outer/nested isolation probe failed. Update pi and Node, then retry the probe. No inference started"
-                    )
-                }
-                let runtime = RequestData.Parse(result.Output.Trim(), 4096)
-                if J.Text(runtime, "type") != "pi.probe" || J.Text(runtime, "version") == "" || !J.Text(runtime, "node")
-                    .StartsWith("v") {
-                    throw Exception(
-                        "Pi SDK probe did not report its actual package and Node versions. No inference started"
-                    )
-                }
-                return runtime
-            } finally {
-                Directory.Delete(storage.FullName, true)
+            let packageRoot = Path.Combine(root, "@earendil-works/pi-coding-agent")
+            let metadata = RequestData.FileData(Path.Combine(packageRoot, "package.json"), 128 * 1024)
+            let entry = J.Text(J.Get(metadata, "bin"), "pi")
+            let cli = Path.GetFullPath(Path.Combine(packageRoot, entry))
+            if entry == "" || !LocalPaths.Within(cli, packageRoot) || !File.Exists(cli) {
+                throw Exception("The installed Pi package does not provide its CLI entrypoint")
             }
+            let version = Version(root, node, []string{cli, "--version"}, budget)
+            let runtime = Version(root, node, []string{"--version"}, budget)
+            if version != J.Text(metadata, "version") || !runtime.StartsWith("v") {
+                throw Exception("Pi CLI or Node version differs from its installed package")
+            }
+            return J.Parse(J.Write(map[string, Object?]{"type": "pi.probe", "version": version, "node": runtime}))
+        }
+
+        private func Version(root string, node string, arguments[]string, budget RuntimeBudget?) string {
+            let result = Commands.Run(node, arguments, root, seconds: 30, budget: budget)
+            if result.Code != 0 || result.Truncated || result.ReadFailed {
+                throw LinuxSandbox.ProbeFailure(result, "Pi CLI or Node readiness check failed; no inference started")
+            }
+            return result.Output.Trim()
         }
     }
 }

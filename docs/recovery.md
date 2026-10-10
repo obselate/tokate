@@ -64,8 +64,7 @@ tokate work --run NEW_RUN_DIR --yes
 tokate submit --run NEW_RUN_DIR
 ```
 
-Pi must retain its original model, runtime and endpoint. Network permission needs
-fresh opt-in. Preparation preserves the predecessor's files and failed outcome.
+Pi must retain its original model, runtime and endpoint. Preparation preserves the predecessor's files and failed outcome.
 Active, completed, external, published and cross-donor sources are excluded.
 Update the owner's pinned coordinator before submission.
 Advanced lease requests use `request --file`; the accepted schema

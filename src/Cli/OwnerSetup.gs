@@ -228,15 +228,13 @@ internal class OwnerSetup {
                         "\nLimit    " +
                         (J.Number(value, "max_seconds") / 60.0).ToString("0.##") +
                         " minutes total" +
-                        "\nNetwork  " +
-                        (J.Bool(value, "allow_network") ? "Project commands allowed": "Project commands offline") +
                         "\nTools    " +
                         String.Join(", ", tools),
                     []string{
                         "Create policy files",
                         "Change checks or time limit",
                         "Review allowed models",
-                        "Change tools or network",
+                        "Change tools",
                         "Back to home"
                     },
                     "Setup writes local configuration. Review and commit it before approving a task. Existing custom settings and workflow files are preserved."
@@ -306,12 +304,6 @@ internal class OwnerSetup {
                     ):
                     choice == 1 ? "codex": choice == 2 ? "claude": choice == 3 ? "pi": "codex,claude,pi"
                     Tools(args, fields, false)
-                    fields["allow_network"] = WizardScreen.Choose(
-                        "Project network",
-                        "Donors must also consent. Inference connectivity is separate.",
-                        []string{"Keep project commands offline", "Allow project command network access"},
-                        selected: J.Bool(value, "allow_network") ? 2: 1
-                    ) == 2
                 }
             }
         }
@@ -354,7 +346,6 @@ internal class OwnerSetup {
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
                 fields["max_seconds"] = 3600
-                fields["allow_network"] = false
             }
             let foreground = !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
                 !Console.IsInputRedirected
@@ -400,7 +391,6 @@ internal class OwnerSetup {
             for key in[]string{
                 "eligibility",
                 "base-branch",
-                "network",
                 "seconds",
                 "reservation-seconds",
                 "verification",
@@ -411,9 +401,6 @@ internal class OwnerSetup {
                 let field = key == "base-branch" ? "target_branch": key.Replace('-', '_')
                 let present = J.Get(value, field)
                 var fallback = present.ValueKind == JsonValueKind.Undefined ? "": present.ToString()
-                if key == "network" {
-                    fallback = J.Bool(value, "allow_network") ? "allow": "deny"
-                }
                 if key == "seconds" {
                     fallback = J.Number(value, "max_seconds").ToString()
                 }
@@ -430,12 +417,7 @@ internal class OwnerSetup {
                 if answer == "" {
                     continue
                 }
-                if key == "network" {
-                    if answer != "allow" && answer != "deny" {
-                        throw Exception("Network must be allow or deny")
-                    }
-                    fields["allow_network"] = answer == "allow"
-                } else if key == "seconds" || key == "reservation-seconds" {
+                if key == "seconds" || key == "reservation-seconds" {
                     fields[key == "seconds" ? "max_seconds": field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
                     fields[field] = RequestData.Parse(answer)
