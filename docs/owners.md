@@ -55,6 +55,9 @@ tokate access trust DONOR
 ```
 
 In a checkout, `42` names issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
+
+See the [positional arguments guide](arguments.md) for references and command forms.
+
 Initialize access once. Trust permits future approved tasks. Use `access grant DONOR 42`
 for one issue instead. `tokate access` shows requests and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
 non-denied donors. Manual eligibility requires an issue grant. Explicit denial

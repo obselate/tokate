@@ -36,14 +36,15 @@ For Codex, use a current native installation with your ChatGPT login:
 ```sh
 codex login
 tokate doctor managed codex --auth
-tokate defaults set --model MODEL --effort EFFORT
+tokate defaults set --harness codex --model MODEL --effort EFFORT
 tokate select OWNER/REPO
 ```
 
 Select an owner-allowed model and effort. The offline catalog and login check do
-not prove account availability or remaining allowance. `defaults list` shows saved
-choices. Use `defaults set NAME` to keep several choices and select one per donation
-with `--profile NAME`.
+not prove account availability or remaining allowance. `tokate defaults` lists saved
+profiles. `tokate defaults show [NAME]` shows the default or a named profile. Use
+`tokate defaults set NAME` to keep several choices and select one per donation with
+`--profile NAME`.
 Profiles do not store budgets.
 
 Codex runs unattended, so tools that need approval are refused. Set
@@ -114,6 +115,8 @@ Charges are unknown to Tokate.
 
 In a checkout of the project, `42` names issue 42 of its GitHub remote. Elsewhere
 use `OWNER/REPO#42` or the issue URL.
+
+See the [positional arguments guide](arguments.md) for references and command forms.
 
 In a terminal, start with `tokate work OWNER/REPO`. Choose an available approved
 issue, tool and budget. Review the task, model and budget before confirming.

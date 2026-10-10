@@ -69,7 +69,7 @@ Pi must retain its original model, runtime and endpoint. Preparation preserves t
 Active, completed, external, published and cross-donor sources are excluded.
 Update the owner's pinned coordinator before submission.
 `pause`, `resume`, `renew` and `release` change your reservation. Other requests use
-`request --file`; the accepted schema
+`request ISSUE --file FILE`; the accepted schema
 is defined by [RequestData](https://github.com/obselate/tokate/blob/main/src/Contributions/RequestData.gs).
 
 After acceptance and evidence backup, you may explicitly delete a completed run.
