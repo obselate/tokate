@@ -19,7 +19,7 @@ data struct ActivityLogInput {
 }
 
 /// Streaming command output that follows new lines until the reader scrolls back. Only the visible lines
-/// are built, and a line is rebuilt only when it changes or the theme does. Home and End jump
+/// are built, and an update costs time for the new and dropped lines only, not the whole log. Home and End jump
 /// to either end, and "Follow live" resumes following while the command runs. The footer shows the
 /// blobs `Leading` builds on the left and those `Trailing` builds on the right. They are builders because
 /// the log rebuilds on its own, and blobs from an earlier build must not be reused.
@@ -93,8 +93,15 @@ open class ActivityLog : Cell[ActivityLogInput] {
     }
 
     protected override func Build(input ActivityLogInput) Blob {
-        lines = input.Lines.Count > 0 ? input.Lines: []OutputLine{OutputLine{Key: "placeholder", Content: input.Placeholder}}
-        let output = VirtualRows(lines, 64, rowKey, LineBuilder(input.LineName))
+        let builder = LineBuilder(input.LineName)
+        var output Blob
+        if input.Lines.Count > 0 {
+            lines = input.Lines
+            output = VirtualLog(lines, lines[0].Position, 64, rowKey, builder)
+        } else {
+            lines = []OutputLine{OutputLine{Position: -1, Content: input.Placeholder}}
+            output = VirtualRows(lines, 64, rowKey, builder)
+        }
         output.Handle = viewport
         output.Accessibility = Accessibility{Role: AccessibilityRole.Generic, Name: input.Name}
         output.FlexGrow = input.Short ? 0: 1

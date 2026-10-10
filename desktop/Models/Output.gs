@@ -3,10 +3,13 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
-/// One line of command output. `Key` is assigned when the line arrives and never changes.
+/// One line of command output. `Position` counts every line the tail has received, so it never changes
+/// and only increases.
 data struct OutputLine {
-    var Key string
+    var Position int64
     var Content string
+
+    prop Key string -> Position.ToString()
 }
 
 /// The latest `Limit` lines of a command's output. Appending touches only the new lines, and `Revision`
@@ -30,7 +33,7 @@ class OutputTail {
         for part in text.Split('\n') {
             let content = part.TrimEnd('\r')
             if !String.IsNullOrWhiteSpace(content) {
-                lines.Add(OutputLine{Key: next.ToString(), Content: content})
+                lines.Add(OutputLine{Position: next, Content: content})
                 next++
             }
         }
