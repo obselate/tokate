@@ -247,6 +247,24 @@ internal class Policy {
         ValidateBudget(seconds)
     }
 
+    internal func ValidateOmp(provider string, model string, effort string, seconds int32) {
+        RequestData.Token(provider)
+        RequestData.ModelIdentifier(model)
+        if !AllowsTool("omp", provider) ||
+            !ValidEffort(effort) ||
+            effort == "unknown" ||
+            effort == "ultra" ||
+            model == "unknown" ||
+            !Allows(model, effort) {
+            throw Exception(
+                "Managed OMP requires version 2, exact omp/" +
+                    provider +
+                    " permission, an exact model and allowed reasoning effort"
+            )
+        }
+        ValidateBudget(seconds)
+    }
+
     internal func ValidateBudget(seconds int32, unlimited bool = false) {
         if unlimited && !J.Bool(Value, "allow_unlimited") {
             throw Exception("Repository policy does not allow unlimited coding")
@@ -276,10 +294,11 @@ internal class Policy {
                         declarations[0],
                         "provider"
                     ) == "local-chat-completions"
-                )
+                ) ||
+                    J.Text(declarations[0], "harness") == "omp"
             ) {
                 throw Exception(
-                    "Managed execution supports one codex/openai, claude/anthropic or pi/local-chat-completions declaration"
+                    "Managed execution supports one codex/openai, claude/anthropic, pi/local-chat-completions or omp declaration"
                 )
             }
         }
@@ -295,10 +314,22 @@ internal class Policy {
             }
             if source == "tokate" && J.Text(tool, "harness") == "pi" {
                 ValidatePi(J.Text(tool, "model"), J.Text(tool, "effort"), 1)
+            } else if source == "tokate" && J.Text(tool, "harness") == "omp" {
+                ValidateOmp(J.Text(tool, "provider"), J.Text(tool, "model"), J.Text(tool, "effort"), 1)
             } else {
                 Validate(J.Text(tool, "model"), J.Text(tool, "effort"), 1, source == "external")
             }
         }
+    }
+
+    internal func Providers(harness string) List[string] {
+        let providers = List[string]()
+        for pair in J.Items(J.Get(Value, "allowed_tools")) {
+            if J.Text(pair, "harness") == harness && !providers.Contains(J.Text(pair, "provider")) {
+                providers.Add(J.Text(pair, "provider"))
+            }
+        }
+        return providers
     }
 
     internal func AllowsTool(harness string, provider string) bool {

@@ -86,6 +86,29 @@ context and output limits. The endpoint must advertise the exact model at
 `/v1/models`. Missing or incompatible metadata stops before inference. Remote
 endpoints, authentication and paid Pi providers are not supported by this route.
 
+### OMP
+
+Install OMP with its [official installer](https://github.com/can1357/oh-my-pi) and
+sign in or configure a provider in OMP first. The owner must allow `omp/PROVIDER`
+and your exact model and reasoning level. Check without inference, then save a choice:
+
+```sh
+tokate doctor --managed --harness omp
+tokate defaults set --profile omp --harness omp --provider PROVIDER \
+  --model 'MODEL_ID' --effort EFFORT
+tokate select --repo OWNER/REPO --profile omp
+```
+
+`omp models` lists what your OMP can use. `--provider` can be omitted when the
+owner allows one OMP provider. Use `absent` only for a model without reasoning.
+Tokate runs your normal OMP CLI unattended with its tools, extensions and stored
+login, approves its tool calls automatically and saves no OMP session. It never reads
+OMP credentials or forwards API key variables; a provider that needs one must be
+configured inside OMP. OMP has no sandbox. A provider error, such as rejected
+credentials or exhausted credits, stops the run and `work` prints OMP's reason.
+Tokate does not retry it.
+Charges are unknown to Tokate.
+
 ## Claim, work and submit
 
 In a terminal, start with `tokate work OWNER/REPO`. Choose an available approved

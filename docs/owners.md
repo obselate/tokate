@@ -30,6 +30,10 @@ enabling the workflow.
 New setup uses Trusted access. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
 at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`. Omission preserves
 existing tools; new noninteractive setup defaults to Codex.
+OMP is allowed per provider with exact pairs, such as
+`--allowed-tools codex/openai,omp/openrouter`. Exact pairs replace the whole list,
+which is also how to remove OMP: the `codex,claude,pi` shorthand keeps existing OMP pairs.
+OMP runs with the donor's configuration and no additional isolation.
 
 The model checklist searches as you type. Space selects, Enter accepts, and F2
 adds a model absent from local discovery. Suggestions are not selected for you.

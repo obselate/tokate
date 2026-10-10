@@ -120,7 +120,7 @@ internal class Cli {
             CliOption(
                 "allowed-tools",
                 "TOOLS",
-                "Managed codex,claude,pi preserves external permissions; exact harness/provider pairs replace the list"
+                "Managed codex,claude,pi keeps external and OMP permissions; exact harness/provider pairs such as omp/openrouter replace the list"
             ),
             CliOption(
                 "eligibility",
@@ -151,13 +151,17 @@ internal class Cli {
                 "Owner-approved effort",
                 "off minimal low medium high xhigh max ultra absent"
             ),
-            CliOption("harness", "HARNESS", "Managed harness: codex, claude or pi"),
+            CliOption("harness", "HARNESS", "Managed harness: codex, claude, pi or omp"),
             CliOption("harness-path", "FILE", "Existing harness executable at an absolute custom path"),
             CliOption("profile", "NAME", "Named local donor profile; explicit compatible choices override it"),
             CliOption("endpoint", "URL", "Private pi no-auth loopback Chat Completions base URL"),
             CliOption("pi-root", "DIR", "Donor-installed pi node_modules directory; no installation"),
             CliOption("node", "FILE", "Donor-installed Node executable for pi"),
-            CliOption("provider", "PROVIDER", "Managed provider: openai, anthropic or local-chat-completions"),
+            CliOption(
+                "provider",
+                "PROVIDER",
+                "Managed provider: openai, anthropic, local-chat-completions or an OMP provider name"
+            ),
             CliOption(
                 "availability",
                 "STATUS",
@@ -842,14 +846,14 @@ internal class Cli {
                     throw Exception("Choose one doctor scope: --owner, --managed or --external")
                 }
                 if args.Get("harness") != "" && args.Get("harness") != "codex" && args.Get("harness") != "pi" &&
-                    args.Get("harness") != "claude" &&
+                    args.Get("harness") != "claude" && args.Get("harness") != "omp" &&
                     !(
                     args.Get("set-default") == "true" && Array.IndexOf(
                         DonorDefaults.Harnesses,
                         args.Get("harness")
                     ) >= 0
                 ) {
-                    throw Exception("Managed diagnostics support codex, claude or pi")
+                    throw Exception("Managed diagnostics support codex, claude, pi or omp")
                 }
                 for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
                     if scopes > 0 && args.Get("managed") != "true" && args.Get(key) != "" {
@@ -926,7 +930,7 @@ internal class Cli {
             }
             if args.Get("model") != "" && !Regex.IsMatch(
                 args.Get("model"),
-                args.Get("harness") == "pi" || args.Get("harness") == "" || args.Get(
+                args.Get("harness") == "pi" || args.Get("harness") == "omp" || args.Get("harness") == "" || args.Get(
                     "profile"
                 ) != "" ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
             ) {

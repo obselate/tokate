@@ -98,7 +98,8 @@ internal class AttemptContinuation {
             ) < 0 ||
                 (
                 (J.Text(prior, "harness") != "codex" || J.Text(prior, "provider") != "openai") &&
-                    (J.Text(prior, "harness") != "pi" || J.Text(prior, "provider") != "local-chat-completions")
+                    (J.Text(prior, "harness") != "pi" || J.Text(prior, "provider") != "local-chat-completions") &&
+                    J.Text(prior, "harness") != "omp"
             ) {
                 throw Exception("Invalid stopped managed v2 predecessor or destination attempt")
             }
@@ -241,6 +242,7 @@ internal class AttemptContinuation {
                 (
                 source.Text("harness") == "codex" ? source.Text("codex_version") == "":
                 source.Text("harness") == "claude" ? source.Text("claude_version") == "":
+                source.Text("harness") == "omp" ? source.Text("omp_version") == "":
                 source.Text("harness") != "pi" || source.Text("pi_version") == ""
             ) ||
                 source.Text("commit") != "" || source.Number("pr") != 0 || source.Text("pr_url") != "" || source.Text(

@@ -146,7 +146,7 @@ internal class OwnerSetup {
                 }
                 Terminal.Message("Current allowed tools: " + String.Join(", ", current), error: true)
                 requested = Answer(
-                    "Managed tools: codex,claude,pi keeps external permissions; use harness/provider pairs to replace all; Enter keeps current"
+                    "Managed tools: codex,claude,pi keeps external and OMP permissions; use harness/provider pairs to replace all; Enter keeps current"
                 )
             }
             if requested == "" {
@@ -156,7 +156,7 @@ internal class OwnerSetup {
             let tools = List[Object]()
             if !requested.Contains('/') {
                 for tool in J.Items(J.Get(value, "allowed_tools")) {
-                    if !DonorSelection.Supported(tool) && selected.Add(
+                    if (!DonorSelection.Supported(tool) || J.Text(tool, "harness") == "omp") && selected.Add(
                         J.Text(tool, "harness") + "/" + J.Text(tool, "provider")
                     ) {
                         tools.Add(tool.Clone())
@@ -171,7 +171,7 @@ internal class OwnerSetup {
                     provider,
                     "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\\z"
                 ) {
-                    throw Exception("Use codex, pi, or exact harness/provider pairs for allowed tools")
+                    throw Exception("Use codex, claude, pi, or exact harness/provider pairs for allowed tools")
                 }
                 if selected.Add(harness + "/" + provider) {
                     tools.Add(map[string, Object?]{"harness": harness, "provider": provider})
@@ -240,7 +240,8 @@ internal class OwnerSetup {
                         J.Text(tool, "harness") == "pi" ? "Pi (Local)": J.Text(
                             tool,
                             "harness"
-                        ) == "codex" ? "Codex (Subscription)": J.Text(tool, "harness")
+                        ) == "codex" ? "Codex (Subscription)": J.Text(tool, "harness") == "omp" ?
+                        "OMP (" + J.Text(tool, "provider") + ")": J.Text(tool, "harness")
                     )
                 }
                 let action = WizardScreen.Choose(

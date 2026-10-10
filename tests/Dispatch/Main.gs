@@ -16,6 +16,9 @@ func Main(args[]string) int32 {
         if name == "claude" {
             return ClaudeTool.Run(args)
         }
+        if name == "omp" {
+            return OmpTool.Run(args)
+        }
         if name == "id" || name == "getent" {
             return ReleaseTools.ShellFixture(name, args, Path.GetDirectoryName(exe) ?? "")
         }
@@ -34,8 +37,11 @@ func Main(args[]string) int32 {
             case "--claude" when args.Length == 1 {
                 ClaudeChecks.All(binary)
             }
-            case "--omp-boundary" when args.Length == 5 {
-                OmpProof.Boundary(args[1], args[2], args[3], args[4])
+            case "--omp" when args.Length == 1 {
+                OmpChecks.All(binary)
+            }
+            case "--omp-proof" when args.Length == 5 {
+                OmpChecks.Proof(binary, args[1], args[2], args[3], args[4])
             }
             case "--nix-runtime" when args.Length == 2 {
                 NixChecks.Run(binary, args[1])

@@ -91,7 +91,10 @@ internal class Submission {
             }
             if run.Text("source") != "tokate" ||
                 (run.Text("state") != "failed" && run.Text("state") != "running") ||
-                (run.Text("codex_version") == "" && run.Text("pi_version") == "" && run.Text("claude_version") == "") ||
+                (
+                run.Text("codex_version") == "" && run.Text("pi_version") == "" && run.Text("claude_version") == "" &&
+                    run.Text("omp_version") == ""
+            ) ||
                 run.Text("commit") != "" || run.Number("pr") != 0 {
                 throw Exception("Incomplete publication requires stopped, unpublished managed work")
             }
