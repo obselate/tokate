@@ -38,6 +38,7 @@ internal class PiCatalog : IDisposable {
     private let Listener TcpListener = TcpListener(IPAddress.Loopback, 0)
     private let Stopped Chan[bool] = Chan[bool](1)
     internal let Endpoint string
+    internal var Metadata string = ""
 
     internal init() {
         Listener.Start()
@@ -62,7 +63,8 @@ internal class PiCatalog : IDisposable {
                     Check.That(header < 63, "Pi catalog request headers exceeded the fixture limit")
                 }
                 let found = request.StartsWith("GET /v1/models HTTP/", StringComparison.Ordinal)
-                let body = found ? "{\"object\":\"list\",\"data\":[{\"id\":\"fixture-model\"}]}": "{}"
+                let body = found ?
+                "{\"object\":\"list\",\"data\":[{\"id\":\"fixture-model\"" + Metadata + "}]}": "{}"
                 let response = Encoding.UTF8.GetBytes(
                     "HTTP/1.1 " +
                         (found ? "200 OK": "404 Not Found") +
