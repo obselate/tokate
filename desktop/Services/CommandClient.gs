@@ -12,7 +12,7 @@ class CommandResult {
     var ExitCode int32
 }
 
-class CommandClient {
+class CommandClient : Cancellable {
     private let process ProcessRunner = ProcessRunner()
 
     func Stop() -> process.Stop()

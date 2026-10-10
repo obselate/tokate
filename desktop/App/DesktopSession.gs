@@ -2,55 +2,60 @@ package TokateDesktop
 
 import Goo
 import System
-import System.Diagnostics
 import System.Text.Json
 
+/// Temporary adapter that lets the screens not yet moved to services reach the shell services.
+/// Removed once every feature slice uses its own service.
 class DesktopSession {
-    var Busy bool
-    private var Runner CommandClient?
-    private var timer WindowTimer?
-    var Title string = ""
-    var Elapsed int32
-    var Output string = ""
-    var ActivePage string = ""
-    var ActionName string = ""
-    var Visible bool
-    var Stopping bool
-    var Message string = ""
-    var Report string = ""
-    var Confirmation Action?
-    var ConfirmationTitle string = ""
-    var ConfirmationText string = ""
-    var ConfirmationLabel string = "Confirm"
-    var ConfirmationContent Func[Blob]?
-    var Window Window?
-    var Page string = "Welcome"
-    var Streaming bool
+    private let app DesktopApp
     let Refresh Action
     let Navigate Action[string]
     let RememberRun Action[string]
+    var ConfirmationContent Func[Blob]?
 
-    init(refresh Action, navigate Action[string], rememberRun Action[string]) {
+    init(app DesktopApp, refresh Action, navigate Action[string], rememberRun Action[string]) {
+        this.app = app
         Refresh = refresh
         Navigate = navigate
         RememberRun = rememberRun
     }
 
-    func Post(action Action) {
-        Window?.TryPost(action)
+    prop Busy bool -> app.Activity.Busy
+
+    prop Title string -> app.Activity.Current.Title
+
+    prop Stopping bool -> app.Activity.Current.Stopping
+
+    prop ActivePage string -> Destinations.Label(app.Activity.Current.Page)
+
+    prop Page string -> Destinations.Label(app.Navigation.Current)
+
+    prop Window Window? -> app.Window.Window
+
+    prop ActionName string {
+        get -> app.Activity.Current.ActionName
+        set -> app.Activity.Activate(value)
     }
 
-    func Cancel() {
-        Stopping = true
-        Runner?.Stop()
+    prop Message string {
+        get -> app.Feedback.Current.Message
+        set -> app.Feedback.Show(value)
     }
+
+    prop Report string {
+        get -> app.Feedback.Current.Report
+        set -> app.Feedback.ShowReport(value)
+    }
+
+    func Post(action Action) {
+        app.Window.Post(action)
+    }
+
+    func Cancel() -> app.Activity.Cancel()
 
     func Confirm(title string, text string, action Action, label string = "Confirm", content Func[Blob]? = nil) {
-        ConfirmationTitle = title
-        ConfirmationText = text
-        Confirmation = action
-        ConfirmationLabel = label
         ConfirmationContent = content
+        app.Dialogs.Ask(Confirmation{Title: title, Text: text, ConfirmLabel: label, Heading: ""}, action)
     }
 
     func Execute(
@@ -62,73 +67,33 @@ class DesktopSession {
         completeOnError bool = false,
         progress Action[int32, string]? = nil
     ) {
-        if Busy {
+        let next = CommandClient()
+        guard let ticket = app.Activity.Begin(arguments[0], next, progress != nil, progress) else {
             return
         }
-        Busy = true
-        if Runner == nil {
-            ActivePage = Page
-            Visible = false
-        }
-        Message = ""
-        Report = ""
-        let next = CommandClient()
-        Runner = next
-        let window = Window ?? throw InvalidOperationException("The desktop window is not attached.")
-        Title = switch arguments[0] {
-            case "claim": "Reserving donation"
-            case "work": "Donation running"
-            case "prepare": "Preparing donation"
-            case "select": "Checking model selection"
-            case "status": "Loading saved work"
-            case "init": "Preparing project setup"
-            case "doctor": "Checking prerequisites"
-            case "recover": "Verifying contribution"
-            case "submit": "Submitting contribution"
-            case "publish": "Publishing draft PR"
-            case "checks": "Checking pull request"
-            default: "Loading contribution details"
-        }
-        Streaming = progress != nil
-        Elapsed = 0
-        Output = ""
-        Stopping = false
-        let elapsed = Stopwatch.StartNew()
-        timer = window.SetInterval(
-            () -> {
-                let seconds = int32(elapsed.Elapsed.TotalSeconds)
-                let output = progress != nil ? next.RecentOutput(): ""
-                if !Visible || Elapsed != seconds || Output != output {
-                    Visible = true
-                    Elapsed = seconds
-                    Output = output
-                    progress?.Invoke(seconds, output)
-                    Refresh()
-                }
-            },
-            250
-        )
-        let callback = (result CommandResult) -> {
-            Output = next.RecentOutput()
-            Elapsed = int32(elapsed.Elapsed.TotalSeconds)
-            progress?.Invoke(Elapsed, Output)
-            timer?.Dispose()
-            timer = nil
-            Busy = false
-            Message = result.Error != "" ? result.Error: TextOf(result.Value, "status") == "pending" ?
-            "Pending. Another person or the coordinator needs to act.": result.ExitCode != 0 ?
-            "This action needs attention.": ""
+        let finish = (result CommandResult) -> {
+            app.Feedback.Show(
+                result.Error != "" ? result.Error: TextOf(result.Value, "status") == "pending" ?
+                "Pending. Another person or the coordinator needs to act.": result.ExitCode != 0 ?
+                "This action needs attention.": ""
+            )
             if result.Error == "" || completeOnError {
                 completed(result)
             }
-            if !Busy {
-                Runner = nil
-                Streaming = false
-            }
-            Refresh()
         }
-        go RunCommand(next, arguments, tool, directory, seconds, result -> Post(() -> callback(result)))
-        Refresh()
+        go RunLegacy(next, arguments, tool, directory, seconds, ticket, finish)
+    }
+
+    private func RunLegacy(
+        runner CommandClient,
+        arguments []string,
+        tool string,
+        directory string,
+        seconds int32,
+        ticket ActivityTicket,
+        finish Action[CommandResult]
+    ) {
+        app.Activity.Complete(ticket, runner.Run(arguments, tool, directory, seconds), finish)
     }
 
     func Error(result CommandResult) bool {
@@ -136,13 +101,14 @@ class DesktopSession {
             return false
         }
         if Page == "Donate" || Page == "My project" || Page == "Saved work" {
-            Message = TextOf(Field(result.Value, "error"), "message")
-            if Message == "" {
-                Message = result.Diagnostics.Trim().Split('\n')[0]
+            var message = TextOf(Field(result.Value, "error"), "message")
+            if message == "" {
+                message = result.Diagnostics.Trim().Split('\n')[0]
             }
-            if Message == "" {
-                Message = "Could not complete this action."
+            if message == "" {
+                message = "Could not complete this action."
             }
+            Message = message
             Report = ""
             return true
         }
@@ -157,9 +123,10 @@ class DesktopSession {
             RememberRun(found)
         }
         let failure = Field(result.Value, "error")
-        Report = failure.ValueKind == JsonValueKind.Object ? failure.ToString(): data.ToString()
+        var report = failure.ValueKind == JsonValueKind.Object ? failure.ToString(): data.ToString()
         if Field(result.Value, "truncated").ValueKind == JsonValueKind.True {
-            Report += "\nSome results were omitted by the CLI."
+            report += "\nSome results were omitted by the CLI."
         }
+        Report = report
     }
 }

@@ -5,7 +5,7 @@ import System.Text.Json
 
 /// Runs Tokate CLI commands with `--json` and decodes their envelopes. Calls block, so run them from a
 /// `go` worker. One client runs one command at a time; `Stop` cancels it.
-class CliClient {
+class CliClient : Cancellable {
     private let process ProcessRunner
     let Executable string
 

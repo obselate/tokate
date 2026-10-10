@@ -35,6 +35,15 @@ class Destinations {
             default: Label(value)
         }
 
+        func Parse(label string) Destination {
+            for value in All {
+                if Label(value) == label {
+                    return value
+                }
+            }
+            return Destination.Welcome
+        }
+
         func Numeral(value Destination) string -> switch value {
             case Destination.Donate: "II"
             case Destination.Project: "III"
@@ -57,6 +66,8 @@ data struct Activity {
     var Page Destination
 
     shared {
+        let Idle Activity = Activity{Title: "", ActionName: "", Output: "", Page: Destination.Welcome}
+
         func TitleFor(command string) string -> switch command {
             case "claim": "Reserving donation"
             case "work": "Donation running"
@@ -121,7 +132,6 @@ data struct ThemeSettings {
     var Night bool
     var OilPaint bool
     var Motion bool
-    var Twilight float64
 
     shared {
         let Initial ThemeSettings = ThemeSettings{OilPaint: true, Motion: true}

@@ -9,6 +9,7 @@ partial class ThemedControls {
     private let refresh Action
     private let cancel Action
     private let activate Action[string]
+    private let focus Action[bool]
     var Busy bool
     var Loading bool
     var Stopping bool
@@ -22,10 +23,11 @@ partial class ThemedControls {
     var Twilight float64
     var LoadingPulse float64 = 1.0
 
-    init(refresh Action, cancel Action, activate Action[string]) {
+    init(refresh Action, cancel Action, activate Action[string], focus Action[bool]) {
         this.refresh = refresh
         this.cancel = cancel
         this.activate = activate
+        this.focus = focus
     }
 
     func ThemeColor(daylight string, moonlight string) Color -> AppTheme.Mix(
@@ -46,13 +48,6 @@ partial class ThemedControls {
 
     func Line() Color -> AppTheme.Current.Line
 
-    /// Publishes this frame's theme and focus state for components.
-    func Apply() {
-        AppTheme.Apply(Twilight)
-        AppTheme.FocusVisible = KeyboardFocus
-        AppTheme.Motion = Motion
-    }
-
     func Label(content string, size float64 = 18, muted bool = false) Text -> Label{
         Content: content,
         Size: size,
@@ -69,12 +64,7 @@ partial class ThemedControls {
 
     func FocusStyle() Style -> AppTheme.FocusStyle()
 
-    func FocusHints(value bool) {
-        if KeyboardFocus != value {
-            KeyboardFocus = value
-            refresh()
-        }
-    }
+    func FocusHints(value bool) -> focus(value)
 
     func KeyNavigation(event KeyEvent) {
         if event.Key == Key.Tab ||

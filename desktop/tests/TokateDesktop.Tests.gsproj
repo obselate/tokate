@@ -6,7 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Regression/**/*.gs" />
-    <Compile Include="../App/**/*.gs;../Controls/**/*.gs;../Screens/**/*.gs;../Models/**/*.gs;../Services/**/*.gs;../Components/**/*.gs;../Views/**/*.gs" />
+    <Compile Include="../DesktopApp.gs;../App/**/*.gs;../Controls/**/*.gs;../Screens/**/*.gs;../Models/**/*.gs;../Services/**/*.gs;../Components/**/*.gs;../Views/**/*.gs" />
     <PackageReference Include="Goo" Version="0.7.18" />
     <PackageReference Include="Goo.Svg" Version="0.7.18" />
     <PackageReference Include="Goo.Widgets" Version="0.2.13" />

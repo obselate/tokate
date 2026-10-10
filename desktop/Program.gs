@@ -29,7 +29,7 @@ func Main() {
     heading.Register()
     italic.Register()
     using let art = ArtworkService()
-    let root = Desktop(art)
+    let desktop = DesktopApp.Create(art)
     let window = Window{
         Title: "Tokate",
         Width: 1280,
@@ -39,10 +39,10 @@ func Main() {
         Decorated: false,
         Resizable: true,
         ResizeBand: 6.0F,
-        Root: root,
+        Root: desktop.Root,
         Background: Color.Parse("#F3E7D4"),
     }
-    root.Attach(window)
+    desktop.Attach(window)
     try {
         window.Open()
         using let terminate PosixSignalRegistration? = OperatingSystem.IsLinux() ? StopOnSignal(

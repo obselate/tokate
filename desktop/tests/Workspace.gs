@@ -126,8 +126,8 @@ func WorkspaceFlow() {
         using let art = ArtworkService()
         using let host = TestHost()
         let adapter = TestAccessibility()
-        let desktop = Desktop(art)
-        let window = Window{Root: desktop, AccessibilityAdapter: adapter}
+        let desktop = DesktopApp.Create(art)
+        let window = Window{Root: desktop.Root, AccessibilityAdapter: adapter}
         desktop.Attach(window)
         host.Resize(1440, 1000, 1440, 1000)
         window.Attach(host)

@@ -5,6 +5,7 @@ import Goo.Svg
 import System
 import System.Collections.Generic
 import System.IO
+import System.Numerics
 
 /// Painted artwork. Core images load at startup; page landscapes decode on a worker the first time they
 /// are requested, and `changed` runs on the UI thread once one is ready.
@@ -35,6 +36,14 @@ class ArtworkService : IDisposable {
     func Attach(ui UiDispatcher, onChanged Action) {
         dispatcher = ui
         changed = onChanged
+    }
+
+    /// Sets the paint effects for the current light and texture preference.
+    func Paint(twilight float64, oilPaint bool) {
+        Effect.SetParameter(0, Vector4(float32(twilight), oilPaint ? 1.0F: 0.0F, 0.0F, 0.04F))
+        Effect.Playing = false
+        LandscapeEffect.SetParameter(0, Vector4(0.0F, oilPaint ? 1.0F: 0.0F, 0.0F, 0.04F))
+        LandscapeEffect.Playing = false
     }
 
     /// The landscape for `name`, or nil while it is still decoding.
