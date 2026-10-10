@@ -32,7 +32,8 @@ Owners need neither harness nor an AI subscription.
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
 Run `tokate` for guided donation, owner setup, repository status and saved work.
-`tokate work OWNER/REPO` offers available issues. Issue and PR links supply context.
+`tokate work OWNER/REPO` offers available issues. In a checkout, `tokate work 42` names
+issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or an issue link.
 Use `tokate help COMMAND` for exact options. Scripts can use `--json` without prompts.
 
 To get help from your coding assistant:

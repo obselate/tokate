@@ -25,8 +25,8 @@ reading `.npmrc` or `bunfig.toml`. Other custom locations require `PATH` or
 Tokate's confirmed Codex setup uses the official native installer. Pi's installation marker must identify the selected launcher. An unrelated
 global npm package cannot establish a wrapper's identity.
 
-Run `tokate doctor --managed --harness codex` or
-`tokate doctor --managed --harness pi`. These check startup, and the Codex sandbox probe, without
-inference. `tokate doctor --managed --harness omp` checks the OMP version and that
-it lists at least one model. For Claude, use `tokate doctor --managed --harness claude
+Run `tokate doctor managed codex` or
+`tokate doctor managed pi`. These check startup, and the Codex sandbox probe, without
+inference. `tokate doctor managed omp` checks the OMP version and that
+it lists at least one model. For Claude, use `tokate doctor managed claude
 --claude-profile DIR`. An installed executable alone does not establish managed adapter support.

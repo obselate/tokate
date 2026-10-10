@@ -7,7 +7,7 @@ description: Coordinate donor work on a Tokate-approved GitHub issue, or inspect
 
 Help a donor take an approved issue to a verified draft PR. Tokate coordinates and verifies work. The donor's chosen harness codes. The owner controls policy, acceptance and merging.
 
-Use installed CLI help for command details. Read the [donor guide](https://github.com/obselate/tokate/blob/main/docs/donors.md), [recovery guide](https://github.com/obselate/tokate/blob/main/docs/recovery.md), [public summary format](https://github.com/obselate/tokate/blob/main/AGENTS.md#write-public-pr-summaries) or [data boundaries](https://github.com/obselate/tokate/blob/main/docs/security.md) when relevant.
+Use installed CLI help for command details. In the project checkout, `42` names issue 42 and `42-1` names a saved run. Elsewhere use `OWNER/REPO#42`. `tokate runs` lists saved runs offline. Read the [donor guide](https://github.com/obselate/tokate/blob/main/docs/donors.md), [recovery guide](https://github.com/obselate/tokate/blob/main/docs/recovery.md), [public summary format](https://github.com/obselate/tokate/blob/main/AGENTS.md#write-public-pr-summaries) or [data boundaries](https://github.com/obselate/tokate/blob/main/docs/security.md) when relevant.
 
 - Honor consent for the task, harness/model/effort and time. Ask only for missing choices. A profile supplies settings, not consent.
 - Distinguish a managed harness launch from coding in this session. Loading the skill proves no adapter support or permission to launch another process. Declare external work and later editing tools accurately.

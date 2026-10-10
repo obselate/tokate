@@ -16,17 +16,17 @@ Choose an approved, available issue. If access is required, request it and wait
 for the owner to grant it:
 
 ```sh
-tokate access --repo OWNER/REPO --operation request --issue 42 --scope trust
+tokate access request OWNER/REPO#42 --trust
 ```
 
 ## Choose a tool
 
 `tokate doctor --fix` repairs common dependencies and reports installed harnesses.
 In a terminal, it lets you choose an installed harness as your default.
-Installing a harness requires `--harness codex` or `--harness pi` with `--fix`.
+Installing a harness requires `tokate doctor codex --fix` or `tokate doctor pi --fix`.
 Change the default with `tokate doctor --set-default`. Keep multiple setups with
-`defaults set --profile NAME --harness HARNESS`, then switch with
-`defaults use --profile NAME`. Model settings can be added later.
+`defaults set NAME --harness HARNESS`, then switch with
+`defaults use NAME`. Model settings can be added later.
 Use `--harness-path` for an existing custom installation.
 Harness authentication and [host namespace policy](linux-security.md)
 remain separate from package installation.
@@ -35,14 +35,15 @@ For Codex, use a current native installation with your ChatGPT login:
 
 ```sh
 codex login
-tokate doctor --managed --harness codex --auth
+tokate doctor managed codex --auth
 tokate defaults set --model MODEL --effort EFFORT
-tokate select --repo OWNER/REPO
+tokate select OWNER/REPO
 ```
 
 Select an owner-allowed model and effort. The offline catalog and login check do
 not prove account availability or remaining allowance. `defaults list` shows saved
-choices. Add `--profile NAME` to keep several choices and select one per donation.
+choices. Use `defaults set NAME` to keep several choices and select one per donation
+with `--profile NAME`.
 Profiles do not store budgets.
 
 Codex runs unattended, so tools that need approval are refused. Set
@@ -54,12 +55,12 @@ Choose Claude Code in the donation wizard. It uses your installed native CLI,
 existing login, settings and tools. Sign in through Claude Code first with your
 personal Pro or Max subscription. `--claude-profile DIR` selects an existing
 configuration directory when needed. Claude Code's sandbox needs bubblewrap and
-socat; `tokate doctor --fix --harness claude` installs missing packages.
+socat; `tokate doctor claude --fix` installs missing packages.
 
 For a saved choice, after native sign-in:
 
 ```sh
-tokate defaults set --profile claude --harness claude --model MODEL --effort EFFORT
+tokate defaults set claude --harness claude --model MODEL --effort EFFORT
 ```
 
 Use that profile with the same `claim`, `work` and `submit` commands below. Tokate
@@ -74,9 +75,9 @@ Tokate does not start a model server. The owner must allow
 offers levels from Pi. Use `absent` only for a model without reasoning.
 
 ```sh
-tokate defaults set --profile local --harness pi --model 'MODEL_ID' \
+tokate defaults set local --harness pi --model 'MODEL_ID' \
   --effort high --endpoint http://127.0.0.1:8080/v1
-tokate select --repo OWNER/REPO --profile local
+tokate select OWNER/REPO --profile local
 ```
 
 Tokate discovers the CLI and Node from supported npm or managed Pi installations.
@@ -93,10 +94,10 @@ sign in or configure a provider in OMP first. The owner must allow `omp/PROVIDER
 and your exact model and reasoning level. Check without inference, then save a choice:
 
 ```sh
-tokate doctor --managed --harness omp
-tokate defaults set --profile omp --harness omp --provider PROVIDER \
+tokate doctor managed omp
+tokate defaults set omp --harness omp --provider PROVIDER \
   --model 'MODEL_ID' --effort EFFORT
-tokate select --repo OWNER/REPO --profile omp
+tokate select OWNER/REPO --profile omp
 ```
 
 `omp models` lists what your OMP can use. `--provider` can be omitted when the
@@ -111,6 +112,9 @@ Charges are unknown to Tokate.
 
 ## Claim, work and submit
 
+In a checkout of the project, `42` names issue 42 of its GitHub remote. Elsewhere
+use `OWNER/REPO#42` or the issue URL.
+
 In a terminal, start with `tokate work OWNER/REPO`. Choose an available approved
 issue, tool and budget. Review the task, model and budget before confirming.
 
@@ -118,25 +122,27 @@ To reserve without starting inference, for example for one hour with 20 minutes
 reserved for verification:
 
 ```sh
-tokate claim https://github.com/OWNER/REPO/issues/42 --profile local \
-  --seconds 3600 --verification-reserve 1200
+tokate claim 42 --profile local --time 1h --verify-time 20m
 ```
 
 Omit `--profile local` to use your default tool choice. Claiming spends no inference.
-Tokate posts the request and prints the saved run directory. A pending request is
+Tokate posts the request and saves the run as attempt `42-1`. A pending request is
 not a reservation. Wait for coordinator acceptance, then run:
 
 ```sh
-tokate work --run RUN_DIRECTORY
-tokate submit --run RUN_DIRECTORY
+tokate work 42
+tokate submit 42
 ```
+
+A bare issue number selects its newest attempt only. Name another attempt as `42-2`.
+`tokate runs` lists saved runs offline. `--run DIR` names a run directory exactly.
 
 `work` spends the selected budget and independently verifies completed work.
 `submit` requests the draft PR. Tokate discovers or creates your fork. Use `--fork`
 only when you need to select one explicitly. You do not need to write request JSON.
-After coordinator publication, repeat `submit --run RUN_DIRECTORY` to save the PR locally.
+After coordinator publication, repeat `submit 42` to save the PR locally.
 
-`--seconds` caps coding plus verification time, not tokens or server billing.
+`--time` caps coding plus verification time, not tokens or server billing.
 The harness, its tools and owner verification always have network access, which
 cloud and local model servers both need. Native harness settings control its retries and context handling
 within the budget; Tokate never restarts a failed run automatically.
@@ -145,12 +151,15 @@ Review [data and isolation limits](security.md).
 ## Check progress
 
 Bare `tokate` also offers saved contributions. Inspection works offline and requires
-explicit selection. For scripts or a custom run path:
+explicit selection. From a shell:
 
 ```sh
-tokate status --run RUN_DIRECTORY
-tokate checks --repo OWNER/REPO --pr 10 --watch
+tokate status 42-1
+tokate checks 10 --watch
 ```
+
+On `checks`, a bare number is a PR number. `pause`, `resume`, `renew` and `release`
+take a run, for example `tokate release 42`.
 
 Follow the reported next action. Quiet output does not justify restarting work.
 Keep the saved directory for [recovery and review changes](recovery.md). The owner

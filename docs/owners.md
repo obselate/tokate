@@ -7,8 +7,8 @@ harness or AI subscription is not required. Use public GitHub repositories.
 
 ```sh
 gh auth login
-tokate doctor --owner --auth
-tokate init --repo OWNER/REPO
+tokate doctor owner --auth
+tokate init OWNER/REPO
 ```
 
 Run setup inside a checkout of your repository, or pass `--path` to one. Setup
@@ -49,14 +49,14 @@ and other authority files beyond Tokate's built-in protections.
 Write a small issue with scope, acceptance criteria and failure cases, then run:
 
 ```sh
-tokate access --repo OWNER/REPO --operation init
-tokate approve --repo OWNER/REPO --issue 42
-tokate access --repo OWNER/REPO --operation trust --donor DONOR
+tokate access init
+tokate approve 42
+tokate access trust DONOR
 ```
 
-Initialize access once. Trust permits future approved tasks. Use `--operation grant
---donor DONOR --issue 42` for one issue instead. `--operation list` shows requests
-and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
+In a checkout, `42` names issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
+Initialize access once. Trust permits future approved tasks. Use `access grant DONOR 42`
+for one issue instead. `tokate access` shows requests and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
 non-denied donors. Manual eligibility requires an issue grant. Explicit denial
 blocks participation in every mode.
 
@@ -67,8 +67,8 @@ project's build prerequisites.
 ## Review and merge
 
 ```sh
-tokate verify-pr --repo OWNER/REPO --pr 10
-tokate checks --repo OWNER/REPO --pr 10 --watch
+tokate verify 10
+tokate checks 10 --watch
 ```
 
 Inspect the diff before approving a first-time fork workflow. Every required check
@@ -83,7 +83,7 @@ Updating your local CLI does not update the repository's pinned coordinator:
 
 ```sh
 tokate update
-tokate coordinator-setup --repo OWNER/REPO --output tokate-coordinator.yml --yes
+tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
 ```
 
 Review the generated entry and replace the existing coordinator workflow, preserving
