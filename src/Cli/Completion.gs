@@ -40,18 +40,23 @@ internal class Completion {
                 )
                 text.AppendLine("  case $$cmd in")
                 text.AppendLine("    help) COMPREPLY=( $$(compgen -W '" + Words() + "' -- \"$$cur\") ); return ;;")
-                text.AppendLine(
-                    "    completion) COMPREPLY=( $$(compgen -W 'bash zsh fish --help -h --traffic' -- \"$$cur\") ); return ;;"
-                )
-                text.AppendLine(
-                    "    defaults) if (( COMP_CWORD == 2 )) && [[ $$cur != --* ]]; then COMPREPLY=( $$(compgen -W 'set read remove list use' -- \"$$cur\") ); return; fi; opts='" +
-                        Words("defaults") +
-                        "' ;;"
-                )
                 for command in Cli.Commands {
-                    if command.Name != "help" && command.Name != "completion" && command.Name != "defaults" {
-                        text.AppendLine("    " + command.Name + ") opts='" + Words(command.Name) + "' ;;")
+                    if command.Name == "help" {
+                        continue
                     }
+                    text.AppendLine(
+                        "    " +
+                            command.Name +
+                            ") " +
+                            (
+                            Cli.Words(command.Name) == "" ? "":
+                            "if (( COMP_CWORD == 2 )) && [[ $$cur != --* ]]; then COMPREPLY=( $$(compgen -W '" +
+                                Cli.Words(command.Name) + "' -- \"$$cur\") ); return; fi; "
+                        ) +
+                            "opts='" +
+                            Words(command.Name) +
+                            "' ;;"
+                    )
                 }
                 text.AppendLine("    *) return ;;\n  esac")
                 text.AppendLine(
@@ -99,16 +104,13 @@ internal class Completion {
                         " ;;\n    args)\n      case $$line[1] in"
                 )
                 text.AppendLine("        help) _values 'command' " + Words() + " ;;")
-                text.AppendLine(
-                    "        completion) _arguments '1:shell:(bash zsh fish)' '--help[Show help]' '-h[Show help]' '--traffic[Print API counts]' ;;"
-                )
                 for command in Cli.Commands {
-                    if command.Name == "help" || command.Name == "completion" {
+                    if command.Name == "help" {
                         continue
                     }
                     text.Append("        " + command.Name + ") _arguments '-h[Show help]'")
-                    if command.Name == "defaults" {
-                        text.Append(" '1:operation:(set read remove list use)'")
+                    if Cli.Words(command.Name) != "" {
+                        text.Append(" '1:word:(" + Cli.Words(command.Name) + ")'")
                     }
                     for option in Cli.Options {
                         if !command.Has(option.Name) {
@@ -140,7 +142,7 @@ internal class Completion {
                             command.Name +
                             "' -d '" +
                             command
-                            .Summary
+                            .Brief
                             .Replace("\\", "\\\\")
                             .Replace("'", "\\'") +
                             "'"
@@ -148,14 +150,12 @@ internal class Completion {
                     if command.Name == "help" {
                         text.AppendLine("complete -c tokate -n '__fish_seen_subcommand_from help' -a '" + Words() + "'")
                     }
-                    if command.Name == "completion" {
+                    if Cli.Words(command.Name) != "" {
                         text.AppendLine(
-                            "complete -c tokate -n '__fish_seen_subcommand_from completion' -a 'bash zsh fish'"
-                        )
-                    }
-                    if command.Name == "defaults" {
-                        text.AppendLine(
-                            "complete -c tokate -n '__fish_seen_subcommand_from defaults' -a 'set read remove list use'"
+                            "complete -c tokate -n '__fish_seen_subcommand_from " + command.Name + "' -a '" + Cli.Words(
+                                command.Name
+                            ) +
+                                "'"
                         )
                     }
                 }

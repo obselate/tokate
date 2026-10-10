@@ -67,7 +67,7 @@ func Main(args[]string) int32 {
         }
         if let failed = options {
             if code == "invalid_state" && failed.Attempts.Count > 1 && !PublicOutput.Enabled {
-                Terminal.Runs(failed, failed.Attempts, true)
+                Terminal.Runs(failed, RunReference.Recent(failed.Attempts), true)
             }
         }
     } finally {

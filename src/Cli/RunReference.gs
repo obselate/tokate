@@ -9,6 +9,11 @@ internal class RunReference {
         internal func Label(args Args, row SavedRun) string -> args.Words.Count > 0 && !args.Words[0].Contains("/") ?
         row.Name: row.Text("repo") + "#" + row.Name
 
+        internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
+            Math.Max(0, rows.Count - 16),
+            Math.Min(16, rows.Count)
+        )
+
         internal func Resolve(args Args) {
             let command = Cli.Find(args.Command)
             let named = args.Get("attempt") != ""
@@ -18,6 +23,15 @@ internal class RunReference {
                 (args.Get("issue") == "" && !pull) ||
                 (command.Target != "run" && !named && !optional) {
                 return
+            }
+            if args.Command == "work" && !named {
+                for key in args.Values.Keys {
+                    if key != "--repo" && key != "--issue" && key != "--runs" && command.ConflictsWithRun(
+                        key.Substring(2)
+                    ) {
+                        return
+                    }
+                }
             }
             var repo = args.Get("repo")
             if repo == "" {
@@ -85,10 +99,10 @@ internal class RunReference {
             if args.Get("repo") == "" || args.Get("issue") == "" {
                 return
             }
-            let rows = SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue"))
+            let rows = Recent(SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue")))
             if PublicOutput.Enabled {
                 if PublicOutput.ResultData is Dictionary[string, Object?]fields {
-                    fields["attempts"] = SavedRuns.Summary(rows, 0)
+                    fields["attempts"] = SavedRuns.Summary(rows, 0)["runs"]
                 }
             } else if rows.Count > 0 {
                 Terminal.Message("Saved runs on this computer:", "default")

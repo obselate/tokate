@@ -321,6 +321,48 @@ internal partial class NativeFlow : NativeFixture {
         }
     }
 
+    internal func RunNames() {
+        using let flow = NativeFlow(Binary)
+        flow.Initialize()
+        flow.Approve()
+        let store = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/runs")
+        flow.Acquire(
+            []string{"claim", "owner/project#1", "--model", "gpt-6.1-sol", "--effort", "high", "--time", "30s"}
+        )
+        let first = Path.Combine(store, "owner-project-1-1")
+        let claimed = File.ReadAllText(Path.Combine(first, "run.json"))
+        Check.That(Check.Text(Check.Json(claimed)["state"]) == "claimed", "Claim did not use a named run directory")
+        let second = Path.Combine(store, "owner-project-1-2")
+        Directory.CreateDirectory(second)
+        let failed = Check.Json(claimed)
+        failed["state"] = JsonValue.Create("failed")
+        File.WriteAllText(Path.Combine(second, "run.json"), failed.ToJsonString())
+        let refused = Check.Envelope(
+            flow.Call([]string{"submit", "owner/project#1", "--json"}, 1),
+            "submit",
+            "error",
+            "invalid_state"
+        )
+        Check.That(
+            Check.Text(refused["data"]?["attempts"]?[0]?["name"]) == "owner/project#1-1" && Check.Text(
+                refused["data"]?["attempts"]?[1]?["name"]
+            ) == "owner/project#1-2",
+            "Refused bare issue did not list its attempts"
+        )
+        Check.That(
+            File.ReadAllText(Path.Combine(first, "run.json")) == claimed,
+            "Bare issue fell back to an older attempt"
+        )
+        Directory.Delete(second, true)
+        Check.Envelope(flow.Call([]string{"work", "owner/project#1", "--json"}), "work", "ok")
+        Check.That(Directory.GetDirectories(store).Length == 1, "Bare issue started a second attempt")
+        Check.That(
+            Check.Text(Check.Json(File.ReadAllText(Path.Combine(first, "run.json")))["state"]) == "generated",
+            "Bare issue did not continue its claim"
+        )
+        flow.NoPr()
+    }
+
     internal func ManagedCancellation() {
         Approve()
         let run = Claim(seconds: "30")

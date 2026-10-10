@@ -60,6 +60,8 @@ internal class CliCommand(
 
     internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "prepare" || Name == "status"
 
+    internal prop Brief string -> Summary.Split([]string{". ", "; "}, StringSplitOptions.None)[0].TrimEnd('.')
+
     internal prop Runs bool -> Target == "run" || Name == "work" || Name == "checks" || Name == "status"
 
     internal func ConflictsWithRun(name string) bool -> name != "run" &&
@@ -221,7 +223,7 @@ internal class Cli {
                 "work",
                 "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from",
                 "repo,issue",
-                "Run the selected coding harness, verify work and show the publication step. Uses donor inference.",
+                "Code an approved issue with your harness and verify it. Uses donor inference.",
                 "[ISSUE] [--profile NAME | --model MODEL --effort EFFORT] [--time TIME] [options]\n       tokate work RUN [--yes] [--non-interactive]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
@@ -232,7 +234,7 @@ internal class Cli {
                 "claim",
                 "repo,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,time,verify-time,unlimited,fork,runs,continue-from,from-pr",
                 "repo,issue",
-                "Check donor readiness, reserve approved work and prepare a saved claim; no inference or PR publication.",
+                "Reserve an approved issue and save a claim; no inference or PR publication.",
                 "[ISSUE] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]",
                 "claim 42 --model gpt-6.1-sol --effort high",
                 effects: "local_read local_write github_read github_write",
@@ -243,7 +245,7 @@ internal class Cli {
                 "submit",
                 "run,incomplete",
                 "run",
-                "Push Tokate-coded work and request a coordinated v2 draft PR; no inference.",
+                "Push saved work and request a draft PR; no inference.",
                 "RUN [--incomplete]",
                 "submit 42",
                 effects: "local_read local_write github_read github_write",
@@ -254,7 +256,7 @@ internal class Cli {
                 "status",
                 "run,repo",
                 "repo",
-                "Read contribution state and the responsible role remotely, or a saved run offline; no writes or inference.",
+                "Show issue state and who acts next, or a saved run offline; no writes or inference.",
                 "[ISSUE | OWNER/REPO]\n       tokate status RUN",
                 "status 42",
                 effects: "local_read github_read",
@@ -265,7 +267,7 @@ internal class Cli {
                 "checks",
                 "run,repo,watch,timeout",
                 "repo,pr",
-                "Read receipt, public report, exact-head CI, dependency and freshness gates with required owner actions; --run also saves results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
+                "Read PR receipt, report, CI and freshness gates; a saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
                 "PR [--watch] [--timeout TIME]\n       tokate checks RUN [--watch] [--timeout TIME]",
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
@@ -276,7 +278,7 @@ internal class Cli {
                 "runs",
                 "",
                 "",
-                "List saved runs on this computer offline; no writes or inference.",
+                "List saved runs on this computer; offline, no writes or inference.",
                 "[ISSUE | OWNER/REPO]",
                 "runs 42",
                 effects: "local_read",
@@ -320,7 +322,7 @@ internal class Cli {
                 "release",
                 "run",
                 "run",
-                "Release your reservation so that other donors can claim the issue; no inference.",
+                "Release your reservation for other donors; no inference.",
                 "RUN",
                 "release 42",
                 effects: "local_read local_write github_read github_write",
@@ -331,7 +333,7 @@ internal class Cli {
                 "init",
                 "repo,path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive",
                 "repo",
-                "Write owner policy and a pinned shared workflow into a checkout, starting from the policy on GitHub; options change only what they name.",
+                "Write owner policy and a pinned workflow into a checkout; starts from the policy on GitHub and options change only what they name.",
                 "[OWNER/REPO] [--path DIR] [options]",
                 "init owner/project",
                 effects: "local_read local_write github_read",
@@ -342,7 +344,7 @@ internal class Cli {
                 "approve",
                 "repo,base-branch",
                 "repo,issue",
-                "Write GitHub task approval and label; no donor assignment.",
+                "Approve an issue for donors with a GitHub record and label; no donor assignment.",
                 "ISSUE [--base-branch BRANCH]",
                 "approve 42",
                 effects: "local_read github_read github_write",
@@ -364,7 +366,7 @@ internal class Cli {
                 "access",
                 "repo,trust",
                 "repo",
-                "Request access, inspect pending requests and history, or manage existing numeric donor membership; no scoring.",
+                "Request or manage donor access; inspect pending requests and history; no scoring.",
                 "[list|history] [LOGIN] [ISSUE]\n       tokate access init\n       tokate access trust|untrust|deny|restore LOGIN\n       tokate access grant|remove LOGIN ISSUE\n       tokate access check ISSUE\n       tokate access request ISSUE [--trust]",
                 "access trust donor",
                 effects: "local_read github_read github_write",
@@ -375,7 +377,7 @@ internal class Cli {
                 "verify",
                 "repo",
                 "repo,pr",
-                "Read GitHub approval and PR receipt; no inference or publication.",
+                "Check a PR receipt against owner approval; no inference or publication.",
                 "PR",
                 "verify 10",
                 effects: "local_read github_read",
@@ -408,7 +410,7 @@ internal class Cli {
                 "defaults",
                 "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile",
                 "",
-                "Save harness and model profiles, or use a named profile as the default; no inference.",
+                "Save or choose harness and model profiles; no inference.",
                 "set [NAME] --harness HARNESS [options]\n       tokate defaults use NAME\n       tokate defaults show|remove [NAME]\n       tokate defaults",
                 "defaults set --model gpt-6.1-sol --effort high",
                 effects: "local_read local_write",
@@ -643,8 +645,49 @@ internal class Cli {
                     return command
                 }
             }
-            throw Exception("Unknown command: " + name + ". Run tokate --help")
+            var nearest = ""
+            var distance int32 = 3
+            for command in Commands {
+                if command.Group != "internal" && Distance(name, command.Name) < distance {
+                    distance = Distance(name, command.Name)
+                    nearest = command.Name
+                }
+            }
+            throw Exception(
+                "Unknown command: " +
+                    name +
+                    (nearest == "" ? ".": ". Did you mean " + nearest + "?") +
+                    " Run tokate --help"
+            )
         }
+
+        private func Distance(a string, b string) int32 {
+            let row = [b.Length + 1]int32
+            var j int32 = 0
+            while j <= b.Length {
+                row[j] = j
+                j++
+            }
+            var i int32 = 1
+            while i <= a.Length {
+                var previous = row[0]
+                row[0] = i
+                j = 1
+                while j <= b.Length {
+                    let current = row[j]
+                    row[j] = Math.Min(Math.Min(row[j], row[j - 1]) + 1, previous + (a[i - 1] == b[j - 1]? 0: 1))
+                    previous = current
+                    j++
+                }
+                i++
+            }
+            return row[b.Length]
+        }
+
+        internal func Words(command string) string -> command == "defaults" ? "set show remove list use":
+        command == "access" ? String.Join(" ", Positionals.AccessOperations):
+        command == "doctor" ? "owner managed external codex claude pi omp":
+        command == "completion" ? "bash zsh fish": ""
 
         internal func OptionFor(command string, name string) CliOption {
             for option in Options {
@@ -714,7 +757,7 @@ internal class Cli {
                 }
                 let options = List[Object]()
                 for option in Options {
-                    if command.Has(option.Name) {
+                    if command.Has(option.Name) && !Global("--" + option.Name) && option.Name != "help" {
                         options.Add(
                             map[string, Object?]{
                                 "name": "--" + option.Name,
@@ -830,7 +873,18 @@ internal class Cli {
                     }
                 )
             }
-            return map[string, Object?]{"version": ApplicationInfo.Version(), "subject": name, "commands": commands}
+            let shared = List[Object]()
+            for option in Options {
+                if Global("--" + option.Name) || option.Name == "help" {
+                    shared.Add(map[string, Object?]{"name": "--" + option.Name, "description": option.Describe("")})
+                }
+            }
+            return map[string, Object?]{
+                "version": ApplicationInfo.Version(),
+                "subject": name,
+                "global_arguments": shared,
+                "commands": commands
+            }
         }
 
         internal func Name(args[]string) string {
@@ -886,9 +940,9 @@ internal class Cli {
                             continue
                         }
                         if width < 80 {
-                            OptionHelp(text, command.Name, command.Summary.Replace("\n", " "), width)
+                            OptionHelp(text, command.Name, command.Brief, width)
                         } else {
-                            text.AppendLine("  " + command.Name.PadRight(18) + command.Summary.Replace("\n", " "))
+                            text.AppendLine("  " + command.Name.PadRight(10) + command.Brief)
                         }
                     }
                 }
@@ -941,7 +995,7 @@ internal class Cli {
                     )
                 }
                 for option in Options {
-                    if !command.Has(option.Name) {
+                    if !command.Has(option.Name) || option.Name == "traffic" {
                         continue
                     }
                     let required = command.Needs(option.Name) && option.Name != "repo" ? " (required)": ""
@@ -966,7 +1020,7 @@ internal class Cli {
                     text.AppendLine(
                         name == "status" ? "Use RUN or --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
                         name == "prepare" ? "Use --run DIR only for recorded preparation before coding; it never resumes coding.":
-                        name == "work" ? "ISSUE continues its newest saved claim, or starts a new attempt. For a saved claim, use RUN or --run DIR instead of required inputs.":
+                        name == "work" ? "ISSUE alone continues its newest saved claim; otherwise it starts a new attempt. For a saved claim, use RUN or --run DIR instead of required inputs.":
                         "Use RUN or --run DIR instead of PR to check a saved run. A PR with one saved run uses that run."
                     )
                 }
@@ -1236,10 +1290,14 @@ internal class Cli {
             if guided && (args.Command == "work" || args.Command == "claim") && args.Get("continue-from") == "" {
                 return
             }
+            let missing = List[string]()
             for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
-                if name != "repo" {
-                    args.Need(TimeKey(name))
+                if name != "repo" && args.Get(TimeKey(name)) == "" {
+                    missing.Add(Label(TimeKey(name)))
                 }
+            }
+            if missing.Count > 0 {
+                throw Exception("Required: " + String.Join(", ", missing))
             }
             if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {
                 args.Values["--repo"] = RepositoryInput.Local()

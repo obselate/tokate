@@ -367,8 +367,8 @@ internal class PublicOutput {
                         .Attempts
                         .Count > 1 &&
                         ResultData is Dictionary[string, Object?]fields {
-                        fields["attempts"] = SavedRuns.Summary(options.Attempts, 0)["runs"]
-                        for row in options.Attempts {
+                        fields["attempts"] = SavedRuns.Summary(RunReference.Recent(options.Attempts), 0)["runs"]
+                        for row in RunReference.Recent(options.Attempts) {
                             if row.Next != "" && row.Location != RunDirectory {
                                 Actions.Add([]string{"tokate", row.Next, "--run", row.Location, "--json"})
                             }

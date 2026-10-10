@@ -467,11 +467,11 @@ internal class CliDiscovery {
                     "Incorrect inference effects"
                 )
                 Check.That(command["effects"]?.AsObject().Count == 4, "Incomplete read/write effects")
-                Check.That(
-                    command["arguments"]?.ToJsonString().Contains("--json") == true,
-                    "JSON absent from accepted arguments"
-                )
             }
+            Check.That(
+                metadata["data"]?["global_arguments"]?.ToJsonString().Contains("--json") == true,
+                "JSON absent from accepted arguments"
+            )
             for argv in[][]string{
                 []string{"unknown", "--json"},
                 []string{"work", "--unknown", "--json"},
@@ -1069,7 +1069,7 @@ internal class CliDiscovery {
             }
             let work = Call(binary, []string{"work", "--help"}, temp).Output
             Check.Contains(work, "inference")
-            Check.Contains(work, "publication step")
+            Check.Contains(work, "verify it")
             Check.Contains(work, "Total budget for coding and verification")
             Check.Contains(work, "(required)")
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
