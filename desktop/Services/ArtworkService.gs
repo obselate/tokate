@@ -7,8 +7,8 @@ import System.Collections.Generic
 import System.IO
 import System.Numerics
 
-/// Painted artwork. Core images load at startup; page landscapes decode on a worker the first time they
-/// are requested, and `changed` runs on the UI thread once one is ready.
+/// Painted artwork. Core images load at startup. Page landscapes decode on workers as soon as the service
+/// is attached, so they are ready before their page opens, and `changed` runs on the UI thread once each is ready.
 class ArtworkService : IDisposable {
     let Backdrop ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("backdrop.png")))
     let Hands ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("hands-smooth.png")))
@@ -27,15 +27,23 @@ class ArtworkService : IDisposable {
     private var changed Action = () -> { }
     private var disposed bool
 
+    shared {
+        let Landscapes []string = []string{"donate", "my-project", "saved-work"}
+    }
+
     init() {
         Effect = ShaderEffect(Program)
         LandscapeEffect = ShaderEffect(Program)
     }
 
-    /// Routes landscape completions to the UI thread and notifies `onChanged` after each one.
+    /// Routes landscape completions to the UI thread, notifies `onChanged` after each one, and starts
+    /// decoding every landscape.
     func Attach(ui UiDispatcher, onChanged Action) {
         dispatcher = ui
         changed = onChanged
+        for name in Landscapes {
+            Load(name)
+        }
     }
 
     /// Sets the paint effects for the current light and texture preference.
@@ -51,10 +59,14 @@ class ArtworkService : IDisposable {
         if landscapes.ContainsKey(name) {
             return landscapes[name]
         }
-        if loading.Add(name) {
+        Load(name)
+        return nil
+    }
+
+    private func Load(name string) {
+        if !landscapes.ContainsKey(name) && loading.Add(name) {
             go DecodeLandscape(name)
         }
-        return nil
     }
 
     private func DecodeLandscape(name string) {
