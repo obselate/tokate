@@ -53,10 +53,13 @@ length_cases = ['incomplete', 'truncated-tool']
 catalog_cases = ['catalog-missing', 'catalog-substituted', 'catalog-malformed', 'catalog-duplicate', 'catalog-duplicate-id',
                  'catalog-invalid-id', 'catalog-whitespace-id', 'catalog-invalid-metadata', 'catalog-oversized', 'catalog-chunked',
                  'catalog-redirect', 'catalog-unreachable', 'catalog-deadline', 'catalog-metadata',
+                 'catalog-context-length', 'catalog-context-conflict', 'catalog-context-invalid',
+                 'catalog-context-fraction', 'catalog-context-zero', 'catalog-context-alias-invalid',
                  'catalog-recheck-substituted', 'catalog-recheck-unreachable', 'catalog-recheck-malformed']
 all_cases = ['reasoning', 'reasoning-off', 'profile', 'on', 'unlimited', 'unlimited-cancel', 'compact', 'compact-failed', 'failed', 'malformed',
              *length_cases, 'empty', 'cancel', *catalog_cases]
 cases = args.cases or (catalog_cases if args.catalog_only else all_cases)
+catalog_accepted = ['catalog-metadata', 'catalog-context-length']
 if not set(cases) <= set(all_cases):
     parser.error('Unknown Pi proof case')
 if args.shard:
@@ -111,7 +114,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if case == 'catalog-invalid-metadata':
             entry['digest'] = 'PRIVATE_CATALOG_SENTINEL\n'
         if case == 'catalog-metadata':
-            entry.update(runtime_version='1.2.3', digest='sha256:abc123', quantization='Q4_K_M', context_window=7, supports_tools=False)
+            entry.update(runtime_version='1.2.3', digest='sha256:abc123', quantization='Q4_K_M', context_window=7, context_length=7, supports_tools=False)
+        if case == 'catalog-context-length':
+            entry.update(object='model', owned_by='PRIVATE_CATALOG_SENTINEL', context_length=7)
+        if case == 'catalog-context-conflict':
+            entry.update(context_window=7, context_length=8)
+        if case == 'catalog-context-invalid':
+            entry['context_length'] = '7'
+        if case == 'catalog-context-fraction':
+            entry['context_length'] = 7.5
+        if case == 'catalog-context-zero':
+            entry['context_length'] = 0
+        if case == 'catalog-context-alias-invalid':
+            entry.update(context_window=7, context_length=True)
         body = json.dumps({'object': 'list', 'data': [] if case == 'catalog-missing' else [entry]}).encode()
         if case == 'catalog-malformed':
             body = b'{PRIVATE_CATALOG_SENTINEL'
@@ -297,7 +312,7 @@ with Server(('127.0.0.1', 0), Handler) as server:
                     for evidence in [*root.rglob('events.jsonl'), *root.rglob('stderr.log')]:
                         print(evidence.read_text()[-6000:], file=sys.stderr)
                 assert result.returncode == 0, f'{case}: {result.stdout}\n{result.stderr}'
-                if case.startswith('catalog-') and case != 'catalog-metadata':
+                if case.startswith('catalog-') and case not in catalog_accepted:
                     assert server.calls == 0, 'Unavailable metadata reached inference'
                     assert server.catalog_calls == (2 if case.startswith('catalog-recheck-') else 1), 'Metadata was retried or omitted'
                     if case == 'catalog-deadline':
@@ -307,10 +322,10 @@ with Server(('127.0.0.1', 0), Handler) as server:
                     continue
                 if case in ['compact', 'compact-failed']:
                     assert server.compactions > 0, 'Pi did not compact its configured context'
-                elif case not in ['reasoning', 'reasoning-off', 'profile', 'on', 'unlimited', 'catalog-metadata', 'truncated-tool']:
+                elif case not in ['reasoning', 'reasoning-off', 'profile', 'on', 'unlimited', *catalog_accepted, 'truncated-tool']:
                     assert server.calls == 1, f'{case}: automatic provider retry observed'
                 saved = json.loads((root / 'result.json').read_text())
-                if case in ['reasoning', 'reasoning-off', 'profile', 'on', 'unlimited', 'compact', 'catalog-metadata']:
+                if case in ['reasoning', 'reasoning-off', 'profile', 'on', 'unlimited', 'compact', *catalog_accepted]:
                     assert saved['usage']['input_tokens'] == server.input_tokens, 'Usage omitted context compaction'
                     assert saved['usage']['output_tokens'] == server.output_tokens, 'Usage omitted context compaction'
                 if case in length_cases:

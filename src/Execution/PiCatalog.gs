@@ -63,21 +63,20 @@ internal class PiCatalog {
             }
             let result = map[string, Object?]{"advertised_model": model}
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
+                if name == "context_window" {
+                    result[name] = Context(selected)
+                    continue
+                }
                 let field = J.Get(selected, name)
                 if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
                     result[name] = "unknown"
                     continue
                 }
-                var context int32
-                let valid = name == "context_window" ?
-                field.ValueKind == JsonValueKind.Number && field.TryGetInt32(out context) && context > 0:
-                (
-                    name == "supports_tools" ?
-                    field.ValueKind == JsonValueKind.True || field.ValueKind == JsonValueKind.False:
-                    field.ValueKind == JsonValueKind.String && Regex.IsMatch(
-                        field.GetString() ?? "",
-                        "^[A-Za-z0-9][A-Za-z0-9._:+-]{0,199}\\z"
-                    )
+                let valid = name == "supports_tools" ?
+                field.ValueKind == JsonValueKind.True || field.ValueKind == JsonValueKind.False:
+                field.ValueKind == JsonValueKind.String && Regex.IsMatch(
+                    field.GetString() ?? "",
+                    "^[A-Za-z0-9][A-Za-z0-9._:+-]{0,199}\\z"
                 )
                 if !valid {
                     throw Exception("Invalid model identity")
@@ -85,6 +84,27 @@ internal class PiCatalog {
                 result[name] = field
             }
             return J.Parse(J.Write(result))
+        }
+
+        private func Context(selected JsonElement) Object {
+            var reported int32 = 0
+            for name in[]string{"context_window", "context_length"} {
+                let field = J.Get(selected, name)
+                if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
+                    continue
+                }
+                var context int32
+                if field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out context) ||
+                    context <= 0 ||
+                    (reported != 0 && reported != context) {
+                    throw Exception("Invalid model identity")
+                }
+                reported = context
+            }
+            if reported == 0 {
+                return "unknown"
+            }
+            return reported
         }
     }
 }

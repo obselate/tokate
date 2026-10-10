@@ -235,7 +235,8 @@ internal class PiChecks {
 
         internal func Run(binary string, root string, node string, directory string, endpoint string, mode string) {
             let flow = CoordinationFixture(binary)
-            let catalogRejected = mode.StartsWith("catalog-") && mode != "catalog-metadata" && !mode.StartsWith(
+            let catalogAccepted = mode == "catalog-metadata" || mode == "catalog-context-length"
+            let catalogRejected = mode.StartsWith("catalog-") && !catalogAccepted && !mode.StartsWith(
                 "catalog-recheck-"
             )
             let interrupted = mode == "cancel" || mode == "unlimited-cancel"
@@ -498,7 +499,7 @@ internal class PiChecks {
                 mode == "profile" ||
                 mode == "compact" ||
                 mode == "compact-failed" ||
-                mode == "catalog-metadata"
+                catalogAccepted
             let work = List[string]{"work", "--run", run, "--non-interactive", "--yes"}
             var worked Result
             if mode == "on" {
@@ -548,14 +549,18 @@ internal class PiChecks {
                 "{\"runtime_version\":\"1.2.3\",\"digest\":\"sha256:abc123\",\"quantization\":\"Q4_K_M\",\"context_window\":7,\"supports_tools\":false}"
             )
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
-                let expected = mode == "catalog-metadata" ? Check.Text(metadata[name]): "unknown"
+                let expected = mode == "catalog-metadata" || (catalogAccepted && name == "context_window") ?
+                Check.Text(metadata[name]):
+                "unknown"
                 Check.That(
                     Check.Text(saved["endpoint_catalog"]?[name]) == expected,
                     "Pi lost optional metadata or invented absent identity"
                 )
             }
             Check.That(
-                !saved.ToJsonString().Contains("PRIVATE_CATALOG_SENTINEL"),
+                !saved.ToJsonString().Contains("PRIVATE_CATALOG_SENTINEL") &&
+                    saved["endpoint_catalog"]?["context_length"] == nil &&
+                    saved["selection"]?["endpoint_catalog"]?["context_length"] == nil,
                 "Pi retained unsupported raw endpoint metadata"
             )
             File.WriteAllText(
