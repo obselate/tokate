@@ -191,8 +191,8 @@ internal class ProgressChecks {
             )
             let phases = result.Error.Split("Inference:").Length
             Check.That(
-                samples.Count >= 2 && samples.Count <= 3 && phases == samples.Count + 1,
-                "Plain progress did not use bounded exponential intervals"
+                samples.Count >= 3 && samples.Count <= 5 && phases == samples.Count + 1,
+                "Plain progress did not report at a steady interval"
             )
             var elapsed int32 = -1
             var remaining int32 = 26
@@ -206,6 +206,7 @@ internal class ProgressChecks {
                     ) <= 1,
                     "Progress changed or reset the saved allowances"
                 )
+                Check.That(elapsed < 0 || current - elapsed <= 6, "Plain progress interval grew")
                 elapsed = current
                 remaining = coding
             }

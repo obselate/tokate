@@ -32,6 +32,37 @@ internal class OwnerSetup {
             return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
         }
 
+        internal func Report(path string, before string, after string) {
+            Console.Error.WriteLine(
+                (before == "" ? "Added ": before == after ? "Unchanged ": "Updated ") + Terminal.Clean(path)
+            )
+            if before != after {
+                Console.Error.WriteLine(Terminal.Clean(after))
+            }
+        }
+
+        private func Checkout(path string) string {
+            var result CommandResult
+            try {
+                result = Commands.Run(
+                    "git",
+                    []string{"-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel"},
+                    cwd: path,
+                    seconds: 5
+                )
+            } catch (error Exception) {
+                throw Exception(
+                    Terminal.Clean(path) + " is not a Git checkout; run init inside a checkout or pass --path"
+                )
+            }
+            if result.Code != 0 || result.Output.Trim() == "" {
+                throw Exception(
+                    Terminal.Clean(path) + " is not a Git checkout; run init inside a checkout or pass --path"
+                )
+            }
+            return result.Output.Trim()
+        }
+
         private func SetupAnswer(args Args, key string, prompt string, fallback string, interactive bool) string {
             if args.Get(key) != "" {
                 return args.Get(key)
@@ -240,7 +271,6 @@ internal class OwnerSetup {
                     "Setup writes local configuration. Review and commit it before approving a task. Existing custom settings and workflow files are preserved."
                 )
                 if action == 1 {
-                    args.Values["--yes"] = "true"
                     return
                 }
                 if action == 5 {
@@ -309,7 +339,24 @@ internal class OwnerSetup {
         }
 
         internal func Run(args Args) {
-            let root = Path.GetFullPath(args.Get("path", "."))
+            let requested = Path.GetFullPath(args.Get("path", "."))
+            if !Directory.Exists(requested) {
+                throw Exception(Terminal.Clean(requested) + " does not exist; pass --path to a checkout")
+            }
+            let root = Checkout(requested)
+            let local = RepositoryInput.Local(root)
+            if args.Get("repo") == "" {
+                args.Values["--repo"] = local
+            } else if !RepositoryIdentity.SameRepo(RepositoryIdentity.Repo(args.Get("repo")), local) {
+                throw Exception(
+                    Terminal.Clean(root) + " is a checkout of " + local + ", not " + args.Get("repo") +
+                        "; pass --path to a checkout of " +
+                        args.Get("repo")
+                )
+            }
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let info = GitHub.Api("repos/" + repo)
+            let upstream = GitHub.FileAt(repo, ".github/tokate.json", J.Text(info, "default_branch"), missing: true)
             let path = SetupPath(root, ".github/tokate.json")
             var workflow = SetupPath(root, ".github/workflows/tokate-coordinator.yml")
             let workflows = Path.Combine(root, ".github/workflows")
@@ -333,10 +380,20 @@ internal class OwnerSetup {
             }
             let template = SetupPath(root, ".github/tokate-pr.md")
             let before = File.Exists(path) ? File.ReadAllText(path): ""
+            if before != "" &&
+                (upstream == "" || RequestData.Canonical(J.Parse(before)) != RequestData.Canonical(J.Parse(upstream))) {
+                throw Exception(
+                    Terminal.Clean(path) + " differs from the policy on " + repo + "@" + J.Text(
+                        info,
+                        "default_branch"
+                    ) +
+                        "; push or discard the local policy before running init"
+                )
+            }
             var existing Policy? = nil
             let fields = map[string, Object?]{}
-            if before != "" {
-                existing = Policy(before)
+            if upstream != "" {
+                existing = Policy(upstream)
                 for field in existing.Value.EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
@@ -430,16 +487,28 @@ internal class OwnerSetup {
             let text = before != "" && RequestData.Canonical(J.Parse(before)) == RequestData.Canonical(
                 policy.Value
             ) ? before: Pretty(policy.Value)
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
             RepositoryAccess.RequireOwner(repo)
             let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
             CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow))
             let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
             WizardScreen.Close()
-            Preview(path, before, text)
-            Preview(workflow, oldWorkflow, yaml)
+            SetupPath(root, ".github/tokate.json")
+            SetupPath(root, Path.GetRelativePath(root, workflow))
+            if before != text {
+                Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root)
+                File.WriteAllText(path, text)
+            }
+            if oldWorkflow == "" {
+                Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? root)
+                File.WriteAllText(workflow, yaml)
+            }
+            if File.ReadAllText(path) != text || File.ReadAllText(workflow) != yaml {
+                throw Exception("Setup output differs from the generated configuration")
+            }
+            Report(path, before, text)
+            Report(workflow, oldWorkflow, yaml)
             if File.Exists(template) {
-                Preview(template, File.ReadAllText(template), File.ReadAllText(template))
+                Report(template, File.ReadAllText(template), File.ReadAllText(template))
             }
             Terminal.Message(
                 "Owner footprint: " +
@@ -458,38 +527,19 @@ internal class OwnerSetup {
                 "cyan",
                 true
             )
-            if before != "" && before != text {
+            let changed = before != text || oldWorkflow == ""
+            if upstream != "" && RequestData.Canonical(J.Parse(upstream)) != RequestData.Canonical(policy.Value) {
                 Terminal.Message(
                     "Policy changes stale all existing approvals and claims; the owner must approve again. Eligibility revocation separately blocks new work and publication immediately.",
                     "yellow",
                     true
                 )
             }
-            let apply = Confirm(args)
-            if apply {
-                SetupPath(root, ".github/tokate.json")
-                SetupPath(root, Path.GetRelativePath(root, workflow))
-                if (File.Exists(path) ? File.ReadAllText(path): "") != before ||
-                    (File.Exists(workflow) ? File.ReadAllText(workflow): "") != oldWorkflow {
-                    throw Exception("Owner configuration changed during preview; inspect it before repeating setup")
-                }
-                if before != text {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root)
-                    File.WriteAllText(path, text)
-                }
-                if oldWorkflow == "" {
-                    Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? root)
-                    File.WriteAllText(workflow, yaml)
-                }
-                Terminal.Message(
-                    "Owner setup saved. Review and commit the policy and workflow before approving work; every PR still needs owner review."
-                )
-            }
-            if apply && (File.ReadAllText(path) != text || File.ReadAllText(workflow) != yaml) {
-                throw Exception("Setup output differs from the reviewed proposal")
-            }
+            Terminal.Message(
+                changed ? "Owner setup written. Commit and push the policy and workflow before approving work; every PR still needs owner review.": "Owner setup already matches; nothing to commit."
+            )
             PublicOutput.ResultData = map[string, Object?]{
-                "applied": apply,
+                "applied": changed,
                 "file_count": File.Exists(template) ? 3: 2,
                 "policy_changed": before != text,
                 "workflow_changed": oldWorkflow == "",
