@@ -6,19 +6,16 @@ import System.Collections.Generic
 import System.Text.Json
 
 partial class OwnerScreen {
-    private func OwnerIssue(issue JsonElement) Blob {
-        let number = TextOf(issue, "number")
-        var approved = false
-        for label in Items(Field(issue, "labels")) {
-            approved = approved || TextOf(label, "name") == "tokate:approved"
-        }
+    private func OwnerIssue(issue Issue) Blob {
+        let number = issue.NumberText
+        let approved = issue.IsApproved
         var remote JsonElement
         ownerWork.TryGetValue(number, out remote)
         let card = ui.Panel()
         card.Children.Add(
             ui.Row(
                 []Blob{
-                    ui.Heading("#" + number + "  " + TextOf(issue, "title"), 27),
+                    ui.Heading("#" + number + "  " + issue.Title, 27),
                     ui.StatusBadge(
                         remote.ValueKind == JsonValueKind.Object ? TextOf(remote, "state").Replace(
                             '_',
@@ -646,29 +643,29 @@ partial class OwnerScreen {
         } else if ownerTab == "Access" {
             body.Children.Add(OwnerAccessView())
         } else {
-            if ownerSelected.ValueKind == JsonValueKind.Object {
+            if let selectedIssue = ownerSelected {
                 body.Children.Add(
                     ui.Row(
                         []Blob{
                             ui.Action(
                                 "Back to issues",
                                 () -> {
-                                    ownerSelected = JsonElement{}
+                                    ownerSelected = nil
                                 }
                             )
                         }
                     )
                 )
-                body.Children.Add(OwnerIssue(ownerSelected))
+                body.Children.Add(OwnerIssue(selectedIssue))
             } else {
-                body.Children.Add(ui.IssueSearch(ownerIssues, () -> SearchOwnerIssues(1, true), true))
+                body.Children.Add(ui.IssueSearch(ownerIssues, true))
                 body.Children.Add(
                     ui.IssueRows(
                         ownerIssues,
                         selected -> {
                             ownerSelected = selected
                             app.ActionName = "Refresh contribution"
-                            InspectOwnerIssue(TextOf(selected, "number"))
+                            InspectOwnerIssue(selected.NumberText)
                         }
                     )
                 )

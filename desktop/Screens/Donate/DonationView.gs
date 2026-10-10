@@ -85,7 +85,7 @@ partial class DonationScreen {
             )
         }
         if step == 0 {
-            if !donorIssues.Loaded {
+            if !donorIssues.Current.Loaded {
                 let project = ui.Panel()
                 project.Children.Add(
                     ui.Entry(
@@ -93,7 +93,7 @@ partial class DonationScreen {
                         repository,
                         value -> {
                             repository = value
-                            donorIssues = IssuePage{Filter: "approved"}
+                            donorIssues.Reset("", IssueFilter.Approved)
                             account = ""
                             app.Message = ""
                         },
@@ -125,7 +125,7 @@ partial class DonationScreen {
                             ui.Action(
                                 "Change repository",
                                 () -> {
-                                    donorIssues = IssuePage{Filter: "approved"}
+                                    donorIssues.Reset("", IssueFilter.Approved)
                                     account = ""
                                 }
                             ),
@@ -133,13 +133,13 @@ partial class DonationScreen {
                     )
                 )
             }
-            if donorIssues.Loaded {
+            if donorIssues.Current.Loaded {
                 body.Children.Add(
-                    ui.IssueSearch(donorIssues, () -> issues.FindIssues(selectedRepository, donorIssues, search: true))
+                    ui.IssueSearch(donorIssues)
                 )
-                body.Children.Add(ui.IssueRows(donorIssues, item -> ChooseIssue(item)))
+                body.Children.Add(ui.IssueRows(donorIssues, item -> ChooseIssue(item.NumberText, item.Title)))
                 body.Children.Add(
-                    ui.IssuePagination(donorIssues, page -> issues.FindIssues(selectedRepository, donorIssues, page))
+                    ui.IssuePagination(donorIssues, page -> donorIssues.Search(page))
                 )
             }
         } else if step == 1 {

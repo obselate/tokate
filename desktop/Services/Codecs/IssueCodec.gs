@@ -39,6 +39,9 @@ class IssueCodec {
             }
         }
 
+        /// A single issue fetched by number, as a one-row page.
+        func Single(value JsonElement) IssueSearchPage -> IssueSearchPage{Rows: []Issue{Issue(value)}, Total: 1}
+
         func Work(data JsonElement) []IssueWork {
             let result = List[IssueWork]()
             for item in Json.Items(data, "work") {

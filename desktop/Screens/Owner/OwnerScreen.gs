@@ -23,8 +23,8 @@ partial class OwnerScreen {
     private var ownerPolicy JsonElement
     private let ownerWork Dictionary[string, JsonElement] = Dictionary[string, JsonElement]()
     private var ownerAccess JsonElement
-    private var ownerIssues IssuePage = IssuePage()
-    private var ownerSelected JsonElement
+    private let ownerIssues IssueSearchService
+    private var ownerSelected Issue?
     private var ownerCanWrite bool
     private var ownerBranch string = ""
     private var ownerDonor string = ""
@@ -42,16 +42,15 @@ partial class OwnerScreen {
 
     private let app DesktopSession
     private let ui ThemedControls
-    private let issues IssueBrowser
 
     init(session DesktopSession, controls ThemedControls) {
         app = session
         ui = controls
-        issues = IssueBrowser(app)
+        ownerIssues = app.IssueSearch(IssueFilter.All)
     }
 
     prop Key string -> "My project" + ownerTab + ownerStep.ToString()
-    prop IsBrowsing bool -> ownerOpen && ownerTab == "Contributions" && ownerSelected.ValueKind != JsonValueKind.Object
+    prop IsBrowsing bool -> ownerOpen && ownerTab == "Contributions" && ownerSelected == nil
 
     private func OwnerStrings(values IEnumerable[string]) JsonArray {
         let result = JsonArray()
@@ -129,8 +128,8 @@ partial class OwnerScreen {
                     if app.Error(repo) {
                         return
                     }
-                    ownerIssues = IssuePage()
-                    ownerSelected = JsonElement{}
+                    ownerIssues.Reset(ownerRepository, IssueFilter.All)
+                    ownerSelected = nil
                     ownerOpen = true
                     app.ActionName = "Refresh project"
                     ownerCanWrite = Field(Field(repo.Value, "permissions"), "push").ValueKind == JsonValueKind.True
@@ -164,8 +163,8 @@ partial class OwnerScreen {
     }
 
     private func SearchOwnerIssues(page int32 = 1, search bool = false) {
-        ownerSelected = JsonElement{}
-        issues.FindIssues(ownerRepository, ownerIssues, page, search)
+        ownerSelected = nil
+        ownerIssues.Search(page, search)
     }
 
     private func InspectOwnerIssue(number string) {

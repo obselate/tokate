@@ -5,10 +5,12 @@ import System.IO
 
 /// Reads Codex's bundled model catalog in an empty, throwaway home so no donor settings are read.
 /// Calls block, so run them from a `go` worker.
-class CodexCatalog {
+class CodexCatalog : Cancellable {
     private let process ProcessRunner = ProcessRunner()
 
     func Stop() -> process.Stop()
+
+    func RecentOutput() string -> process.RecentOutput()
 
     func Load(seconds int32 = 120) Reply[[]CodexModel] {
         var models = []CodexModel{}

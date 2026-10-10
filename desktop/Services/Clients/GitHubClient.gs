@@ -5,7 +5,7 @@ import System.Text.Json
 
 /// Runs GitHub CLI commands that print JSON and decodes the whole result. Calls block, so run them from
 /// a `go` worker.
-class GitHubClient {
+class GitHubClient : Cancellable {
     private let process ProcessRunner = ProcessRunner()
     let Executable string
 
@@ -14,6 +14,8 @@ class GitHubClient {
     }
 
     func Stop() -> process.Stop()
+
+    func RecentOutput() string -> process.RecentOutput()
 
     func Run[T](arguments []string, decode Func[JsonElement, T], seconds int32 = 120) Reply[T] {
         var value T

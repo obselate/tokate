@@ -12,7 +12,7 @@ partial class DonationScreen {
     private var selectedRepository string = ""
     private var issue string = ""
     private var issueTitle string = ""
-    private var donorIssues IssuePage = IssuePage{Filter: "approved"}
+    private let donorIssues IssueSearchService
     private var policy JsonElement
     private var step int32
     private var harness string = "codex"
@@ -47,14 +47,13 @@ partial class DonationScreen {
 
     private let app DesktopSession
     private let ui ThemedControls
-    private let issues IssueBrowser
     private let openSaved Action[string]
     private let rememberRun Action[string]
 
     init(session DesktopSession, controls ThemedControls, saved Action[string], remember Action[string]) {
         app = session
         ui = controls
-        issues = IssueBrowser(app)
+        donorIssues = app.IssueSearch(IssueFilter.Approved)
         openSaved = saved
         rememberRun = remember
         outputViewport.MetricsChanged += metrics -> {
@@ -79,7 +78,7 @@ partial class DonationScreen {
     prop Key string -> "Donate" + step.ToString()
     prop IsDonating bool -> step == 3
     prop IsLive bool -> IsDonating && donationStarted
-    prop IsBrowsing bool -> step == 0 && donorIssues.Loaded
+    prop IsBrowsing bool -> step == 0 && donorIssues.Current.Loaded
 
     func Stop() {
         approvalTimer?.Dispose()
@@ -92,7 +91,7 @@ partial class DonationScreen {
         try {
             selectedRepository = Repository(repository)
             unlimited = false
-            donorIssues = IssuePage{Filter: "approved"}
+            donorIssues.Reset(selectedRepository, IssueFilter.Approved)
             account = ""
             let parts = repository.Trim().TrimEnd('/').Split('/')
             let requested = parts.Length > 2 && parts[parts.Length - 2] == "issues" ? parts[parts.Length - 1]: ""
@@ -117,7 +116,7 @@ partial class DonationScreen {
                             }
                             policy = Field(Field(response.Value, "data"), "policy")
                             if requested == "" {
-                                issues.FindIssues(selectedRepository, donorIssues, search: true)
+                                donorIssues.Search(1, true)
                                 return
                             }
                             app.Execute(
@@ -131,10 +130,10 @@ partial class DonationScreen {
                                         app.Message = "This is a pull request. Choose an issue."
                                     } else if TextOf(item, "state") != "open" {
                                         app.Message = "Issue #" + requested + " is closed."
-                                    } else if !IssuePage.ApprovedIssue(item) {
+                                    } else if !IssueCodec.Issue(item).IsApproved {
                                         app.Message = "Issue #" + requested + " needs owner approval."
                                     } else {
-                                        ChooseIssue(item)
+                                        ChooseIssue(TextOf(item, "number"), TextOf(item, "title"))
                                     }
                                     return
                                 },
@@ -150,9 +149,9 @@ partial class DonationScreen {
         }
     }
 
-    private func ChooseIssue(value JsonElement) {
-        issue = TextOf(value, "number")
-        issueTitle = TextOf(value, "title")
+    private func ChooseIssue(number string, title string) {
+        issue = number
+        issueTitle = title
         step = 1
         app.Execute(
             []string{"defaults", "list"},

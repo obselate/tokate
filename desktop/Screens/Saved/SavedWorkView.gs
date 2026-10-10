@@ -206,7 +206,7 @@ partial class SavedWorkScreen {
                     continue
                 }
                 visible++
-                table.Children.Add(SavedRow(item, index + (savedPage - 1) * IssuePage.Size))
+                table.Children.Add(SavedRow(item, index + (savedPage - 1) * IssueListing.PageSize))
             }
             if visible == 0 && !savedReading {
                 table.Children.Add(

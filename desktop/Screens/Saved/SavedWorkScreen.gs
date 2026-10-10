@@ -147,11 +147,11 @@ partial class SavedWorkScreen {
 
     private func LoadSavedPage(page int32) {
         StopSavedUpdates()
-        savedPage = Math.Clamp(page, 1, Math.Max(1, (savedPaths.Count + IssuePage.Size - 1) / IssuePage.Size))
+        savedPage = Math.Clamp(page, 1, Math.Max(1, (savedPaths.Count + IssueListing.PageSize - 1) / IssueListing.PageSize))
         savedSelected = false
         savedWork.Clear()
-        let start = (savedPage - 1) * IssuePage.Size
-        for index in start ... Math.Min(savedPaths.Count, start + IssuePage.Size) {
+        let start = (savedPage - 1) * IssueListing.PageSize
+        for index in start ... Math.Min(savedPaths.Count, start + IssueListing.PageSize) {
             let path = savedPaths[index]
             savedWork.Add(savedCache.TryGetValue(path, out var cached) ? cached: SavedContribution{Path: path})
         }

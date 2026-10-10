@@ -47,6 +47,13 @@ class DesktopSession {
         set -> app.Feedback.ShowReport(value)
     }
 
+    func IssueSearch(filter IssueFilter) IssueSearchService -> IssueSearchService(
+        filter,
+        app.Activity,
+        app.Feedback,
+        () -> app.RequestRefresh()
+    )
+
     func Post(action Action) {
         app.Window.Post(action)
     }
