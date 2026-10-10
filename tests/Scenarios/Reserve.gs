@@ -45,13 +45,13 @@ internal class ReserveChecks {
             flow.NoInference()
             for command in[]string{"external", "amend", "recover"} {
                 Check.Contains(
-                    flow.Call([]string{command, "--run", flow.Temp.Root, "--verification-reserve", "1"}, 1).Error,
-                    "Unknown option for " + command + ": --verification-reserve"
+                    flow.Call([]string{command, "--run", flow.Temp.Root, "--verify-time", "1s"}, 1).Error,
+                    "Unknown option for " + command + ": --verify-time"
                 )
             }
             Check.Contains(
-                flow.Call([]string{"work", "--run", flow.Temp.Root, "--verification-reserve", "1"}, 1).Error,
-                "--run conflicts with --verification-reserve"
+                flow.Call([]string{"work", "--run", flow.Temp.Root, "--verify-time", "1s"}, 1).Error,
+                "--run conflicts with --verify-time"
             )
             using let v2 = CoordinationFixture(binary)
             v2.Initialize()
@@ -166,10 +166,10 @@ internal class ReserveChecks {
                 "gpt-6.1-sol",
                 "--effort",
                 "high",
-                "--seconds",
-                "5",
-                "--verification-reserve",
-                "5",
+                "--time",
+                "5s",
+                "--verify-time",
+                "5s",
                 "--runs",
                 Path.Combine(flow.Temp.Root, "runs")
             }
@@ -177,7 +177,7 @@ internal class ReserveChecks {
             flow.Claim(seconds: "6", reserve: "1", code: 1)
             Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Lower owner limit wrote invalid claim")
             flow.NoInference()
-            args[Array.IndexOf(args, "--verification-reserve") + 1] = "1"
+            args[Array.IndexOf(args, "--verify-time") + 1] = "1s"
             let result = flow.Acquire(args)
             let run = result.Output.Substring(result.Output.LastIndexOf("Run: ") + 5).Trim()
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
@@ -199,10 +199,10 @@ internal class ReserveChecks {
                     "gpt-6.1-sol",
                     "--effort",
                     "high",
-                    "--seconds",
-                    "10",
-                    "--verification-reserve",
-                    "3",
+                    "--time",
+                    "10s",
+                    "--verify-time",
+                    "3s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs"),
                     "--json"

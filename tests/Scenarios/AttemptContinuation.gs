@@ -44,10 +44,10 @@ internal class AttemptContinuationChecks {
                 harness == "pi" ? "fixture-model": "gpt-6.1-sol",
                 "--effort",
                 harness == "pi" ? "absent": "high",
-                "--seconds",
-                seconds,
-                "--verification-reserve",
-                reserve,
+                "--time",
+                seconds + "s",
+                "--verify-time",
+                reserve + "s",
                 "--runs",
                 Path.Combine(test.Flow.Temp.Root, "runs")
             }
@@ -541,16 +541,16 @@ internal class AttemptContinuationChecks {
                 let args = List[string](Args(test, source, consent: mode != "consent"))
                 switch mode {
                     case "seconds" {
-                        args.RemoveRange(args.IndexOf("--seconds"), 2)
+                        args.RemoveRange(args.IndexOf("--time"), 2)
                     }
                     case "verification-reserve" {
-                        args.RemoveRange(args.IndexOf("--verification-reserve"), 2)
+                        args.RemoveRange(args.IndexOf("--verify-time"), 2)
                     }
                     case "zero" {
-                        args[args.IndexOf("--verification-reserve") + 1] = "0"
+                        args[args.IndexOf("--verify-time") + 1] = "0s"
                     }
                     case "equal" {
-                        args[args.IndexOf("--verification-reserve") + 1] = "40"
+                        args[args.IndexOf("--verify-time") + 1] = "40s"
                     }
                     case "selection" {
                         args[args.IndexOf("--effort") + 1] = "xhigh"
@@ -571,10 +571,10 @@ internal class AttemptContinuationChecks {
                                 "owner/project#1",
                                 "--continue-from",
                                 source,
-                                "--seconds",
-                                "40",
-                                "--verification-reserve",
-                                "12"
+                                "--time",
+                                "40s",
+                                "--verify-time",
+                                "12s"
                             },
                             1
                         )

@@ -55,7 +55,7 @@ internal class ClaudeChecks {
                         }
                         let cancelled = TestTerminal.Pty(
                             binary,
-                            []string{"work", "owner/project#1", "--seconds", "60", "--verification-reserve", "20"},
+                            []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
                             flow.Temp,
                             100,
                             "1\n1\nq\n"
@@ -105,10 +105,10 @@ internal class ClaudeChecks {
                         "1",
                         "--profile",
                         "claude",
-                        "--seconds",
-                        "60",
-                        "--verification-reserve",
-                        "20",
+                        "--time",
+                        "60s",
+                        "--verify-time",
+                        "20s",
                         "--runs",
                         Path.Combine(flow.Temp.Root, "runs")
                     }

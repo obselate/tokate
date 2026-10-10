@@ -636,7 +636,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             )
         )
         File.WriteAllText(Tools, tools.ToJsonString())
-        let retry = []string{"external", "--run", run, "--commit", second, "--seconds", "30", "--tools", Tools}
+        let retry = []string{"external", "--run", run, "--commit", second, "--time", "30s", "--tools", Tools}
         let verificationPath = Path.Combine(run, "verification.json")
         let recorded = File.ReadAllText(verificationPath)
         let history = Path.Combine(run, "external-history", commit)
@@ -681,7 +681,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         baseline.Restore()
         for missing in[]string{"seconds", "tools"} {
             let args = List[string]{"external", "--run", run, "--commit", second}
-            args.AddRange(missing == "seconds" ? []string{"--tools", Tools}: []string{"--seconds", "30"})
+            args.AddRange(missing == "seconds" ? []string{"--tools", Tools}: []string{"--time", "30s"})
             Flow.Call(args.ToArray(), 1)
         }
         File.WriteAllText(Tools, "[]")
@@ -739,14 +739,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.DonorGit(work, "commit", "-m", "Correct external result")
         let final = Flow.Git("-C", work, "rev-parse", "HEAD")
         Flow.Git("-C", work, "push", Path.Combine(Flow.Bin, "fork"), branch)
-        let finalArgs = []string{"external", "--run", run, "--commit", final, "--seconds", "30", "--tools", Tools}
+        let finalArgs = []string{"external", "--run", run, "--commit", final, "--time", "30s", "--tools", Tools}
         let unchanged = File.ReadAllText(savedPath)
         Check.Contains(Flow.Call(finalArgs, 1).Error, "must append at least one tool declaration")
         Check.That(File.ReadAllText(savedPath) == unchanged, "Equal tool count replaced failed evidence")
         tools.Add(tools[2]?.DeepClone())
         File.WriteAllText(Tools, tools.ToJsonString())
         for head in[]string{commit, second} {
-            Flow.Call([]string{"external", "--run", run, "--commit", head, "--seconds", "30", "--tools", Tools}, 1)
+            Flow.Call([]string{"external", "--run", run, "--commit", head, "--time", "30s", "--tools", Tools}, 1)
         }
         using let failedBaseline = FixtureSnapshot(Flow.Temp.Root)
         for missing in[]bool{false, true} {

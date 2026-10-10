@@ -62,7 +62,7 @@ internal class PublicDescriptions {
                 path,
                 Summary("Update result content to show the final reviewed text.", head).ToJsonString()
             )
-            let args = []string{"amend", "--run", run, "--commit", head, "--seconds", "30", "--summary", path}
+            let args = []string{"amend", "--run", run, "--commit", head, "--time", "30s", "--summary", path}
             flow.Call(args)
             flow.CoordinatePosted()
             flow.Call(args)
@@ -192,8 +192,8 @@ internal class PublicDescriptions {
                 run,
                 "--commit",
                 amended,
-                "--seconds",
-                "30",
+                "--time",
+                "30s",
                 "--tools",
                 flow.Tools,
                 "--summary",
@@ -243,8 +243,8 @@ internal class PublicDescriptions {
                     run,
                     "--commit",
                     head,
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--summary",
                     path,
                     "--tools",

@@ -363,7 +363,7 @@ internal class DisposableVerificationChecks {
             flow.Git("-C", checkout, "add", "result.txt")
             flow.DonorGit(checkout, "commit", "-m", "Review correction")
             let commit = flow.Git("-C", checkout, "rev-parse", "HEAD")
-            flow.Call([]string{"amend", "--run", run, "--commit", commit, "--seconds", "30"})
+            flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "30s"})
             Check.That(!Directory.Exists(Path.Combine(checkout, "build-output")), "Amendment output retained")
             let amended = Check.Json(File.ReadAllText(Path.Combine(run, "amendments", commit, "run.json")))
             Check.That(amended["verification"]?.AsArray().Count == 2, "Amendment lost ordered results")

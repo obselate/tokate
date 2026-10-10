@@ -67,7 +67,11 @@ internal class Args {
                 if String.IsNullOrWhiteSpace(value) {
                     throw Exception("Missing value for " + key)
                 }
-                Values.Add(key, value)
+                if option.Value == "TIME" {
+                    Values.Add("--" + Cli.TimeKey(option.Name), Cli.Seconds(value, option.Name))
+                } else {
+                    Values.Add(key, value)
+                }
             }
             i++
         }
@@ -95,9 +99,11 @@ internal class Args {
             value,
             out number
         ) ||
-            number < 1 ||
-            ((key == "seconds" || key == "timeout") && number > 86400) {
+            number < 1 {
             throw Exception("Invalid positive number: " + Cli.Label(key))
+        }
+        if (key == "seconds" || key == "timeout") && number > 86400 {
+            throw Exception("Use at most 24h: " + Cli.Label(key))
         }
         return number
     }

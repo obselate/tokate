@@ -38,7 +38,7 @@ internal class CorrectionChecks {
             seconds string = "30",
             json bool = false
         ) Result {
-            let args = List[string]{"recover", "--run", run, "--commit", commit, "--seconds", seconds}
+            let args = List[string]{"recover", "--run", run, "--commit", commit, "--time", seconds + "s"}
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -118,7 +118,7 @@ internal class CorrectionChecks {
             let secret = Path.Combine(flow.Temp.Root, "private-evidence")
             File.WriteAllText(secret, "synthetic private data")
             File.CreateSymbolicLink(Path.Combine(checkout, "outside-link"), secret)
-            flow.Call([]string{"recover", "--run", run, "--seconds", "30"}, 1)
+            flow.Call([]string{"recover", "--run", run, "--time", "30s"}, 1)
             flow.Call([]string{"recover", "--run", run, "--commit", String('0', 40)}, 1)
             flow.Call([]string{"recover", "--run", run, "--tools", "missing"}, 1)
             flow.Call([]string{"recover", "--run", run, "--commit", String('0', 40)}, 1)
@@ -696,7 +696,7 @@ internal class CorrectionChecks {
                 RepositoryFaults.Reject(
                     flow,
                     run,
-                    []string{"recover", "--run", run, "--commit", commit, "--seconds", "30"}
+                    []string{"recover", "--run", run, "--commit", commit, "--time", "30s"}
                 )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "original-evidence/manifest.json")) == original,
@@ -1082,7 +1082,7 @@ internal class CorrectionChecks {
             let corrected = Check.Text(Read(run)["commit"])
             for text in[]string{"First amendment\n", "Second amendment\n"} {
                 let commit = Correct(flow, run, text)
-                let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+                let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
                 flow.Call(args)
                 if let managed = coordinator {
                     flow.Reload()
@@ -1120,7 +1120,7 @@ internal class CorrectionChecks {
             File.WriteAllText(Path.Combine(run, "checkout/scripts/verify.sh"), "exit 0\n")
             let protectedCommit = Correct(flow, run)
             Check.Contains(
-                flow.Call([]string{"amend", "--run", run, "--commit", protectedCommit, "--seconds", "30"}, 1).Error,
+                flow.Call([]string{"amend", "--run", run, "--commit", protectedCommit, "--time", "30s"}, 1).Error,
                 "protected owner path"
             )
             Check.That(
@@ -1221,7 +1221,7 @@ internal class CorrectionChecks {
             let previous = Check.Text(Read(run)["commit"])
             File.WriteAllText(decree, "Amended instruction edit\n")
             commit = Correct(test.Flow, run, "Amendment with instruction edit\n")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
             Check.Contains(test.Flow.Call(args, 1).Error, "approved root DECREE.md")
             Check.That(
                 !Directory.Exists(Path.Combine(run, "amendments", commit)),

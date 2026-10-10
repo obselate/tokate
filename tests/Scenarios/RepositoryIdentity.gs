@@ -15,8 +15,8 @@ internal class RepositoryIdentityChecks {
             "gpt-6.1-sol",
             "--effort",
             "high",
-            "--seconds",
-            "30",
+            "--time",
+            "30s",
             "--runs",
             Path.Combine(flow.Temp.Root, "runs"),
             "--json"
@@ -184,8 +184,8 @@ internal class RepositoryIdentityChecks {
                         "external",
                         "--tools",
                         test.Tools,
-                        "--seconds",
-                        "30",
+                        "--time",
+                        "30s",
                         "--runs",
                         Path.Combine(flow.Temp.Root, "runs"),
                         "--json"

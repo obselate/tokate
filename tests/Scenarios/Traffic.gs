@@ -372,8 +372,8 @@ internal class CommandTrafficChecks {
             direct bool = false
         ) Result -> flow
             .Call(
-            direct ? []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", timeout}:
-            []string{"checks", "--run", run, "--watch", "--timeout", timeout},
+            direct ? []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", timeout + "s"}:
+            []string{"checks", "--run", run, "--watch", "--timeout", timeout + "s"},
             code,
             traffic: true
         )
@@ -428,7 +428,7 @@ internal class CommandTrafficChecks {
                 flow.ResetTraffic()
                 let timer = Stopwatch.StartNew()
                 let result = kind == "initial-authority" ? flow.Call(
-                    []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", "1"},
+                    []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", "1s"},
                     8,
                     traffic: true
                 ): Watch(flow, run, "1")

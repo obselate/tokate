@@ -165,7 +165,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Git("-C", checkout, "add", "result.txt")
         Flow.DonorGit(checkout, "commit", "-m", "Reviewed amendment")
         let amendedHead = Flow.Git("-C", checkout, "rev-parse", "HEAD")
-        Flow.Call([]string{"amend", "--run", run, "--commit", amendedHead, "--seconds", "30", "--tools", Tools})
+        Flow.Call([]string{"amend", "--run", run, "--commit", amendedHead, "--time", "30s", "--tools", Tools})
         Flow.Reload()
         let amendment = Check.PostedRequest(Flow.State)
         Coordinate(Event(amendment))

@@ -30,7 +30,7 @@ internal class OmpChecks {
                     flow.Temp.Env["NO_COLOR"] = "1"
                     let cancelled = TestTerminal.Pty(
                         binary,
-                        []string{"work", "owner/project#1", "--seconds", "60", "--verification-reserve", "20"},
+                        []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
                         flow.Temp,
                         100,
                         "1\n1\nq\n"
@@ -67,14 +67,7 @@ internal class OmpChecks {
                 let claim = List[string]{"claim", "--repo", "owner/project", "1"}
                 claim.AddRange(selection)
                 claim.AddRange(
-                    []string{
-                        "--seconds",
-                        "60",
-                        "--verification-reserve",
-                        "20",
-                        "--runs",
-                        Path.Combine(flow.Temp.Root, "runs")
-                    }
+                    []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
                 )
                 let prepared = flow.Acquire(claim.ToArray())
                 let index = prepared.Output.LastIndexOf("Run: ")
@@ -275,10 +268,10 @@ internal class OmpChecks {
                     "synthetic/model:exact",
                     "--effort",
                     "absent",
-                    "--seconds",
-                    mode == "timeout" ? "45": "120",
-                    "--verification-reserve",
-                    "30",
+                    "--time",
+                    mode == "timeout" ? "45s": "120s",
+                    "--verify-time",
+                    "30s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs")
                 }

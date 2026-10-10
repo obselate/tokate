@@ -402,18 +402,18 @@ internal class PiChecks {
                 node,
                 "--endpoint",
                 endpoint,
-                "--seconds",
-                "90",
-                "--verification-reserve",
-                "30",
+                "--time",
+                "90s",
+                "--verify-time",
+                "30s",
                 "--runs",
                 Path.Combine(flow.Flow.Temp.Root, "runs"),
                 "--non-interactive"
             }
             if unlimited {
-                args.RemoveRange(args.IndexOf("--seconds"), 2)
+                args.RemoveRange(args.IndexOf("--time"), 2)
                 args.Add("--unlimited")
-                args[args.IndexOf("--verification-reserve") + 1] = "8"
+                args[args.IndexOf("--verify-time") + 1] = "8s"
             }
             if mode != "profile" {
                 args.AddRange([]string{"--pi-root", root})

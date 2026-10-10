@@ -20,7 +20,7 @@ internal class AmendmentFlow {
             summary bool = true,
             json bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+            let args = List[string]{"amend", "--run", run, "--commit", commit, "--time", "30s"}
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -132,7 +132,7 @@ internal class AmendmentFlow {
                 RepositoryFaults.Reject(
                     flow,
                     run,
-                    []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"},
+                    []string{"amend", "--run", run, "--commit", commit, "--time", "30s"},
                     repositoryError: "identity changed"
                 )
                 Check.That(
@@ -370,7 +370,7 @@ internal class AmendmentFlow {
             let run = PublishedContribution.Original(flow, interruptible: true)
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let commit = Edit(flow, run, "slow-check", "slow")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "1", "--json"}
+            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "1s", "--json"}
             let failure = flow.Call(args, 1)
             Check.That(
                 Check.Text(Check.Json(failure.Output)["error"]?["code"]) == "verification_failed",
@@ -471,7 +471,7 @@ internal class AmendmentFlow {
                         "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
                     )
                 } else if failure == "budget" {
-                    flow.Call([]string{"amend", "--run", run, "--commit", commit, "--seconds", "3601"}, 1)
+                    flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "3601s"}, 1)
                     continue
                 } else if failure == "closed" || failure == "merged" {
                     flow.Reload()

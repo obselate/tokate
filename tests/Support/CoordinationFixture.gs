@@ -207,16 +207,16 @@ internal open class CoordinationFixture : IDisposable {
             source,
             "--tools",
             Tools,
-            "--seconds",
-            seconds,
+            "--time",
+            seconds + "s",
             "--runs",
             Path.Combine(Flow.Temp.Root, "runs")
         }
         if reserve != "" {
-            args.AddRange([]string{"--verification-reserve", reserve})
+            args.AddRange([]string{"--verify-time", reserve + "s"})
         }
         if unlimited {
-            args.RemoveRange(args.IndexOf("--seconds"), 2)
+            args.RemoveRange(args.IndexOf("--time"), 2)
             args.Add("--unlimited")
         }
         let result = Flow.Call(args.ToArray(), code)

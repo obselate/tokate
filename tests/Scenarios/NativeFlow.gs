@@ -104,7 +104,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.Envelope(Call([]string{"verify", "--repo", "owner/project", "10", "--json"}, owner: true), "verify", "ok")
         Check.Envelope(Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
         Check.Envelope(
-            Call([]string{"checks", "--run", run, "--watch", "--timeout", "1", "--json"}, 8),
+            Call([]string{"checks", "--run", run, "--watch", "--timeout", "1s", "--json"}, 8),
             "checks",
             "pending"
         )
@@ -307,8 +307,8 @@ internal partial class NativeFlow : NativeFixture {
                     "--effort",
                     "high"
                     ,
-                    "--seconds",
-                    "30"
+                    "--time",
+                    "30s"
                 },
                 1,
                 traffic: true

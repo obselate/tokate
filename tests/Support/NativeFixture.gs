@@ -319,11 +319,11 @@ internal open class NativeFixture : IDisposable {
         }
         args.AddRange([]string{"--model", model, "--effort", effort})
         if let budget = seconds {
-            args.AddRange([]string{"--seconds", budget})
+            args.AddRange([]string{"--time", budget + "s"})
         }
         args.AddRange([]string{"--runs", Path.Combine(Temp.Root, "runs")})
         if reserve != "" {
-            args.AddRange([]string{"--verification-reserve", reserve})
+            args.AddRange([]string{"--verify-time", reserve + "s"})
         }
         if json {
             args.Add("--json")

@@ -28,7 +28,7 @@ internal class DonorSelectionChecks {
                 effort
             }
             if profile != "" {
-                args.AddRange([]string{"--profile", profile})
+                args.Add(profile)
             }
             flow.Call(args.ToArray())
         }
@@ -286,8 +286,8 @@ internal class DonorSelectionChecks {
                     "--repo",
                     "owner/project",
                     "1",
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs"),
                     "--non-interactive"
@@ -337,8 +337,8 @@ internal class DonorSelectionChecks {
                     "--repo",
                     "owner/project",
                     "1",
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs")
                 }
@@ -422,7 +422,7 @@ internal class DonorSelectionChecks {
             flow.NoPr()
             flow.Approve()
             let work = "'" + binary + "' work owner/project#1 --runs '" + Path.Combine(flow.Temp.Root, "runs") +
-                "' --harness codex --seconds 30 --plain"
+                "' --harness codex --time 30s --plain"
             let declined = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
@@ -612,7 +612,7 @@ internal class DonorSelectionChecks {
                 let args = List[string]{
                     "defaults",
                     "set",
-                    "--profile=inferred",
+                    "inferred",
                     pair[0],
                     "--model=gpt-6.1-sol",
                     pair[1] == "pi" ? "--effort=absent": "--effort=high",
@@ -635,7 +635,7 @@ internal class DonorSelectionChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile=explicit",
+                        "explicit",
                         "--harness=codex",
                         "--provider=local-chat-completions",
                         "--model=gpt-6.1-sol",
@@ -783,7 +783,7 @@ internal class DonorSelectionChecks {
             for profile in[]string{"", "shared"} {
                 let args = List[string]{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "high"}
                 if profile != "" {
-                    args.AddRange([]string{"--profile", profile})
+                    args.Add(profile)
                 }
                 CliDiscovery.Call(binary, args.ToArray(), temp)
             }
@@ -795,7 +795,7 @@ internal class DonorSelectionChecks {
             for profile in[]string{"", "shared"} {
                 let args = List[string]{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "xhigh"}
                 if profile != "" {
-                    args.AddRange([]string{"--profile", profile})
+                    args.Add(profile)
                 }
                 CliDiscovery.Call(binary, args.ToArray(), temp)
             }

@@ -50,7 +50,7 @@ internal class ContributionStatusChecks {
             let needsRequest = Row(Read(test))
             Check.That(
                 Check.Text(needsRequest["next"]?["role"]) == "donor" && Check.Text(
-                    needsRequest["next"]?["command"]?[5]
+                    needsRequest["next"]?["command"]?[2]
                 ) == "request",
                 "Missing donor access request action"
             )

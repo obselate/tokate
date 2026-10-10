@@ -130,7 +130,7 @@ internal class SynchronizationChecks {
         }
 
         private func Amend(flow NativeFixture, run string, candidate string, grant string = "", code int32 = 0) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", candidate, "--seconds", "30"}
+            let args = List[string]{"amend", "--run", run, "--commit", candidate, "--time", "30s"}
             if grant != "" {
                 args.AddRange([]string{"--sync", grant})
             }

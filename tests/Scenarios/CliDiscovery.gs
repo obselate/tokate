@@ -200,7 +200,7 @@ internal class CliDiscovery {
             Check.That(unpushed != original, "Fixture policy lacks the expected time limit")
             File.WriteAllText(freshPolicy, unpushed)
             Check.Contains(
-                flow.Call([]string{"init", "--path", fresh, "--seconds", "900", "--non-interactive"}, 1, true).Error,
+                flow.Call([]string{"init", "--path", fresh, "--max-time", "900s", "--non-interactive"}, 1, true).Error,
                 "differs from the policy on owner/project@main"
             )
             Check.That(File.ReadAllText(freshPolicy) == unpushed, "Setup overwrote an unpushed local policy")
@@ -244,10 +244,10 @@ internal class CliDiscovery {
                     "manual",
                     "--base-branch",
                     "release",
-                    "--seconds",
-                    "5400",
-                    "--reservation-seconds",
-                    "300",
+                    "--max-time",
+                    "5400s",
+                    "--reservation-time",
+                    "300s",
                     "--pr-text",
                     "Literal {{issue}} owner text",
                     "--close-message",
@@ -480,7 +480,7 @@ internal class CliDiscovery {
                 []string{"status", "--run", "saved", "--json", "--json"},
                 []string{"status", "--run", "saved", "--repo", "owner/project", "--json"},
                 []string{"status", "--run", "saved", "1", "--json"},
-                []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--seconds", "30", "--json"},
+                []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
                 []string{"revoke-sync", "--repo", "owner/project", "--grant", "invalid", "--json"},
                 []string{"revoke-sync", "--repo", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
                 []string{
@@ -511,8 +511,8 @@ internal class CliDiscovery {
                     "saved",
                     "--commit",
                     String('a', 40),
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--sync",
                     "invalid",
                     "--json"
@@ -523,8 +523,8 @@ internal class CliDiscovery {
                     "saved",
                     "--commit",
                     String('a', 40),
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--sync",
                     String('a', 40) + "\n",
                     "--json"
@@ -584,18 +584,18 @@ internal class CliDiscovery {
                 Check.That(Check.Text(command?["inference"]) == "false", "Non-inference command advertised inference")
             }
             let workMetadata = Check.Envelope(Call(binary, []string{"help", "work", "--json"}, temp), "help", "ok")
-            for name in[]string{"seconds", "runs", "fork", "verification-reserve"} {
+            for name in[]string{"time", "runs", "fork", "verify-time"} {
                 var listed bool
                 for input in workMetadata["data"]?["commands"]?[0]?["exclusive_run_inputs"]?.AsArray() ?? JsonArray() {
                     listed = listed || Check.Text(input) == name
                 }
                 Check.That(listed, "Metadata omitted --run conflict: " + name)
-                let argv = []string{"work", "--run", "saved", "--" + name, "1", "--json"}
+                let argv = []string{"work", "--run", "saved", "--" + name, "1s", "--json"}
                 let rejected = Check.Envelope(Call(binary, argv, temp, 1), "work", "error", "invalid_arguments")
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--run conflicts with --" + name)
             }
             Check.Envelope(
-                Call(binary, []string{"checks", "--run", "saved", "--watch", "--timeout", "1", "--json"}, temp, 1),
+                Call(binary, []string{"checks", "--run", "saved", "--watch", "--timeout", "1s", "--json"}, temp, 1),
                 "checks",
                 "error",
                 "invalid_state"
@@ -1048,11 +1048,11 @@ internal class CliDiscovery {
             let work = Call(binary, []string{"work", "--help"}, temp).Output
             Check.Contains(work, "inference")
             Check.Contains(work, "publication step")
-            Check.Contains(work, "Explicit budget 1..86400 seconds")
+            Check.Contains(work, "Total budget for coding and verification")
             Check.Contains(work, "(required)")
             Check.Contains(work, "use --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
-            Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 300")
+            Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
 
             for argv in[][]string{
                 []string{"nonsense", "--help"},
@@ -1070,10 +1070,10 @@ internal class CliDiscovery {
                 []string{"work", "--unlimited=false"},
                 []string{"checks", "--run=x", "1"},
                 []string{"checks", "--run=x", "--repo=owner/project"},
-                []string{"work", "--run=x", "--seconds=1"},
+                []string{"work", "--run=x", "--time=1s"},
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
-                []string{"recover", "--run=x", "--seconds=0"},
-                []string{"checks", "--run=x", "--timeout=86401"},
+                []string{"recover", "--run=x", "--time=0s"},
+                []string{"checks", "--run=x", "--timeout=86401s"},
                 []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},
                 []string{"approve", "--base-branch=release//next", "--help"},

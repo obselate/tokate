@@ -20,13 +20,14 @@ internal class CliOption(name string, value string, description string, choices 
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
         case "repo" when command == "init": "Repository whose GitHub policy is read; default: the checkout's GitHub remote"
-        case "seconds" when command == "external": "Separate positive verification budget, at most the owner limit; required only for correction"
+        case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
-        case "seconds" when(command == "work" || command == "claim"): "Explicit budget 1..86400 seconds"
-        case "seconds" when command == "amend":
-        "Separate positive verification budget; required, at most the owner limit"
+        case "time" when(
+            command == "work" || command == "claim"
+        ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
+        case "time" when command == "amend": "Separate verification budget; required, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
-        default: Description.Replace("{{seconds}}", command == "recover" ? "300": "min(3600, owner limit)")
+        default: Description.Replace("{{time}}", command == "recover" ? "5m": "the lower of 1h and the owner limit")
     }
 }
 
@@ -120,7 +121,7 @@ internal class Cli {
             ),
             CliOption("verification", "JSON", "Existing project verification commands as JSON argv arrays"),
             CliOption("required-checks", "JSON", "Required GitHub check names as a JSON array"),
-            CliOption("reservation-seconds", "N", "Reservation lifetime from 300 to 604800 seconds"),
+            CliOption("reservation-time", "TIME", "Reservation lifetime from 5m to 7d"),
             CliOption("pr-text", "TEXT", "Optional literal owner text appended to PRs; no template expressions"),
             CliOption(
                 "close-message",
@@ -163,16 +164,17 @@ internal class Cli {
                 "",
                 "Publish stopped work as an incomplete draft without claiming verification passed"
             ),
-            CliOption("seconds", "N", "Budget in seconds, 1..86400; default: {{seconds}}"),
+            CliOption("time", "TIME", "Verification budget such as 90s, 5m or 1h; default: {{time}}"),
+            CliOption("max-time", "TIME", "Longest budget a donor can choose, at most 24h"),
             CliOption(
                 "unlimited",
                 "",
-                "No coding time limit when owner permits; requires --verification-reserve and excludes --seconds"
+                "No coding time limit when owner permits; requires --verify-time and excludes --time"
             ),
             CliOption(
-                "verification-reserve",
-                "N",
-                "Verification seconds; required with --unlimited, otherwise reserved within --seconds; default: 0"
+                "verify-time",
+                "TIME",
+                "Verification time; required with --unlimited, otherwise reserved within --time; default: none"
             ),
             CliOption("fork", "LOGIN/REPO", "Explicit donor fork; otherwise discover one or create it once"),
             CliOption(
@@ -189,7 +191,7 @@ internal class Cli {
             ),
             CliOption("path", "DIR", "Repository directory; default: current directory"),
             CliOption("watch", "", "Wait for checks; default: off"),
-            CliOption("timeout", "N", "Check wait limit, 1..86400 seconds; default: 1200"),
+            CliOption("timeout", "TIME", "Check wait limit, at most 24h; default: 20m"),
             CliOption("state", "SHA", "Exact coordination-state commit"),
             CliOption("source", "SOURCE", "Coding source", "external tokate"),
             CliOption("tools", "FILE", "Nonsecret JSON tool declarations"),
@@ -215,10 +217,10 @@ internal class Cli {
         internal let Commands[]CliCommand = []CliCommand{
             CliCommand(
                 "work",
-                "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,seconds,verification-reserve,unlimited,fork,runs,run,continue-from",
+                "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from",
                 "repo,issue",
                 "Run the selected coding harness, verify work and show the publication step. Uses donor inference.",
-                "[ISSUE] [--profile NAME | --model MODEL --effort EFFORT] [--seconds N] [options]\n       tokate work --run DIR [--yes] [--non-interactive]",
+                "[ISSUE] [--profile NAME | --model MODEL --effort EFFORT] [--time TIME] [options]\n       tokate work --run DIR [--yes] [--non-interactive]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
                 target: "issue",
@@ -226,10 +228,10 @@ internal class Cli {
             ),
             CliCommand(
                 "claim",
-                "repo,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,seconds,verification-reserve,unlimited,fork,runs,continue-from,from-pr",
+                "repo,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,time,verify-time,unlimited,fork,runs,continue-from,from-pr",
                 "repo,issue",
                 "Check donor readiness, reserve approved work and prepare a saved claim; no inference or PR publication.",
-                "[ISSUE] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --seconds N]",
+                "[ISSUE] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]",
                 "claim 42 --model gpt-6.1-sol --effort high",
                 effects: "local_read local_write github_read github_write",
                 target: "issue",
@@ -262,7 +264,7 @@ internal class Cli {
                 "run,repo,watch,timeout",
                 "repo,pr",
                 "Read receipt, public report, exact-head CI, dependency and freshness gates with required owner actions; --run also saves results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
-                "PR [--watch] [--timeout N]\n       tokate checks --run DIR [--watch] [--timeout N]",
+                "PR [--watch] [--timeout TIME]\n       tokate checks --run DIR [--watch] [--timeout TIME]",
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
                 target: "pr",
@@ -314,7 +316,7 @@ internal class Cli {
             ),
             CliCommand(
                 "init",
-                "repo,path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,seconds,reservation-seconds,pr-text,close-message,non-interactive",
+                "repo,path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive",
                 "repo",
                 "Write owner policy and a pinned shared workflow into a checkout, starting from the policy on GitHub; options change only what they name.",
                 "[OWNER/REPO] [--path DIR] [options]",
@@ -446,10 +448,10 @@ internal class Cli {
             ),
             CliCommand(
                 "recover",
-                "run,seconds,commit,tools,summary",
+                "run,time,commit,tools,summary",
                 "run",
                 "Prepare or verify an explicit correction to completed work; no inference.",
-                "--run DIR\n       tokate recover --run DIR --commit SHA --seconds N [--tools FILE] [--summary FILE]",
+                "--run DIR\n       tokate recover --run DIR --commit SHA --time TIME [--tools FILE] [--summary FILE]",
                 "recover --run /path/to/run",
                 effects: "local_read local_write github_read github_write",
                 target: "",
@@ -457,21 +459,21 @@ internal class Cli {
             ),
             CliCommand(
                 "amend",
-                "run,commit,seconds,tools,sync,summary,resume",
-                "run,commit,seconds",
+                "run,commit,time,tools,sync,summary,resume",
+                "run,commit,time",
                 "Verify and publish a same-donor review correction; no inference.",
-                "--run DIR --commit SHA --seconds N [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "amend --run /path/to/run --commit SHA --seconds 300",
+                "--run DIR --commit SHA --time TIME [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
+                "amend --run /path/to/run --commit SHA --time 5m",
                 effects: "local_read local_write github_read github_write",
                 target: "",
                 group: "more"
             ),
             CliCommand(
                 "external",
-                "run,commit,summary,seconds,tools",
+                "run,commit,summary,time,tools",
                 "run,commit",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
-                "--run DIR --commit SHA [--summary FILE]\n       tokate external --run DIR --commit NEW --seconds N --tools FILE",
+                "--run DIR --commit SHA [--summary FILE]\n       tokate external --run DIR --commit NEW --time TIME --tools FILE",
                 "external --run /path/to/run --commit SHA",
                 effects: "local_read local_write github_read",
                 target: "",
@@ -578,10 +580,10 @@ internal class Cli {
             ),
             CliCommand(
                 "prepare",
-                "run,repo,state,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,fork,seconds,verification-reserve,unlimited,runs,continue-from,from-pr,yes",
+                "run,repo,state,source,tools,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,fork,time,verify-time,unlimited,runs,continue-from,from-pr,yes",
                 "repo,issue,state,source",
                 "Prepare a fresh reserved v2 contribution, or resume recorded preparation; no inference, checks or publication.",
-                "ISSUE --state SHA --source external --tools FILE [options]\n       tokate prepare ISSUE --state SHA --source tokate [selection options]\n       [--continue-from DIR --seconds N --verification-reserve N --yes]\n       tokate prepare --run DIR",
+                "ISSUE --state SHA --source external --tools FILE [options]\n       tokate prepare ISSUE --state SHA --source tokate [selection options]\n       [--continue-from DIR --time TIME --verify-time TIME --yes]\n       tokate prepare --run DIR",
                 "prepare 42 --state SHA --source external --tools tools.json",
                 effects: "local_read local_write github_read github_write",
                 target: "issue",
@@ -645,12 +647,29 @@ internal class Cli {
             word == "--ascii" ||
             word == "--traffic"
 
+        internal func TimeKey(name string) string -> name == "time" || name == "max-time" ? "seconds":
+        name == "verify-time" ? "verification-reserve": name == "reservation-time" ? "reservation-seconds": name
+
+        internal func Seconds(value string, name string) string {
+            let match = Regex.Match(value, "^([0-9]{1,7})([smhd])\\z")
+            let unit = match.Groups[2].Value
+            let seconds = !match.Success ? 0: Int64.Parse(match.Groups[1].Value) *
+            (unit == "s" ? 1: unit == "m" ? 60: unit == "h" ? 3600: 86400)
+            if seconds < 1 || seconds > Int32.MaxValue {
+                throw Exception("Use a time such as 90s, 30m or 2h: --" + name)
+            }
+            return seconds.ToString()
+        }
+
         internal func Label(key string) string -> switch key {
             case "issue": "ISSUE"
             case "pr": "PR"
             case "prs": "PR PR..."
             case "donor": "LOGIN"
             case "operation": "OPERATION"
+            case "seconds": "--time"
+            case "verification-reserve": "--verify-time"
+            case "reservation-seconds": "--reservation-time"
             default: "--" + key
         }
 
@@ -960,9 +979,7 @@ internal class Cli {
             if args.Get("unlimited") == "true" {
                 if args.Get("seconds") != "" || args.Get("continue-from") != "" ||
                     (args.Command == "prepare" && args.Get("source") != "tokate") {
-                    throw Exception(
-                        "--unlimited requires fresh managed work and excludes --seconds and --continue-from"
-                    )
+                    throw Exception("--unlimited requires fresh managed work and excludes --time and --continue-from")
                 }
                 if !guided && !args.Help {
                     args.Need("verification-reserve")
@@ -1015,7 +1032,7 @@ internal class Cli {
                 if args.Get("commit") == "" {
                     for key in[]string{"seconds", "tools", "summary"} {
                         if args.Get(key) != "" {
-                            throw Exception("--" + key + " requires an explicit corrected --commit")
+                            throw Exception(Label(key) + " requires an explicit corrected --commit")
                         }
                     }
                     args.Values["--prepare"] = "true"
@@ -1029,12 +1046,12 @@ internal class Cli {
                 }
                 for key in args.Values.Keys {
                     if command.ConflictsWithRun(key.Substring(2)) {
-                        throw Exception("--run conflicts with " + key)
+                        throw Exception("--run conflicts with " + Label(key.Substring(2)))
                     }
                 }
             }
             if args.Get("verification-reserve") != "" && args.Command == "prepare" && args.Get("source") != "tokate" {
-                throw Exception("--verification-reserve requires --source tokate")
+                throw Exception("--verify-time requires --source tokate")
             }
             if args.Get("prs") != "" {
                 PullNumbers(args.Get("prs"))
@@ -1156,7 +1173,7 @@ internal class Cli {
                 args.Need("tools")
                 for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
                     if args.Get(key) != "" {
-                        throw Exception("External claims exclude --" + key)
+                        throw Exception("External claims exclude " + Label(key))
                     }
                 }
                 for key in[]string{
@@ -1189,7 +1206,7 @@ internal class Cli {
             }
             for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
                 if name != "repo" {
-                    args.Need(name)
+                    args.Need(TimeKey(name))
                 }
             }
             if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {

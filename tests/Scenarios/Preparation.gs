@@ -122,8 +122,8 @@ internal class PreparationChecks {
                     "gpt-6.1-sol",
                     "--effort",
                     "high",
-                    "--seconds",
-                    "30"
+                    "--time",
+                    "30s"
                 }
                 let success = mode == "renamed" || mode == "explicit"
                 if mode == "explicit" {
@@ -247,15 +247,15 @@ internal class PreparationChecks {
                 "external",
                 "--tools",
                 test.Tools,
-                "--seconds",
-                "30",
+                "--time",
+                "30s",
                 "--runs",
                 Path.Combine(flow.Temp.Root, "runs"),
                 "--json"
             }
-            for option in[]string{"--profile", "--harness", "--verification-reserve"} {
+            for option in[]string{"--profile", "--harness", "--verify-time"} {
                 let invalid = List[string](args)
-                invalid.AddRange([]string{option, option == "--verification-reserve" ? "5": "codex"})
+                invalid.AddRange([]string{option, option == "--verify-time" ? "5s": "codex"})
                 flow.Call(invalid.ToArray(), 1)
             }
             Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Invalid external claim created a run")
@@ -382,8 +382,8 @@ internal class PreparationChecks {
                     "external",
                     "--tools",
                     test.Tools,
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--runs",
                     root
                 }
@@ -533,8 +533,8 @@ internal class PreparationChecks {
                 run,
                 "--commit",
                 completed,
-                "--seconds",
-                "30",
+                "--time",
+                "30s",
                 "--summary",
                 PublishedContribution.Summary(flow, completed, "Complete the interrupted contribution.")
             }
@@ -627,8 +627,8 @@ internal class PreparationChecks {
                 "owner/project#1",
                 "--source",
                 harness == "external" ? "external": "tokate",
-                "--seconds",
-                "30",
+                "--time",
+                "30s",
                 "--from-pr",
                 "10",
                 "--fork",
@@ -648,8 +648,8 @@ internal class PreparationChecks {
                         harness == "pi" ? "fixture-model": "gpt-6.1-sol",
                         "--effort",
                         harness == "pi" ? "absent": "high",
-                        "--verification-reserve",
-                        "10"
+                        "--verify-time",
+                        "10s"
                     }
                 )
                 if harness == "pi" {
@@ -818,7 +818,7 @@ internal class PreparationChecks {
             flow.State["viewer_id"] = JsonValue.Create(123)
             flow.State["viewer_login"] = JsonValue.Create("donor")
             flow.Save()
-            flow.Call([]string{"amend", "--run", priorRun, "--commit", priorHead, "--seconds", "30", "--resume"}, 1)
+            flow.Call([]string{"amend", "--run", priorRun, "--commit", priorHead, "--time", "30s", "--resume"}, 1)
             Check.That(File.ReadAllText(priorPath) == priorRecord, "Late prior-donor action changed its run")
             if harness == "external" {
                 flow.NoInference()
@@ -1027,7 +1027,7 @@ internal class PreparationChecks {
                                 args.AddRange([]string{"--commit", String('0', 40)})
                             }
                             if command == "amend" {
-                                args.AddRange([]string{"--seconds", "30"})
+                                args.AddRange([]string{"--time", "30s"})
                             }
                             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Preserved")
                             if corrected {
@@ -1074,10 +1074,10 @@ internal class PreparationChecks {
             "gpt-6.1-sol",
             "--effort",
             "high",
-            "--seconds",
-            "60",
-            "--verification-reserve",
-            "20",
+            "--time",
+            "60s",
+            "--verify-time",
+            "20s",
             "--runs",
             Path.Combine(flow.Temp.Root, "runs")
         }
@@ -1204,10 +1204,10 @@ internal class PreparationChecks {
                     "https://github.com/owner/project/issues/1",
                     "--profile",
                     "ready",
-                    "--seconds",
-                    "60",
-                    "--verification-reserve",
-                    "20",
+                    "--time",
+                    "60s",
+                    "--verify-time",
+                    "20s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs"),
                     "--json"
@@ -1299,8 +1299,8 @@ internal class PreparationChecks {
                 flow.Reload()
                 let args = List[string](AcquisitionArgs(flow, "work"))
                 if gate == "budget" {
-                    args.RemoveAt(args.IndexOf("--seconds") + 1)
-                    args.Remove("--seconds")
+                    args.RemoveAt(args.IndexOf("--time") + 1)
+                    args.Remove("--time")
                 } else if gate == "dependency" {
                     flow.Reload()
                     flow.State["dependency_pages"] = Check.Map(

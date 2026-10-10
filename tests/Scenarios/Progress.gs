@@ -249,19 +249,11 @@ internal class ProgressChecks {
             flow.NoInference()
             Check.Contains(
                 flow.Call(
-                    []string{
-                        "work",
-                        "--unlimited",
-                        "--seconds",
-                        "30",
-                        "--verification-reserve",
-                        "8",
-                        "--non-interactive"
-                    },
+                    []string{"work", "--unlimited", "--time", "30s", "--verify-time", "8s", "--non-interactive"},
                     1
                 )
                     .Error,
-                "excludes --seconds"
+                "excludes --time"
             )
             test.Prepare("external", 1, reserve: "8", unlimited: true)
             test.Prepare("tokate", 1, unlimited: true)
