@@ -40,6 +40,10 @@ internal class Check {
         }
 
         internal func Envelope(result Result, command string, status string, error string = "") JsonNode {
+            Check.That(
+                result.Output != "",
+                "Missing JSON output, exit " + result.Code.ToString() + ":\n" + result.Error
+            )
             let value = Check.Json(result.Output)
             Check.That(value.AsObject().Count == 8, "Unexpected public envelope fields")
             Check.That(Check.Text(value["schema_version"]) == "1", "Missing output schema version")
