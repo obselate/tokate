@@ -20,6 +20,10 @@ class DonationService {
     let Issues IssueSearchService
     var Current DonationState = DonationState.Initial
 
+    shared {
+        let OutputLimit int32 = 5000
+    }
+
     init(
         commands CommandRunner,
         activity ActivityService,
@@ -461,7 +465,8 @@ class DonationService {
         )
     }
 
-    /// Moves the output lines that arrived since the last tick into the transcript.
+    /// Moves the output lines that arrived since the last tick into the transcript, which keeps the
+    /// latest `OutputLimit` lines.
     private func Collect(seconds int32) {
         var received = false
         if let channel = lines {
@@ -469,6 +474,9 @@ class DonationService {
                 output.Add(line)
                 received = true
             }
+        }
+        if output.Count > OutputLimit {
+            output.RemoveRange(0, output.Count - OutputLimit)
         }
         let progress = Current.Progress
         if received || progress.Elapsed != seconds {
