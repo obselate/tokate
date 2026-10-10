@@ -20,7 +20,7 @@ Requires **Linux x86_64 with glibc 2.34+ or Alpine 3.24, and public GitHub repos
 Windows, macOS and ARM64 are not supported. See [Nix](docs/nix.md) and
 [Alpine](docs/alpine.md) for distribution setup. Managed donations use
 native Codex with a ChatGPT login, native Claude Code with a personal Pro/Max login,
-or Pi with a configured local model endpoint.
+Pi with a configured local model endpoint, or OMP with its configured providers.
 Owners need neither harness nor an AI subscription.
 
 ## Start here

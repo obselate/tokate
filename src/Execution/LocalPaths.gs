@@ -176,8 +176,10 @@ internal class LocalPaths {
             }
             let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
             let checkout = CheckoutRoot()
+            let installed = Environment.GetEnvironmentVariable("PI_INSTALL_DIR") ?? ""
             let configured = name == "codex" ? CodexInstallPath(): name == "pi" ?
-            Path.Combine(PiDirectory(), "bin/pi"): ""
+            Path.Combine(PiDirectory(), "bin/pi"): name == "omp" && installed != "" ?
+            Path.Combine(RuntimePath(installed), "omp"): ""
             let npm = Environment.GetEnvironmentVariable("NPM_CONFIG_PREFIX") ?? ""
             let bun = Environment.GetEnvironmentVariable("BUN_INSTALL_BIN") ?? ""
             for candidate in[]string{

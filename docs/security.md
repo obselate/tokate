@@ -12,6 +12,7 @@ model services have their own data policies.
 | GitHub | Issue requests, coordination state, donor/tool declarations, commits, draft PRs, public summaries and receipts. |
 | Selected harness and model service | Approved task, owner instructions and repository context used during coding. |
 | Selected Pi endpoint | Local-model inference requests. A loopback endpoint may itself contact other services. |
+| Selected OMP provider | Inference requests through the provider account or local runtime configured in OMP. |
 | Command destinations | Harness tools, repository commands and verification have network access. |
 
 PR summaries come from a dedicated validated public artifact, not private reports,
@@ -27,7 +28,8 @@ their native logins.
 Tokate forwards only specific authentication requirements to those host tools.
 It does not read credential files, mixed configuration or whole environments to
 infer model defaults. Pi supplies nonsecret model metadata through its SDK and
-runs its normal CLI with the selected configuration.
+runs its normal CLI with the selected configuration. OMP lists its own models and
+uses its stored login; Tokate forwards no API key variables to it.
 
 Host tools are trusted programs with their own file access. Narrow child environments
 are not whole-program isolation. Custom proxies, certificates and home-only build
@@ -35,11 +37,11 @@ caches may need system setup. Tokate does not expose arbitrary environment passt
 
 ## Execution boundaries
 
-Tokate does not sandbox harnesses or verification. Codex, Claude and Pi run as your
+Tokate does not sandbox harnesses or verification. Codex, Claude, Pi and OMP run as your
 own processes with your configuration, home and `PATH`. Tokate passes a Codex
 permission profile and Claude sandbox settings, and each harness enforces its own
-native sandboxing. Pi has no extra isolation; run local models and harnesses in
-podman or similar if you want it. Tokate wraps commands in `setpriv` and `unshare` only to
+native sandboxing. Pi and OMP have no extra isolation, and OMP tool calls are approved
+automatically; run local models and harnesses in podman or similar if you want it. Tokate wraps commands in `setpriv` and `unshare` only to
 collect descendants on timeout, cancellation or when Tokate itself is killed. Configured extensions can access the
 selected profile, including its credentials. Only use configurations and extensions
 you trust. Native project-trust settings still apply.

@@ -27,6 +27,9 @@ internal class SuiteCatalog {
                     if CiShard.Include("Claude") {
                         ClaudeChecks.All(binary)
                     }
+                    if CiShard.Include("Omp") {
+                        OmpChecks.All(binary)
+                    }
                     if CiShard.Include("DonorSelection") {
                         DonorSelectionChecks.All(binary)
                     }

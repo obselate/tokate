@@ -13,7 +13,7 @@ including symlinks into it. No shell startup files or credential files are read.
 | Codex | [Native installer](https://learn.chatgpt.com/docs/config-file/environment-variables): `CODEX_INSTALL_DIR/codex`, default `~/.local/bin/codex`. Its package remains under `CODEX_HOME/packages/standalone`. npm and Bun entrypoints are also supported. | Supported, subject to doctor checks. |
 | Pi | [Official installer](https://pi.dev/install.sh): `PI_CODING_AGENT_DIR`, default `~/.pi/agent`. The launcher can be in the agent's `bin` directory or a selected user bin directory. npm, Bun and Nix installations are also supported. | Supported, subject to doctor checks. |
 | Claude | [Official setup](https://code.claude.com/docs/en/setup): native Linux x64 executable, normally `~/.local/bin/claude`. | Supported with your existing personal Pro/Max login and configuration. Its sandbox needs bubblewrap and socat. |
-| OMP | [Official installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh): `PI_INSTALL_DIR/omp`, default `~/.local/bin/omp`. Bun and Nix alternatives exist. | Adapter unavailable. |
+| OMP | [Official installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh): `PI_INSTALL_DIR/omp`, default `~/.local/bin/omp`. Bun and Nix alternatives exist. | Supported with your existing OMP providers and configuration. No additional isolation. |
 | Hermes | [Official setup](https://hermes-agent.nousresearch.com/docs/getting-started/installation/): use the `~/.local/bin/hermes` launcher. `--dir` selects source independently of `HERMES_HOME` data. | Adapter unavailable. |
 
 For npm, binaries are in [`NPM_CONFIG_PREFIX/bin`](https://docs.npmjs.com/cli/v11/commands/npm/).
@@ -27,5 +27,6 @@ global npm package cannot establish a wrapper's identity.
 
 Run `tokate doctor --managed --harness codex` or
 `tokate doctor --managed --harness pi`. These check startup, and the Codex sandbox probe, without
-inference. For Claude, use `tokate doctor --managed --harness claude
+inference. `tokate doctor --managed --harness omp` checks the OMP version and that
+it lists at least one model. For Claude, use `tokate doctor --managed --harness claude
 --claude-profile DIR`. An installed executable alone does not establish managed adapter support.

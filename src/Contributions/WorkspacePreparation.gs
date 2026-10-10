@@ -153,7 +153,7 @@ internal class WorkspacePreparation {
             if fields.ContainsKey("codex_version") || fields.ContainsKey("pi_version") || fields.ContainsKey(
                 "claude_version"
             ) ||
-                fields.ContainsKey("commit") {
+                fields.ContainsKey("omp_version") || fields.ContainsKey("commit") {
                 throw Exception(failure)
             }
             let eventsPath = Path.Combine(directory, "events.jsonl")

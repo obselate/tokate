@@ -71,7 +71,13 @@ internal class Startup {
 
         private func DoctorScope(options Args) string -> options.Get("owner") == "true" ? "owner":
         options.Get("external") == "true" ||
-            (options.Get("harness") != "" && DonorDefaults.Provider(options.Get("harness")) == "") ? "external":
+            (
+            options.Get("harness") != "" && DonorDefaults.Provider(options.Get("harness")) == "" &&
+                (
+                options.Get("harness") != "omp" ||
+                    (options.Get("set-default") == "true" && options.Get("managed") != "true")
+            )
+        ) ? "external":
         options.Get("managed") == "true" || options.Get("harness") != "" || options.Get("harness-path") != "" ?
         "managed": "external"
 
@@ -96,12 +102,14 @@ internal class Startup {
             let catalog = NeedsCatalog(command, options)
             var pi = options.Get("harness") == "pi"
             var claude = options.Get("harness") == "claude"
+            var omp = options.Get("harness") == "omp"
             if options.Get("run") != "" && command == "work" {
                 let harness = Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness")
                 pi = harness == "pi"
                 claude = harness == "claude"
+                omp = harness == "omp"
             }
-            if catalog && !pi && !claude {
+            if catalog && !pi && !claude && !omp {
                 names.Add("codex")
             }
             if options.Get("run") != "" {
@@ -401,9 +409,9 @@ internal class Startup {
             if options.Get("managed") == "true" && options.Get("harness") == "" {
                 let saved = DonorDefaults.Read()
                 if J.Text(saved, "harness") != "" {
-                    if !DonorSelection.Supported(saved) {
+                    if !DonorSelection.Managed(saved) {
                         throw Exception(
-                            "The default harness uses external work. Choose --harness codex, --harness claude or --harness pi for managed diagnostics."
+                            "The default harness uses external work. Choose --harness codex, --harness claude, --harness pi or --harness omp for managed diagnostics."
                         )
                     }
                     for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
@@ -417,6 +425,7 @@ internal class Startup {
             let doctorScope = DoctorScope(options)
             let pi = doctorScope == "managed" && options.Get("harness") == "pi"
             let claude = doctorScope == "managed" && options.Get("harness") == "claude"
+            let omp = doctorScope == "managed" && options.Get("harness") == "omp"
             let tools = Inspect(options)
             if options.Get("fix") == "true" && MachineSetup.TryFix(options, tools) {
                 return Doctor(options)
@@ -475,7 +484,32 @@ internal class Startup {
                     }
                     tools.Add(runtime)
                 }
-                if doctorScope == "managed" && !pi && !claude {
+                if omp && probe {
+                    let runtime = ToolCheck{
+                        Name: "omp",
+                        Hint: "Install OMP with its official installer and sign in, or use --harness-path FILE."
+                    }
+                    try {
+                        let result = OmpRuntime.Runtime(options)
+                        let models = OmpRuntime.Models(options.Need("harness-path"))
+                        if models.Count == 0 {
+                            throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
+                        }
+                        runtime.Path = options.Need("harness-path")
+                        runtime.Status = "ready"
+                        runtime.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
+                            " configured models listed without inference or credential checks."
+                    } catch (error Exception) {
+                        runtime.Status = "failed"
+                        if error is CliFailure failure {
+                            runtime.Code = failure.Code
+                        }
+                        runtime.Detail = error.Message
+                        probe = false
+                    }
+                    tools.Add(runtime)
+                }
+                if doctorScope == "managed" && !pi && !claude && !omp {
                     let sandbox = ToolCheck{
                         Name: "sandbox",
                         Status: "skipped",
@@ -519,7 +553,7 @@ internal class Startup {
             }
             if options.Get("auth") == "true" {
                 Authentication(tools, "gh")
-                if doctorScope == "managed" && !pi && !claude {
+                if doctorScope == "managed" && !pi && !claude && !omp {
                     Authentication(tools, "codex")
                 }
             }

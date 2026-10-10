@@ -149,7 +149,11 @@ internal class DonorDefaults {
                     }
                 }
             } else {
-                RequestData.Token(J.Text(value, "model"))
+                if J.Text(value, "harness") == "omp" {
+                    RequestData.ModelIdentifier(J.Text(value, "model"))
+                } else {
+                    RequestData.Token(J.Text(value, "model"))
+                }
                 RequestData.Keys(value, "harness,provider,model,effort,harness-path,claude-profile")
             }
             if J.Text(value, "harness-path") != "" {
@@ -274,7 +278,7 @@ internal class DonorDefaults {
             }
             let choice = map[string, Object?]{}
             for key in[]string{"harness", "provider", "model", "effort"} {
-                choice[key] = key == "model" && args.Get("harness") == "pi" ?
+                choice[key] = key == "model" && (args.Get("harness") == "pi" || args.Get("harness") == "omp") ?
                 RequestData.ModelIdentifier(args.Need(key)): RequestData.Token(args.Need(key))
             }
             if args.Get("harness") == "pi" {

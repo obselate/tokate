@@ -15,7 +15,11 @@ internal class DonorSelection {
         internal func Supported(value JsonElement) bool ->
         (J.Text(value, "harness") == "codex" && J.Text(value, "provider") == "openai") ||
             (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions") ||
-            (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic")
+            (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic") ||
+            (J.Text(value, "harness") == "omp" && J.Text(value, "provider") != "")
+
+        // A saved OMP default without a provider is managed; the owner policy supplies the provider.
+        internal func Managed(saved JsonElement) bool -> Supported(saved) || J.Text(saved, "harness") == "omp"
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
@@ -44,14 +48,14 @@ internal class DonorSelection {
             let provider = J.Text(saved, "provider")
             let compatible = (args.Get("harness") == "" || args.Get("harness") == harness) &&
                 (args.Get("provider") == "" || args.Get("provider") == provider)
-            if compatible && harness != "" && J.Text(saved, "model") == "" && !Supported(saved) {
+            if compatible && harness != "" && J.Text(saved, "model") == "" && !Managed(saved) {
                 throw Exception(
                     "The selected " +
                         harness +
                         " profile uses external work. Use that harness for external work or override --harness with a managed tool. No inference started."
                 )
             }
-            if !Supported(saved) || !compatible {
+            if !Managed(saved) || !compatible {
                 if profile != "" {
                     throw Exception(
                         "Named donor profile conflicts with the selected managed harness/provider. No inference started."
@@ -77,6 +81,17 @@ internal class DonorSelection {
         internal func Resolve(args Args, policy Policy) JsonElement {
             DonorDefaults.NormalizePair(args)
             let harness = args.Get("harness", "codex")
+            if harness == "omp" && args.Get("provider") == "" {
+                let allowed = policy.Providers("omp")
+                if allowed.Count != 1 {
+                    throw Exception(
+                        "Choose --provider for OMP: the owner policy allows " +
+                            (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
+                            ". No inference started."
+                    )
+                }
+                args.Values["--provider"] = allowed[0]
+            }
             let provider = args.Get("provider", "openai")
             if harness != "claude" && (args.Get("claude-profile") != "") {
                 throw Exception("Claude profile options require the claude harness")
@@ -84,7 +99,10 @@ internal class DonorSelection {
             if harness != "pi" && (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
                 throw Exception("Pi runtime options require the pi harness")
             }
-            if harness != "pi" && harness != "claude" && (harness != "codex" || provider != "openai") {
+            if harness != "pi" &&
+                harness != "claude" &&
+                harness != "omp" &&
+                (harness != "codex" || provider != "openai") {
                 throw Exception(
                     "Unsupported managed harness/provider: choose codex/openai explicitly. No inference started."
                 )
@@ -125,6 +143,15 @@ internal class DonorSelection {
                     args.Values["--effort"] = effort
                 }
                 return PiHarness.Select(args, policy, source)
+            }
+            if harness == "omp" {
+                if model != "" {
+                    args.Values["--model"] = model
+                }
+                if effort != "" {
+                    args.Values["--effort"] = effort
+                }
+                return OmpHarness.Select(args, policy, source)
             }
             let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))
             var availability = args.Get("availability", "unknown")
@@ -297,6 +324,13 @@ internal class DonorSelection {
                     throw Exception(failure)
                 }
                 PiHarness.ValidateSaved(run, policy)
+                return
+            }
+            if harness == "omp" {
+                if run.Number("version") != 2 || J.Text(selected, "policy_hash") != policy.Digest {
+                    throw Exception(failure)
+                }
+                OmpHarness.ValidateSaved(run, policy)
                 return
             }
             if J.Text(selected, "policy_hash") != policy.Digest ||

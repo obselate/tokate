@@ -158,6 +158,7 @@ internal class OriginalEvidence {
                 "codex_version",
                 "pi_version",
                 "claude_version",
+                "omp_version",
                 "inference_exit_code",
                 "turn_completed"
             } {

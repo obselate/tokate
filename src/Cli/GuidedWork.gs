@@ -139,6 +139,10 @@ internal class GuidedWork {
                 tools.Add("Pi | Local")
                 routes.Add("pi")
             }
+            if policy.Providers("omp").Count > 0 {
+                tools.Add("OMP | Your OMP providers")
+                routes.Add("omp")
+            }
             if tools.Count == 0 {
                 throw Exception("The owner policy allows no supported managed coding tools")
             }
@@ -224,6 +228,62 @@ internal class GuidedWork {
                         efforts.ToArray()
                     ) - 1
                 ]
+            } else if args.Need("harness") == "omp" {
+                OmpRuntime.Runtime(args)
+                let providers = List[string]()
+                let models = List[string]()
+                let efforts = List[string]()
+                labels.Clear()
+                if policy.ModelPolicy == "unrestricted" {
+                    let selector = WizardScreen.Read(
+                        "OMP model",
+                        "Choose the exact model as OMP lists it.",
+                        "provider/model",
+                        "",
+                        "Run omp models to see the selectors your OMP setup provides."
+                    )
+                    let split = selector.IndexOf('/')
+                    if split < 1 {
+                        throw Exception("Use the provider/model selector that omp models lists")
+                    }
+                    let settings = OmpRuntime.Model(
+                        args.Need("harness-path"),
+                        selector.Substring(0, split),
+                        selector.Substring(split + 1)
+                    )
+                    for level in J.Items(J.Get(settings, "efforts")) {
+                        providers.Add(selector.Substring(0, split))
+                        models.Add(selector.Substring(split + 1))
+                        efforts.Add(level.GetString() ?? "")
+                        labels.Add(selector + " / " + (level.GetString() ?? ""))
+                    }
+                } else {
+                    let allowed = policy.Providers("omp")
+                    for entry in OmpRuntime.Models(args.Need("harness-path")) {
+                        if !allowed.Contains(J.Text(entry, "provider")) || J.Text(entry, "kind") != "chat" {
+                            continue
+                        }
+                        for effort in OmpRuntime.Efforts(entry) {
+                            if policy.Allows(J.Text(entry, "id"), effort) {
+                                providers.Add(J.Text(entry, "provider"))
+                                models.Add(J.Text(entry, "id"))
+                                efforts.Add(effort)
+                                labels.Add(
+                                    J.Text(entry, "provider") + " | OMP | " + J.Text(entry, "id") + " / " + effort
+                                )
+                            }
+                        }
+                    }
+                }
+                if labels.Count == 0 {
+                    throw Exception(
+                        "OMP lists no model and effort that the owner policy permits. Check omp models and your OMP sign-in."
+                    )
+                }
+                let selected = ModelChecklist.Pick(labels.ToArray())
+                args.Values["--provider"] = providers[selected]
+                args.Values["--model"] = models[selected]
+                args.Values["--effort"] = efforts[selected]
             } else {
                 let models = List[string]()
                 let efforts = List[string]()
@@ -251,7 +311,10 @@ internal class GuidedWork {
             value,
             "harness"
         ) +
-            (J.Text(value, "harness") == "pi" ? " | Local | ": " | Subscription | ") +
+            (
+            J.Text(value, "harness") == "pi" ? " | Local | ":
+            J.Text(value, "harness") == "omp" ? " | OMP setup | ": " | Subscription | "
+        ) +
             J.Text(value, "model") + " / " + J.Text(value, "effort") + " | availability unknown"
 
         internal func Budget(args Args, limit int32 = 86400, allowUnlimited bool = false) {
@@ -379,7 +442,10 @@ internal class GuidedWork {
                     J.Text(
                         selection,
                         "harness"
-                    ) == "pi" ? "Local inference uses your existing runtime and compute.": "Uses your selected harness subscription. Extra-charge status is unknown."
+                    ) == "pi" ? "Local inference uses your existing runtime and compute.": J.Text(
+                        selection,
+                        "harness"
+                    ) == "omp" ? "Uses the provider account or local runtime configured in your OMP. Charges are unknown.": "Uses your selected harness subscription. Extra-charge status is unknown."
                 ) +
                     "\nAvailability: " +
                     J.Text(selection, "availability")
