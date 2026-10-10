@@ -44,10 +44,9 @@ internal class ContributionStatus {
                 Text(Result, "viewer_status") == "observed" ? []string{
                 "tokate",
                 "access",
+                "init",
                 "--repo",
-                repo,
-                "--operation",
-                "init"
+                repo
             }: []string{}
             return Next(
                 "owner",
@@ -58,7 +57,7 @@ internal class ContributionStatus {
         return Next(
             "owner",
             "Review donor access and grant eligibility if appropriate.",
-            []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", issue}
+            []string{"tokate", "access", "list", repo + "#" + issue}
         )
     }
 
@@ -582,7 +581,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Review donor access and grant eligibility if appropriate.",
-                    []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", Text(row, "issue")}
+                    []string{"tokate", "access", "list", repo + "#" + Text(row, "issue")}
                 )
             }
             let approval = J.Get(state.Value(), "approval")
@@ -603,18 +602,13 @@ internal class ContributionStatus {
                     next = Next(
                         "donor",
                         "Request owner review for the required donor access.",
-                        []string{
+                        J.Text(approval, "eligibility") == "trusted" ? []string{
                             "tokate",
                             "access",
-                            "--repo",
-                            repo,
-                            "--operation",
                             "request",
-                            "--issue",
-                            Text(row, "issue"),
-                            "--scope",
-                            J.Text(approval, "eligibility") == "trusted" ? "trust": "issue"
-                        }
+                            repo + "#" + Text(row, "issue"),
+                            "--trust"
+                        }: []string{"tokate", "access", "request", repo + "#" + Text(row, "issue")}
                     )
                 }
             }
@@ -638,7 +632,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Restore eligibility for the recorded donor before further work or publication.",
-                    []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", Text(row, "issue")}
+                    []string{"tokate", "access", "list", repo + "#" + Text(row, "issue")}
                 )
             }
             for item in drafts {
@@ -701,7 +695,7 @@ internal class ContributionStatus {
                     draftNext = Next(
                         "owner",
                         "Verify the recorded receipt before reviewing acceptance; status does not establish readiness.",
-                        []string{"tokate", "verify-pr", "--repo", repo, "--pr", Text(draft, "pr")}
+                        []string{"tokate", "verify", repo + "#" + Text(draft, "pr")}
                     )
                 }
                 if Text(draft, "checks_status") == "unavailable" ||
@@ -736,7 +730,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Refresh status; the PR changed during this read.",
-                    []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                    []string{"tokate", "status", repo + "#" + Text(row, "issue")}
                 )
             } else if Text(draft, "binding") == "mismatch" {
                 stage = "binding_mismatch"
@@ -765,7 +759,7 @@ internal class ContributionStatus {
             next = Next(
                 "owner",
                 "Refresh contribution status; the authority changed during this read.",
-                []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                []string{"tokate", "status", repo + "#" + Text(row, "issue")}
             )
         }
         row["state"] = stage
@@ -900,7 +894,7 @@ internal class ContributionStatus {
                             row["next"] = Next(
                                 "owner",
                                 "Refresh status; donor access changed during this read.",
-                                []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                                []string{"tokate", "status", repo + "#" + Text(row, "issue")}
                             )
                         }
                     }

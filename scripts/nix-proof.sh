@@ -31,7 +31,7 @@ test -x "$payload"
 TOKATE_BINARY="$payload" artifacts/tests/tokate-tests --nix-runtime "$probe/bin/tokate-nix-probe"
 test "$("$binary" --version)" = "tokate $(nix eval --raw .#default.version)"
 (cd "$proof"; "$binary" doctor --external --json) > "$proof/external.json"
-(cd "$proof"; "$binary" doctor --managed --harness-path "$proof/tools/bin/codex" --json) > "$proof/managed.json"
+(cd "$proof"; "$binary" doctor managed --harness-path "$proof/tools/bin/codex" --json) > "$proof/managed.json"
 system_bin=$(readlink -f /bin)
 empty_bins=(--tmpfs /usr/bin)
 if [[ "$system_bin" != /usr/bin ]]; then
@@ -40,7 +40,7 @@ fi
 (cd "$proof"; PATH="$proof/tools/bin:$PATH" "$proof/tools/bin/bwrap" --bind / / --proc /proc --dev /dev \
   --tmpfs /tmp --bind "$proof" "$proof" \
   "${empty_bins[@]}" --ro-bind "$proof/tools/bin/bash" "$system_bin/sh" -- \
-  "$binary" doctor --managed --harness pi --harness-path "$proof/tools/bin/pi" --json) > "$proof/pi.json"
+  "$binary" doctor pi --harness-path "$proof/tools/bin/pi" --json) > "$proof/pi.json"
 if "$binary" update --json > "$proof/update.json"; then
   exit 1
 fi

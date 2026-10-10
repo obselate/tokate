@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "claude-capabilities doctor update uninstall defaults select init coordinator-setup access coordination request prepare external reconcile authorize-sync revoke-sync amend submit coordinate admit policy approve revoke claim work recover status verify-pr overlaps checks completion help --version"
+        private let Commands[]string = "work claim submit status checks pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -380,7 +380,6 @@ internal class CliDiscovery {
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -480,7 +479,7 @@ internal class CliDiscovery {
                 []string{"doctor", "--json=true"},
                 []string{"status", "--run", "saved", "--json", "--json"},
                 []string{"status", "--run", "saved", "--repo", "owner/project", "--json"},
-                []string{"status", "--run", "saved", "--issue", "1", "--json"},
+                []string{"status", "--run", "saved", "1", "--json"},
                 []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--seconds", "30", "--json"},
                 []string{"revoke-sync", "--repo", "owner/project", "--grant", "invalid", "--json"},
                 []string{"revoke-sync", "--repo", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
@@ -488,7 +487,6 @@ internal class CliDiscovery {
                     "authorize-sync",
                     "--repo",
                     "owner/project",
-                    "--pr",
                     "10",
                     "--commit",
                     String('a', 40),
@@ -500,7 +498,6 @@ internal class CliDiscovery {
                     "authorize-sync",
                     "--repo",
                     "owner/project",
-                    "--pr",
                     "10",
                     "--commit",
                     String('a', 40),
@@ -532,7 +529,7 @@ internal class CliDiscovery {
                     String('a', 40) + "\n",
                     "--json"
                 },
-                []string{"approve", "--issue", "0", "--json"}
+                []string{"approve", "0", "--json"}
             } {
                 Check.Envelope(Call(binary, argv, temp, 1), argv[0], "error", "invalid_arguments")
             }
@@ -1062,51 +1059,54 @@ internal class CliDiscovery {
                 []string{"help", "nonsense"},
                 []string{"help", "work", "extra"},
                 []string{"work", "--unknown=value", "--help"},
-                []string{"work", "--issue=1", "--issue", "1"},
+                []string{"work", "--issue=1"},
+                []string{"work", "1", "2"},
+                []string{"checks", "--pr=1"},
+                []string{"access", "--operation=list"},
                 []string{"work", "--help", "-h"},
                 []string{"work", "--model="},
                 []string{"work", "--model", "--help"},
                 []string{"checks", "--watch=true"},
                 []string{"work", "--unlimited=false"},
-                []string{"checks", "--run=x", "--pr=1"},
+                []string{"checks", "--run=x", "1"},
                 []string{"checks", "--run=x", "--repo=owner/project"},
                 []string{"work", "--run=x", "--seconds=1"},
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
                 []string{"recover", "--run=x", "--seconds=0"},
                 []string{"checks", "--run=x", "--timeout=86401"},
-                []string{"verify-pr", "--repo=owner/project", "--pr=no"},
+                []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},
                 []string{"approve", "--base-branch=release//next", "--help"},
                 []string{"approve", "--base-branch=release.lock", "--help"},
                 []string{"approve", "--base-branch=refs/heads/.hidden", "--help"},
                 []string{"approve", "--base-branch=release", "--base-branch=other", "--help"},
                 []string{"work", "--base-branch=release", "--help"},
-                []string{"revoke", "--repo=owner/project", "--issue=-1"},
-                []string{"work", "--repo=owner/project", "--issue=1", "--model=model", "--effort=invalid"},
-                []string{"work", "--repo=owner/project", "--issue=1", "--model=bad model", "--effort=high"},
-                []string{"revoke", "--repo=other/project", "--issue=https://github.com/owner/project/issues/1"},
-                []string{"revoke", "--issue=2", "https://github.com/owner/project/issues/1"},
-                []string{"revoke", "--issue=https://github.com/owner/project/pull/1"},
-                []string{"revoke", "--issue=https://example.test/owner/project/issues/1"},
-                []string{"work", "owner/project", "--repo=other/project", "--issue=1"},
+                []string{"revoke", "--repo=owner/project", "0"},
+                []string{"work", "--repo=owner/project", "1", "--model=model", "--effort=invalid"},
+                []string{"work", "--repo=owner/project", "1", "--model=bad model", "--effort=high"},
+                []string{"revoke", "--repo=other/project", "https://github.com/owner/project/issues/1"},
+                []string{"revoke", "2", "https://github.com/owner/project/issues/1"},
+                []string{"revoke", "https://github.com/owner/project/pull/1"},
+                []string{"revoke", "https://example.test/owner/project/issues/1"},
+                []string{"work", "owner/project#1", "--repo=other/project"},
                 []string{"work", "https://example.test/owner/project"},
-                []string{"checks", "https://github.com/owner/project/pull/1", "--pr=2"},
+                []string{"checks", "https://github.com/owner/project/pull/1", "2"},
                 []string{"checks", "https://github.com/owner/project/pull/1", "--repo=other/project"},
                 []string{"checks", "https://example.test/owner/project/pull/1"},
                 []string{"work", "owner/project", "--run=x"},
-                []string{"revoke", "--issue=https://github.com/owner/project/issues/0"},
-                []string{"revoke", "--issue=https://github.com/owner/project/issues/999999999999"},
+                []string{"revoke", "https://github.com/owner/project/issues/0"},
+                []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
                 []string{
                     "prepare",
                     "--repo=owner/project",
-                    "--issue=1",
+                    "1",
                     "--state=bad",
                     "--source=external",
                     "--tools=tools.json"
                 },
-                []string{"prepare", "--repo=owner/project", "--issue=1", "--source=invalid"},
+                []string{"prepare", "--repo=owner/project", "1", "--source=invalid"},
                 []string{"external", "--run=x", "--commit=HEAD"},
-                []string{"request", "--repo=owner/project", "--issue=1"},
+                []string{"request", "--repo=owner/project", "1"},
                 []string{"coordinator-setup", "--repo=owner/project"},
                 []string{"coordinate", "--repo=owner/project"},
                 []string{"submit"},
@@ -1184,7 +1184,7 @@ internal class CliDiscovery {
             Call(binary, []string{"help", "work"}, temp)
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
-            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: --issue")
+            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: ISSUE")
             Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "use --repo OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
@@ -1194,13 +1194,12 @@ internal class CliDiscovery {
                 []string{"policy", "owner/project"},
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
-                []string{"verify-pr", "https://github.com/owner/project/pull/1"},
+                []string{"verify", "https://github.com/owner/project/pull/1"},
                 []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
-                []string{"work", "--issue=https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", "owner/project#1", "--model=model", "--effort=high"},
                 []string{
                     "work",
                     "--repo=OWNER/project",
-                    "--issue=01",
                     "https://github.com/owner/project/issues/1#issuecomment-2",
                     "--model=model",
                     "--effort=high"
@@ -1274,7 +1273,7 @@ internal class CliDiscovery {
                     "--",
                     binary,
                     "doctor",
-                    "--external",
+                    "external",
                     "--json"
                 },
                 temp.Env,

@@ -196,10 +196,7 @@ internal class Reconciliation {
                 []string{
                     "tokate",
                     "authorize-sync",
-                    "--repo",
-                    run.Text("repo"),
-                    "--pr",
-                    J.Number(intent, "pr").ToString(),
+                    run.Text("repo") + "#" + J.Number(intent, "pr").ToString(),
                     "--commit",
                     candidate,
                     "--upstream",

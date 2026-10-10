@@ -7,46 +7,48 @@ import System.Text.RegularExpressions
 
 internal class Args {
     internal let Values Dictionary[string, string] = Dictionary[string, string]()
+    internal let Words List[string] = List[string]()
     internal var Command string = "help"
     internal var Help bool = false
     internal var Subject string = ""
-    internal var Target string = ""
     internal var Guided bool
     internal var SavedDefaults JsonElement
     internal var HarnessFromDefault bool
     internal init(args[]string) {
-        if args.Length == 0 {
+        var i int32 = 0
+        while i < args.Length && Cli.Global(args[i]) {
+            if Values.ContainsKey(args[i]) {
+                throw Exception("Duplicate option: " + args[i])
+            }
+            Values.Add(args[i], "true")
+            i++
+        }
+        if i == args.Length {
             Help = true
             return
         }
-        Command = args[0]
-        if Command == "--help" || Command == "-h" {
-            Command = "help"
-        }
+        Command = args[i] == "--help" || args[i] == "-h" ? "help": args[i] == "version" ? "--version": args[i]
         Cli.Find(Command)
-        var i int32 = 1
+        i++
         while i < args.Length {
             let word = args[i]
-            if Command == "help" && word == "--version" && Subject == "" {
-                Subject = word
+            if Command == "help" && word == "--version" && Words.Count == 0 {
+                Words.Add(word)
                 i++
                 continue
             }
             if !word.StartsWith("-") {
-                if (Command == "help" || Command == "completion" || Command == "defaults") && Subject == "" {
-                    Subject = word
-                } else if Cli.Find(Command).Has("repo") && Target == "" {
-                    Target = word
-                } else {
-                    throw Exception("Unexpected argument: " + word)
-                }
+                Words.Add(word)
                 i++
                 continue
             }
             let equal = word.IndexOf('=')
             let key = word == "-h" ? "--help": (equal < 0 ? word: word.Substring(0, equal))
-            if !key.StartsWith("--") || Values.ContainsKey(key) {
-                throw Exception("Invalid or duplicate option: " + key)
+            if !key.StartsWith("--") {
+                throw Exception("Unknown option for " + Command + ": " + key)
+            }
+            if Values.ContainsKey(key) {
+                throw Exception("Duplicate option: " + key)
             }
             let option = Cli.OptionFor(Command, key.Substring(2))
             if option.Value == "" {
@@ -69,14 +71,8 @@ internal class Args {
             }
             i++
         }
-        if Command == "help" {
-            if Subject != "" {
-                Cli.Find(Subject)
-            }
-            Help = true
-        } else {
-            Help = Get("help") == "true"
-        }
+        Help = Command == "help" || Get("help") == "true"
+        Positionals.Bind(this)
     }
 
     internal func Get(key string, fallback string = "") string {
@@ -87,7 +83,7 @@ internal class Args {
     internal func Need(key string) string {
         let value = Get(key)
         if value == "" {
-            throw Exception("Required: --" + key)
+            throw Exception("Required: " + Cli.Label(key))
         }
         return value
     }
@@ -101,7 +97,7 @@ internal class Args {
         ) ||
             number < 1 ||
             ((key == "seconds" || key == "timeout") && number > 86400) {
-            throw Exception("Invalid positive number: --" + key)
+            throw Exception("Invalid positive number: " + Cli.Label(key))
         }
         return number
     }

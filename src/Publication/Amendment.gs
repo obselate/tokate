@@ -496,7 +496,7 @@ internal class Amendment {
                     error.Message +
                         "\nSaved amendment: " +
                         location +
-                        ". Remote/PR/state updates are not atomic; a physical PR may have an invalid receipt. Use verify-pr to inspect authority. Re-run the same amend command to resume only saved publication intent without inference or repeating passed checks.",
+                        ". Remote/PR/state updates are not atomic; a physical PR may have an invalid receipt. Use verify to inspect authority. Re-run the same amend command to resume only saved publication intent without inference or repeating passed checks.",
                     error
                 )
             }
@@ -670,17 +670,7 @@ internal class Amendment {
             File.WriteAllText(path, J.Write(request) + "\n")
             if amendment.Text("state") != "requested" {
                 Submission.Request(
-                    Args(
-                        []string{
-                            "request",
-                            "--repo",
-                            run.Text("repo"),
-                            "--issue",
-                            run.Number("issue").ToString(),
-                            "--file",
-                            path
-                        }
-                    )
+                    Args([]string{"request", run.Text("repo") + "#" + run.Number("issue").ToString(), "--file", path})
                 )
                 Authority(run, amendment)
                 amendment.Fields["state"] = "requested"

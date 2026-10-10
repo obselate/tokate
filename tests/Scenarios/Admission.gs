@@ -8,30 +8,14 @@ internal class AdmissionChecks {
     shared {
         private func Access(test CoordinationFixture, operation string, issue string = "") {
             if issue == "" {
-                test.Flow.Call(
-                    []string{"access", "--repo", "owner/project", "--operation", operation, "--donor", "donor"},
-                    owner: true
-                )
+                test.Flow.Call([]string{"access", "--repo", "owner/project", operation, "donor"}, owner: true)
             } else {
-                test.Flow.Call(
-                    []string{
-                        "access",
-                        "--repo",
-                        "owner/project",
-                        "--operation",
-                        operation,
-                        "--donor",
-                        "donor",
-                        "--issue",
-                        issue
-                    },
-                    owner: true
-                )
+                test.Flow.Call([]string{"access", "--repo", "owner/project", operation, "donor", issue}, owner: true)
             }
         }
 
         private func Setup(test CoordinationFixture, mode string, message string? = nil) {
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
+            test.Flow.Call([]string{"access", "--repo", "owner/project", "init"}, owner: true)
             let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
             policy["approval_scope"] = JsonValue.Create("task")
@@ -44,7 +28,7 @@ internal class AdmissionChecks {
                 File.WriteAllText(path, configured)
                 test.Flow.Commit("Owner admission configuration")
             }
-            test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--repo", "owner/project", "1"}, owner: true)
         }
 
         private func Pull(
@@ -173,7 +157,7 @@ internal class AdmissionChecks {
                 Access(test, "untrust")
                 Pull(test, "Fixes #1")
                 Admit(test, "open")
-                test.Flow.Call([]string{"revoke", "--repo", "owner/project", "--issue", "1"}, owner: true)
+                test.Flow.Call([]string{"revoke", "--repo", "owner/project", "1"}, owner: true)
                 Pull(test, "Fixes #1")
                 Admit(test, mode == "open" ? "open": "closed")
                 Pull(

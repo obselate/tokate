@@ -76,7 +76,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("- Add a result"), "Amendment retained abandoned summary")
             flow.Call(args)
             Check.That(Body(flow) == body, "Repeated amendment changed body")
-            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
         }
 
         private func External(binary string) {
@@ -173,7 +173,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("\"harness\""), "Raw tool JSON in public report")
             flow.Coordinate(event)
             Check.That(Body(flow.Flow) == body, "Repeated publication changed body")
-            flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
             let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + body + "\nMaintainer after")
             flow.Flow.Save()
@@ -213,7 +213,7 @@ internal class PublicDescriptions {
             flow.Coordinate(amendmentEvent)
             Check.That(Body(flow.Flow) == reviewed, "Repeated coordinated amendment changed body")
             flow.Flow.Call(args)
-            flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
         }
 
         private func Recovery(binary string) {
@@ -224,7 +224,7 @@ internal class PublicDescriptions {
             flow.Mode("verification_fail")
             flow.Call([]string{"work", "--run", run}, 1)
             flow.Mode("")
-            flow.Call([]string{"recover", "--run", run, "--prepare"})
+            flow.Call([]string{"recover", "--run", run})
             let checkout = Path.Combine(run, "checkout")
             File.Delete(Path.Combine(checkout, "other.txt"))
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
@@ -258,7 +258,7 @@ internal class PublicDescriptions {
             Check.Contains(body, "Donor-reported correction tools")
             Check.Contains(body, "cover only the original completed turn")
             Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
-            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
         }
 
         private func MissingAndUnsafe(binary string) {
@@ -396,7 +396,7 @@ internal class PublicDescriptions {
                 } else {
                     flow.Publish(run)
                     Check.Contains(Body(flow), "Fix final result behavior.")
-                    flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+                    flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
                 }
             }
         }
@@ -434,10 +434,7 @@ internal class PublicDescriptions {
                     File.WriteAllText(path, request.ToJsonString())
                     flow.Flow.ResetTraffic()
                     Check.Contains(
-                        flow
-                            .Flow
-                            .Call([]string{"request", "--repo", "owner/project", "--issue", "1", "--file", path}, 1)
-                            .Error,
+                        flow.Flow.Call([]string{"request", "--repo", "owner/project", "1", "--file", path}, 1).Error,
                         "invalid public identifier"
                     )
                     flow.Flow.Reload()

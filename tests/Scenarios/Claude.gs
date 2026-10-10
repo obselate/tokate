@@ -55,16 +55,7 @@ internal class ClaudeChecks {
                         }
                         let cancelled = TestTerminal.Pty(
                             binary,
-                            []string{
-                                "work",
-                                "owner/project",
-                                "--issue",
-                                "1",
-                                "--seconds",
-                                "60",
-                                "--verification-reserve",
-                                "20"
-                            },
+                            []string{"work", "owner/project#1", "--seconds", "60", "--verification-reserve", "20"},
                             flow.Temp,
                             100,
                             "1\n1\nq\n"
@@ -93,7 +84,6 @@ internal class ClaudeChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile",
                         "claude",
                         "--harness",
                         "claude",
@@ -112,7 +102,6 @@ internal class ClaudeChecks {
                         "claim",
                         "--repo",
                         "owner/project",
-                        "--issue",
                         "1",
                         "--profile",
                         "claude",

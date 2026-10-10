@@ -322,7 +322,7 @@ internal class AmendmentFlow {
                 flow.Save()
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 flow.ResetTraffic()
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, 1)
+                flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1)
                 Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Altered receipt was accepted")
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -349,8 +349,8 @@ internal class AmendmentFlow {
             Check.Contains(body, commit)
             Check.That(!body.Contains("synthetic-raw-"), "Detailed evidence was published")
             Check.Envelope(
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10", "--json"}, owner: owner),
-                "verify-pr",
+                flow.Call([]string{"verify", "--repo", "owner/project", "10", "--json"}, owner: owner),
+                "verify",
                 "ok"
             )
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\",\"state\":\"SUCCESS\"}]")
@@ -538,7 +538,7 @@ internal class AmendmentFlow {
                 flow.Flow.Mode(mode)
                 flow.Coordinate(path, 1)
                 flow.Flow.Call(
-                    []string{"verify-pr", "--repo", "owner/project", "--pr", "10"},
+                    []string{"verify", "--repo", "owner/project", "10"},
                     mode == "lost_state_response" ? 0: 1
                 )
                 flow.Flow.Mode("")
@@ -577,7 +577,7 @@ internal class AmendmentFlow {
                 Amend(flow.Flow, run, second)
                 AssertPublished(flow.Flow, run, second)
                 let current = Check.Envelope(
-                    flow.Flow.Call([]string{"coordination", "--repo", "owner/project", "--issue", "1", "--json"}),
+                    flow.Flow.Call([]string{"coordination", "--repo", "owner/project", "1", "--json"}),
                     "coordination",
                     "ok"
                 )

@@ -54,7 +54,7 @@ internal class OverlapFlow : IDisposable {
             Test.Issue = issue
             let target = layout == "targets" && issue == 2 ? "release": "main"
             Flow.Call(
-                []string{"approve", "--repo", "owner/project", "--issue", issue.ToString(), "--base-branch", target},
+                []string{"approve", "--repo", "owner/project", issue.ToString(), "--base-branch", target},
                 owner: true
             )
             var approval JsonNode
@@ -101,6 +101,13 @@ internal class OverlapFlow : IDisposable {
     }
 
     shared {
+        internal func Selection(prs string)[]string {
+            let argv = List[string]{"overlaps", "--repo", "owner/project"}
+            argv.AddRange(prs.Split(','))
+            argv.Add("--json")
+            return argv.ToArray()
+        }
+
         internal func Create(binary string, version int32, layout string = "overlap") OverlapFlow {
             let test = OverlapFlow(binary, version)
             test.Initialize(layout)
@@ -136,7 +143,6 @@ internal class OverlapFlow : IDisposable {
                                 "authorize-sync",
                                 "--repo",
                                 "owner/project",
-                                "--pr",
                                 (issue + 9).ToString(),
                                 "--commit",
                                 candidate,
@@ -173,7 +179,7 @@ internal class OverlapFlow : IDisposable {
                 metadata["sync"] = JsonValue.Create(grant)
                 Test.Coordinate(Test.Event(request))
                 Heads[issue - 1] = candidate
-                Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", (issue + 9).ToString()}, owner: true)
+                Flow.Call([]string{"verify", "--repo", "owner/project", (issue + 9).ToString()}, owner: true)
             }
         }
         return upstream
@@ -187,7 +193,7 @@ internal class OverlapFlow : IDisposable {
             .State["comments"]
             ?.ToJsonString()
         Flow.ResetTraffic()
-        let result = Flow.Call([]string{"overlaps", "--repo", "owner/project", "--prs", prs, "--json"})
+        let result = Flow.Call(Selection(prs))
         let envelope = Check.Envelope(result, "overlaps", "ok")
         Check.That(
             envelope["data"]?["accepted"] == nil && envelope["data"]?["ready_to_merge"] == nil,
@@ -268,17 +274,12 @@ internal class OverlapChecks {
             }
             invalid.Add(String.Join(",", many))
             for prs in invalid {
-                Check.Envelope(
-                    flow.Call([]string{"overlaps", "--repo", "owner/project", "--prs=" + prs, "--json"}, 1),
-                    "overlaps",
-                    "error",
-                    "invalid_arguments"
-                )
+                Check.Envelope(flow.Call(OverlapFlow.Selection(prs), 1), "overlaps", "error", "invalid_arguments")
             }
             for argv in[][]string{
                 []string{"overlaps", "--repo", "owner/project", "--json"},
-                []string{"overlaps", "--repo", "bad", "--prs", "1,2", "--json"},
-                []string{"overlaps", "--repo", "owner/project", "--prs", "1,2", "--prs", "3,4", "--json"}
+                []string{"overlaps", "--repo", "bad", "1", "2", "--json"},
+                []string{"overlaps", "--repo", "owner/project", "--prs", "1,2", "--json"}
             } {
                 Check.Envelope(flow.Call(argv, 1), "overlaps", "error", "invalid_arguments")
             }
@@ -391,7 +392,7 @@ internal class OverlapChecks {
                     Console.WriteLine("PASS V" + version.ToString() + " synchronized overlap files: " + layout)
                 }
                 if layout == "overlap" {
-                    let readable = test.Flow.Call([]string{"overlaps", "--repo", "owner/project", "--prs", "10,11"})
+                    let readable = test.Flow.Call([]string{"overlaps", "--repo", "owner/project", "10", "11"})
                     Check.Contains(readable.Output, "advisory")
                     Check.Contains(readable.Output, "dependency_gate")
                     Check.Contains(readable.Output, "verify")
@@ -602,7 +603,7 @@ internal class OverlapChecks {
             }
             flow.ResetTraffic()
             let result = Check.Envelope(
-                flow.Call([]string{"overlaps", "--repo", "owner/project", "--prs", "10,11", "--json"}),
+                flow.Call([]string{"overlaps", "--repo", "owner/project", "10", "11", "--json"}),
                 "overlaps",
                 "ok"
             )

@@ -146,9 +146,9 @@ internal open class NativeFixture : IDisposable {
         if Git("-C", Upstream, "for-each-ref", "--format=%(refname)", "refs/heads/tokate/access") != "" {
             return
         }
-        Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
+        Call([]string{"access", "--repo", "owner/project", "init"}, owner: true)
         for donor in[]string{"donor", "owner"} {
-            Call([]string{"access", "--repo", "owner/project", "--operation", "trust", "--donor", donor}, owner: true)
+            Call([]string{"access", "--repo", "owner/project", "trust", donor}, owner: true)
         }
     }
 
@@ -244,7 +244,7 @@ internal open class NativeFixture : IDisposable {
 
     internal func Approve(baseBranch string = "") {
         OwnerAccess()
-        let args = List[string]{"approve", "--repo", "owner/project", "--issue", "1"}
+        let args = List[string]{"approve", "--repo", "owner/project", "1"}
         if baseBranch != "" {
             args.AddRange([]string{"--base-branch", baseBranch})
         }
@@ -313,7 +313,7 @@ internal open class NativeFixture : IDisposable {
         fork string = "",
         json bool = false
     )[]string {
-        let args = List[string]{"claim", "--repo", "owner/project", "--issue", "1"}
+        let args = List[string]{"claim", "--repo", "owner/project", "1"}
         if fork != "" {
             args.AddRange([]string{"--fork", fork})
         }
@@ -515,7 +515,7 @@ internal open class NativeFixture : IDisposable {
 
     internal func ApproveSelf() {
         OwnerAccess()
-        Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+        Call([]string{"approve", "--repo", "owner/project", "1"}, owner: true)
     }
 
     internal func SameRepositoryClaim(code int32 = 0) Result -> Acquire(

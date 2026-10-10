@@ -392,20 +392,17 @@ internal class PublicOutput {
                 Actions.Add(known ? []string{"tokate", "help", Command, "--json"}: []string{"tokate", "help", "--json"})
             } else if code == "missing_tools" {
                 if Command != "doctor" {
-                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "--managed": (
+                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "managed": (
                         Command == "external" ||
                             Command == "amend" ||
                             Command == "recover" ||
-                            Command == "submit" ||
-                            Command == "submit" ? "--external": "--owner"
+                            Command == "submit" ? "external": "owner"
                     )
                     Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
                 }
             }
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
-                Actions.Add(
-                    []string{"tokate", "checks", "--repo", options.Get("repo"), "--pr", options.Get("pr"), "--json"}
-                )
+                Actions.Add([]string{"tokate", "checks", options.Get("repo") + "#" + options.Get("pr"), "--json"})
             }
         }
 

@@ -43,7 +43,7 @@ internal open class CoordinationFixture : IDisposable {
     public func Dispose() -> Flow.Dispose()
 
     internal func State() JsonNode -> Check.Json(
-        Flow.Call([]string{"coordination", "--repo", "owner/project", "--issue", Issue.ToString()}).Output
+        Flow.Call([]string{"coordination", "--repo", "owner/project", Issue.ToString()}).Output
     )
 
     internal func ClaimRequest() JsonNode {
@@ -200,7 +200,6 @@ internal open class CoordinationFixture : IDisposable {
             "prepare",
             "--repo",
             "owner/project",
-            "--issue",
             "1",
             "--state",
             Check.Text(state["sha"]),

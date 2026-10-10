@@ -227,7 +227,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
       - name: Probe the real managed Codex sandbox without inference
-        run: artifacts/linux-x64/tokate doctor --managed --harness codex --harness-path "$TOKATE_CODEX"
+        run: artifacts/linux-x64/tokate doctor codex --harness-path "$TOKATE_CODEX"
   pi-proofs:
     if: ${{ inputs.full == true }}
     needs: [build, harness-layouts]

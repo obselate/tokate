@@ -95,9 +95,7 @@ internal class PiChecks {
             File.Move(codex, hiddenCodex)
             try {
                 let diagnosis = Check.Envelope(
-                    flow.Call(
-                        []string{"doctor", "--managed", "--harness", "pi", "--pi-root", root, "--node", node, "--json"}
-                    ),
+                    flow.Call([]string{"doctor", "managed", "pi", "--pi-root", root, "--node", node, "--json"}),
                     "doctor",
                     "ok"
                 )
@@ -105,7 +103,7 @@ internal class PiChecks {
                     Check.That(Check.Text(tool["name"]) != "codex", "Pi diagnostics required Codex")
                 }
                 flow.Call([]string{"defaults", "set", "--harness", "pi", "--pi-root", root, "--node", node})
-                let inherited = Check.Envelope(flow.Call([]string{"doctor", "--managed", "--json"}), "doctor", "ok")
+                let inherited = Check.Envelope(flow.Call([]string{"doctor", "managed", "--json"}), "doctor", "ok")
                 for tool in inherited["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Managed diagnostics ignored the chosen Pi default")
                 }
@@ -121,8 +119,7 @@ internal class PiChecks {
                 flow.Call(
                     []string{
                         "doctor",
-                        "--managed",
-                        "--harness",
+                        "managed",
                         "pi",
                         "--pi-root",
                         root,
@@ -216,7 +213,6 @@ internal class PiChecks {
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -242,7 +238,6 @@ internal class PiChecks {
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -390,7 +385,6 @@ internal class PiChecks {
                 "prepare",
                 "--repo",
                 "owner/project",
-                "--issue",
                 "1",
                 "--state",
                 Check.Text(flow.State()["sha"]),
@@ -469,7 +463,6 @@ internal class PiChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile",
                         "reasoning",
                         "--harness",
                         "pi",
@@ -483,7 +476,7 @@ internal class PiChecks {
                         endpoint
                     }
                 )
-                Check.Contains(flow.Flow.Call([]string{"defaults", "read", "--profile", "reasoning"}).Output, "high")
+                Check.Contains(flow.Flow.Call([]string{"defaults", "show", "reasoning"}).Output, "high")
             }
             if mode == "profile" {
                 for option in[]string{"--effort", "--model", "--endpoint"} {
@@ -513,7 +506,6 @@ internal class PiChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile",
                         "local",
                         "--harness",
                         "pi",
@@ -571,7 +563,7 @@ internal class PiChecks {
                     "Profile preparation lost private runtime overrides or source"
                 )
                 Check.That(File.ReadAllText(profilePath) == originalProfile, "Pi preparation rewrote its profile")
-                flow.Flow.Call([]string{"defaults", "remove", "--profile", "local"})
+                flow.Flow.Call([]string{"defaults", "remove", "local"})
             }
             let checkout = Path.Combine(run, "checkout")
             let gitPath = Path.Combine(checkout, ".git/config")
@@ -701,7 +693,7 @@ internal class PiChecks {
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
-                    flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+                    flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
                     flow.Flow.Reload()
                     Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
                 }

@@ -236,18 +236,7 @@ internal class ProgressChecks {
             flow.Temp.Env["TERM"] = "dumb"
             let guided = TestTerminal.Pty(
                 binary,
-                []string{
-                    "work",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--harness",
-                    "codex",
-                    "--model",
-                    "gpt-6.1-sol",
-                    "--effort",
-                    "high"
-                },
+                []string{"work", "owner/project#1", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"},
                 flow.Temp,
                 80,
                 "unlimited\n1\nq\n"

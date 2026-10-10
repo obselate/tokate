@@ -30,16 +30,7 @@ internal class OmpChecks {
                     flow.Temp.Env["NO_COLOR"] = "1"
                     let cancelled = TestTerminal.Pty(
                         binary,
-                        []string{
-                            "work",
-                            "owner/project",
-                            "--issue",
-                            "1",
-                            "--seconds",
-                            "60",
-                            "--verification-reserve",
-                            "20"
-                        },
+                        []string{"work", "owner/project#1", "--seconds", "60", "--verification-reserve", "20"},
                         flow.Temp,
                         100,
                         "1\n1\nq\n"
@@ -57,7 +48,6 @@ internal class OmpChecks {
                         []string{
                             "defaults",
                             "set",
-                            "--profile",
                             "omp",
                             "--harness",
                             "omp",
@@ -74,7 +64,7 @@ internal class OmpChecks {
                 flow.NoPr()
                 let selection = mode == "normal" ? []string{"--profile", "omp"}:
                 []string{"--harness", "omp", "--model", OmpTool.Model, "--effort", "low"}
-                let claim = List[string]{"claim", "--repo", "owner/project", "--issue", "1"}
+                let claim = List[string]{"claim", "--repo", "owner/project", "1"}
                 claim.AddRange(selection)
                 claim.AddRange(
                     []string{
@@ -221,21 +211,17 @@ internal class OmpChecks {
             Refused(flow, []string{"--model", "plain", "--effort", "absent"}, "Choose --provider for OMP")
             Check.Contains(
                 Check
-                    .Envelope(flow.Call([]string{"doctor", "--managed", "--json"}), "doctor", "ok")["data"]?["tools"]
+                    .Envelope(flow.Call([]string{"doctor", "managed", "--json"}), "doctor", "ok")["data"]?["tools"]
                     ?.ToJsonString() ?? "",
                 "OMP 100.0.0; 2 configured models"
             )
-            let ready = Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}),
-                "doctor",
-                "ok"
-            )
+            let ready = Check.Envelope(flow.Call([]string{"doctor", "managed", "omp", "--json"}), "doctor", "ok")
             Check.Contains(ready["data"]?["tools"]?.ToJsonString() ?? "", "OMP 100.0.0; 2 configured models")
             File.WriteAllText(Path.Combine(settings, "mode"), "empty")
-            let empty = flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}, 1)
+            let empty = flow.Call([]string{"doctor", "managed", "omp", "--json"}, 1)
             Check.Contains(empty.Output, "OMP lists no models")
             File.Delete(Path.Combine(flow.Bin, "omp"))
-            let missing = flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}, 1)
+            let missing = flow.Call([]string{"doctor", "managed", "omp", "--json"}, 1)
             Check.Contains(missing.Output, "OMP was not found")
             Check.That(!File.Exists(Path.Combine(settings, "ran")), "Selection or diagnostics started OMP inference")
             Console.WriteLine("PASS OMP provider, model and effort selection with no-inference diagnostics")
@@ -275,18 +261,13 @@ internal class OmpChecks {
             File.CreateSymbolicLink(Path.Combine(flow.Bin, "omp"), omp)
             File.Delete(Path.Combine(flow.Bin, "codex"))
             File.Delete(Path.Combine(flow.Bin, "codex-impl"))
-            let ready = Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}),
-                "doctor",
-                "ok"
-            )
+            let ready = Check.Envelope(flow.Call([]string{"doctor", "managed", "omp", "--json"}), "doctor", "ok")
             Check.Contains(ready["data"]?["tools"]?.ToJsonString() ?? "", "configured models listed")
             let prepared = flow.Acquire(
                 []string{
                     "claim",
                     "--repo",
                     "owner/project",
-                    "--issue",
                     "1",
                     "--harness",
                     "omp",
