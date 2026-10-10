@@ -262,7 +262,7 @@ internal class GuidedWork {
             while true {
                 let answer = WizardScreen.Read(
                     "Set your limit",
-                    allowUnlimited ? "No time limit is available for coding. Timed donations and verification are limited to " +
+                    allowUnlimited ? "Unlimited coding is allowed. Timed donations and verification are limited to " +
                         cap +
                         ". Choose coding minutes, or type unlimited.": "Owner limit: " +
                         cap +

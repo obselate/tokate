@@ -141,6 +141,50 @@ internal class PiChecks {
             Check.That(!File.Exists(installMarker), "Failed Pi probe triggered installation of an existing runtime")
             File.Delete(curl)
             let explicitSelection = Check.Json(flow.Call(args.ToArray()).Output)
+            for fields in[]string{
+                ",\"context_window\":7",
+                ",\"context_length\":7",
+                ",\"context_window\":7,\"context_length\":7",
+                ",\"context_window\":null,\"context_length\":7",
+                ",\"context_window\":7,\"context_length\":null"
+            } {
+                catalog.Metadata = fields
+                let selected = Check.Json(flow.Call(args.ToArray()).Output)
+                Check.That(
+                    Check.Text(selected["endpoint_catalog"]?["context_window"]) == "7" && Check.Text(
+                        selected["context_window"]
+                    ) == "32768" &&
+                        Check.Text(selected["max_tokens"]) == "4096",
+                    "Endpoint context aliases replaced configured Pi limits or were lost"
+                )
+                for name in[]string{"runtime_version", "digest", "quantization", "supports_tools"} {
+                    Check.That(
+                        Check.Text(selected["endpoint_catalog"]?[name]) == "unknown",
+                        "Endpoint context alias invented absent model identity"
+                    )
+                }
+            }
+            for fields in[]string{
+                ",\"context_window\":7,\"context_length\":8",
+                ",\"context_window\":\"7\",\"context_length\":7",
+                ",\"context_length\":\"7\"",
+                ",\"context_window\":7,\"context_length\":\"7\"",
+                ",\"context_window\":7,\"context_length\":true",
+                ",\"context_window\":7,\"context_length\":0",
+                ",\"context_window\":7,\"context_length\":-7",
+                ",\"context_window\":7,\"context_length\":7.5",
+                ",\"context_window\":7,\"context_length\":2147483648"
+            } {
+                catalog.Metadata = fields
+                let rejected = List[string](args)
+                rejected.Add("--json")
+                let result = flow.Call(rejected.ToArray(), 1)
+                Check.Envelope(result, "select", "error", "endpoint_unavailable")
+                PrivateCatalog(result.Output + result.Error, catalog.Endpoint)
+            }
+            catalog.Metadata = ""
+            flow.NoInference()
+            Console.WriteLine("PASS Pi endpoint context aliases and invalid metadata without inference")
             File.Delete(Path.Combine(flow.Bin, "pi"))
             File.Copy(launcher, Path.Combine(flow.Bin, "pi"))
             let entrypoint = marker["entrypoint"] ?? throw Exception("Missing Pi entrypoint")
@@ -160,6 +204,14 @@ internal class PiChecks {
             args.AddRange([]string{"--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Unsupported pi provider")
             args.RemoveRange(args.Count - 2, 2)
+            flow.Call([]string{"defaults", "set", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"})
+            let defaultPath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
+            let savedDefault = File.ReadAllText(defaultPath)
+            Check.That(
+                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Saved Codex default changed the explicit Pi selection with an omitted provider"
+            )
+            Check.That(File.ReadAllText(defaultPath) == savedDefault, "Pi selection changed the saved Codex default")
             flow.Call(
                 []string{
                     "defaults",
@@ -186,6 +238,39 @@ internal class PiChecks {
             args.AddRange([]string{"--profile", "local", "--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Named donor profile conflicts")
             args.RemoveRange(args.Count - 4, 4)
+            flow.Call(
+                []string{
+                    "defaults",
+                    "set",
+                    "--profile",
+                    "local",
+                    "--harness",
+                    "pi",
+                    "--model",
+                    "saved-other-model",
+                    "--effort",
+                    "high",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1"
+                }
+            )
+            let profilePath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
+            let savedProfile = File.ReadAllText(profilePath)
+            args.AddRange([]string{"--profile", "local"})
+            expectedProfile["source"] = JsonValue.Create("saved donor profile local with explicit overrides")
+            Check.That(
+                JsonNode.DeepEquals(expectedProfile, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Omitted Pi provider changed the explicit model, effort or endpoint overrides"
+            )
+            Check.That(File.ReadAllText(profilePath) == savedProfile, "Pi selection changed the named profile")
+            args.RemoveRange(args.Count - 2, 2)
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Owner rejects Pi selection")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "exact pi/local-chat-completions permission")
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Restore Pi selection policy")
             args.AddRange([]string{"--node", pathNode})
             flow.Call(args.ToArray(), 1)
             args[args.Count - 1] = actualNode
@@ -235,7 +320,10 @@ internal class PiChecks {
 
         internal func Run(binary string, root string, node string, directory string, endpoint string, mode string) {
             let flow = CoordinationFixture(binary)
-            let catalogRejected = mode.StartsWith("catalog-") && mode != "catalog-metadata" && !mode.StartsWith(
+            let catalogMetadata = mode == "catalog-metadata" ||
+                mode == "catalog-metadata-length" ||
+                mode == "catalog-metadata-aliases"
+            let catalogRejected = mode.StartsWith("catalog-") && !catalogMetadata && !mode.StartsWith(
                 "catalog-recheck-"
             )
             let interrupted = mode == "cancel" || mode == "unlimited-cancel"
@@ -498,7 +586,7 @@ internal class PiChecks {
                 mode == "profile" ||
                 mode == "compact" ||
                 mode == "compact-failed" ||
-                mode == "catalog-metadata"
+                catalogMetadata
             let work = List[string]{"work", "--run", run, "--non-interactive", "--yes"}
             var worked Result
             if mode == "on" {
@@ -544,13 +632,22 @@ internal class PiChecks {
                     Check.Text(saved["endpoint_catalog"]?["advertised_model"]) == "synthetic/model:exact",
                 "Pi did not record exact endpoint selection and launch evidence"
             )
+            Check.That(
+                Check.Text(saved["selection"]?["context_window"]) == "65536" && Check.Text(
+                    saved["selection"]?["max_tokens"]
+                ) == "4096",
+                "Endpoint metadata replaced configured Pi selection limits"
+            )
             let metadata = Check.Json(
                 "{\"runtime_version\":\"1.2.3\",\"digest\":\"sha256:abc123\",\"quantization\":\"Q4_K_M\",\"context_window\":7,\"supports_tools\":false}"
             )
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
-                let expected = mode == "catalog-metadata" ? Check.Text(metadata[name]): "unknown"
+                let expected = mode == "catalog-metadata" || (catalogMetadata && name == "context_window") ?
+                Check.Text(metadata[name]): "unknown"
                 Check.That(
-                    Check.Text(saved["endpoint_catalog"]?[name]) == expected,
+                    Check.Text(saved["selection"]?["endpoint_catalog"]?[name]) == expected && Check.Text(
+                        saved["endpoint_catalog"]?[name]
+                    ) == expected,
                     "Pi lost optional metadata or invented absent identity"
                 )
             }

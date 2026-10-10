@@ -162,7 +162,8 @@ internal class ContributionStatusChecks {
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
             let active = Row(Read(test))
-            Check.That(Check.Text(active["state"]) == "attempt_recorded", "Active attempt omitted")
+            Check.That(Check.Text(active["state"]) == "claim_accepted", "Accepted claim omitted")
+            Check.Contains(Check.Text(active["next"]?["action"]), "This claim has been accepted")
             Check.Contains(Check.Text(active["reservation"]?["local_process"]), "does not prove")
             Check.That(
                 Check.Text(active["reservation"]?["attempt"]) == Check.Text(request["uuid"]),

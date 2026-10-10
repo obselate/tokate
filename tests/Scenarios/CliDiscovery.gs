@@ -89,11 +89,40 @@ internal class CliDiscovery {
             return result
         }
 
+        private func Checkout(flow NativeFixture, root string, repo string = "owner/project") {
+            flow.Git("init", "-q", "-b", "main", root)
+            flow.Git("-C", root, "remote", "add", "origin", "https://github.com/" + repo + ".git")
+        }
+
+        private func Publish(flow NativeFixture, text string?) {
+            let upstream = Path.Combine(flow.Upstream, ".github/tokate.json")
+            if text == nil {
+                File.Delete(upstream)
+            } else {
+                File.WriteAllText(upstream, text)
+            }
+            flow.Git("-C", flow.Upstream, "add", "-A")
+            flow.Git(
+                "-C",
+                flow.Upstream,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=test@example.test",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "Owner policy"
+            )
+        }
+
         internal func Setup(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             flow.ReleaseReady(hosted: false)
             let root = Path.Combine(flow.Temp.Root, "adopter")
+            let github = Path.Combine(root, ".github")
             let args = []string{
                 "init",
                 "--repo",
@@ -106,24 +135,29 @@ internal class CliDiscovery {
                 "[[\"bash\",\"scripts/verify.sh\"]]",
                 "--required-checks",
                 "[\"verify\"]",
-                "--non-interactive",
-                "--yes"
+                "--non-interactive"
             }
+            Check.Contains(flow.Call(args, 1, true).Error, "does not exist")
+            Directory.CreateDirectory(root)
+            Check.Contains(flow.Call(args, 1, true).Error, "is not a Git checkout")
+            let other = Path.Combine(flow.Temp.Root, "other")
+            Checkout(flow, other, "someone/else")
+            let mismatch = List[string](args)
+            mismatch[4] = other
             Check.Contains(
-                flow.Call([]string{"init", "--repo", "owner/project", "--path", root}, 1, true).Error,
-                "Choose --model-policy"
+                flow.Call(mismatch.ToArray(), 1, true).Error,
+                "is a checkout of someone/else, not owner/project"
             )
+            Check.That(!Directory.Exists(Path.Combine(other, ".github")), "Mismatched checkout received setup files")
+            Checkout(flow, root)
             Check.Contains(flow.Call(args, 1, true).Error, "Bootstrap required")
-            Check.That(!Directory.Exists(root), "Failed setup created adopter files")
+            Check.That(!Directory.Exists(github), "Failed setup created adopter files")
             flow.Reload()
             flow.State["hosted_workflow"] = JsonValue.Create(true)
             flow.Save()
-            let preview = List[string](args)
-            preview.Remove("--yes")
-            Check.Contains(flow.Call(preview.ToArray(), owner: true).Error, "Preview only")
-            Check.That(!Directory.Exists(root), "Preview wrote adopter files")
             let created = flow.Call(args, owner: true)
-            Check.Contains(created.Error, "Proposed complete file")
+            Check.Contains(created.Error, "Added ")
+            Check.Contains(created.Output, "Commit and push")
             Check.Contains(created.Error, "contents write")
             Check.Contains(created.Error, "tokate/contributions/N")
             let policyPath = Path.Combine(root, ".github/tokate.json")
@@ -139,7 +173,7 @@ internal class CliDiscovery {
                 "Unrestricted setup silently restricted models"
             )
             Check.That(
-                Directory.GetFiles(root, "*", SearchOption.AllDirectories).Length == 2,
+                Directory.GetFiles(github, "*", SearchOption.AllDirectories).Length == 2,
                 "New adopter footprint is not two files"
             )
             let yaml = File.ReadAllText(workflowPath)
@@ -147,23 +181,35 @@ internal class CliDiscovery {
                 !yaml.Contains("run:") && !yaml.Contains("checkout") && yaml.Split('\n').Length < 25,
                 "Setup copied runtime code"
             )
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            Publish(flow, original)
+            let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            Check.Contains(repeated.Output, "nothing to commit")
             Check.That(
                 File.ReadAllText(policyPath) == original && File.ReadAllText(workflowPath) == yaml,
                 "Repeated setup changed owner files"
             )
+            let fresh = Path.Combine(flow.Temp.Root, "fresh")
+            Checkout(flow, fresh)
+            flow.Call([]string{"init", "--repo", "owner/project", "--path", fresh, "--non-interactive"}, owner: true)
+            let freshPolicy = Path.Combine(fresh, ".github/tokate.json")
+            Check.That(
+                File.ReadAllText(freshPolicy) == original,
+                "Setup in a new checkout did not start from the GitHub policy"
+            )
+            let unpushed = original.Replace("\"max_seconds\": 3600", "\"max_seconds\": 1800")
+            Check.That(unpushed != original, "Fixture policy lacks the expected time limit")
+            File.WriteAllText(freshPolicy, unpushed)
+            Check.Contains(
+                flow.Call([]string{"init", "--path", fresh, "--seconds", "900", "--non-interactive"}, 1, true).Error,
+                "differs from the policy on owner/project@main"
+            )
+            Check.That(File.ReadAllText(freshPolicy) == unpushed, "Setup overwrote an unpushed local policy")
             let renamed = Path.Combine(root, ".github/workflows/owner.yaml")
             File.Move(workflowPath, renamed)
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            flow.Call([]string{"init", "--repo", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             Check.That(
                 !File.Exists(workflowPath) && File.ReadAllText(renamed) == yaml && Directory.GetFiles(
-                    root,
+                    github,
                     "*",
                     SearchOption.AllDirectories
                 )
@@ -178,7 +224,6 @@ internal class CliDiscovery {
                 owner: true
             )
             Check.That(!safePreview.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
-            Check.Contains(safePreview.Error, "synthetic-preview-")
             Check.Contains(safePreview.Error, "not verified")
             Check.That(File.ReadAllText(workflowPath) == escaped, "Preview changed the custom workflow")
             let custom = Path.Combine(root, ".github/tokate-pr.md")
@@ -207,22 +252,19 @@ internal class CliDiscovery {
                     "Literal {{issue}} owner text",
                     "--close-message",
                     "Ask the owner for access.",
-                    "--non-interactive",
-                    "--yes"
+                    "--non-interactive"
                 },
                 owner: true
             )
             let restricted = File.ReadAllText(policyPath)
+            Publish(flow, restricted)
             policy = Check.Json(restricted)
             Check.That(
                 Check.Text(policy["target_branch"]) == "release" && Check.Text(policy["max_seconds"]) == "5400" &&
                     policy["allow_network"] == nil,
                 "Noninteractive settings were not applied"
             )
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            flow.Call([]string{"init", "--repo", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             Check.That(
                 File.ReadAllText(policyPath) == restricted && File.ReadAllText(
                     workflowPath
@@ -239,15 +281,15 @@ internal class CliDiscovery {
                 root,
                 "--verification",
                 "[]",
-                "--non-interactive",
-                "--yes"
+                "--non-interactive"
             }
             flow.Call(invalid, 1, true)
             Check.That(File.ReadAllText(policyPath) == restricted, "Invalid policy replaced owner work")
             policy["allowed_tools"] = Check.Json(
                 "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"gufo\"}]"
             )
-            Check.SaveJson(policyPath, policy)
+            Publish(flow, policy.ToJsonString())
+            File.WriteAllText(policyPath, policy.ToJsonString())
             let toolArgs = List[string]{
                 "init",
                 "--repo",
@@ -256,16 +298,17 @@ internal class CliDiscovery {
                 root,
                 "--allowed-tools",
                 "pi",
-                "--non-interactive",
-                "--yes"
+                "--non-interactive"
             }
             flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
             let mixed = Check.Json(File.ReadAllText(policyPath))["allowed_tools"]?.ToJsonString() ?? ""
             for name in[]string{"omp", "pi"} {
                 Check.Contains(mixed, "\"harness\":\"" + name + "\"")
             }
             toolArgs[6] = "claude/anthropic,hermes/openrouter"
             flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
             policy = Check.Json(File.ReadAllText(policyPath))
             let exact = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
@@ -274,6 +317,7 @@ internal class CliDiscovery {
             )
             toolArgs[6] = "codex"
             flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
             policy = Check.Json(File.ReadAllText(policyPath))
             let kept = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
@@ -285,21 +329,27 @@ internal class CliDiscovery {
             flow.Call(toolArgs.ToArray(), 1, true)
             Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Invalid tool pair changed policy")
             let obsolete = Path.Combine(flow.Temp.Root, "obsolete")
-            Directory.CreateDirectory(Path.Combine(obsolete, ".github"))
+            Checkout(flow, obsolete)
             let obsoletePolicy = Check.Json(TestResources.Template("tokate.json"))
             obsoletePolicy["version"] = JsonValue.Create(1)
-            let obsoleteText = obsoletePolicy.ToJsonString()
-            File.WriteAllText(Path.Combine(obsolete, ".github/tokate.json"), obsoleteText)
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", obsolete, "--non-interactive", "--yes"},
-                1,
-                true
-            )
+            Publish(flow, obsoletePolicy.ToJsonString())
+            flow.Call([]string{"init", "--repo", "owner/project", "--path", obsolete, "--non-interactive"}, 1, true)
             Check.That(
-                File.ReadAllText(Path.Combine(obsolete, ".github/tokate.json")) == obsoleteText,
-                "Unsupported policy was rewritten"
+                !File.Exists(Path.Combine(obsolete, ".github/tokate.json")),
+                "Unsupported GitHub policy was rewritten"
             )
+            Publish(flow, nil)
             let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
+            Checkout(flow, interactiveRoot)
+            Check.Contains(
+                flow.Call(
+                    []string{"init", "--repo", "owner/project", "--path", interactiveRoot, "--non-interactive"},
+                    1,
+                    true
+                )
+                    .Error,
+                "Choose --model-policy"
+            )
             let command = "'" + binary + "' init --repo owner/project --path '" + interactiveRoot + "' --plain"
             let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
             env["GH_TOKEN"] = "fixture-owner"
@@ -353,6 +403,7 @@ internal class CliDiscovery {
             Console.Write(picker.Output)
             let previousToken = flow.Temp.Env["GH_TOKEN"]
             flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            Checkout(flow, flow.Temp.Root)
             let guided = TestTerminal.Pty(
                 binary,
                 []string{},
@@ -376,7 +427,7 @@ internal class CliDiscovery {
             flow.NoInference()
             flow.NoPr()
             Console.WriteLine(
-                "PASS CLI owner setup: bootstrap, preview, confirmation, two files, repeat, restrictions, upgrade and explicit options"
+                "PASS CLI owner setup: checkout identity, GitHub policy source, direct writes, two files, repeat, restrictions, upgrade and explicit options"
             )
         }
 
@@ -1180,7 +1231,7 @@ internal class CliDiscovery {
             let pid = <-observed
             Check.That(!pid.StartsWith("error:"), pid)
             Check.That(clock.Elapsed.TotalSeconds < 8, "Repository discovery exceeded its cleanup bound")
-            Check.Contains(discovery.Error, "Ambiguous or unsupported local remotes")
+            Check.Contains(discovery.Error, "No GitHub remote found")
             Check.That(
                 File.ReadAllText(Path.Combine(temp.Root, "child-lang")) == temp.Env["LANG"],
                 "Child LANG changed"

@@ -191,8 +191,8 @@ internal class ProgressChecks {
             )
             let phases = result.Error.Split("Inference:").Length
             Check.That(
-                samples.Count >= 2 && samples.Count <= 3 && phases == samples.Count + 1,
-                "Plain progress did not use bounded exponential intervals"
+                samples.Count >= 3 && samples.Count <= 5 && phases == samples.Count + 1,
+                "Plain progress did not report at a steady interval"
             )
             var elapsed int32 = -1
             var remaining int32 = 26
@@ -206,6 +206,7 @@ internal class ProgressChecks {
                     ) <= 1,
                     "Progress changed or reset the saved allowances"
                 )
+                Check.That(elapsed < 0 || current - elapsed <= 6, "Plain progress interval grew")
                 elapsed = current
                 remaining = coding
             }
@@ -254,7 +255,7 @@ internal class ProgressChecks {
             Check.That(guided.Code == 1, guided.Output + guided.Error)
             Check.Contains(guided.Output, "Review donation")
             Check.Contains(guided.Output, "No time limit")
-            Check.Contains(guided.Output, "No time limit is available for coding.")
+            Check.Contains(guided.Output, "Unlimited coding is allowed.")
             Check.Contains(guided.Output, "Timed donations and verification are limited to 60 minutes.")
             flow.NoInference()
             Check.Contains(

@@ -437,6 +437,12 @@ internal class WorkspacePreparation {
                     run.Fields["branch_creation_error"] = error.Message
                     run.Save(directory)
                 }
+                for attempt in 0 ... 5 {
+                    if Reference(run).ValueKind != JsonValueKind.Undefined {
+                        break
+                    }
+                    ApiTransport.Settle()
+                }
             }
             CheckBranch(run)
             run.Fields["branch_prepared"] = true

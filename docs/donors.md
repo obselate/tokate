@@ -53,7 +53,8 @@ Codex runs unattended, so tools that need approval are refused. Set
 Choose Claude Code in the donation wizard. It uses your installed native CLI,
 existing login, settings and tools. Sign in through Claude Code first with your
 personal Pro or Max subscription. `--claude-profile DIR` selects an existing
-configuration directory when needed.
+configuration directory when needed. Claude Code's sandbox needs bubblewrap and
+socat; `tokate doctor --fix --harness claude` installs missing packages.
 
 For a saved choice, after native sign-in:
 

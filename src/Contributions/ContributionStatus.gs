@@ -621,12 +621,10 @@ internal class ContributionStatus {
             let reservation = J.Get(state.Value(), "reservation")
             if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                stage = J.Text(reservation, "status") == "paused" ? "paused": (
-                    J.Text(reservation, "attempt") == "" ? "reservation_held": "attempt_recorded"
-                )
+                stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
                 next = Next(
                     "donor",
-                    "The recorded donor must inspect their own saved work; the local run directory and process state are unknown."
+                    stage == "paused" ? "This claim is paused. The donor checks their saved work on their own machine.": "This claim has been accepted. The donor can start work with tokate work on their own machine."
                 )
             } else if reservation.ValueKind == JsonValueKind.Object {
                 stage = "lease_expired_or_released"

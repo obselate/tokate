@@ -80,12 +80,13 @@ internal class RepositoryInput {
             }
         }
 
-        internal func Local() string {
+        internal func Local(cwd string = "") string {
             var result CommandResult
             try {
                 result = Commands.Run(
                     "git",
                     []string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null", "remote", "-v"},
+                    cwd: cwd,
                     seconds: 5
                 )
             } catch (error Win32Exception) {
@@ -104,7 +105,7 @@ internal class RepositoryInput {
                     RegexOptions.IgnoreCase
                 )
                 if !match.Success {
-                    throw Exception("Ambiguous or unsupported local remotes; use --repo OWNER/REPO")
+                    continue
                 }
                 let candidate = RepositoryIdentity.Repo(match.Groups[1].Value)
                 if repo != "" && !String.Equals(repo, candidate, StringComparison.OrdinalIgnoreCase) {

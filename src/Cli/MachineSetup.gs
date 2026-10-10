@@ -84,6 +84,8 @@ internal class MachineSetup {
             case "/usr/bin/cp": "coreutils"
             case "/usr/bin/find": "findutils"
             case "/bin/bash": "bash"
+            case "bwrap": "bubblewrap"
+            case "socat": "socat"
             default: ""
         }
 
