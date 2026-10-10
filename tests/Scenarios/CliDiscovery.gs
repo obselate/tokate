@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -938,6 +938,28 @@ internal class CliDiscovery {
                 Directory.GetFileSystemEntries(first).Length == 1 && Directory.GetFileSystemEntries(second).Length == 1,
                 "Saved inspection created execution artifacts"
             )
+            let named = Path.Combine(root, "owner-project-1-7")
+            Directory.CreateDirectory(named)
+            File.Copy(Path.Combine(second, "run.json"), Path.Combine(named, "run.json"))
+            let listed = Check.Envelope(Call(binary, []string{"runs", "owner/project", "--json"}, temp), "runs", "ok")
+            Check.That(
+                Check.Text(listed["data"]?["runs"]?[0]?["name"]) == "owner/project#1-1" && Check.Text(
+                    listed["data"]?["runs"]?[1]?["run"]
+                ) == second &&
+                    Check.Text(listed["data"]?["runs"]?[2]?["name"]) == "owner/project#1-7",
+                "Saved runs lost stable names"
+            )
+            let exact = Check.Envelope(
+                Call(binary, []string{"status", "owner/project#1-7", "--json"}, temp),
+                "status",
+                "ok"
+            )
+            Check.That(Check.Text(exact["data"]?["run"]) == named, "Run name selected another attempt")
+            Check.Contains(
+                Call(binary, []string{"status", "owner/project#1-9"}, temp, 1).Error,
+                "No saved run owner/project#1-9"
+            )
+            Directory.Delete(named, true)
             let firstText = File.ReadAllText(Path.Combine(first, "run.json"))
             let unlimited = Check.Json(firstText)
             unlimited["unlimited"] = JsonValue.Create(true)
@@ -1050,7 +1072,7 @@ internal class CliDiscovery {
             Check.Contains(work, "publication step")
             Check.Contains(work, "Total budget for coding and verification")
             Check.Contains(work, "(required)")
-            Check.Contains(work, "use --run DIR instead of required inputs")
+            Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
 
@@ -1185,7 +1207,7 @@ internal class CliDiscovery {
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
             Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: ISSUE")
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "use --repo OWNER/REPO")
+            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "name OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
             File.Delete(Path.Combine(bin, "setsid"))

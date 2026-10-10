@@ -60,6 +60,8 @@ internal class CliCommand(
 
     internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "prepare" || Name == "status"
 
+    internal prop Runs bool -> Target == "run" || Name == "work" || Name == "checks" || Name == "status"
+
     internal func ConflictsWithRun(name string) bool -> name != "run" &&
         name != "help" &&
         name != "traffic" &&
@@ -220,7 +222,7 @@ internal class Cli {
                 "repo,profile,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from",
                 "repo,issue",
                 "Run the selected coding harness, verify work and show the publication step. Uses donor inference.",
-                "[ISSUE] [--profile NAME | --model MODEL --effort EFFORT] [--time TIME] [options]\n       tokate work --run DIR [--yes] [--non-interactive]",
+                "[ISSUE] [--profile NAME | --model MODEL --effort EFFORT] [--time TIME] [options]\n       tokate work RUN [--yes] [--non-interactive]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
                 target: "issue",
@@ -242,10 +244,10 @@ internal class Cli {
                 "run,incomplete",
                 "run",
                 "Push Tokate-coded work and request a coordinated v2 draft PR; no inference.",
-                "--run DIR [--incomplete]",
-                "submit --run /path/to/run",
+                "RUN [--incomplete]",
+                "submit 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "donate"
             ),
             CliCommand(
@@ -253,7 +255,7 @@ internal class Cli {
                 "run,repo",
                 "repo",
                 "Read contribution state and the responsible role remotely, or a saved run offline; no writes or inference.",
-                "[ISSUE | OWNER/REPO]\n       tokate status --run DIR",
+                "[ISSUE | OWNER/REPO]\n       tokate status RUN",
                 "status 42",
                 effects: "local_read github_read",
                 target: "issue",
@@ -264,10 +266,21 @@ internal class Cli {
                 "run,repo,watch,timeout",
                 "repo,pr",
                 "Read receipt, public report, exact-head CI, dependency and freshness gates with required owner actions; --run also saves results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
-                "PR [--watch] [--timeout TIME]\n       tokate checks --run DIR [--watch] [--timeout TIME]",
+                "PR [--watch] [--timeout TIME]\n       tokate checks RUN [--watch] [--timeout TIME]",
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
                 target: "pr",
+                group: "donate"
+            ),
+            CliCommand(
+                "runs",
+                "",
+                "",
+                "List saved runs on this computer offline; no writes or inference.",
+                "[ISSUE | OWNER/REPO]",
+                "runs 42",
+                effects: "local_read",
+                target: "issue",
                 group: "donate"
             ),
             CliCommand(
@@ -275,10 +288,10 @@ internal class Cli {
                 "run",
                 "run",
                 "Pause your reservation of saved work; no inference.",
-                "--run DIR",
-                "pause --run /path/to/run",
+                "RUN",
+                "pause 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "donate"
             ),
             CliCommand(
@@ -286,10 +299,10 @@ internal class Cli {
                 "run",
                 "run",
                 "Resume your paused reservation; no inference.",
-                "--run DIR",
-                "resume --run /path/to/run",
+                "RUN",
+                "resume 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "donate"
             ),
             CliCommand(
@@ -297,10 +310,10 @@ internal class Cli {
                 "run",
                 "run",
                 "Renew your reservation before it expires; no inference.",
-                "--run DIR",
-                "renew --run /path/to/run",
+                "RUN",
+                "renew 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "donate"
             ),
             CliCommand(
@@ -308,10 +321,10 @@ internal class Cli {
                 "run",
                 "run",
                 "Release your reservation so that other donors can claim the issue; no inference.",
-                "--run DIR",
-                "release --run /path/to/run",
+                "RUN",
+                "release 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "donate"
             ),
             CliCommand(
@@ -451,10 +464,10 @@ internal class Cli {
                 "run,time,commit,tools,summary",
                 "run",
                 "Prepare or verify an explicit correction to completed work; no inference.",
-                "--run DIR\n       tokate recover --run DIR --commit SHA --time TIME [--tools FILE] [--summary FILE]",
-                "recover --run /path/to/run",
+                "RUN\n       tokate recover RUN --commit SHA --time TIME [--tools FILE] [--summary FILE]",
+                "recover 42",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "more"
             ),
             CliCommand(
@@ -462,10 +475,10 @@ internal class Cli {
                 "run,commit,time,tools,sync,summary,resume",
                 "run,commit,time",
                 "Verify and publish a same-donor review correction; no inference.",
-                "--run DIR --commit SHA --time TIME [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "amend --run /path/to/run --commit SHA --time 5m",
+                "RUN --commit SHA --time TIME [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
+                "amend 42 --commit SHA --time 5m",
                 effects: "local_read local_write github_read github_write",
-                target: "",
+                target: "run",
                 group: "more"
             ),
             CliCommand(
@@ -473,10 +486,10 @@ internal class Cli {
                 "run,commit,summary,time,tools",
                 "run,commit",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
-                "--run DIR --commit SHA [--summary FILE]\n       tokate external --run DIR --commit NEW --time TIME --tools FILE",
-                "external --run /path/to/run --commit SHA",
+                "RUN --commit SHA [--summary FILE]\n       tokate external RUN --commit NEW --time TIME --tools FILE",
+                "external 42 --commit SHA",
                 effects: "local_read local_write github_read",
-                target: "",
+                target: "run",
                 group: "more"
             ),
             CliCommand(
@@ -484,10 +497,10 @@ internal class Cli {
                 "run,resume",
                 "run",
                 "Merge the exact current target in a saved published workspace; no inference, checks or publication.",
-                "--run DIR [--resume]",
-                "reconcile --run /path/to/run",
+                "RUN [--resume]",
+                "reconcile 42",
                 effects: "local_read local_write github_read",
-                target: "",
+                target: "run",
                 group: "more"
             ),
             CliCommand(
@@ -667,6 +680,8 @@ internal class Cli {
             case "prs": "PR PR..."
             case "donor": "LOGIN"
             case "operation": "OPERATION"
+            case "run": "RUN"
+            case "attempt": "RUN"
             case "seconds": "--time"
             case "verification-reserve": "--verify-time"
             case "reservation-seconds": "--reservation-time"
@@ -678,6 +693,7 @@ internal class Cli {
             case "pr": []string{"PR"}
             case "prs": []string{"PR", "PR..."}
             case "repo": []string{"OWNER/REPO"}
+            case "run": []string{"RUN"}
             case "access": []string{"OPERATION", "LOGIN", "ISSUE"}
             case "doctor": []string{"owner|managed|external", "HARNESS"}
             case "defaults": []string{"list|set|show|remove|use", "NAME"}
@@ -915,6 +931,15 @@ internal class Cli {
                     OptionHelp(text, "LOGIN", "Donor login; @me uses your signed-in account", width)
                     OptionHelp(text, "ISSUE", issue, width)
                 }
+                if command.Runs {
+                    OptionHelp(
+                        text,
+                        "RUN" + (command.Needs("run") ? " (required)": ""),
+                        "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate runs lists them" +
+                            (command.Target == "run" ? "; 42 uses the newest attempt of issue 42": ""),
+                        width
+                    )
+                }
                 for option in Options {
                     if !command.Has(option.Name) {
                         continue
@@ -939,10 +964,10 @@ internal class Cli {
                 }
                 if command.SupportsSavedRun {
                     text.AppendLine(
-                        name == "status" ? "Use --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
+                        name == "status" ? "Use RUN or --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
                         name == "prepare" ? "Use --run DIR only for recorded preparation before coding; it never resumes coding.":
-                        name == "work" ? "For a saved claim, use --run DIR instead of required inputs.":
-                        "Use --run DIR instead of PR to check a saved run."
+                        name == "work" ? "ISSUE continues its newest saved claim, or starts a new attempt. For a saved claim, use RUN or --run DIR instead of required inputs.":
+                        "Use RUN or --run DIR instead of PR to check a saved run. A PR with one saved run uses that run."
                     )
                 }
                 text.AppendLine("\nExample:\n  tokate " + command.Example)
@@ -971,6 +996,9 @@ internal class Cli {
 
         internal func Validate(args Args, guided bool = false) {
             let command = Find(args.Command)
+            if !args.Help {
+                RunReference.Resolve(args)
+            }
             if args.Get("from-pr") != "" &&
                 !args.Help &&
                 (args.Get("continue-from") != "" || args.Number("from-pr") < 1) {
@@ -1040,13 +1068,17 @@ internal class Cli {
                     args.Need("seconds")
                 }
             }
+            if args.Get("run") != "" && command.Runs && args.Run == "" && args.Words.Count > 0 {
+                throw Exception("--run conflicts with a repository or task argument")
+            }
             if args.Get("run") != "" && command.SupportsSavedRun {
-                if args.Words.Count > 0 {
-                    throw Exception("--run conflicts with a repository or task argument")
-                }
                 for key in args.Values.Keys {
                     if command.ConflictsWithRun(key.Substring(2)) {
-                        throw Exception("--run conflicts with " + Label(key.Substring(2)))
+                        throw Exception(
+                            (args.Run == "" ? "--run": "Saved run " + args.Run) +
+                                " conflicts with " +
+                                Label(key.Substring(2))
+                        )
                     }
                 }
             }

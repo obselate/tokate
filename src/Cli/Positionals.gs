@@ -68,12 +68,16 @@ internal class Positionals {
                 Url(args, word, key, segment)
                 return
             }
-            let match = Regex.Match(word, "^(?:([^#]+)#)?([0-9]+)\\z")
-            if key != "repo" && match.Success {
+            let match = Regex.Match(word, "^(?:([^#]+)#)?([0-9]+)(?:-([0-9]+))?\\z")
+            let attempt = match.Groups[3].Value
+            if key != "repo" && match.Success && (attempt == "" || Cli.Find(args.Command).Runs) {
                 if match.Groups[1].Value != "" {
                     Repo(args, match.Groups[1].Value)
                 }
-                Number(args, key, match.Groups[2].Value)
+                Number(args, attempt == "" ? key: "issue", match.Groups[2].Value)
+                if attempt != "" {
+                    Number(args, "attempt", attempt)
+                }
                 return
             }
             if key != "repo" && !word.Contains("/") {
@@ -157,7 +161,7 @@ internal class Positionals {
             } else {
                 Limit(args, target == "" ? 0: 1)
                 if words.Count == 1 {
-                    Reference(args, words[0], target)
+                    Reference(args, words[0], target == "run" ? "issue": target)
                 }
             }
             if LeaseLifecycle.Transition(args.Command) {

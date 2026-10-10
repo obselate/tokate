@@ -34,10 +34,10 @@ internal class RepositoryInput {
                     seconds: 5
                 )
             } catch (error Win32Exception) {
-                throw Exception("Local Git is unavailable; use --repo OWNER/REPO")
+                throw Exception("Local Git is unavailable; name OWNER/REPO or OWNER/REPO#42")
             }
             if result.Code != 0 {
-                throw Exception("Cannot determine a local repository; use --repo OWNER/REPO")
+                throw Exception("Cannot determine a local repository; name OWNER/REPO or OWNER/REPO#42")
             }
             var repo string = ""
             for line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries) {
@@ -53,12 +53,12 @@ internal class RepositoryInput {
                 }
                 let candidate = RepositoryIdentity.Repo(match.Groups[1].Value)
                 if repo != "" && !String.Equals(repo, candidate, StringComparison.OrdinalIgnoreCase) {
-                    throw Exception("Ambiguous local remotes; use --repo OWNER/REPO")
+                    throw Exception("Ambiguous local remotes; name OWNER/REPO or OWNER/REPO#42")
                 }
                 repo = candidate
             }
             if repo == "" {
-                throw Exception("No GitHub remote found; use --repo OWNER/REPO")
+                throw Exception("No GitHub remote found; name OWNER/REPO or OWNER/REPO#42")
             }
             return repo
         }

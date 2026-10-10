@@ -31,6 +31,7 @@ func Main(args[]string) int32 {
         PublicOutput.Command = options.Command
         if options.Get("run") != "" {
             PublicOutput.RunDirectory = Path.GetFullPath(options.Need("run"))
+            PublicOutput.RunName = options.Run
             PublicOutput.FailureCode = "invalid_state"
         }
         PublicOutput.ResultData = map[string, Object?]{
@@ -64,6 +65,11 @@ func Main(args[]string) int32 {
         if !validated && !PublicOutput.Enabled {
             Terminal.Message(Cli.ErrorUsage(args), error: true)
         }
+        if let failed = options {
+            if code == "invalid_state" && failed.Attempts.Count > 1 && !PublicOutput.Enabled {
+                Terminal.Runs(failed, failed.Attempts, true)
+            }
+        }
     } finally {
         DonationView.Close()
         WizardScreen.Close()
@@ -72,6 +78,11 @@ func Main(args[]string) int32 {
         }
     }
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
+        if let named = options {
+            if !PublicOutput.Enabled && PublicOutput.RunName == "" {
+                PublicOutput.RunName = RunReference.Name(named, PublicOutput.RunDirectory)
+            }
+        }
         PublicOutput.Next(options, code)
         if options?.Help != true {
             Terminal.RunOutcome(exitCode, code)
@@ -110,6 +121,10 @@ func Dispatch(options Args) int32 {
         } else {
             Console.WriteLine("tokate " + ApplicationInfo.Version())
         }
+        return 0
+    }
+    if options.Command == "runs" {
+        RunReference.Print(options)
         return 0
     }
     if options.Command == "update" || options.Command == "uninstall" {
@@ -289,6 +304,7 @@ func Dispatch(options Args) int32 {
         }
         case "status" when options.Get("run") == "" {
             ContributionStatus.Run(options)
+            RunReference.Attempts(options)
         }
         case "status" when !PublicOutput.Enabled {
             let summary = PublicOutput.RunSummary(Path.GetFullPath(options.Need("run")))
