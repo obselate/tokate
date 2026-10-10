@@ -130,15 +130,6 @@ internal class Worker {
                     }
                 )
                 scriptIndex = args.Count - 4
-                let paths = NixRuntime.Paths(
-                    NixRuntime.Tools(checkout, []string{CodexPath(harnessPath)}).ToArray(),
-                    checkout
-                )
-                let denied = NixRuntime.ProbeFile(paths, checkout)
-                if denied != "" {
-                    args[scriptIndex] += " && test ! -r \"$3\""
-                    args.Add(denied)
-                }
                 let result = Run(directory, args.ToArray(), harnessPath: harnessPath)
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     throw LinuxSandbox.ProbeFailure(

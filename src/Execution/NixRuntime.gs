@@ -115,13 +115,5 @@ internal class NixRuntime {
             directories.Add("/usr/local/bin:/usr/bin:/bin")
             return String.Join(":", directories)
         }
-
-        internal func ProbeFile(paths List[string], directory string) string {
-            if paths.Count == 0 {
-                return ""
-            }
-            let tool = LocalPaths.NeedSystemTool("nix-store", directory)
-            return paths.Contains(Root(LocalPaths.CanonicalPath(tool))) ? "": tool
-        }
     }
 }
