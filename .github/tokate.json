@@ -14,6 +14,8 @@
       "xhigh"
     ],
     "gpt-6-astra": [
+      "medium",
+      "high",
       "xhigh"
     ],
     "flash": [
@@ -27,6 +29,10 @@
     ],
     "~deepseek/deepseek-flash-latest": [
       "low"
+    ],
+    "gpt-6-luna": [
+      "xhigh",
+      "max"
     ]
   },
   "max_seconds": 14400,
@@ -68,6 +74,14 @@
     {
       "harness": "omp",
       "provider": "openrouter"
+    },
+    {
+      "harness": "omp",
+      "provider": "openai-codex"
+    },
+    {
+      "harness": "omp",
+      "provider": "anthropic"
     }
   ],
   "target_branch": "main"
