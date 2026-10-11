@@ -31,6 +31,7 @@ internal class Interactive {
 
         private func Continue(directory string) {
             while true {
+                ApprovalBase.Advisories.Clear()
                 PublicOutput.Reset("status")
                 PublicOutput.RunDirectory = directory
                 let summary = J.Parse(J.Write(PublicOutput.RunSummary(directory)))
@@ -182,6 +183,7 @@ internal class Interactive {
         }
 
         private func Start(command string) {
+            ApprovalBase.Advisories.Clear()
             let options = Args([]string{command})
             options.Guided = true
             if command == "init" {

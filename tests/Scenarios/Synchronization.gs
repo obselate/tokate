@@ -877,6 +877,13 @@ internal class SynchronizationChecks {
                 refuse || conflict ? 1: 0,
                 owner: mode == "donor"
             )
+            if mode == "edits" {
+                let advisory = "Target main is now " + upstream + "; approved base remains " + base
+                Check.That(
+                    result.Error.Split(advisory).Length == 2,
+                    "Reconciliation must print the unchanged target advisory once"
+                )
+            }
             flow.Reload()
             Check.That(
                 Check.Text(flow.State["exec_count"]) == inference && Check.Text(flow.State["git_pushes"]) == pushes,
