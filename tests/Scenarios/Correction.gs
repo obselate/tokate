@@ -339,10 +339,14 @@ internal class CorrectionChecks {
         }
 
         private func WrongTarget(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for stage in[]string{"recover", "prepare"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -387,10 +391,14 @@ internal class CorrectionChecks {
         }
 
         private func Tools(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for declared in[]bool{false, true} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -469,10 +477,14 @@ internal class CorrectionChecks {
         }
 
         private func Incomplete(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"incomplete_turn", "incomplete_tail", "failed_turn", "inference_exit_failure"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode(mode)
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -491,11 +503,16 @@ internal class CorrectionChecks {
         }
 
         private func ProtectedAndExact(binary string) {
+            using let protectedFlow = NativeFixture(binary)
+            protectedFlow.Initialize()
+            protectedFlow.ProtectedPolicy()
+            protectedFlow.Approve()
+            using let protectedBaseline = FixtureSnapshot(protectedFlow.Temp.Root)
             for rename in[]bool{false, true} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.ProtectedPolicy()
-                flow.Approve()
+                let flow = protectedFlow
+                protectedBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -515,10 +532,15 @@ internal class CorrectionChecks {
                 )
                 Once(flow)
             }
+            using let indexFlow = NativeFixture(binary)
+            indexFlow.Initialize()
+            indexFlow.Approve()
+            using let indexBaseline = FixtureSnapshot(indexFlow.Temp.Root)
             for flag in[]string{"--assume-unchanged", "--skip-worktree"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                let flow = indexFlow
+                indexBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -534,10 +556,15 @@ internal class CorrectionChecks {
                 Check.That(Read(run, "correction.json")["verification"] == nil, "Hidden index reached verification")
                 Once(flow)
             }
+            using let renameFlow = NativeFixture(binary)
+            renameFlow.Initialize()
+            renameFlow.Approve()
+            using let renameBaseline = FixtureSnapshot(renameFlow.Temp.Root)
             for rename in[]bool{false, true} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                let flow = renameFlow
+                renameBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -631,10 +658,14 @@ internal class CorrectionChecks {
         }
 
         private func ChangedCandidate(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"change_checked_head", "change_checked_tree", "change_checked_patch"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -779,9 +810,14 @@ internal class CorrectionChecks {
         }
 
         private func ManagedRefusals(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for change in[]string{"expiry", "revocation", "identity", "attempt"} {
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, "staged_whitespace")
                 Prepared(flow.Flow, run)
                 let commit = Correct(flow.Flow, run)
@@ -820,11 +856,16 @@ internal class CorrectionChecks {
         }
 
         private func Managed(binary string, modelPolicy string = "") {
+            using let flow = CoordinationFlow(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for originalMode in modelPolicy == "" ? []string{"staged_whitespace", "verification_fail"}: []string{
                 "staged_whitespace"
             } {
-                using let flow = CoordinationFlow(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 if modelPolicy != "" {
                     let path = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
                     let policy = Check.Json(File.ReadAllText(path))
@@ -907,10 +948,15 @@ internal class CorrectionChecks {
         }
 
         private func PublicationResponses(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let initial = FixtureSnapshot(flow.Flow.Temp.Root)
             for corrected in[]bool{false, true} {
                 let faults = corrected ? []string{"issue", "repo", "author", "body", "id"}: []string{"body"}
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                initial.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, corrected ? "staged_whitespace": "")
                 if corrected {
                     Prepared(flow.Flow, run)
@@ -1030,9 +1076,14 @@ internal class CorrectionChecks {
         }
 
         private func InterruptedManaged(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for mode in[]string{"push_fail_after_write", "request_fail_after_write", "request_fail_before_write"} {
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, "staged_whitespace")
                 Prepared(flow.Flow, run)
                 let commit = Correct(flow.Flow, run)
