@@ -20,10 +20,13 @@ internal class PreparationChecks {
         )
 
         private func Creation(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"", "lost_fork_response", "lost_branch_response", "pending"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 Directory.Delete(Path.Combine(flow.Bin, "fork"), true)
                 flow.Reload()
                 flow.State["missing_fork"] = JsonValue.Create(true)
@@ -53,6 +56,10 @@ internal class PreparationChecks {
         }
 
         private func Selection(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{
                 "renamed",
                 "explicit",
@@ -63,9 +70,8 @@ internal class PreparationChecks {
                 "parent",
                 "permission"
             } {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 var discovery = Check.Json("[{\"full_name\":\"donor/renamed\",\"fork\":true,\"owner\":{\"id\":123}}]")
                 if mode == "renamed" {
@@ -154,10 +160,13 @@ internal class PreparationChecks {
         }
 
         private func Interruptions(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for phase in[]string{"init", "fetch", "checkout"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 flow.State["preparation_interrupt"] = JsonValue.Create(phase)
                 flow.Save()
@@ -857,9 +866,13 @@ internal class PreparationChecks {
         }
 
         private func Ownership(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize(false)
+            let baselineComment = test.Comment
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for owner in[]bool{true, false} {
-                using let test = CoordinationFixture(binary)
-                test.Initialize(false)
+                baseline.Restore()
+                test.Comment = baselineComment
                 test.Flow.Reload()
                 test.Flow.State["self_owned"] = JsonValue.Create(true)
                 test.Flow.State["upstream_owner_id"] = JsonValue.Create(owner ? 123: 999)
@@ -1140,9 +1153,14 @@ internal class PreparationChecks {
         }
 
         private func Acquisition(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize()
+            let baselineComment = test.Comment
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for command in[]string{"claim", "work"} {
-                using let test = CoordinationFixture(binary)
-                test.Initialize()
+                baseline.Restore()
+                test.Comment = baselineComment
+                test.Flow.Reload()
                 let run = Acquiring(test, command)
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 let uuid = Check.Text(saved["claim_request"]?["uuid"])
