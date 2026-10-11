@@ -101,7 +101,7 @@ data struct CommandButton {
         button.FlexDirection = FlexDirection.Row
         button.AlignItems = AlignItems.Center
         button.JustifyContent = JustifyContent.Center
-        button.Gap = 8
+        button.Gap = iconOnly ? 0: 8
         button.Padding = iconOnly ? Edges{Left: 0, Right: 0}: Kind == ButtonKind.Segment ? Edges{Left: 12, Right: 12, Top: 6, Bottom: 6}: Edges{
             Left: 16,
             Right: 16,

@@ -31,7 +31,7 @@ data struct TimeLimits {
             }
         }
         let children = List[Blob]{
-            IconHeading{Icon: "schedule", Content: "Time limits"}.Build(),
+            IconHeading{Icon: "schedule", Content: "Time"}.Build(),
             PresetGroup{
                 Button: Button,
                 Labels: labels.ToArray(),

@@ -48,9 +48,9 @@ data struct ConfirmDialog {
                 CancelText: "Go back",
                 ConfirmText: confirmLabel,
                 CancelContent: Label{Content: "Go back"}.Build(),
-                ConfirmContent: Label{Content: confirmLabel}.Build(),
-                CreateCancel: (options, content) -> DialogButton("Go back", content),
-                CreateConfirm: (options, content) -> DialogButton(confirmLabel, content),
+                ConfirmContent: Label{Content: confirmLabel, Ink: AppTheme.Current.Paper}.Build(),
+                CreateCancel: (options, content) -> DialogButton("Go back", content, false),
+                CreateConfirm: (options, content) -> DialogButton(confirmLabel, content, true),
                 CreateRoot: (options, backdrop, panel) -> Container{
                     Position: PositionType.Absolute,
                     Left: 0,
@@ -73,13 +73,14 @@ data struct ConfirmDialog {
     }
 
     shared {
-        private func DialogButton(title string, content Blob) Button -> Button{
+        private func DialogButton(title string, content Blob, primary bool) Button -> Button{
             Height: 44,
             Padding: Edges{Left: 16, Right: 16},
             BorderWidth: 1,
-            BorderColor: AppTheme.Current.Line,
+            BorderColor: primary ? AppTheme.Current.Ink: AppTheme.Current.Line,
             BorderRadius: AppTheme.ControlRadius,
-            BackgroundColor: AppTheme.Current.Paper,
+            BackgroundColor: primary ? AppTheme.Current.Ink: AppTheme.Current.Paper,
+            Hover: Style{BackgroundColor: primary ? AppTheme.Current.Accent: AppTheme.Current.Surface},
             Focusable: true,
             Focus: AppTheme.FocusStyle(),
             Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: title},
