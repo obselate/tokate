@@ -260,6 +260,15 @@ internal class Amendment {
             }
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), commit)
             Commands.Git(checkout, "merge-base", "--is-ancestor", previous, commit)
+            if Commands.Git(checkout, "rev-parse", commit + "^{tree}") == Commands.Git(
+                checkout,
+                "rev-parse",
+                previous + "^{tree}"
+            ) {
+                throw Exception(
+                    "The commit has no file changes compared with the published commit. Edit and commit the saved checkout first."
+                )
+            }
             Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", run.Text("base"), commit)
             for name in[]string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"} {
                 if File.Exists(Path.Combine(checkout, ".git", name)) {
