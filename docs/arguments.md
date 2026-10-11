@@ -40,13 +40,13 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | `runs` | Optional `ISSUE` or `OWNER/REPO` |
 | `approve`, `revoke`, `request`, `coordination` | `ISSUE` |
 | `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
-| `select` | `OWNER/REPO [NAME]` or `NAME` |
+| `select` | Optional `OWNER/REPO [NAME]` or `NAME` in a checkout |
 | `overlaps` | 2 to 16 PR references |
 | `access init` | Optional `OWNER/REPO` |
 | `access trust`, `untrust`, `deny`, `restore` | `LOGIN [OWNER/REPO]` |
 | `access grant`, `remove` | `LOGIN ISSUE` |
 | `access check`, `request` | `ISSUE` |
-| `access list`, `history` | `[LOGIN] [OWNER/REPO]` or `[LOGIN] ISSUE` |
+| `access list`, `history` | `[LOGIN] [OWNER/REPO]` |
 | `doctor` | `owner [HARNESS]`, `managed [HARNESS]`, `external [HARNESS]` or `HARNESS` (`owner` and `codex` are valid alone) |
 | `defaults` | `list`; `set [NAME]`; `use NAME`; `show [NAME]`; `remove [NAME]`; no subcommand also lists saved profiles |
 | `help` | Optional `COMMAND` |

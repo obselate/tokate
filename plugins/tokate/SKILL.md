@@ -9,8 +9,8 @@ Help a donor take an approved issue to a verified draft PR. Tokate coordinates a
 
 Use installed CLI help for command details. In the project checkout, `42` names issue 42 and `42-1` names a saved run. Elsewhere use `OWNER/REPO#42`. `tokate runs` lists saved runs offline. Read the [donor guide](https://github.com/obselate/tokate/blob/main/docs/donors.md), [recovery guide](https://github.com/obselate/tokate/blob/main/docs/recovery.md), [public summary format](https://github.com/obselate/tokate/blob/main/AGENTS.md#write-public-pr-summaries) or [data boundaries](https://github.com/obselate/tokate/blob/main/docs/security.md) when relevant.
 
-- Honor consent for the task, harness/model/effort and time. Ask only for missing choices. A profile supplies settings, not consent.
+- Honor consent for the task, harness/model/effort and time. Ask only for missing choices. Use `claim ISSUE NAME`, `work ISSUE NAME` or `prepare ISSUE NAME` for a profile, and `select OWNER/REPO NAME` or `select NAME` in a checkout. A profile supplies settings, not consent. Time flags need units, such as `--time 1h` and `--verify-time 20m`.
 - Distinguish a managed harness launch from coding in this session. Loading the skill proves no adapter support or permission to launch another process. Declare external work and later editing tools accurately.
-- Preserve saved work and inspect its state before repeating a write. Pending grants no coding authority. Never bypass failure with another run. Retries, tool changes and budget extensions need consent.
+- Preserve saved work and inspect its state before repeating a write. A bare issue number selects the newest attempt only. If its state does not fit, the command fails, writes nothing and lists attempts. Pending grants no coding authority. Never bypass failure with another run. Retries, tool changes and budget extensions need consent.
 - Keep authentication with the harness. Never inspect credential files, mixed settings or environment dumps for model discovery.
 - Publish only when authorized. Report the actual contribution state and who must act next. A successful status read does not prove successful work.

@@ -137,7 +137,8 @@ tokate work 42
 tokate submit 42
 ```
 
-A bare issue number selects its newest attempt only. Name another attempt as `42-2`.
+A bare issue number selects its newest attempt only. If its state does not fit,
+the command fails, writes nothing and lists attempts. Name another attempt as `42-2`.
 `tokate runs` lists saved runs offline. `--run DIR` names a run directory exactly.
 
 `work` spends the selected budget and independently verifies completed work.
