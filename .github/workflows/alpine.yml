@@ -1,14 +1,14 @@
 name: Alpine
 on:
   push:
-    branches: [main]
+    branches: [main, 'integration/**']
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: alpine-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/integration/') }}
 jobs:
   musl:
     runs-on: ubuntu-24.04

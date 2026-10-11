@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'integration/**']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -17,7 +17,7 @@ permissions:
   contents: read
 concurrency:
   group: verify-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/heads/integration/') }}
 jobs:
   build:
     outputs:
@@ -81,12 +81,12 @@ jobs:
             rockylinux@sha256:305de618a5681ff75b1d608fd22b10f362867dff2f550a4f1d427d21cd7f42b4 \
             /bin/sh -ec 'test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.34"; /app/tokate --version; /app/tokate help --json > /dev/null'
       - name: Package the tested Node runtime with the suite binaries
-        if: ${{ inputs.full == true }}
+        if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
         run: |
           cp "$(command -v node)" artifacts/tests/node
           tar -czf "$RUNNER_TEMP/tokate-binaries.tar.gz" -C artifacts linux-x64/tokate tests/tokate-tests tests/node
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: ${{ inputs.full == true }}
+        if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
         with:
           name: tokate-binaries
           path: ${{ runner.temp }}/tokate-binaries.tar.gz
@@ -94,7 +94,7 @@ jobs:
           retention-days: 1
           compression-level: 0
   harness-layouts:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: build
     name: Native, npm and Bun harness paths
     outputs:
@@ -123,7 +123,7 @@ jobs:
       - run: bash scripts/harness-layout-proof.sh
         id: layouts
   harness-installation:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: build
     outputs:
       claude: ${{ steps.claude.outputs.version }}
@@ -166,7 +166,7 @@ jobs:
           printf '%s\n' "$version"
           printf '| Hermes | %s (main `%s`) | Installation only |\n' "${version%%$'\n'*}" "$revision" >> "$GITHUB_STEP_SUMMARY"
   native-proofs:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: [build, harness-layouts, harness-installation]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -229,7 +229,7 @@ jobs:
       - name: Probe the real managed Codex sandbox without inference
         run: artifacts/linux-x64/tokate doctor codex --harness-path "$TOKATE_CODEX"
   pi-proofs:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: [build, harness-layouts]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -267,7 +267,7 @@ jobs:
           printf '| Harness | Tested version | Coverage |\n| --- | --- | --- |\n| Pi | %s | Managed integration, shard %s/3 |\n' "$PI_VERSION" "$PI_SHARD" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/pi-proof.py --pi-root "$prefix/lib/node_modules" --node "$(command -v node)" --shard "$PI_SHARD/3"
   omp-proofs:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -307,7 +307,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: python3 scripts/omp-proof.py --omp "$RUNNER_TEMP/tokate-omp/omp"
   suite:
-    if: ${{ inputs.full == true }}
+    if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -338,7 +338,7 @@ jobs:
     steps:
       - run: |
           test '${{ needs.build.result }}' = success
-          if [[ '${{ inputs.full }}' == true ]]; then
+          if [[ '${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}' == true ]]; then
             test '${{ needs.suite.result }}' = success
             test '${{ needs.harness-installation.result }}' = success
             test '${{ needs.harness-layouts.result }}' = success

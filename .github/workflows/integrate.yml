@@ -8,7 +8,7 @@ on:
         required: true
 permissions:
   contents: write
-  actions: write
+  actions: read
   pull-requests: read
 concurrency: integrate
 jobs:
@@ -22,10 +22,20 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       BRANCH: integration/${{ github.run_id }}
     steps:
+      - name: Check integration token
+        env:
+          INTEGRATE_TOKEN: ${{ secrets.INTEGRATE_TOKEN }}
+        run: |
+          if [[ -z "$INTEGRATE_TOKEN" ]]; then
+            echo '::error::Set the INTEGRATE_TOKEN repository secret to a PAT with Contents and Workflows read/write permissions.'
+            exit 1
+          fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        id: checkout
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.INTEGRATE_TOKEN }}
       - name: Merge queued PRs
         env:
           PRS: ${{ inputs.prs }}
@@ -37,7 +47,6 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          echo "BASE=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           for pr in "${prs[@]}"; do
             if [[ ! "$pr" =~ ^[1-9][0-9]*$ ]]; then
               echo "::error::Invalid PR number: $pr"
@@ -55,23 +64,20 @@ jobs:
           done
       - name: Push integration branch
         run: git push origin "HEAD:$BRANCH"
-      - name: Dispatch and watch full verification
+      - name: Watch push verification
         run: |
           sha=$(git rev-parse HEAD)
-          gh workflow run ci.yml --ref "$BRANCH" -f full=true
-          gh workflow run alpine.yml --ref "$BRANCH"
-          gh workflow run nix.yml --ref "$BRANCH"
           runs=()
           for workflow in ci.yml alpine.yml nix.yml; do
             id=''
             for attempt in {1..30}; do
-              id=$(gh run list --workflow "$workflow" --branch "$BRANCH" --event workflow_dispatch \
-                --json databaseId,headSha --jq "first(.[] | select(.headSha == \"$sha\") | .databaseId)")
+              id=$(gh run list --workflow "$workflow" --branch "$BRANCH" --event push \
+                --commit "$sha" --json databaseId --jq '.[0].databaseId // empty')
               [[ -n "$id" ]] && break
               sleep 2
             done
             if [[ -z "$id" ]]; then
-              echo "::error::No $workflow dispatch run found for $BRANCH at $sha."
+              echo "::error::No $workflow push run found for $BRANCH at $sha."
               exit 1
             fi
             runs+=("$id")
@@ -87,13 +93,8 @@ jobs:
             echo '::error::Cannot fast-forward main. Main may have moved, or branch protection rejected the push.'
             exit 1
           fi
-      - name: Deploy changed website
-        run: |
-          if ! git diff --quiet "$BASE" HEAD -- site .github/workflows/pages.yml; then
-            gh workflow run pages.yml --ref main
-          fi
       - name: Delete integration branch
-        if: ${{ always() }}
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
         run: |
           ref=$(git ls-remote origin "refs/heads/$BRANCH")
           if [[ -n "$ref" ]]; then
