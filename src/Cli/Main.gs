@@ -304,7 +304,6 @@ func Dispatch(options Args) int32 {
         }
         case "status" when options.Get("run") == "" {
             ContributionStatus.Run(options)
-            RunReference.Attempts(options)
         }
         case "status" when !PublicOutput.Enabled {
             let summary = PublicOutput.RunSummary(Path.GetFullPath(options.Need("run")))

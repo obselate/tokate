@@ -89,21 +89,6 @@ internal class RunReference {
             return ""
         }
 
-        internal func Attempts(args Args) {
-            if args.Get("repo") == "" || args.Get("issue") == "" {
-                return
-            }
-            let rows = Recent(SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue")))
-            if PublicOutput.Enabled {
-                if PublicOutput.ResultData is Dictionary[string, Object?]fields {
-                    fields["attempts"] = SavedRuns.Summary(rows, 0)["runs"]
-                }
-            } else if rows.Count > 0 {
-                Terminal.Message("Saved runs on this computer:", "default")
-                Terminal.Runs(args, rows)
-            }
-        }
-
         internal func Print(args Args) {
             let saved = SavedRuns(RunStorage.Roots())
             let repo = args.Get("issue") != "" && args.Get("repo") == "" ? RepositoryInput.Local(): args.Get("repo")

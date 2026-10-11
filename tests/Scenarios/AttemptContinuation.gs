@@ -598,12 +598,7 @@ internal class AttemptContinuationChecks {
             test.Flow.Reload()
             test.Flow.State["preparation_interrupt"] = JsonValue.Create("fetch")
             test.Flow.Save()
-            Prepare(test, args, 1)
-            let fresh = Path.Combine(
-                test.Flow.Temp.Root,
-                "runs",
-                Check.Text(test.State()["state"]?["reservation"]?["attempt"])
-            )
+            let fresh = Prepare(test, args, 1)
             Check.That(
                 Check.Text(Read(fresh)["continuation_phase"]) == "captured",
                 "Interrupted preparation lost capture evidence"
