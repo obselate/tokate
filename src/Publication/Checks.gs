@@ -176,7 +176,7 @@ internal class Checks {
                     facts["target_branch"] = branch
                     facts["target_revision"] = currentTarget
                     stage = "receipt"
-                    let verified = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull, ready: false)
+                    let verified = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull)
                     if run.Text("commit") != "" && verified.Text("commit") != run.Text("commit") {
                         throw CliFailure("stale_approval", "Saved commit differs from PR receipt")
                     }
@@ -296,7 +296,7 @@ internal class Checks {
                     stage = "freshness"
                     let livePull = GitHub.Api(pullPath)
                     ObserveAfter(livePull, facts)
-                    let live = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), livePull, ready: false)
+                    let live = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), livePull)
                     facts["binding_after"] = J.Select(live.Element(), BindingFields)
                     if J.Write(J.Select(live.Element(), BindingFields)) != binding {
                         throw CliFailure("stale_approval", "PR authority changed while reading checks")

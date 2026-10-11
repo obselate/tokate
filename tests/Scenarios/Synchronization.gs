@@ -656,7 +656,7 @@ internal class SynchronizationChecks {
                     Check.Text(checked["data"]?["gates"]?["freshness"]?["status"]) == "passed",
                 "Later target movement rejected verified synchronization history"
             )
-            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
             let newGrant = Grant(flow, newCandidate, newUpstream)
