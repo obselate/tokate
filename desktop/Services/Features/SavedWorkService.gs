@@ -3,8 +3,9 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
-/// The donor's saved runs. Runs are found on disk and cached. The runs of a page are read at the same time
-/// and shown together. A run can be selected to continue, submit, verify again or amend.
+/// The donor's saved runs. Runs are found on disk, read in the background by eight readers and cached. The
+/// visible page is read first and shown in one update, so later pages show at once. A run can be selected to
+/// continue, submit, verify again or amend.
 class SavedWorkService {
     private let commands CommandRunner
     private let activity ActivityService
@@ -113,17 +114,28 @@ class SavedWorkService {
         LoadPage(Current.Page)
     }
 
-    /// Shows `page` when all its runs are read. Otherwise the rows in view stay while the page is read.
+    /// Shows `page` when all its runs are read. Otherwise the rows in view stay until then. Every run that is
+    /// not read is read in the background, the runs of `page` first.
     func LoadPage(page int32) {
         StopUpdates()
         let current = Math.Clamp(page, 1, Current.LastPage)
+        let order = List[string](PagePaths(current))
+        order.AddRange(Current.Paths)
         let pending = List[SavedRun]()
-        for path in PagePaths(current) {
-            if !cache.ContainsKey(path) {
+        let queued = HashSet[string]()
+        for path in order {
+            if !cache.ContainsKey(path) && queued.Add(path) {
                 pending.Add(SavedRun.Pending(path) with{Changed = RunStore.Changed(path)})
             }
         }
-        Set(Current with{Page = current, Selected = false, Rows = pending.Count == 0 ? Cached(current): Current.Rows})
+        let rows = Cached(current)
+        Set(
+            Current with{
+                Page = current,
+                Selected = false,
+                Rows = rows.Length == PagePaths(current).Count ? rows: Current.Rows,
+            }
+        )
         Read(pending.ToArray())
     }
 
@@ -142,18 +154,20 @@ class SavedWorkService {
         return rows.ToArray()
     }
 
-    /// Reads the items that are not refreshed, each with its own reader, at the same time.
+    /// Reads the items that are not refreshed, in order, with at most eight readers at the same time.
     private func Read(items []SavedRun) {
         let pending = List[SavedRun]()
-        let pool = List[RunReader]()
         for item in items {
             if !item.Refreshed {
                 pending.Add(item)
-                pool.Add(RunReader())
             }
         }
         if pending.Count == 0 {
             return
+        }
+        let pool = List[RunReader]()
+        for i in 0 ... Math.Min(8, pending.Count) {
+            pool.Add(RunReader())
         }
         readers = pool.ToArray()
         Set(Current with{Reading = true})
@@ -161,35 +175,50 @@ class SavedWorkService {
     }
 
     private func ReadRuns(pool []RunReader, sources []SavedRun, expected int32) {
+        let queue = chan[SavedRun](sources.Length)
+        for source in sources {
+            queue <- source
+        }
+        queue.Close()
         scope {
-            for index in 0 ... pool.Length {
-                go ReadRun(pool[index], sources[index], expected)
+            for reader in pool {
+                go ReadQueue(reader, queue, expected)
             }
         }
         window.Post(() -> Finished(expected))
     }
 
-    private func ReadRun(reader RunReader, source SavedRun, expected int32) {
-        if let item = reader.Read(source) {
+    private func ReadQueue(reader RunReader, queue chan[SavedRun], expected int32) {
+        for source in queue {
+            guard let item = reader.Read(source) else {
+                return
+            }
             window.Post(() -> Received(item, expected))
         }
     }
 
+    /// Keeps a read run. The run that completes the visible page shows that page in one update.
     private func Received(item SavedRun, expected int32) {
         if expected != revision {
             return
         }
         cache[item.Path] = item
-        if Current.Selected && item.Path == Current.RunPath {
-            Set(Current with{Chosen = item})
+        if Current.Selected {
+            if item.Path == Current.RunPath {
+                Set(Current with{Chosen = item})
+            }
+            return
+        }
+        let rows = Cached(Current.Page)
+        if rows.Length == PagePaths(Current.Page).Count && Array.Exists(rows, row -> row.Path == item.Path) {
+            Set(Current with{Rows = rows})
         }
     }
 
-    /// Shows the page in one update when all its runs are read.
     private func Finished(expected int32) {
         if expected == revision {
             readers = []RunReader{}
-            Set(Current with{Reading = false, Rows = Current.Selected ? Current.Rows: Cached(Current.Page)})
+            Set(Current with{Reading = false})
         }
     }
 

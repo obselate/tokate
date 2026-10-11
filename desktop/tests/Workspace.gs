@@ -2,6 +2,7 @@ package TokateDesktop
 
 import Goo
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
@@ -136,7 +137,6 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "Saved work")
         Settle(host)
         AwaitControl(host, adapter, AccessibilityRole.Status, "Needs amendment")
-        AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh contributions", enabled: true)
         Require(
             Find(adapter.Root, AccessibilityRole.Status, "Claimed, not started") != nil,
             "Missing not-started state"
@@ -144,18 +144,12 @@ func WorkspaceFlow() {
         Require(Find(adapter.Root, AccessibilityRole.Status, "Initial donation failed") != nil, "Missing failed state")
         Require(!FindText(adapter.Root, "owner/repo #44"), "Merged contribution remains active")
         Require(!FindText(adapter.Root, "LOCAL RUN DIRECTORIES"), "Saved work still exposes a folder list")
-        let firstReads = File.ReadAllLines(Path.Combine(fixture, "saved-reads"))
-        Require(firstReads.Length == 8, "Saved work eagerly loaded off-page runs")
-        Require(
-            !File.ReadAllText(Path.Combine(fixture, "saved-reads")).Contains("page-004"),
-            "Saved work prefetched page two"
-        )
-        Choose(host, window, adapter, "Next page")
         let delayed = System.Diagnostics.Stopwatch.StartNew()
         while !File.Exists(Path.Combine(fixture, "slow-started")) && delayed.Elapsed.TotalSeconds < 10 {
             Settle(host)
         }
-        Require(File.Exists(Path.Combine(fixture, "slow-started")), "Page two did not start loading")
+        Require(File.Exists(Path.Combine(fixture, "slow-started")), "Later pages were not read in the background")
+        Choose(host, window, adapter, "Next page")
         Require(
             Find(adapter.Root, AccessibilityRole.Button, "Previous page")?.Disabled == false,
             "Loading blocks pagination"
@@ -166,34 +160,37 @@ func WorkspaceFlow() {
             "A page showed rows before all its runs were read"
         )
         Choose(host, window, adapter, "Previous page")
+        Require(
+            Find(adapter.Root, AccessibilityRole.Status, "Needs amendment") != nil,
+            "A read page was not shown from the cache"
+        )
+        File.WriteAllText(Path.Combine(fixture, "release-page"), "release")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh contributions", enabled: true)
+        let reads = File.ReadAllLines(Path.Combine(fixture, "saved-reads"))
         var claimReads = 0
-        for path in File.ReadAllLines(Path.Combine(fixture, "saved-reads")) {
+        for path in reads {
             if path.EndsWith("/claimed") {
                 claimReads++
             }
         }
         Require(claimReads == 1, "Returning to a cached page reloaded its runs")
-        File.WriteAllText(Path.Combine(fixture, "release-page"), "release")
-        Require(
-            Find(adapter.Root, AccessibilityRole.Status, "Needs amendment") != nil,
-            "Stale page replaced the cached page"
-        )
+        let fixtureReads = HashSet[string]()
+        for path in reads {
+            if path.StartsWith(storage) {
+                fixtureReads.Add(path)
+            }
+        }
+        Require(fixtureReads.Count == 29, "Saved work did not read every run")
         Choose(host, window, adapter, "Next page")
-        AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh contributions", enabled: true)
         Require(
-            File.ReadAllLines(Path.Combine(fixture, "saved-reads")).Length <= 24,
-            "A page update loaded more than eight runs"
+            FindText(adapter.Root, "Page 2 of ") && Find(adapter.Root, AccessibilityRole.Status, "Needs amendment") == nil,
+            "A read page did not show at once"
         )
         Choose(host, window, adapter, "Previous page")
-        let cachedReads = File.ReadAllLines(Path.Combine(fixture, "saved-reads")).Length
-        Choose(host, window, adapter, "Next page")
-        AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh contributions", enabled: true)
         Require(
-            File.ReadAllLines(Path.Combine(fixture, "saved-reads")).Length == cachedReads,
-            "Page cache did not retain completed updates"
+            File.ReadAllLines(Path.Combine(fixture, "saved-reads")).Length == reads.Length,
+            "Page changes read cached runs again"
         )
-        Choose(host, window, adapter, "Previous page")
         Choose(host, window, adapter, "My project")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh projects", enabled: true)
         Edit(window, host, adapter, "GitHub repository", "owner/repo")
