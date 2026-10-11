@@ -142,7 +142,7 @@ internal class CliDiscovery {
             let other = Path.Combine(flow.Temp.Root, "other")
             Checkout(flow, other, "someone/else")
             let mismatch = List[string](args)
-            mismatch[4] = other
+            mismatch[3] = other
             Check.Contains(
                 flow.Call(mismatch.ToArray(), 1, true).Error,
                 "is a checkout of someone/else, not owner/project"
