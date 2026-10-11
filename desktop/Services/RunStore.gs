@@ -52,13 +52,17 @@ class RunStore {
 
         func Exists(path string) bool -> File.Exists(path)
 
-        /// The commit and its subject at HEAD of a saved checkout.
-        func Head(checkout string) CheckoutHead {
-            if Directory.Exists(checkout) {
-                let result = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "log", "-1", "--format=%H%n%s"}), 10)
-                let lines = result.Output.Split('\n')
-                if result.ExitCode == 0 && result.Error == "" && lines.Length > 1 {
-                    return CheckoutHead{Commit: lines[0].Trim(), Subject: lines[1].Trim()}
+        /// The commit and its subject at HEAD of a saved checkout, when its files differ from `published`.
+        func Correction(checkout string, published string) CheckoutHead {
+            if Directory.Exists(checkout) && published != "" {
+                let head = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "log", "-1", "--format=%H%n%s"}), 10)
+                let lines = head.Output.Split('\n')
+                if head.ExitCode == 0 && head.Error == "" && lines.Length > 1 {
+                    let commit = lines[0].Trim()
+                    let diff = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "diff", "--quiet", published, commit, "--"}), 10)
+                    if diff.ExitCode == 1 {
+                        return CheckoutHead{Commit: commit, Subject: lines[1].Trim()}
+                    }
                 }
             }
             return CheckoutHead{Commit: "", Subject: ""}

@@ -89,6 +89,20 @@ func ServiceTests() {
             RunCodec.ClaimId(Regression.Fixture("run-file.json")),
             "claim identity from a run directory"
         )
+
+        let checkout = Path.Combine(directory, "checkout")
+        Directory.CreateDirectory(checkout)
+        let git = Script(
+            directory,
+            "git-commits",
+            "cd \"$1\" && git init -q && git config user.name t && git config user.email t@t && git config commit.gpgsign false && " +
+                "git commit -q --allow-empty -m published && git rev-parse HEAD && " +
+                "git commit -q --allow-empty -m empty && echo x > file && git add file"
+        )
+        let published = ProcessRunner().Run(CommandStart(git, []string{checkout}), 10).Output.Trim()
+        Regression.Equal(RunStore.Correction(checkout, published).Commit, "", "a commit without file changes is not a correction")
+        ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "commit", "-q", "-m", "Correct the work"}), 10)
+        Regression.Equal(RunStore.Correction(checkout, published).Subject, "Correct the work", "a commit with file changes is a correction")
     } finally {
         Directory.Delete(directory, true)
     }

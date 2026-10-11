@@ -34,7 +34,7 @@ data struct AmendmentForm {
             children.Add(
                 DetailRow{
                     Caption: "Commit to publish",
-                    Value: ready ? Amendment.Commit.Substring(0, Math.Min(12, Amendment.Commit.Length)) + "  " + Amendment.Subject: "No new commit. Commit the correction in the saved checkout, then open this form again.",
+                    Value: ready ? Amendment.Commit.Substring(0, Math.Min(12, Amendment.Commit.Length)) + "  " + Amendment.Subject: "No file changes to publish. Edit and commit the correction in the saved checkout, then open this form again.",
                 }.Build()
             )
             children.Add(

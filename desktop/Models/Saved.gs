@@ -239,13 +239,14 @@ data struct RunGuide {
     }
 }
 
-/// The commit at HEAD of a saved checkout. An empty commit means that git cannot read the checkout.
+/// The commit at HEAD of a saved checkout. An empty commit means that the checkout has no correction to publish.
 data struct CheckoutHead {
     var Commit string
     var Subject string
 }
 
 /// An amendment publishes the commit at HEAD of the saved checkout, which the form reads when it opens.
+/// Tokate rejects a commit that changes no files, so the form reads a commit only when files changed.
 data struct AmendmentDraft {
     var Open bool
     var Commit string

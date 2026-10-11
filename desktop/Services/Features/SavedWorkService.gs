@@ -295,17 +295,17 @@ class SavedWorkService {
 
     // Amendment
 
-    /// Opens or closes the amendment form. Opening reads the commit at HEAD of the saved checkout.
+    /// Opens or closes the amendment form. Opening reads the correction in the saved checkout.
     func ToggleAmendment() {
         let opening = !Current.Amendment.Open
         SetAmendment(Current.Amendment with{Open = opening, Commit = "", Subject = ""})
         if opening {
-            go ReadHead(Current.Run.Checkout, Current.RunPath)
+            go ReadCorrection(Current.Run.Checkout, Current.Run.Commit, Current.RunPath)
         }
     }
 
-    private func ReadHead(checkout string, path string) {
-        let head = RunStore.Head(checkout)
+    private func ReadCorrection(checkout string, published string, path string) {
+        let head = RunStore.Correction(checkout, published)
         window.Post(
             () -> {
                 if Current.RunPath == path && Current.Amendment.Open {
