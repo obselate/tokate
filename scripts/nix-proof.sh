@@ -30,7 +30,7 @@ payload="$proof/profile/lib/tokate/tokate"
 test -x "$payload"
 TOKATE_BINARY="$payload" artifacts/tests/tokate-tests --nix-runtime "$probe/bin/tokate-nix-probe"
 test "$("$binary" --version)" = "tokate $(nix eval --raw .#default.version)"
-(cd "$proof"; "$binary" doctor --external --json) > "$proof/external.json"
+(cd "$proof"; "$binary" doctor external --json) > "$proof/external.json"
 (cd "$proof"; "$binary" doctor managed --harness-path "$proof/tools/bin/codex" --json) > "$proof/managed.json"
 system_bin=$(readlink -f /bin)
 empty_bins=(--tmpfs /usr/bin)
