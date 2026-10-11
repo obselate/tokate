@@ -39,10 +39,9 @@ func SavedTests() {
     saved.Act(RunAction.Recover)
     Regression.Equal(feedback.Current.Message, "Enter 1 to 1440 verification minutes.", "recovery minutes are validated")
     saved.SetVerification("11")
-    saved.SetCommit("abc")
     saved.Act(RunAction.Amend)
-    Regression.Equal(feedback.Current.Message, "Enter the complete 40-character commit.", "amendment commit is validated")
-    saved.SetCommit("0123456789abcdef0123456789abcdef01234567")
+    Regression.Equal(feedback.Current.Message, "Commit the correction in the saved checkout first.", "amendment needs a new commit")
+    saved.Current = saved.Current with{Amendment = saved.Current.Amendment with{Commit = "0123456789abcdef0123456789abcdef01234567"}}
     saved.SetSummary("/nonexistent/summary.json")
     saved.Act(RunAction.Amend)
     Regression.Equal(feedback.Current.Message, "Selected amendment file does not exist.", "amendment files must exist")

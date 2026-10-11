@@ -4,13 +4,15 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The verification budget for recovery or an amendment, and the amendment's commit and optional files.
+/// The verification budget for recovery or an amendment. An amendment also shows the commit at HEAD of the
+/// saved checkout, which it publishes, and takes optional files.
 data struct AmendmentForm {
     var Amendment AmendmentDraft
+    var Checkout string
+    var Published string
     var Button CommandButton
     var Disabled bool
     var OnVerification Action[string]?
-    var OnCommit Action[string]?
     var OnSummary Action[string]?
     var OnTools Action[string]?
     var OnPublish Action?
@@ -27,8 +29,13 @@ data struct AmendmentForm {
             }.Build(),
         }
         if Amendment.Open {
+            let ready = Amendment.HasCorrection(Published)
+            children.Add(DetailRow{Caption: "Saved checkout", Value: Checkout, Mono: true}.Build())
             children.Add(
-                InputField{Label: "Candidate commit", Value: Amendment.Commit, OnChange: OnCommit, Width: 650, Disabled: Disabled}.Build()
+                DetailRow{
+                    Caption: "Commit to publish",
+                    Value: ready ? Amendment.Commit.Substring(0, Math.Min(12, Amendment.Commit.Length)) + "  " + Amendment.Subject: "No new commit. Commit the correction in the saved checkout, then open this form again.",
+                }.Build()
             )
             children.Add(
                 InputField{
@@ -53,7 +60,7 @@ data struct AmendmentForm {
             children.Add(
                 Row{
                     Children: []Blob{
-                        (Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true}).Build(),
+                        (Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true, Disabled = !ready}).Build(),
                         (Button with{Label = "Cancel", Kind = ButtonKind.Quiet, OnClick = OnCancel}).Build(),
                     },
                 }.Build()

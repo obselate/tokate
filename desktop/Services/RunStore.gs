@@ -51,5 +51,17 @@ class RunStore {
         func ClaimId(run string) string -> RunCodec.ClaimId(Json.ParseFile(ClaimFile(run)))
 
         func Exists(path string) bool -> File.Exists(path)
+
+        /// The commit and its subject at HEAD of a saved checkout.
+        func Head(checkout string) CheckoutHead {
+            if Directory.Exists(checkout) {
+                let result = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "log", "-1", "--format=%H%n%s"}), 10)
+                let lines = result.Output.Split('\n')
+                if result.ExitCode == 0 && result.Error == "" && lines.Length > 1 {
+                    return CheckoutHead{Commit: lines[0].Trim(), Subject: lines[1].Trim()}
+                }
+            }
+            return CheckoutHead{Commit: "", Subject: ""}
+        }
     }
 }

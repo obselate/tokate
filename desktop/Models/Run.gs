@@ -40,6 +40,10 @@ data struct Run {
     var Unlimited bool
     var Approval string
     var DonorId string
+    /// The published candidate commit.
+    var Commit string
+    /// The directory of the saved checkout.
+    var Checkout string
 
     prop Kind RunState -> Run.Parse(State)
 

@@ -260,7 +260,7 @@ class SavedWorkService {
         }
         try {
             let amendment = Current.Amendment
-            let arguments = TokateCommands.RunAction(action, path, amendment)
+            let arguments = TokateCommands.RunAction(action, path, amendment, run.Commit)
             if action == RunAction.Amend {
                 for file in []string{amendment.Summary, amendment.Tools} {
                     if file != "" && !RunStore.Exists(file) {
@@ -295,11 +295,27 @@ class SavedWorkService {
 
     // Amendment
 
-    func ToggleAmendment() -> SetAmendment(Current.Amendment with{Open = !Current.Amendment.Open})
+    /// Opens or closes the amendment form. Opening reads the commit at HEAD of the saved checkout.
+    func ToggleAmendment() {
+        let opening = !Current.Amendment.Open
+        SetAmendment(Current.Amendment with{Open = opening, Commit = "", Subject = ""})
+        if opening {
+            go ReadHead(Current.Run.Checkout, Current.RunPath)
+        }
+    }
+
+    private func ReadHead(checkout string, path string) {
+        let head = RunStore.Head(checkout)
+        window.Post(
+            () -> {
+                if Current.RunPath == path && Current.Amendment.Open {
+                    SetAmendment(Current.Amendment with{Commit = head.Commit, Subject = head.Subject})
+                }
+            }
+        )
+    }
 
     func SetVerification(minutes string) -> SetAmendment(Current.Amendment with{Verification = minutes})
-
-    func SetCommit(commit string) -> SetAmendment(Current.Amendment with{Commit = commit})
 
     func SetSummary(path string) -> SetAmendment(Current.Amendment with{Summary = path})
 

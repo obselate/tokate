@@ -18,10 +18,11 @@ class SavedRunView {
         let amendment = state.Amendment
         let form Blob? = Array.IndexOf(state.Actions, RunAction.Recover) >= 0 || amendment.Open ? AmendmentForm{
             Amendment: amendment,
+            Checkout: run.Checkout,
+            Published: run.Commit,
             Button: page.Button,
             Disabled: page.Busy,
             OnVerification: value -> saved.SetVerification(value),
-            OnCommit: value -> saved.SetCommit(value),
             OnSummary: value -> saved.SetSummary(value),
             OnTools: value -> saved.SetTools(value),
             OnPublish: () -> saved.Act(RunAction.Amend),

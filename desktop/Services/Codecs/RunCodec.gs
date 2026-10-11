@@ -25,6 +25,8 @@ class RunCodec {
                 Unlimited: Json.Bool(data, "unlimited"),
                 Approval: Json.Text(data, "approval"),
                 DonorId: Json.Text(data, "donor_id"),
+                Commit: Json.Text(data, "commit"),
+                Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
             }
         }
 

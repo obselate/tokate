@@ -244,9 +244,17 @@ data struct RunGuide {
     }
 }
 
+/// The commit at HEAD of a saved checkout. An empty commit means that git cannot read the checkout.
+data struct CheckoutHead {
+    var Commit string
+    var Subject string
+}
+
+/// An amendment publishes the commit at HEAD of the saved checkout, which the form reads when it opens.
 data struct AmendmentDraft {
     var Open bool
     var Commit string
+    var Subject string
     var Summary string
     var Tools string
     var Verification string
@@ -258,15 +266,18 @@ data struct AmendmentDraft {
         return minutes
     }
 
-    func ValidCommit() string {
-        if Commit.Length != 40 || !Regex.IsMatch(Commit, "^[a-fA-F0-9]{40}$") {
-            throw Exception("Enter the complete 40-character commit.")
+    /// True when the checkout has a commit that is not the `published` one.
+    func HasCorrection(published string) bool -> Commit != "" && Commit != published
+
+    func ValidCommit(published string) string {
+        if !HasCorrection(published) {
+            throw Exception("Commit the correction in the saved checkout first.")
         }
         return Commit
     }
 
     shared {
-        let Initial AmendmentDraft = AmendmentDraft{Commit: "", Summary: "", Tools: "", Verification: "30"}
+        let Initial AmendmentDraft = AmendmentDraft{Commit: "", Subject: "", Summary: "", Tools: "", Verification: "30"}
     }
 }
 

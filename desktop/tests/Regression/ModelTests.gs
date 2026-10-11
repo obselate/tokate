@@ -122,7 +122,7 @@ func ModelTests() {
     Regression.Check(!(reservation with{Expires = nil}).IsReadyFor(run, claim, 1000), "missing expiry is not ready")
 
     let amendment = AmendmentDraft.Initial
-    Regression.Throws(() -> amendment.ValidCommit(), "Enter the complete 40-character commit.", "commit is validated")
+    Regression.Throws(() -> amendment.ValidCommit(""), "Commit the correction in the saved checkout first.", "amendment needs a new commit")
     Regression.Throws(
         () -> (amendment with{Verification = "0"}).VerificationMinutes(),
         "Enter 1 to 1440 verification minutes.",

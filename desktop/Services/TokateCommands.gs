@@ -112,7 +112,8 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        func RunAction(action RunAction, run string, amendment AmendmentDraft) []string {
+        /// `published` is the candidate commit that the run already published.
+        func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "") []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
             if RunActions.NeedsBudget(action) {
                 args.Add("--time")
@@ -120,7 +121,7 @@ class TokateCommands {
             }
             if action == RunAction.Amend {
                 args.Add("--commit")
-                args.Add(amendment.ValidCommit())
+                args.Add(amendment.ValidCommit(published))
                 if amendment.Summary != "" {
                     args.Add("--summary")
                     args.Add(amendment.Summary)
