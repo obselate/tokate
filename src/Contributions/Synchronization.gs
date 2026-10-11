@@ -143,9 +143,9 @@ internal class Synchronization {
             return value
         }
 
-        private func Target(repo string, approval JsonElement, target string, upstream string) {
+        private func Target(repo string, approval JsonElement, target string, upstream string, current bool = true) {
             ApprovalBase.Check(repo, approval)
-            if target != J.Text(approval, "base_branch") || GitHub.Branch(repo, target) != upstream {
+            if target != J.Text(approval, "base_branch") || (current && GitHub.Branch(repo, target) != upstream) {
                 throw Exception("Synchronization target moved; a new exact owner grant is required")
             }
             Decree.CheckCurrent(repo, upstream, approval)
@@ -164,7 +164,8 @@ internal class Synchronization {
             expected string = "",
             previous string = "",
             ready bool = true,
-            contribution JsonElement = default(JsonElement)
+            contribution JsonElement = default(JsonElement),
+            current bool = true
         ) {
             let approved = J.Get(record, "approval")
             let issue = J.Number(J.Get(record, "issue"), "number")
@@ -234,7 +235,7 @@ internal class Synchronization {
                 }
             }
             if ready && last.ValueKind != JsonValueKind.Undefined {
-                Target(repo, approved, J.Text(last, "target"), J.Text(last, "upstream"))
+                Target(repo, approved, J.Text(last, "target"), J.Text(last, "upstream"), current: current)
             }
         }
 

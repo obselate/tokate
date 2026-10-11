@@ -243,7 +243,8 @@ internal class ReceiptVerification {
                 J.Text(metadata, "branch"),
                 exactHead,
                 ready: ready,
-                contribution: contribution
+                contribution: contribution,
+                current: false
             )
             if paths && history.GetArrayLength() > 0 {
                 Synchronization.Remote(
@@ -281,7 +282,8 @@ internal class ReceiptVerification {
                     J.Text(metadata, "branch"),
                     exactHead,
                     ready: ready,
-                    contribution: contribution
+                    contribution: contribution,
+                    current: false
                 )
             }
             AccessState.Check(repo, J.Number(receipt, "issue"), approval, J.Get(contribution, "actor"))

@@ -15,7 +15,7 @@ internal class Checks {
             let result = J.Select(pull, "state,draft,merged,merged_at,closed_at")
             result["head"] = J.Select(J.Get(pull, "head"), "sha,ref")
             result["head_repo"] = J.Select(J.Get(J.Get(pull, "head"), "repo"), "id,full_name")
-            result["base"] = J.Select(J.Get(pull, "base"), "sha,ref")
+            result["base"] = J.Select(J.Get(pull, "base"), "ref")
             result["base_repo"] = J.Select(J.Get(J.Get(pull, "base"), "repo"), "id,full_name")
             result["author"] = J.Select(J.Get(pull, "user"), "id,login")
             result["body_hash"] = Data.Hash(J.Text(pull, "body"))
@@ -114,7 +114,6 @@ internal class Checks {
             var previous string = ""
             var binding string = ""
             var identity string = ""
-            var target string = ""
             while true {
                 let gates = map[string, Object?]{}
                 for name in[]string{"lifecycle", "receipt", "report", "checks", "dependencies", "freshness"} {
@@ -176,9 +175,6 @@ internal class Checks {
                     let currentTarget = GitHub.Branch(run.Text("repo"), branch)
                     facts["target_branch"] = branch
                     facts["target_revision"] = currentTarget
-                    if target != "" && target != currentTarget {
-                        throw CliFailure("stale_approval", "PR target revision changed while reading checks")
-                    }
                     stage = "receipt"
                     let verified = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull)
                     if run.Text("commit") != "" && verified.Text("commit") != run.Text("commit") {
@@ -196,7 +192,6 @@ internal class Checks {
                     }
                     binding = currentBinding
                     identity = Identity(pull)
-                    target = currentTarget
                     if run.Flag("incomplete") {
                         stage = "report"
                         facts["incomplete"] = true
@@ -212,16 +207,6 @@ internal class Checks {
                         "upstream"
                     )
                     facts["verified_target_revision"] = verifiedTarget
-                    if currentTarget != verifiedTarget {
-                        facts["reconciliation_required"] = true
-                        facts[
-                            "reconciliation_next"
-                        ] = "Ask the current donor to reconcile with the current target and verify the resulting exact commit. Further coding requires a new explicit budget."
-                        throw CliFailure(
-                            "stale_approval",
-                            "Target advanced beyond the contribution's verified base; reconcile and verify the resulting commit"
-                        )
-                    }
                     stage = "report"
                     var reportFailure string = ""
                     try {
@@ -326,8 +311,21 @@ internal class Checks {
                     }
                     let liveTarget = GitHub.Branch(run.Text("repo"), run.Text("base_branch"))
                     facts["target_revision_after"] = liveTarget
-                    if liveTarget != target {
-                        throw CliFailure("stale_approval", "PR target revision changed while reading checks")
+                    facts["target_moved"] = liveTarget != verifiedTarget
+                    facts["mergeable"] = J.Get(finalPull, "mergeable")
+                        .ValueKind == JsonValueKind.True ? true: (
+                        J.Get(finalPull, "mergeable").ValueKind == JsonValueKind.False ? false as Object: nil
+                    )
+                    facts["mergeable_state"] = J.Text(finalPull, "mergeable_state")
+                    let reconcile = J.Get(finalPull, "mergeable").ValueKind == JsonValueKind.False || J.Text(
+                        finalPull,
+                        "mergeable_state"
+                    ) == "behind"
+                    facts["reconciliation_required"] = reconcile
+                    if reconcile {
+                        facts[
+                            "reconciliation_next"
+                        ] = "GitHub reports a conflict or requires an up-to-date branch. Ask the current donor to reconcile and verify the resulting exact commit. Further coding requires a new explicit budget."
                     }
                     ApiTransport.CheckDeadline()
                     gates["freshness"] = map[string, Object?]{"status": "passed"}
