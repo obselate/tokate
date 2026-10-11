@@ -24,10 +24,10 @@ jobs:
     steps:
       - name: Check integration token
         env:
-          INTEGRATE_TOKEN: ${{ secrets.INTEGRATE_TOKEN }}
+          TOKATEPAT: ${{ secrets.TOKATEPAT }}
         run: |
-          if [[ -z "$INTEGRATE_TOKEN" ]]; then
-            echo '::error::Set the INTEGRATE_TOKEN repository secret to a PAT with Contents and Workflows read/write permissions.'
+          if [[ -z "$TOKATEPAT" ]]; then
+            echo '::error::Set the TOKATEPAT repository secret to a PAT with Contents and Workflows read/write permissions.'
             exit 1
           fi
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -35,7 +35,7 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.INTEGRATE_TOKEN }}
+          token: ${{ secrets.TOKATEPAT }}
       - name: Merge queued PRs
         env:
           PRS: ${{ inputs.prs }}
