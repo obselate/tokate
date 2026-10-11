@@ -1041,6 +1041,13 @@ internal class CliDiscovery {
                     Check.Contains(help.Output, "Usage: tokate " + command)
                     Check.Contains(help.Output, "Example:")
                     Check.That(help.Error == "", "Command help wrote warnings")
+                    if help.Output.Contains("--run DIR") {
+                        Check.That(
+                            !help.Output.Contains("--run DIR (required)"),
+                            "Run directory alternative marked required"
+                        )
+                        Check.Contains(help.Output, "Exact saved run directory")
+                    }
                 }
             }
             let work = Call(binary, []string{"work", "--help"}, temp).Output
