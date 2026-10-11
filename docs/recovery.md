@@ -59,8 +59,8 @@ approval. A coordinator lease transition must first establish the fresh active
 attempt. Then explicitly select the original tool and a new budget:
 
 ```sh
-tokate prepare OWNER/REPO#42 --state CURRENT_STATE_SHA --source tokate \
-  --continue-from PRIOR_RUN_DIR --profile PROFILE --time 1h --verify-time 20m --yes
+tokate prepare OWNER/REPO#42 PROFILE --state CURRENT_STATE_SHA --source tokate \
+  --continue-from PRIOR_RUN_DIR --time 1h --verify-time 20m --yes
 tokate work 42 --yes
 tokate submit 42
 ```

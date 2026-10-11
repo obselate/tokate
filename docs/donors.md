@@ -42,9 +42,9 @@ tokate select OWNER/REPO
 
 Select an owner-allowed model and effort. The offline catalog and login check do
 not prove account availability or remaining allowance. `tokate defaults` lists saved
-profiles. `tokate defaults show [NAME]` shows the default or a named profile. Use
-`tokate defaults set NAME` to keep several choices and select one per donation with
-`--profile NAME`.
+profiles; `tokate defaults show [NAME]` shows the default or a named profile. Use
+`tokate defaults set NAME` to keep several choices. Pass a profile name after the
+issue in `claim`, `work` or `prepare`, or after `OWNER/REPO` in `select`.
 Profiles do not store budgets.
 
 Codex runs unattended, so tools that need approval are refused. Set
@@ -78,7 +78,7 @@ offers levels from Pi. Use `absent` only for a model without reasoning.
 ```sh
 tokate defaults set local --harness pi --model 'MODEL_ID' \
   --effort high --endpoint http://127.0.0.1:8080/v1
-tokate select OWNER/REPO --profile local
+tokate select OWNER/REPO local
 ```
 
 Tokate discovers the CLI and Node from supported npm or managed Pi installations.
@@ -98,7 +98,7 @@ and your exact model and reasoning level. Check without inference, then save a c
 tokate doctor managed omp
 tokate defaults set omp --harness omp --provider PROVIDER \
   --model 'MODEL_ID' --effort EFFORT
-tokate select OWNER/REPO --profile omp
+tokate select OWNER/REPO omp
 ```
 
 `omp models` lists what your OMP can use. `--provider` can be omitted when the
@@ -125,10 +125,10 @@ To reserve without starting inference, for example for one hour with 20 minutes
 reserved for verification:
 
 ```sh
-tokate claim 42 --profile local --time 1h --verify-time 20m
+tokate claim 42 local --time 1h --verify-time 20m
 ```
 
-Omit `--profile local` to use your default tool choice. Claiming spends no inference.
+Omit the profile name to use your default tool choice. Claiming spends no inference.
 Tokate posts the request and saves the run as attempt `42-1`. A pending request is
 not a reservation. Wait for coordinator acceptance, then run:
 
