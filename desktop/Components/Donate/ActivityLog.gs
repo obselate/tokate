@@ -34,9 +34,8 @@ open class ActivityLog : Cell[ActivityLogInput] {
 
     init() {
         viewport.MetricsChanged += metrics -> {
-            let following = metrics.ScrollRange.Y - metrics.ScrollOffset.Y <= 2
-            if following != follow {
-                follow = following
+            if metrics.Pinned != follow {
+                follow = metrics.Pinned
                 Rebuild()
             }
         }
