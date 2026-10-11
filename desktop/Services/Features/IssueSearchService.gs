@@ -3,7 +3,8 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
-/// Paged search of one repository's open issues. A search for `#123` or `123` fetches that issue.
+/// Paged search of one repository's open issues. A search for `#123` or `123` fetches that issue. The rows in
+/// view stay until the next result arrives.
 class IssueSearchService {
     private let commands CommandRunner
     private let activity ActivityService
@@ -54,7 +55,7 @@ class IssueSearchService {
             listing = listing with{AppliedQuery = listing.Query.Trim()}
         }
         let numbered = listing.RequestedNumber() > 0
-        Current = listing with{Rows = []Issue{}, Loaded = true}
+        Current = listing with{Loaded = true}
         activity.Activate("Search issues")
         let started = commands.GitHub[IssueSearchPage](
             GitHubCommands.SearchIssues(Repository, listing, page),
@@ -69,6 +70,7 @@ class IssueSearchService {
     private func Loaded(reply Reply[IssueSearchPage], numbered bool, page int32) {
         Current = Current with{Loaded = true, Page = page}
         if reply.Outcome.ExitCode != 0 {
+            Current = Current with{Rows = []Issue{}}
             if numbered {
                 Current = Current with{Total = 0}
             }
