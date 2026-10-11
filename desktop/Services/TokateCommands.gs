@@ -143,6 +143,9 @@ class GitHubCommands {
     shared {
         func User() []string -> []string{"api", "user"}
 
+        /// Reports the active github.com account and whether its sign-in works.
+        func SignIn() []string -> []string{"auth", "status", "--active", "--hostname", "github.com", "--json", "hosts"}
+
         func Repository(repo string) []string -> []string{"api", "repos/" + repo}
 
         /// The public repositories of the user, the last pushed first.

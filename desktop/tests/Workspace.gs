@@ -113,7 +113,7 @@ func WorkspaceFlow() {
     Script(
         bin,
         "gh",
-        "if [ \"$$2\" = search/issues ]; then\n  query=''\n  page=1\n  limit=0\n  for arg in \"$$@\"; do\n    case \"$$arg\" in q=*) query=$${arg#q=};; page=*) page=$${arg#page=};; per_page=*) limit=$${arg#per_page=};; esac\n  done\n  [ \"$$limit\" = 96 ] || exit 1\n  printf '%s\\n' \"$$@\" >> FIXTURE/issue-calls\n  approved=false\n  case \"$$query\" in *'-label:tokate:approved'*) ;; *'label:tokate:approved'*) approved=true;; esac\n  count=96\n  total=512\n  first=$$((42 + (page - 1) * 96))\n  case \"$$query\" in *'\"needle\"'*) count=1; total=1; first=999;; esac\n  printf '{\"total_count\":%s,\"incomplete_results\":false,\"items\":[' \"$$total\"\n  i=0\n  while [ \"$$i\" -lt \"$$count\" ]; do\n    [ \"$$i\" -eq 0 ] || printf ','\n    number=$$((first + i))\n    printf '{\"number\":%s,\"title\":\"Issue %s\",\"state\":\"open\",\"html_url\":\"https://github.com/owner/repo/issues/%s\",\"labels\":[' \"$$number\" \"$$number\" \"$$number\"\n    [ \"$$approved\" = false ] || printf '{\"name\":\"tokate:approved\"}'\n    printf ']}'\n    i=$$((i + 1))\n  done\n  printf ']}'\nelif [ \"$$2\" = repos/owner/repo/issues/42 ]; then\n  printf '%s\\n' \"$$@\" >> FIXTURE/issue-calls\n  printf '%s' '{\"number\":42,\"title\":\"Issue 42\",\"state\":\"open\",\"html_url\":\"https://github.com/owner/repo/issues/42\",\"labels\":[]}'\nelif [ \"$$2\" = user ]; then\n  printf '%s' '{\"login\":\"fixture\"}'\nelif [ \"$$1\" = pr ]; then\n  if [ \"$$3\" = 4 ]; then printf '%s' '{\"state\":\"MERGED\"}'; else printf '%s' '{\"state\":\"OPEN\",\"reviewDecision\":\"CHANGES_REQUESTED\"}'; fi\nelif [ \"$$2\" = repos/owner/repo ]; then\n  printf '%s' '{\"permissions\":{\"push\":true},\"default_branch\":\"main\"}'\nelif [ \"$$2\" = 'repos/owner/repo/issues?state=open&sort=updated&per_page=30' ]; then\n  printf '%s' '[{\"number\":42,\"title\":\"Improve rendering\",\"labels\":[]}]'\nelse\n  printf '%s' '{\"title\":\"Improve rendering\"}'\nfi\n"
+        "if [ \"$$1\" = auth ]; then\n  if [ -e FIXTURE/signed-out ]; then printf '%s' '{\"hosts\":{}}'; else printf '%s' '{\"hosts\":{\"github.com\":[{\"state\":\"success\",\"active\":true}]}}'; fi\nelif [ \"$$2\" = search/issues ]; then\n  query=''\n  page=1\n  limit=0\n  for arg in \"$$@\"; do\n    case \"$$arg\" in q=*) query=$${arg#q=};; page=*) page=$${arg#page=};; per_page=*) limit=$${arg#per_page=};; esac\n  done\n  [ \"$$limit\" = 96 ] || exit 1\n  printf '%s\\n' \"$$@\" >> FIXTURE/issue-calls\n  approved=false\n  case \"$$query\" in *'-label:tokate:approved'*) ;; *'label:tokate:approved'*) approved=true;; esac\n  count=96\n  total=512\n  first=$$((42 + (page - 1) * 96))\n  case \"$$query\" in *'\"needle\"'*) count=1; total=1; first=999;; esac\n  printf '{\"total_count\":%s,\"incomplete_results\":false,\"items\":[' \"$$total\"\n  i=0\n  while [ \"$$i\" -lt \"$$count\" ]; do\n    [ \"$$i\" -eq 0 ] || printf ','\n    number=$$((first + i))\n    printf '{\"number\":%s,\"title\":\"Issue %s\",\"state\":\"open\",\"html_url\":\"https://github.com/owner/repo/issues/%s\",\"labels\":[' \"$$number\" \"$$number\" \"$$number\"\n    [ \"$$approved\" = false ] || printf '{\"name\":\"tokate:approved\"}'\n    printf ']}'\n    i=$$((i + 1))\n  done\n  printf ']}'\nelif [ \"$$2\" = repos/owner/repo/issues/42 ]; then\n  printf '%s\\n' \"$$@\" >> FIXTURE/issue-calls\n  printf '%s' '{\"number\":42,\"title\":\"Issue 42\",\"state\":\"open\",\"html_url\":\"https://github.com/owner/repo/issues/42\",\"labels\":[]}'\nelif [ \"$$2\" = user ]; then\n  printf '%s' '{\"login\":\"fixture\"}'\nelif [ \"$$1\" = pr ]; then\n  if [ \"$$3\" = 4 ]; then printf '%s' '{\"state\":\"MERGED\"}'; else printf '%s' '{\"state\":\"OPEN\",\"reviewDecision\":\"CHANGES_REQUESTED\"}'; fi\nelif [ \"$$2\" = repos/owner/repo ]; then\n  printf '%s' '{\"permissions\":{\"push\":true},\"default_branch\":\"main\"}'\nelif [ \"$$2\" = 'repos/owner/repo/issues?state=open&sort=updated&per_page=30' ]; then\n  printf '%s' '[{\"number\":42,\"title\":\"Improve rendering\",\"labels\":[]}]'\nelse\n  printf '%s' '{\"title\":\"Improve rendering\"}'\nfi\n"
             .Replace("FIXTURE", fixture)
     )
     Script(bin, "codex", "printf '%s' '{\"models\":[]}'\n")
@@ -134,6 +134,29 @@ func WorkspaceFlow() {
         window.Attach(host)
         host.SetFocused(true)
         Settle(host)
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Continue owner/repo #43", enabled: true)
+        Require(
+            Find(adapter.Root, AccessibilityRole.Alert, "GitHub CLI is not signed in") == nil,
+            "A signed-in account shows the sign-in message"
+        )
+        let choices = Find(adapter.Root, AccessibilityRole.Button, "Donate AI time")?.Bounds.Y
+        File.WriteAllText(Path.Combine(fixture, "signed-out"), "")
+        Choose(host, window, adapter, "Welcome")
+        AwaitControl(host, adapter, AccessibilityRole.Alert, "GitHub CLI is not signed in")
+        Require(
+            Find(adapter.Root, AccessibilityRole.Button, "Donate AI time")?.Bounds.Y == choices,
+            "The welcome messages moved the choices"
+        )
+        File.Delete(Path.Combine(fixture, "signed-out"))
+        Choose(host, window, adapter, "Check again")
+        let signing = System.Diagnostics.Stopwatch.StartNew()
+        while Find(adapter.Root, AccessibilityRole.Alert, "GitHub CLI is not signed in") != nil && signing.Elapsed.TotalSeconds < 10 {
+            Settle(host)
+        }
+        Require(
+            Find(adapter.Root, AccessibilityRole.Alert, "GitHub CLI is not signed in") == nil,
+            "Check again kept the sign-in message"
+        )
         Choose(host, window, adapter, "Saved work")
         Settle(host)
         AwaitControl(host, adapter, AccessibilityRole.Status, "Needs amendment")
@@ -328,6 +351,10 @@ func WorkspaceFlow() {
             Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "11",
             "Navigation discarded amendment settings"
         )
+        Choose(host, window, adapter, "Welcome")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Continue owner/repo #43", enabled: true)
+        Choose(host, window, adapter, "Continue owner/repo #43")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Amend contribution", enabled: true)
     } finally {
         Environment.SetEnvironmentVariable("PATH", previousPath)
         Environment.SetEnvironmentVariable("XDG_STATE_HOME", previousState)

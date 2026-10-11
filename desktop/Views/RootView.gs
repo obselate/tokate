@@ -26,7 +26,7 @@ class RootView : Cell {
         donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> OpenSaved(path))
         project = ProjectView(app.Owner, app.Feedback)
         saved = SavedView(app.Saved, app.Feedback)
-        welcome = WelcomeView(app, next -> Navigate(next))
+        welcome = WelcomeView(app, next -> Navigate(next), path -> OpenSaved(path))
         appearance = AppearanceView(app)
         app.Commands.RememberRun = path -> app.Saved.Remember(path)
         app.Saved.OnWork = (run, path) -> {
@@ -59,6 +59,9 @@ class RootView : Cell {
         }
         if next == Destination.Project {
             app.Owner.Enter()
+        }
+        if next == Destination.Welcome {
+            app.Welcome.Refresh(app.Saved.Current.RunPath)
         }
     }
 
