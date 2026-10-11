@@ -30,9 +30,9 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 
 | Command | Positionals |
 | --- | --- |
-| `work` | `ISSUE [PROFILE]`, `OWNER/REPO` to choose an issue, or `RUN` |
-| `claim` | `ISSUE [PROFILE]` or `OWNER/REPO` |
-| `prepare` | `ISSUE [PROFILE]`; use `--run DIR` to resume recorded preparation |
+| `work` | `ISSUE [NAME]`, `OWNER/REPO` to choose an issue, or `RUN` |
+| `claim` | `ISSUE [NAME]` or `OWNER/REPO` |
+| `prepare` | `ISSUE [NAME]`; use `--run DIR` to resume recorded preparation |
 | `submit`, `pause`, `resume`, `renew`, `release`, `recover`, `amend`, `external`, `reconcile` | `RUN` |
 | `status` | `ISSUE`, `OWNER/REPO` or `RUN` |
 | `checks` | `PR` or `RUN` |
@@ -40,15 +40,15 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | `runs` | Optional `ISSUE` or `OWNER/REPO` |
 | `approve`, `revoke`, `request`, `coordination` | `ISSUE` |
 | `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
-| `select` | `OWNER/REPO [PROFILE]` or `PROFILE` |
+| `select` | `OWNER/REPO [NAME]` or `NAME` |
 | `overlaps` | 2 to 16 PR references |
 | `access init` | Optional `OWNER/REPO` |
 | `access trust`, `untrust`, `deny`, `restore` | `LOGIN [OWNER/REPO]` |
 | `access grant`, `remove` | `LOGIN ISSUE` |
 | `access check`, `request` | `ISSUE` |
-| `access list`, `history` | `[LOGIN] [ISSUE or OWNER/REPO]` |
-| `doctor` | Optional scope (`owner`, `managed` or `external`) and optional `HARNESS`; standalone `owner` and `codex` are valid |
-| `defaults` | `set [NAME]`, `use NAME`, `show [NAME]`, `remove [NAME]`; no subcommand lists saved profiles |
+| `access list`, `history` | `[LOGIN] [OWNER/REPO]` or `[LOGIN] ISSUE` |
+| `doctor` | `owner [HARNESS]`, `managed [HARNESS]`, `external [HARNESS]` or `HARNESS` (`owner` and `codex` are valid alone) |
+| `defaults` | `list`; `set [NAME]`; `use NAME`; `show [NAME]`; `remove [NAME]`; no subcommand also lists saved profiles |
 | `help` | Optional `COMMAND` |
 | `completion` | `bash`, `zsh` or `fish` |
 | `update`, `uninstall`, `claude-capabilities`, `--version` | None |
@@ -58,8 +58,8 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 ## Flags and time units
 
 - Exact revisions and file inputs stay attached to the operation: `--commit SHA`,
-  `--state SHA`, `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE`
-  and `--output FILE`.
+  `--state SHA`, `--upstream SHA`, `--grant SHA`, `--tools FILE`, `--summary FILE`,
+  `--file FILE`, `--event FILE` and `--output FILE`.
 - Harness and model settings remain flags because they select execution, not the
   command target: `--harness`, `--model`, `--effort` and `--provider`.
 - `--fork LOGIN/REPO` selects a donor fork; `--from-pr N` seeds from another

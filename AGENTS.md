@@ -37,7 +37,7 @@ Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
 Use `defaults` and `select` to reuse a permitted model choice without inference.
 Never inspect credential files or mixed harness settings to discover defaults.
 
-Use `tokate claim ISSUE [PROFILE]` with a selected profile or model/effort and an
+Use `tokate claim ISSUE [NAME]` with a selected profile or model/effort and an
 explicit budget, such as `--time 1h`. It creates the request without inference and
 saves the run as an attempt such as `42-1`. `tokate runs` lists saved runs offline.
 After coordinator acceptance, use `tokate work 42`, then `tokate submit 42`.
