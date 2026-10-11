@@ -35,9 +35,9 @@ class DonateView {
         let step = donation.Current.Step
         let message = feedback.Current.Message
         if step == DonationStep.Donation {
-            return progress.Build(page, Header(step), message)
+            return progress.Build(page, Header(page, step), message, feedback.Current.Tone)
         }
-        let body = List[Blob]{Header(step)}
+        let body = List[Blob]{Header(page, step)}
         if message != "" {
             body.Add(Callout{Message: message, Tone: feedback.Current.Tone}.Build())
         }
@@ -51,15 +51,44 @@ class DonateView {
         return Stack{Gap: 20, Children: body.ToArray()}.Build()
     }
 
-    private func Header(step DonationStep) Blob -> Stack{
-        Gap: 18,
-        Children: []Blob{
-            Heading{Content: DonationSteps.Heading(step), Size: AppTheme.DisplaySize}.Build(),
+    /// The page title and the step indicator. Step IV names the issue and links to it.
+    private func Header(page PageContext, step DonationStep) Blob {
+        let state = donation.Current
+        let run = state.Progress.Run
+        let repository = state.Progress.Path != "" ? run.Repo: state.Repository
+        let number = state.Progress.Path != "" ? run.Issue.ToString(): state.Issue
+        let identity = repository + " #" + number
+        let titled = step == DonationStep.Donation && state.IssueTitle != "" && identity == state.Identity
+        let children = List[Blob]{
+            Heading{
+                Content: titled ? state.IssueTitle: DonationSteps.Heading(step),
+                Size: AppTheme.DisplaySize,
+                MaxLines: 2,
+            }.Build(),
+        }
+        if step == DonationStep.Donation {
+            children.Add(
+                Row{
+                    Children: []Blob{
+                        Label{Content: identity, Size: AppTheme.SmallSize, Muted: true}.Build(),
+                        (page.Button with{
+                            Label = "Open issue",
+                            Kind = ButtonKind.Quiet,
+                            Icon = "open_in_new",
+                            AllowWhileBusy = true,
+                            OnClick = () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
+                        }).Build(),
+                    },
+                }.Build()
+            )
+        }
+        children.Add(
             StepIndicator{
                 Names: DonationSteps.Names,
                 Numerals: DonationSteps.Numerals,
                 Current: DonationSteps.Index(step),
-            }.Build(),
-        },
-    }.Build()
+            }.Build()
+        )
+        return Stack{Gap: step == DonationStep.Donation ? 8: 18, Children: children.ToArray()}.Build()
+    }
 }

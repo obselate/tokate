@@ -1,70 +1,71 @@
 package TokateDesktop
 
 import Goo
-import Goo.Widgets.Icons
 import System
 
-/// A started donation: its state and budget above the live output, with elapsed time and the next actions
-/// in the footer. The output is an `ActivityLog`, which keeps the scroll position.
+/// The output of a donation. Before the start it is an empty panel. After the start it is an `ActivityLog`,
+/// which keeps the scroll position, with the line count in its header.
 data struct DonationRun {
     var Progress DonationProgress
     var Short bool
     var Button CommandButton
-    var OnNew Action?
-    var OnViewSaved Action?
 
     func Build() Blob {
         let p = AppTheme.Current
-        let run = Progress.Run
-        let button = Button
-        let running = Progress.Running
-        let elapsed = "Elapsed " + DonationProgress.ElapsedText(Progress.Elapsed)
-        let start = OnNew
-        let saved = OnViewSaved
-        return Container{
-            FlexGrow: 1,
-            FlexBasis: 0,
+        let count = Progress.Output.Count
+        let summary = Progress.Truncated ? "Latest " + count.ToString() + " lines. Earlier lines are not shown.": count == 0 ? "": count.ToString() + (
+            count == 1 ? " line": " lines"
+        )
+        let panel = Container{
+            FlexGrow: Short ? 0: 1,
+            FlexBasis: Short ? Length.Auto: Length(0),
             MinHeight: 0,
             Overflow: Overflow.Hidden,
             BackgroundColor: p.Surface,
             BorderWidth: 1,
             BorderColor: p.Line,
             BorderRadius: AppTheme.PanelRadius,
-            Container{
-                Padding: Edges{Left: 18, Right: 18, Top: 14, Bottom: 14},
-                Accessibility: Accessibility{Role: AccessibilityRole.Status, Name: Progress.State, Busy: Progress.Running},
-                Row{
-                    Children: []Blob{
-                        MaterialIcons.Create(Progress.Running ? "auto_awesome": "task_alt", 24, p.Accent),
-                        Heading{Content: Progress.State}.Build(),
-                    },
-                }.Build(),
-                Label{
-                    Content: "Coding: " + run.CodingTime + "   /   Verification: " + run.VerificationTime,
-                    Size: AppTheme.SmallSize,
-                    Muted: true,
-                }.Build(),
-            },
-            Rule{}.Build(),
+        }
+        if !Progress.Started {
+            panel.Children.Add(
+                Container{
+                    MinHeight: 52,
+                    JustifyContent: JustifyContent.Center,
+                    Padding: Edges{Left: 22, Right: 22},
+                    Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
+                }
+            )
+            panel.Children.Add(Rule{}.Build())
+            panel.Children.Add(
+                Container{
+                    FlexGrow: 1,
+                    AlignItems: AlignItems.Center,
+                    JustifyContent: JustifyContent.Center,
+                    Padding: 24,
+                    Label{Content: "The output shows here after the donation starts.", Muted: true}.Build(),
+                }
+            )
+            return panel
+        }
+        panel.Children.Add(
             ActivityLog.Mount(
                 "donation-output",
                 ActivityLogInput{
                     Lines: Progress.Output,
                     Revision: Progress.OutputRevision,
-                    Placeholder: "Starting donation...",
+                    Placeholder: Progress.Running ? "Starting donation...": "The donation gave no output.",
                     Name: "Donation output",
                     LineName: "Command output",
                     Running: Progress.Running,
                     Short: Short,
-                    Leading: () -> []Blob{Label{Content: elapsed, Size: AppTheme.SmallSize, Muted: true}.Build()},
-                    Trailing: () -> running ? []Blob{CancelButton{Stopping: button.Stopping, OnCancel: button.OnCancel}.Build()}:
-                    []Blob{
-                        (button with{Label = "New donation", OnClick = start}).Build(),
-                        (button with{Label = "View saved work", OnClick = saved}).Build(),
+                    Leading: () -> []Blob{
+                        Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
+                        Label{Content: summary, Size: AppTheme.SmallSize, Muted: true}.Build(),
                     },
                     FollowButton: Button,
                 }
-            ),
-        }
+            )
+        )
+        return panel
     }
 }

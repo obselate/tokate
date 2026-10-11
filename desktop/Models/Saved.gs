@@ -47,16 +47,7 @@ data struct SavedRun {
                 return "Closed without merge"
             }
         }
-        return switch run.State {
-            case "claim_pending": "Awaiting reservation"
-            case "claimed": "Claimed, not started"
-            case "preparing": "Preparing workspace"
-            case "running": "Donation in progress"
-            case "failed": run.FailureReason == "verification_failed" ? "Verification failed": "Initial donation failed"
-            case "generated": "Ready to submit"
-            case "published": "Awaiting review"
-            default: run.State.Replace('_', ' ')
-        }
+        return run.Status
     }
 
     shared {

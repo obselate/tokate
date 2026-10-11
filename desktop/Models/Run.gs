@@ -52,6 +52,18 @@ data struct Run {
 
     prop VerificationTime string -> (VerificationReserve / 60).ToString() + " minutes"
 
+    /// The donor's name for the local state.
+    prop Status string -> switch State {
+        case "claim_pending": "Awaiting reservation"
+        case "claimed": "Claimed, not started"
+        case "preparing": "Preparing workspace"
+        case "running": "Donation in progress"
+        case "failed": FailureReason == "verification_failed" ? "Verification failed": "Initial donation failed"
+        case "generated": "Ready to submit"
+        case "published": "Awaiting review"
+        default: State.Replace('_', ' ')
+    }
+
     shared {
         func Parse(state string) RunState -> switch state {
             case "claim_pending": RunState.ClaimPending

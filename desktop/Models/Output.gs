@@ -17,6 +17,7 @@ data struct OutputLine {
 class OutputTail {
     private let lines List[OutputLine] = List[OutputLine]()
     private var next int64
+    private var first int64
 
     let Limit int32
 
@@ -27,6 +28,9 @@ class OutputTail {
     prop Lines IReadOnlyList[OutputLine] -> lines
 
     prop Revision int64 -> next
+
+    /// Whether lines since the last `Clear` no longer fit and were removed.
+    prop Dropped bool -> lines.Count > 0 && lines[0].Position > first
 
     /// Adds each nonblank line of `text`.
     func Append(text string) {
@@ -45,5 +49,6 @@ class OutputTail {
     func Clear() {
         lines.Clear()
         next++
+        first = next
     }
 }

@@ -131,19 +131,38 @@ data struct DonationDraft {
     }
 }
 
+/// A reserved donation from the request to the result. `Tone` says who must act on `State`, `Polling` that
+/// the app checks for approval, and `Truncated` that the output lost its earliest lines.
 data struct DonationProgress {
     var Path string
     var Run Run
     var Ready bool
+    var Polling bool
     var Started bool
     var Running bool
     var Output IReadOnlyList[OutputLine]
     var OutputRevision int64
+    var Truncated bool
     var Elapsed int32
     var State string
+    var Tone Tone
+
+    /// The coding and verification limits together in seconds, or zero when coding time is unlimited.
+    prop Limit int32 -> Run.Unlimited ? 0: Run.CodingSeconds + Run.VerificationReserve
 
     shared {
-        let Empty DonationProgress = DonationProgress{Path: "", Run: Run.Empty, Output: []OutputLine{}, State: ""}
+        let Empty DonationProgress = DonationProgress{
+            Path: "",
+            Run: Run.Empty,
+            Output: []OutputLine{},
+            State: "",
+            Tone: Tone.Wait,
+        }
+
+        /// Minutes and seconds, with hours only when there are any.
+        func Clock(seconds int32) string -> (seconds >= 3600 ? (seconds / 3600).ToString() + ":": "") + (seconds / 60 % 60).ToString(
+            "00"
+        ) + ":" + (seconds % 60).ToString("00")
 
         func ElapsedText(seconds int32) string -> (seconds / 3600).ToString("00") + ":" + (seconds / 60 % 60).ToString(
             "00"

@@ -3,7 +3,7 @@ package TokateDesktop
 import Goo
 import System
 
-/// Step IV: a reserved donation waiting to start, then its live output.
+/// Step IV: a reserved donation from the request to the result, above its output.
 class DonationStepView {
     private let donation DonationService
     private let navigate Action[Destination]
@@ -15,47 +15,29 @@ class DonationStepView {
         this.openSaved = openSaved
     }
 
-    func Build(page PageContext, header Blob, message string) Blob {
-        let state = donation.Current
-        let progress = state.Progress
-        let run = progress.Run
-        let started = progress.Started
-        let body = Stack{
-            Gap: 18,
-            Fill: started && !page.Metrics.Short,
+    func Build(page PageContext, header Blob, message string, tone Tone) Blob {
+        let progress = donation.Current.Progress
+        let directory = progress.Path
+        return Stack{
+            Gap: 16,
+            Fill: !page.Metrics.Short,
             Children: []Blob{
                 header,
-                Label{Content: progress.Path == "" ? state.Identity: run.Identity}.Build(),
-            },
-        }.Build()
-        if !started {
-            body.Children.Add(
                 DonationStatus{
                     Progress: progress,
                     Message: message,
+                    MessageTone: tone,
                     Button: page.Button,
                     Busy: page.Busy,
                     Cancellable: page.BusyHere,
-                    Compact: page.CompactPanels,
+                    Stacked: page.Metrics.ContentWidth < 740,
                     OnStart: () -> donation.Start(),
                     OnInspectSaved: () -> navigate(Destination.Saved),
-                }.Build()
-            )
-            return body
-        }
-        if message != "" {
-            body.Children.Add(Label{Content: message}.Build())
-        }
-        let directory = progress.Path
-        body.Children.Add(
-            DonationRun{
-                Progress: progress,
-                Short: page.Metrics.Short,
-                Button: page.Button,
-                OnNew: () -> donation.NewDonation(),
-                OnViewSaved: () -> openSaved(directory),
-            }.Build()
-        )
-        return body
+                    OnNew: () -> donation.NewDonation(),
+                    OnViewSaved: () -> openSaved(directory),
+                }.Build(),
+                DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build(),
+            },
+        }.Build()
     }
 }

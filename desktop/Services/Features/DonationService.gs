@@ -303,7 +303,7 @@ class DonationService {
             arguments,
             (outcome CommandOutcome) -> {
                 if outcome.Failure != "" {
-                    SetProgress(Current.Progress with{State = "Reservation needs attention"})
+                    SetProgress(Current.Progress with{State = "Reservation needs attention", Tone = Tone.Fail})
                     return
                 }
                 let directory = outcome.RunPath
@@ -322,7 +322,7 @@ class DonationService {
                 Set(
                     Current with{
                         Step = DonationStep.Review,
-                        Progress = Current.Progress with{State = "Reservation needs attention"},
+                        Progress = Current.Progress with{State = "Reservation needs attention", Tone = Tone.Fail},
                     }
                 )
                 if directory != "" {
@@ -351,7 +351,9 @@ class DonationService {
                     Path = directory,
                     Run = run,
                     Ready = ready,
+                    Polling = run.State == "claim_pending",
                     State = ready ? "Ready to start": "Waiting for approval",
+                    Tone = ready ? Tone.Need: Tone.Wait,
                 },
             }
         )
@@ -403,7 +405,9 @@ class DonationService {
         SetProgress(
             Current.Progress with{
                 Ready = ready,
+                Polling = !ready,
                 State = ready ? "Ready to start": error == "" ? "Waiting for approval": error,
+                Tone = ready ? Tone.Need: Tone.Wait,
             }
         )
     }
@@ -446,9 +450,12 @@ class DonationService {
                 Started = true,
                 Running = true,
                 Ready = false,
+                Polling = false,
                 State = "Donation running",
+                Tone = Tone.Need,
                 Output = output.Lines,
                 OutputRevision = output.Revision,
+                Truncated = false,
                 Elapsed = 0,
             }
         )
@@ -471,7 +478,14 @@ class DonationService {
         }
         let progress = Current.Progress
         if progress.OutputRevision != output.Revision || progress.Elapsed != seconds {
-            SetProgress(progress with{Elapsed = seconds, Output = output.Lines, OutputRevision = output.Revision})
+            SetProgress(
+                progress with{
+                    Elapsed = seconds,
+                    Output = output.Lines,
+                    OutputRevision = output.Revision,
+                    Truncated = output.Dropped,
+                }
+            )
         }
     }
 
@@ -479,14 +493,16 @@ class DonationService {
         Collect(Current.Progress.Elapsed)
         lines = nil
         let outcome = reply.Outcome
+        let stopped = activity.Current.Stopping
+        let failed = outcome.Failure != "" || outcome.ExitCode != 0
         var progress = Current.Progress with{
             Running = false,
-            State = activity.Current.Stopping ? "Donation stopped": outcome.Failure != "" || outcome.ExitCode != 0 ?
-            "Donation needs attention": "Donation finished",
+            State = stopped ? "Donation stopped": failed ? "Donation needs attention": "Donation finished",
+            Tone = stopped ? Tone.Wait: failed ? Tone.Fail: Tone.Done,
         }
         if outcome.Failure != "" {
             output.Append(outcome.Failure)
-            progress = progress with{Output = output.Lines, OutputRevision = output.Revision}
+            progress = progress with{Output = output.Lines, OutputRevision = output.Revision, Truncated = output.Dropped}
         } else if reply.Value.Path != "" {
             progress = progress with{Run = reply.Value}
         }
