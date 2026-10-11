@@ -294,13 +294,13 @@ internal class CliDiscovery {
             for name in[]string{"omp", "pi"} {
                 Check.Contains(mixed, "\"harness\":\"" + name + "\"")
             }
-            toolArgs[5] = "claude/anthropic,hermes/openrouter"
+            toolArgs[5] = "claude/anthropic,aider/openrouter"
             flow.Call(toolArgs.ToArray(), owner: true)
             Publish(flow, File.ReadAllText(policyPath))
             policy = Check.Json(File.ReadAllText(policyPath))
             let exact = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
-                exact.Count == 2 && Check.Text(exact[1]?["harness"]) == "hermes",
+                exact.Count == 2 && Check.Text(exact[1]?["harness"]) == "aider",
                 "Exact external tools were not selected"
             )
             toolArgs[5] = "codex"
@@ -309,7 +309,7 @@ internal class CliDiscovery {
             policy = Check.Json(File.ReadAllText(policyPath))
             let kept = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
-                kept.Count == 2 && Check.Text(kept[0]?["harness"]) == "hermes",
+                kept.Count == 2 && Check.Text(kept[0]?["harness"]) == "aider",
                 "Managed selection removed external permissions"
             )
             let beforeInvalidTool = File.ReadAllText(policyPath)
