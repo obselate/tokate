@@ -8,7 +8,7 @@ import System.Text.RegularExpressions
 
 internal class DonorDefaults {
     shared {
-        internal let Harnesses[]string = []string{"codex", "pi", "claude", "omp", "hermes"}
+        internal let Harnesses[]string = []string{"codex", "pi", "claude", "omp"}
 
         internal func NormalizePair(args Args) {
             if args.Command == "defaults" && args.Subject == "set" && args.Get("harness") == "" && args.Get(

@@ -14,7 +14,6 @@ including symlinks into it. No shell startup files or credential files are read.
 | Pi | [Official installer](https://pi.dev/install.sh): `PI_CODING_AGENT_DIR`, default `~/.pi/agent`. The launcher can be in the agent's `bin` directory or a selected user bin directory. npm, Bun and Nix installations are also supported. | Supported, subject to doctor checks. |
 | Claude | [Official setup](https://code.claude.com/docs/en/setup): native Linux x64 executable, normally `~/.local/bin/claude`. | Supported with your existing personal Pro/Max login and configuration. Its sandbox needs bubblewrap and socat. |
 | OMP | [Official installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh): `PI_INSTALL_DIR/omp`, default `~/.local/bin/omp`. Bun and Nix alternatives exist. | Supported with your existing OMP providers and configuration. No additional isolation. |
-| Hermes | [Official setup](https://hermes-agent.nousresearch.com/docs/getting-started/installation/): use the `~/.local/bin/hermes` launcher. `--dir` selects source independently of `HERMES_HOME` data. | Adapter unavailable. |
 
 For npm, binaries are in [`NPM_CONFIG_PREFIX/bin`](https://docs.npmjs.com/cli/v11/commands/npm/).
 For Bun, [`BUN_INSTALL_BIN`](https://bun.sh/docs/runtime/bunfig) selects the global

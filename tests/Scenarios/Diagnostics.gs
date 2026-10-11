@@ -551,7 +551,7 @@ internal class Diagnostics {
             )
             Check.That(File.Exists(installMarker), "Explicit Codex choice did not reach installation")
             File.Delete(installMarker)
-            for name in[]string{"codex", "pi", "claude", "omp", "hermes"} {
+            for name in[]string{"codex", "pi", "claude", "omp"} {
                 File.Copy(curl, Path.Combine(flow.Bin, name))
                 File.SetUnixFileMode(
                     Path.Combine(flow.Bin, name),
@@ -560,7 +560,7 @@ internal class Diagnostics {
             }
             let discovered = Check.Envelope(flow.Call([]string{"doctor", "--fix", "--yes", "--json"}), "doctor", "ok")
             Check.That(
-                discovered["data"]?["harnesses"]?.AsArray().Count == 5,
+                discovered["data"]?["harnesses"]?.AsArray().Count == 4,
                 "Installed harnesses were not discovered"
             )
             Check.That(!File.Exists(installMarker), "Default discovery ran a harness or installer")
