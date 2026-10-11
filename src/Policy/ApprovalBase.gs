@@ -1,10 +1,13 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.Text.Json
 
 internal class ApprovalBase {
     shared {
+        internal let Advisories HashSet[string] = HashSet[string](StringComparer.Ordinal)
+
         internal func Select(args Args, fallback string) string {
             if args.Get("base-branch") != "" {
                 return RepositoryIdentity.Branch(args.Get("base-branch"))
@@ -41,11 +44,10 @@ internal class ApprovalBase {
             let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
             let target = baseBranch == branch ? current: GitHub.Branch(repo, baseBranch)
             if target != approved && !quiet {
-                Terminal.Message(
-                    "Target " + baseBranch + " is now " + target + "; approved base remains " + approved,
-                    "cyan",
-                    true
-                )
+                let message = "Target " + baseBranch + " is now " + target + "; approved base remains " + approved
+                if Advisories.Add(message) {
+                    Terminal.Message(message, "cyan", true)
+                }
             }
             Decree.CheckCurrent(repo, target, approval)
             return ValueTuple[Policy, string](policy, template)
