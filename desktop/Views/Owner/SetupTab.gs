@@ -112,12 +112,11 @@ class SetupTab {
             Repository: owner.Repository,
             CommandCount: state.Setup.Commands.Length,
             CheckCount: state.Setup.Checks.Length,
-            Preview: state.Preview,
+            Written: state.Written,
             Disabled: page.Busy,
             Compact: page.CompactPanels,
             Button: page.Button,
             OnPath: value -> owner.SetPath(value),
-            OnPreview: () -> owner.Preview(),
             OnApply: () -> owner.Apply(),
         }.Build()
     }

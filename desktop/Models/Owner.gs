@@ -142,17 +142,6 @@ data struct SetupDraft {
     }
 }
 
-data struct SetupPreview {
-    var Arguments []string
-    var Text string
-
-    prop Ready bool -> Arguments.Length > 0
-
-    shared {
-        let None SetupPreview = SetupPreview{Arguments: []string{}, Text: ""}
-    }
-}
-
 /// Everything the owner page shows. Text typed into the setup editors lives in their components.
 data struct OwnerState {
     var Input string
@@ -167,7 +156,8 @@ data struct OwnerState {
     var Access AccessList
     var Selected Issue?
     var Setup SetupDraft
-    var Preview SetupPreview
+    /// What the CLI reported when setup was last written.
+    var Written string
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
 
@@ -200,7 +190,7 @@ data struct OwnerState {
             Reviews: []DraftReview{},
             Access: AccessList.Empty,
             Setup: SetupDraft.From(Policy.Empty) with{ModelPolicy = ""},
-            Preview: SetupPreview.None,
+            Written: "",
         }
     }
 }

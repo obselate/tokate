@@ -70,7 +70,7 @@ class ContributionsTab {
                         }
                     },
                     OnReview: pr -> Browser.Open("https://github.com/" + repository + "/pull/" + pr),
-                    OnVerify: pr -> owner.CheckPullRequest(pr, "verify-pr"),
+                    OnVerify: pr -> owner.CheckPullRequest(pr, "verify"),
                     OnChecks: pr -> owner.CheckPullRequest(pr, "checks"),
                 }.Build(),
             }

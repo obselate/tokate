@@ -355,8 +355,8 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         )
         let claimed = File.ReadAllText(Path.Combine(fixture, "claim-args"))
         Require(
-            claimed.Contains("--unlimited\n") && !claimed.Contains("--seconds\n") && claimed.Contains(
-                "--verification-reserve\n1800\n"
+            claimed.Contains("--unlimited\n") && !claimed.Contains("--time\n") && claimed.Contains(
+                "--verify-time\n30m\n"
             ),
             "Unlimited claim arguments do not match the CLI"
         )

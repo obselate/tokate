@@ -36,8 +36,8 @@ class OwnerService {
         changed()
     }
 
-    /// Changes to the project or setup invalidate a reviewed preview.
-    private func Edit(next OwnerState) -> Set(next with{Preview = SetupPreview.None})
+    /// Changes to the project or setup clear the report of the last written setup.
+    private func Edit(next OwnerState) -> Set(next with{Written = ""})
 
     private func EditSetup(setup SetupDraft) -> Edit(Current with{Setup = setup})
 
@@ -195,13 +195,13 @@ class OwnerService {
             (reply Reply[string]) -> {
                 let failed = commands.Failed(reply.Outcome)
                 let status = (reply.Value ?? "").Replace('_', ' ')
-                if command != "verify-pr" && status == "" {
+                if command != "verify" && status == "" {
                     return
                 }
                 let known = Current.ReviewFor(pr)
                 let reviews = List[DraftReview](Current.Reviews)
                 reviews.RemoveAll(existing -> existing.Pr == pr)
-                reviews.Add(command == "verify-pr" ? known with{Receipt = failed ? "failed": "verified"}: known with{Ci = status})
+                reviews.Add(command == "verify" ? known with{Receipt = failed ? "failed": "verified"}: known with{Ci = status})
                 Set(Current with{Reviews = reviews.ToArray()})
             }
         )
@@ -336,71 +336,38 @@ class OwnerService {
 
     func SetPath(path string) -> EditSetup(Current.Setup with{Path = path})
 
-    /// Asks the CLI for the files setup would write, without writing them.
-    func Preview() {
+    /// Writes the policy and workflow into the checkout after confirmation, and keeps the report of the files.
+    func Apply() {
         try {
             let repository = RepositoryRef.Parse(Repository).FullName
             let setup = Current.Setup
             if !Directory.Exists(setup.CheckedPath()) {
                 throw Exception("Enter an existing absolute checkout path.")
             }
-            let proposed = TokateCommands.Init(repository, setup)
-            Set(Current with{Preview = Current.Preview with{Arguments = []string{}}})
-            commands.Cli(
-                proposed,
-                (outcome CommandOutcome) -> {
-                    if commands.Failed(outcome) {
-                        return
-                    }
-                    Set(Current with{Preview = SetupPreview{Arguments: proposed, Text: outcome.Diagnostics}})
-                    feedback.Show("Review the proposed files before applying.")
+            let arguments = TokateCommands.Init(repository, setup)
+            dialogs.Ask(
+                Confirmation{
+                    Title: "Write project setup?",
+                    Text: "Write the policy and workflow into " + setup.Path + ".\n\nReview and commit these files before approving work. Existing checks are preserved unless you explicitly replaced them.",
+                    ConfirmLabel: "Confirm",
+                    Heading: "",
                 },
-                directory: setup.Path
+                () -> {
+                    commands.Cli(
+                        arguments,
+                        (outcome CommandOutcome) -> {
+                            if commands.Failed(outcome) {
+                                return
+                            }
+                            Set(Current with{Written = outcome.Diagnostics})
+                            feedback.Show("Setup written. Review and commit the files before approving issues.", Tone.Done)
+                        },
+                        directory: setup.Path
+                    )
+                }
             )
         } catch (error Exception) {
             feedback.Show(error.Message, Tone.Fail)
         }
-    }
-
-    /// Writes the reviewed setup after confirming that the CLI still proposes the same files.
-    func Apply() {
-        let preview = Current.Preview
-        let directory = Current.Setup.Path
-        dialogs.Ask(
-            Confirmation{
-                Title: "Apply project setup?",
-                Text: "Write the policy and workflow shown in the preview.\n\nReview and commit these files before approving work. Existing checks are preserved unless you explicitly replaced them.",
-                ConfirmLabel: "Confirm",
-                Heading: "",
-            },
-            () -> {
-                commands.Cli(
-                    preview.Arguments,
-                    (checked CommandOutcome) -> {
-                        if commands.Failed(checked) {
-                            return
-                        }
-                        if checked.Diagnostics != preview.Text {
-                            Set(Current with{Preview = Current.Preview with{Arguments = []string{}}})
-                            feedback.ShowReport(checked.Diagnostics)
-                            feedback.Show("Project setup changed. Preview and review it again before applying.")
-                            return
-                        }
-                        commands.Cli(
-                            TokateCommands.Apply(preview.Arguments),
-                            (outcome CommandOutcome) -> {
-                                Set(Current with{Preview = Current.Preview with{Arguments = []string{}}})
-                                if outcome.ExitCode == 0 {
-                                    Set(Current with{Preview = SetupPreview.None})
-                                    feedback.Show("Setup saved. Review and commit the files before approving issues.", Tone.Done)
-                                }
-                            },
-                            directory: directory
-                        )
-                    },
-                    directory: directory
-                )
-            }
-        )
     }
 }

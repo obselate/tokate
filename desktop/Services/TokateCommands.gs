@@ -3,6 +3,8 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
+/// Argument arrays for Tokate 0.4.0. An issue or pull request is named as OWNER/REPO#NUMBER and a time
+/// limit takes a unit.
 class TokateCommands {
     shared {
         func Select(repo string, draft DonationDraft) []string -> Selection("select", repo, draft).ToArray()
@@ -13,26 +15,21 @@ class TokateCommands {
             issue string,
             budgetSeconds int32
         ) []string {
-            let args = Selection("claim", repo, draft)
+            let args = Selection("claim", repo + "#" + issue, draft)
             if draft.Unlimited {
                 args.Add("--unlimited")
             } else {
-                args.Add("--seconds")
-                args.Add(budgetSeconds.ToString())
+                args.Add("--time")
+                args.Add(budgetSeconds.ToString() + "s")
             }
-            args.AddRange(
-                []string{"--issue", issue, "--verification-reserve", (int32.Parse(draft.Verification) * 60).ToString()}
-            )
-            if draft.Network {
-                args.Add("--allow-network")
-            }
+            args.Add("--verify-time")
+            args.Add(int32.Parse(draft.Verification).ToString() + "m")
             return args.ToArray()
         }
 
-        private func Selection(command string, repo string, draft DonationDraft) List[string] {
-            let args = List[string]{command, "--repo", repo}
+        private func Selection(command string, target string, draft DonationDraft) List[string] {
+            let args = List[string]{command, target}
             if draft.Profile != "" {
-                args.Add("--profile")
                 args.Add(draft.Profile)
             }
             if draft.Profile == "" || command == "claim" {
@@ -48,35 +45,32 @@ class TokateCommands {
 
         func DefaultsList() []string -> []string{"defaults", "list"}
 
-        func Policy(repo string) []string -> []string{"policy", "--repo", repo}
+        func Policy(repo string) []string -> []string{"policy", repo}
 
         func Status(run string) []string -> []string{"status", "--run", run}
 
-        func IssueStatus(repo string, issue string) []string -> []string{"status", "--repo", repo, "--issue", issue}
+        func IssueStatus(repo string, issue string) []string -> []string{"status", repo + "#" + issue}
 
         func Work(run string) []string -> []string{"work", "--run", run, "--yes"}
 
-        func Coordination(repo string, issue string) []string -> []string{"coordination", "--repo", repo, "--issue", issue}
+        func Coordination(repo string, issue string) []string -> []string{"coordination", repo + "#" + issue}
 
-        func OwnerDoctor() []string -> []string{"doctor", "--owner", "--auth"}
+        func OwnerDoctor() []string -> []string{"doctor", "owner", "--auth"}
 
         func Approve(repo string, issue string, branch string) []string ->
-        []string{"approve", "--repo", repo, "--issue", issue, "--base-branch", branch}
+        []string{"approve", repo + "#" + issue, "--base-branch", branch}
 
-        func Revoke(repo string, issue string) []string -> []string{"revoke", "--repo", repo, "--issue", issue}
+        func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue}
 
-        func PullRequestCheck(command string, repo string, pr string) []string -> []string{command, "--repo", repo, "--pr", pr}
+        /// `command` is "verify" for the receipt or "checks" for the CI gates.
+        func PullRequestCheck(command string, repo string, pr string) []string -> []string{command, repo + "#" + pr}
 
         func Access(repo string, operation string, donor string = "", issue string = "") []string {
-            let args = List[string]{"access", "--repo", repo, "--operation", operation}
+            let args = List[string]{"access", operation}
             if donor != "" {
-                args.Add("--donor")
                 args.Add(donor)
             }
-            if issue != "" {
-                args.Add("--issue")
-                args.Add(issue)
-            }
+            args.Add(issue == "" ? repo: repo + "#" + issue)
             return args.ToArray()
         }
 
@@ -85,7 +79,7 @@ class TokateCommands {
         ): draft.ModelsJson
 
         func Init(repo string, draft SetupDraft) []string {
-            let args = List[string]{"init", "--repo", repo, "--path", draft.Path, "--non-interactive"}
+            let args = List[string]{"init", repo, "--path", draft.Path, "--non-interactive"}
             if draft.CommandsChanged {
                 args.Add("--verification")
                 args.Add(Json.NestedArrays(draft.Commands))
@@ -99,12 +93,8 @@ class TokateCommands {
                 args.Add(draft.ModelPolicy)
             }
             if draft.Minutes != "" {
-                args.Add("--seconds")
-                args.Add(draft.MinutesSeconds().ToString())
-            }
-            if draft.Network != "" {
-                args.Add("--network")
-                args.Add(draft.Network)
+                args.Add("--max-time")
+                args.Add((draft.MinutesSeconds() / 60).ToString() + "m")
             }
             let models = SetupModelsJson(draft)
             if models.Trim() != "" {
@@ -122,17 +112,11 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        func Apply(preview []string) []string {
-            let args = List[string](preview)
-            args.Add("--yes")
-            return args.ToArray()
-        }
-
         func RunAction(action RunAction, run string, amendment AmendmentDraft) []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
             if RunActions.NeedsBudget(action) {
-                args.Add("--seconds")
-                args.Add((amendment.VerificationMinutes() * 60).ToString())
+                args.Add("--time")
+                args.Add(amendment.VerificationMinutes().ToString() + "m")
             }
             if action == RunAction.Amend {
                 args.Add("--commit")

@@ -52,11 +52,11 @@ func OwnerTests() {
     owner.SetNetwork(true)
     Regression.Check(owner.Current.Setup.EffectiveNetwork(Policy.Empty), "network allowed")
 
-    owner.Current = owner.Current with{Preview = SetupPreview{Arguments: []string{"init"}, Text: "files"}}
+    owner.Current = owner.Current with{Written = "files"}
     owner.SetStep(2)
-    Regression.Check(owner.Current.Preview.Ready && owner.Current.Setup.Step == 2, "changing steps keeps the preview")
+    Regression.Check(owner.Current.Written == "files" && owner.Current.Setup.Step == 2, "changing steps keeps the report")
     owner.SetPath("/tmp")
-    Regression.Check(!owner.Current.Preview.Ready && owner.Current.Preview.Text == "", "editing setup discards the preview")
+    Regression.Check(owner.Current.Written == "", "editing setup discards the report")
 
     owner.SelectTab(OwnerTab.Setup)
     Regression.Check(!owner.Current.Browsing, "setup is not browsing")

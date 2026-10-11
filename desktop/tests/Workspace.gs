@@ -106,7 +106,7 @@ func WorkspaceFlow() {
     Script(
         bin,
         "tokate",
-        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason='';;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"}\"\n    ;;\n  *) data='{\"work\":[],\"access_status\":\"observed\"}';;\n  esac;;\npolicy) data='{\"policy\":{\"version\":2,\"model_policy\":\"unrestricted\",\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) data='{\"access_sha\":\"existing\",\"members\":[],\"pending\":[]}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Proposed complete file:\\nfixture policy\\n' >&2\n  case \" $$* \" in *' --yes '*) touch FIXTURE/applied;; esac\n  data='{\"applied\":false}';;\napprove) touch FIXTURE/approved; data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\"]]}' \"$$1\" \"$$data\"\n"
+        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason='';;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"}\"\n    ;;\n  *) data='{\"work\":[],\"access_status\":\"observed\"}';;\n  esac;;\npolicy) data='{\"policy\":{\"version\":2,\"model_policy\":\"unrestricted\",\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) data='{\"access_sha\":\"existing\",\"members\":[],\"pending\":[]}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Updated .github/tokate.json\\nfixture policy\\n' >&2\n  touch FIXTURE/applied\n  data='{\"applied\":true}';;\napprove) touch FIXTURE/approved; data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\"]]}' \"$$1\" \"$$data\"\n"
             .Replace("FIXTURE", fixture)
     )
     Script(
@@ -247,8 +247,13 @@ func WorkspaceFlow() {
         )
         Choose(host, window, adapter, "Review setup")
         Edit(window, host, adapter, "Local checkout", fixture)
-        Choose(host, window, adapter, "Preview setup")
-        AwaitControl(host, adapter, AccessibilityRole.Button, "Apply preview", enabled: true)
+        Choose(host, window, adapter, "Write setup files")
+        Choose(host, window, adapter, "Go back")
+        Require(!File.Exists(Path.Combine(fixture, "applied")), "Cancel applied configuration")
+        Choose(host, window, adapter, "Write setup files")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Write setup files", enabled: true)
+        Require(File.Exists(Path.Combine(fixture, "applied")), "Confirm did not write configuration")
         let args = File.ReadAllText(Path.Combine(fixture, "owner-args"))
         Require(
             args.Contains("[[\"dotnet\",\"test\"],[\"/bin/sh\",\"-c\",\"dotnet build\"]]"),
@@ -258,7 +263,6 @@ func WorkspaceFlow() {
             !args.Contains("--models") && !args.Contains("--allowed-tools"),
             "Unchanged policy restrictions were replaced"
         )
-        Require(!File.Exists(Path.Combine(fixture, "applied")), "Preview applied configuration")
         Choose(host, window, adapter, "Checks")
         Edit(window, host, adapter, "Command", "printf \"quoted\"")
         Choose(host, window, adapter, "Add command")
@@ -273,8 +277,9 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "Add model")
         Choose(host, window, adapter, "Remove discarded-model")
         Choose(host, window, adapter, "Review")
-        Choose(host, window, adapter, "Preview setup")
-        AwaitControl(host, adapter, AccessibilityRole.Button, "Apply preview", enabled: true)
+        Choose(host, window, adapter, "Write setup files")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Write setup files", enabled: true)
         let updated = File.ReadAllLines(Path.Combine(fixture, "owner-args"))
         using let commands = JsonDocument.Parse(updated[Array.IndexOf(updated, "--verification") + 1])
         using let checks = JsonDocument.Parse(updated[Array.IndexOf(updated, "--required-checks") + 1])
@@ -283,10 +288,6 @@ func WorkspaceFlow() {
         Require(checks.RootElement[1].GetString() == "build \"linux\"", "Check JSON lost quoting")
         Require(models.RootElement.GetProperty("local-model")[1].GetString() == "ultra", "Model efforts changed")
         Require(!models.RootElement.TryGetProperty("discarded-model", out _), "Removed model remained serialized")
-        Choose(host, window, adapter, "Apply preview")
-        Settle(host)
-        Choose(host, window, adapter, "Go back")
-        Require(!File.Exists(Path.Combine(fixture, "applied")), "Cancel applied configuration")
         Choose(host, window, adapter, "Donate")
         Edit(window, host, adapter, "GitHub repository or issue URL", "owner/repo")
         Choose(host, window, adapter, "Find approved issues")

@@ -3,18 +3,17 @@ package TokateDesktop
 import Goo
 import System
 
-/// The local checkout to set up, a summary, and the preview-then-apply controls.
+/// The local checkout to set up, a summary, the control that writes the files and the report of the write.
 data struct SetupReview {
     var Path string
     var Repository string
     var CommandCount int32
     var CheckCount int32
-    var Preview SetupPreview
+    var Written string
     var Disabled bool
     var Compact bool
     var Button CommandButton
     var OnPath Action[string]?
-    var OnPreview Action?
     var OnApply Action?
 
     func Build() Blob {
@@ -37,14 +36,13 @@ data struct SetupReview {
                 }.Build(),
                 Row{
                     Children: []Blob{
-                        (Button with{Label = "Preview setup", OnClick = OnPreview, Primary = true, Disabled = Path == ""}).Build(),
-                        (Button with{Label = "Apply preview", OnClick = OnApply, Disabled = !Preview.Ready}).Build(),
+                        (Button with{Label = "Write setup files", OnClick = OnApply, Primary = true, Disabled = Path == ""}).Build(),
                     },
                 }.Build(),
             },
         }.Build()
-        if Preview.Text != "" {
-            review.Children.Add(ReportText{Content: Preview.Text, MaxHeight: 420}.Build())
+        if Written != "" {
+            review.Children.Add(ReportText{Content: Written, MaxHeight: 420}.Build())
         }
         return review
     }

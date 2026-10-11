@@ -16,31 +16,31 @@ func CommandTests() {
     let draft = DonationDraft.Initial
     Regression.Equal(
         Regression.Args(TokateCommands.Select("o/r", draft)),
-        "select --repo o/r --harness codex --model gpt-6.1-sol --effort high --non-interactive",
+        "select o/r --harness codex --model gpt-6.1-sol --effort high --non-interactive",
         "select arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Select("o/r", draft with{Profile = "fast"})),
-        "select --repo o/r --profile fast --non-interactive",
+        "select o/r fast --non-interactive",
         "select with a profile"
     )
-    let pi = draft with{Harness = "pi", Model = " qwen ", Effort = "absent", Endpoint = " http://127.0.0.1:8080/v1 ", Network = true}
+    let pi = draft with{Harness = "pi", Model = " qwen ", Effort = "absent", Endpoint = " http://127.0.0.1:8080/v1 "}
     Regression.Equal(
         Regression.Args(TokateCommands.Claim("o/r", pi with{Profile = "local"}, "42", 3600)),
-        "claim --repo o/r --profile local --harness pi --model qwen --effort absent --endpoint http://127.0.0.1:8080/v1 --non-interactive --seconds 3600 --issue 42 --verification-reserve 1800 --allow-network",
+        "claim o/r#42 local --harness pi --model qwen --effort absent --endpoint http://127.0.0.1:8080/v1 --non-interactive --time 3600s --verify-time 30m",
         "claim arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Claim("o/r", draft with{Unlimited = true}, "42", 1800)),
-        "claim --repo o/r --harness codex --model gpt-6.1-sol --effort high --non-interactive --unlimited --issue 42 --verification-reserve 1800",
+        "claim o/r#42 --harness codex --model gpt-6.1-sol --effort high --non-interactive --unlimited --verify-time 30m",
         "unlimited claim arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Access("o/r", "grant", "alice", "42")),
-        "access --repo o/r --operation grant --donor alice --issue 42",
+        "access grant alice o/r#42",
         "access arguments"
     )
-    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "list")), "access --repo o/r --operation list", "access list")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "list")), "access list o/r", "access list")
 
     let tricky = []string{"a\"b", "ü", "<b>&", "line\nbreak", "back\\slash"}
     Regression.Equal(Json.StringArray(tricky), NodeArray(tricky).ToJsonString(), "string arrays match the previous encoder")
@@ -64,21 +64,19 @@ func CommandTests() {
         ModelPolicy = "whitelist",
         Models = []ModelAllowance{ModelAllowance{Model: "gpt", Efforts: []string{"high"}}},
         Minutes = "30",
-        Network = "deny",
         Tools = "codex,pi",
         Eligibility = "open",
     }
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", setup)),
-        "init --repo o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --model-policy whitelist --seconds 1800 --network deny --models {\"gpt\":[\"high\"]} --allowed-tools codex,pi --eligibility open",
+        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --model-policy whitelist --max-time 30m --models {\"gpt\":[\"high\"]} --allowed-tools codex,pi --eligibility open",
         "init arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}) with{Path = "/p"})),
-        "init --repo o/r --path /p --non-interactive",
+        "init o/r --path /p --non-interactive",
         "unchanged init arguments"
     )
-    Regression.Equal(Regression.Args(TokateCommands.Apply([]string{"init"})), "init --yes", "apply adds consent")
 
     let amendment = AmendmentDraft.Initial with{
         Commit = "0123456789abcdef0123456789abcdef01234567",
@@ -87,7 +85,7 @@ func CommandTests() {
     }
     Regression.Equal(
         Regression.Args(TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment)),
-        "amend --run /runs/1 --seconds 420 --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/summary.json",
+        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/summary.json",
         "amend arguments"
     )
     Regression.Equal(
