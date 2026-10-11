@@ -29,7 +29,7 @@ class SavedListView {
                 Button: page.Button,
                 Page: state.Page,
                 LastPage: state.LastPage,
-                Summary: total.ToString() + " saved runs",
+                Summary: total.ToString() + (total == 1 ? " contribution": " contributions") + "  ·  Newest first",
                 Narrow: page.NarrowContent,
                 OnChange: number -> saved.LoadPage(number),
             }.Build(),

@@ -48,9 +48,9 @@ data struct Run {
 
     prop Readable bool -> Repo != "" && Issue >= 1
 
-    prop CodingTime string -> Unlimited ? "Unlimited": (CodingSeconds / 60).ToString() + " minutes"
+    prop CodingTime string -> Unlimited ? "Unlimited": Run.Minutes(CodingSeconds)
 
-    prop VerificationTime string -> (VerificationReserve / 60).ToString() + " minutes"
+    prop VerificationTime string -> Run.Minutes(VerificationReserve)
 
     /// The donor's name for the local state.
     prop Status string -> switch State {
@@ -65,6 +65,8 @@ data struct Run {
     }
 
     shared {
+        func Minutes(seconds int32) string -> (seconds / 60).ToString() + (seconds / 60 == 1 ? " minute": " minutes")
+
         func Parse(state string) RunState -> switch state {
             case "claim_pending": RunState.ClaimPending
             case "requested": RunState.Requested

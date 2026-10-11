@@ -97,11 +97,11 @@ func WorkspaceFlow() {
     let bin = Path.Combine(fixture, "bin")
     Directory.CreateDirectory(bin)
     let storage = Path.Combine(fixture, "tokate", "runs")
-    for name in[]string{"broken", "claimed", "failed", "amend", "merged"} {
-        Directory.CreateDirectory(Path.Combine(storage, name))
-    }
-    for index in 1 ... 25 {
-        Directory.CreateDirectory(Path.Combine(storage, "page-" + index.ToString("D3")))
+    let named = []string{"amend", "broken", "claimed", "failed", "merged"}
+    for index in 0 ... 29 {
+        let run = Path.Combine(storage, index < named.Length ? named[index]: "page-" + (index - 4).ToString("D3"))
+        Directory.CreateDirectory(run)
+        Directory.SetLastWriteTimeUtc(run, DateTime.UtcNow.AddMinutes(-index))
     }
     Script(
         bin,

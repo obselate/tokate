@@ -1,9 +1,12 @@
 package TokateDesktop
 
 import Goo
+import Goo.Widgets.Icons
 import System
+import System.Collections.Generic
 
-/// One saved run with its issue title and status. Opens the run when it has been read.
+/// One saved run: its issue title and status above its repository, pull request, model and age. A run that
+/// cannot be read shows the reason. Opens the run when it has been read.
 data struct SavedRow {
     var Item SavedRun
     var Index int32
@@ -15,20 +18,49 @@ data struct SavedRow {
         let item = Item
         let choose = OnOpen
         let identity = Item.Identity(Index)
-        let title = Heading{Content: Item.Title == "" ? identity: Item.Title, Size: AppTheme.ItemSize, MaxLines: 2}.Build()
-        let copy = Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Gap: 5}
-        if Item.Title != "" {
-            copy.Children.Add(Label{Content: identity, Size: AppTheme.SmallSize, Muted: true}.Build())
+        let facts = List[string]()
+        if Item.Error != "" {
+            facts.Add(Item.Error)
+        } else if let run = Item.Run {
+            if Item.Title != "" {
+                facts.Add(identity)
+            }
+            if run.Pr > 0 {
+                facts.Add("PR #" + run.Pr.ToString())
+            }
+            if run.Model != "" {
+                facts.Add(run.Model + " / " + run.Effort)
+            }
         }
-        copy.Children.Add(title)
+        let age = Item.Age(DateTime.UtcNow)
+        if age != "" {
+            facts.Add(age)
+        }
+        let copy = Container{
+            FlexGrow: 1,
+            FlexBasis: 0,
+            MinWidth: 0,
+            Gap: 3,
+            Heading{Content: Item.Title == "" ? identity: Item.Title, Size: AppTheme.ItemSize, MaxLines: 2}.Build(),
+        }
+        if facts.Count > 0 {
+            let summary = Label{
+                Content: String.Join("  ·  ", facts),
+                Size: AppTheme.SmallSize,
+                Muted: true,
+                Ink: Item.Error != "" ? p.Fail: nil,
+            }.Build()
+            summary.TextMaxLines = 1
+            copy.Children.Add(summary)
+        }
         return Interaction.Keyboard(
             Button{
                 Key: Item.Path,
-                MinHeight: 72,
-                Padding: 12,
+                MinHeight: 62,
+                Padding: Edges{Left: 14, Right: 6, Top: 8, Bottom: 8},
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
-                Gap: 18,
+                Gap: 12,
                 BorderWidth: Edges{Bottom: 1},
                 BorderColor: p.Line,
                 BackgroundColor: Color.Transparent,
@@ -40,6 +72,7 @@ data struct SavedRow {
                 OnClick: () -> choose?.Invoke(item),
                 copy,
                 StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build(),
+                MaterialIcons.Create("chevron_right", 20, Item.Openable ? p.Muted: Color.Transparent),
             }
         )
     }

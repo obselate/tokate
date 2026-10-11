@@ -24,19 +24,43 @@ class SavedRunView {
             OnSummary: value -> saved.SetSummary(value),
             OnTools: value -> saved.SetTools(value),
             OnPublish: () -> saved.Act(RunAction.Amend),
+            OnCancel: () -> saved.ToggleAmendment(),
         }.Build(): nil
         return []Blob{
+            Row{
+                Children: []Blob{
+                    (page.Button with{
+                        Label = "Back to contributions",
+                        Kind = ButtonKind.Quiet,
+                        Icon = "arrow_back",
+                        IconFirst = true,
+                        OnClick = () -> saved.Back(),
+                    }).Build(),
+                    Spacer{}.Build(),
+                    (page.Button with{
+                        Label = "Refresh status",
+                        Kind = ButtonKind.Quiet,
+                        Icon = "refresh",
+                        OnClick = () -> saved.LoadRun(),
+                    }).Build(),
+                },
+            }.Build(),
+            RunHeader{
+                Item: state.Chosen,
+                Button: page.Button,
+                OnOpenIssue: () -> Browser.Open("https://github.com/" + run.Repo + "/issues/" + run.Issue.ToString()),
+                OnOpenPullRequest: () -> Browser.Open("https://github.com/" + run.Repo + "/pull/" + run.Pr.ToString()),
+            }.Build(),
             RunDetails{
-                Run: run,
+                Item: state.Chosen,
                 Actions: state.Actions,
                 Button: page.Button,
                 Compact: page.CompactPanels,
                 Form: form,
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
-                OnOpenPullRequest: () -> Browser.Open("https://github.com/" + run.Repo + "/pull/" + run.Pr.ToString()),
-                OnOpenIssue: () -> Browser.Open("https://github.com/" + run.Repo + "/issues/" + run.Issue.ToString()),
             }.Build(),
+            RunFacts{Item: state.Chosen, Compact: page.CompactPanels, Stacked: page.NarrowContent}.Build(),
         }
     }
 }

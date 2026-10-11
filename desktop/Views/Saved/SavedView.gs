@@ -4,7 +4,7 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The saved work page: the list of saved runs, or the selected run, below the actions for that view.
+/// The saved work page: the list of saved runs below its actions, or the selected run.
 class SavedView {
     private let saved SavedWorkService
     private let feedback FeedbackService
@@ -22,21 +22,25 @@ class SavedView {
 
     func Build(page PageContext) Blob {
         let state = saved.Current
-        let body = List[Blob]{
-            Heading{Content: "Saved work", Size: AppTheme.DisplaySize}.Build(),
-            Row{
-                Children: state.Selected ? []Blob{
-                    (page.Button with{Label = "Back to contributions", OnClick = () -> saved.Back()}).Build(),
-                    (page.Button with{Label = "Refresh status", OnClick = () -> saved.LoadRun()}).Build(),
-                }: []Blob{
-                    (page.Button with{
-                        Label = state.Reading ? "Stop updating": state.Loaded ? "Refresh contributions": "Find saved work",
-                        OnClick = () -> saved.ToggleReading(),
-                        Primary = true,
-                    }).Build(),
-                    (page.Button with{Label = "Open saved run", OnClick = () -> saved.ToggleImport()}).Build(),
-                },
-            }.Build(),
+        let body = List[Blob]()
+        if state.Selected {
+            body.AddRange(details.Build(page))
+        } else {
+            body.Add(
+                Row{
+                    Children: []Blob{
+                        Heading{Content: "Saved work", Size: AppTheme.DisplaySize}.Build(),
+                        Spacer{}.Build(),
+                        (page.Button with{Label = "Open run directory", OnClick = () -> saved.ToggleImport()}).Build(),
+                        (page.Button with{
+                            Label = state.Reading ? "Stop updating": state.Loaded ? "Refresh contributions": "Find saved work",
+                            Kind = ButtonKind.Icon,
+                            Icon = state.Reading ? "close": "refresh",
+                            OnClick = () -> saved.ToggleReading(),
+                        }).Build(),
+                    },
+                }.Build()
+            )
         }
         let notice = feedback.Current
         if notice.Message != "" {
@@ -57,11 +61,9 @@ class SavedView {
                 }.Build()
             )
         }
-        if state.Selected {
-            body.AddRange(details.Build(page))
-        } else if state.Loaded {
+        if state.Loaded && !state.Selected {
             body.AddRange(list.Build(page))
         }
-        return Stack{Gap: 20, Children: body.ToArray()}.Build()
+        return Stack{Gap: 16, Children: body.ToArray()}.Build()
     }
 }

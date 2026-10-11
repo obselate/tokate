@@ -121,7 +121,7 @@ class SavedWorkService {
         let start = (current - 1) * IssueListing.PageSize
         for index in start ... Math.Min(Current.Paths.Length, start + IssueListing.PageSize) {
             let path = Current.Paths[index]
-            rows.Add(cache.TryGetValue(path, out var cached) ? cached: SavedRun.Pending(path))
+            rows.Add(cache.TryGetValue(path, out var cached) ? cached: SavedRun.Pending(path) with{Changed = RunStore.Changed(path)})
         }
         Set(Current with{Page = current, Selected = false, Rows = rows.ToArray()})
         Read(rows.ToArray())
@@ -182,7 +182,12 @@ class SavedWorkService {
                 rows[index] = item
             }
         }
-        Set(Current with{Rows = rows.ToArray()})
+        Set(
+            Current with{
+                Rows = rows.ToArray(),
+                Chosen = Current.Selected && item.Path == Current.RunPath ? item: Current.Chosen,
+            }
+        )
     }
 
     private func Finished(expected int32) {
@@ -202,12 +207,14 @@ class SavedWorkService {
         Set(
             Current with{
                 Selected = true,
+                Chosen = item,
                 Run = run,
                 RunPath = item.Path,
                 Actions = RunActions.From(item.Actions, run.State),
                 Amendment = Current.Amendment with{Open = false},
             }
         )
+        Read([]SavedRun{item})
     }
 
     func Back() -> LoadPage(Current.Page)
@@ -227,6 +234,7 @@ class SavedWorkService {
                     return
                 }
                 let item = SavedRun.Pending(path) with{
+                    Changed = RunStore.Changed(path),
                     Run = reply.Value,
                     Actions = reply.Outcome.Envelope?.NextActions ?? []NextAction{},
                 }
@@ -238,7 +246,6 @@ class SavedWorkService {
                 }
                 Select(item)
                 Set(Current with{Loaded = true, Importing = false})
-                Read([]SavedRun{item})
             }
         )
     }

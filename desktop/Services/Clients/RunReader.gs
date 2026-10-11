@@ -31,6 +31,7 @@ class RunReader : Cancellable {
                 error = error == "" ? "Saved contribution could not be read.": error
             }
             item = SavedRun.Pending(item.Path) with{
+                Changed = item.Changed,
                 Run = run,
                 Actions = outcome.Envelope?.NextActions ?? []NextAction{},
                 Error = error,

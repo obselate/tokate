@@ -20,7 +20,8 @@ enum ButtonKind {
 /// `OnActivate`) are shared by every command button on a page, so build one template and derive buttons
 /// from it with `with`.
 ///
-/// `Icon` names a symbol. Icon buttons show it in place of the label; other kinds show it after the label.
+/// `Icon` names a symbol. Icon buttons show it in place of the label; other kinds show it after the label,
+/// or before it when `IconFirst` is set.
 /// `Count` adds a number after the label.
 data struct CommandButton {
     var Label string
@@ -29,6 +30,7 @@ data struct CommandButton {
     var Disabled bool
     var Kind ButtonKind
     var Icon string
+    var IconFirst bool
     var Count int32
     var AllowWhileBusy bool
     var Busy bool
@@ -113,7 +115,10 @@ data struct CommandButton {
         }
         if button is Button {
             if symbol != "" && !loading {
-                button.Children.Add(MaterialIcons.Create(symbol, iconOnly ? 22: 16, unavailable ? p.Muted: ink))
+                button.Children.Insert(
+                    IconFirst ? 0: button.Children.Count,
+                    MaterialIcons.Create(symbol, iconOnly ? 22: 16, unavailable ? p.Muted: ink)
+                )
             }
             if Count > 0 {
                 button.Children.Add(

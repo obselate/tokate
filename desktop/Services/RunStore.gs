@@ -7,8 +7,8 @@ import System.IO
 /// Finds saved runs on disk. File access blocks, so call from a `go` worker.
 class RunStore {
     shared {
-        /// Run directories under the XDG state home and the default state home, remembered run first.
-        /// Symbolic links are skipped.
+        /// Run directories under the XDG state home and the default state home, remembered run first, then
+        /// the most recently changed first. Symbolic links are skipped.
         func Discover(remembered string) []string {
             let previous = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/state")
             let configured = Environment.GetEnvironmentVariable("XDG_STATE_HOME") ?? ""
@@ -25,7 +25,13 @@ class RunStore {
                     continue
                 }
                 let paths = List[string](Directory.EnumerateDirectories(root))
-                paths.Sort(StringComparer.Ordinal)
+                let times = Dictionary[string, DateTime]()
+                for directory in paths {
+                    times[directory] = Changed(directory)
+                }
+                paths.Sort(
+                    (a string, b string) -> times[a] == times[b] ? String.CompareOrdinal(a, b): times[b].CompareTo(times[a])
+                )
                 for directory in paths {
                     if DirectoryInfo(directory).LinkTarget == nil && seen.Add(directory) {
                         result.Add(directory)
@@ -34,6 +40,9 @@ class RunStore {
             }
             return result.ToArray()
         }
+
+        /// When the run directory last changed.
+        func Changed(run string) DateTime -> Directory.GetLastWriteTimeUtc(run)
 
         /// The saved claim file inside a run directory.
         func ClaimFile(run string) string -> Path.Combine(run, "run.json")

@@ -14,6 +14,7 @@ data struct AmendmentForm {
     var OnSummary Action[string]?
     var OnTools Action[string]?
     var OnPublish Action?
+    var OnCancel Action?
 
     func Build() Blob {
         let children = List[Blob]{
@@ -49,7 +50,14 @@ data struct AmendmentForm {
                     Disabled: Disabled,
                 }.Build()
             )
-            children.Add((Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true}).Build())
+            children.Add(
+                Row{
+                    Children: []Blob{
+                        (Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true}).Build(),
+                        (Button with{Label = "Cancel", Kind = ButtonKind.Quiet, OnClick = OnCancel}).Build(),
+                    },
+                }.Build()
+            )
         }
         return Stack{Gap: 18, Children: children.ToArray()}.Build()
     }
