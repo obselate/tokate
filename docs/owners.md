@@ -80,6 +80,12 @@ conflicts before merging. Receipts validate recorded authority and commits. They
 do not prove model identity, billing or semantic correctness. Tokate leaves final
 acceptance and merging to you.
 
+Target movement alone does not fail `checks`. It reports the verified and current
+target revisions and GitHub mergeability. Reconcile only when GitHub reports a
+conflict or branch protection requires an up-to-date branch. GitHub controls
+up-to-date branch and merge queue requirements. The `verify` command and authority
+checks are unchanged.
+
 ## Update the coordinator
 
 Updating your local CLI does not update the repository's pinned coordinator:

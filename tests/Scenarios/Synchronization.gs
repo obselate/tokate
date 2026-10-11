@@ -648,7 +648,14 @@ internal class SynchronizationChecks {
             flow.Call([]string{"checks", "--run", run}, owner: true)
             PublishedContribution.Write(flow.Upstream, "later-target.txt", "acceptance must recheck target\n")
             flow.Commit("Target moved before final acceptance")
-            flow.Call([]string{"checks", "--run", run}, 1, owner: true)
+            let checked = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
+            Check.That(
+                Check.Text(checked["data"]?["verified_target_revision"]) == upstream && Check.Text(
+                    checked["data"]?["target_moved"]
+                ) == "true" &&
+                    Check.Text(checked["data"]?["gates"]?["freshness"]?["status"]) == "passed",
+                "Later target movement rejected verified synchronization history"
+            )
             flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
