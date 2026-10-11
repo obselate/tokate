@@ -26,6 +26,7 @@ internal class PreparationChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"", "lost_fork_response", "lost_branch_response", "pending"} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 Directory.Delete(Path.Combine(flow.Bin, "fork"), true)
                 flow.Reload()
                 flow.State["missing_fork"] = JsonValue.Create(true)
@@ -70,6 +71,7 @@ internal class PreparationChecks {
                 "permission"
             } {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 var discovery = Check.Json("[{\"full_name\":\"donor/renamed\",\"fork\":true,\"owner\":{\"id\":123}}]")
                 if mode == "renamed" {
@@ -164,6 +166,7 @@ internal class PreparationChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for phase in[]string{"init", "fetch", "checkout"} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 flow.State["preparation_interrupt"] = JsonValue.Create(phase)
                 flow.Save()

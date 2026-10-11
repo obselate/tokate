@@ -345,6 +345,7 @@ internal class CorrectionChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for stage in[]string{"recover", "prepare"} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
@@ -396,6 +397,7 @@ internal class CorrectionChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for declared in[]bool{false, true} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
@@ -481,6 +483,7 @@ internal class CorrectionChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"incomplete_turn", "incomplete_tail", "failed_turn", "inference_exit_failure"} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode(mode)
@@ -508,6 +511,7 @@ internal class CorrectionChecks {
             for rename in[]bool{false, true} {
                 let flow = protectedFlow
                 protectedBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
@@ -535,6 +539,7 @@ internal class CorrectionChecks {
             for flag in[]string{"--assume-unchanged", "--skip-worktree"} {
                 let flow = indexFlow
                 indexBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
@@ -558,6 +563,7 @@ internal class CorrectionChecks {
             for rename in[]bool{false, true} {
                 let flow = renameFlow
                 renameBaseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
@@ -658,6 +664,7 @@ internal class CorrectionChecks {
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"change_checked_head", "change_checked_tree", "change_checked_patch"} {
                 baseline.Restore()
+                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
