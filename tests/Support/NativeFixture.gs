@@ -146,9 +146,9 @@ internal open class NativeFixture : IDisposable {
         if Git("-C", Upstream, "for-each-ref", "--format=%(refname)", "refs/heads/tokate/access") != "" {
             return
         }
-        Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
+        Call([]string{"access", "init", "owner/project"}, owner: true)
         for donor in[]string{"donor", "owner"} {
-            Call([]string{"access", "--repo", "owner/project", "--operation", "trust", "--donor", donor}, owner: true)
+            Call([]string{"access", "trust", donor, "owner/project"}, owner: true)
         }
     }
 
@@ -191,7 +191,7 @@ internal open class NativeFixture : IDisposable {
                         .ToJsonString()
                 )
                 Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
-                Call([]string{"coordinate", "--repo", "owner/project", "--event", path}, owner: true)
+                Call([]string{"coordinate", "owner/project", "--event", path}, owner: true)
                 break
             }
             select {
@@ -239,12 +239,12 @@ internal open class NativeFixture : IDisposable {
                 .ToJsonString()
         )
         Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
-        Call([]string{"coordinate", "--repo", "owner/project", "--event", path}, owner: true)
+        Call([]string{"coordinate", "owner/project", "--event", path}, owner: true)
     }
 
     internal func Approve(baseBranch string = "") {
         OwnerAccess()
-        let args = List[string]{"approve", "--repo", "owner/project", "--issue", "1"}
+        let args = List[string]{"approve", "owner/project#1"}
         if baseBranch != "" {
             args.AddRange([]string{"--base-branch", baseBranch})
         }
@@ -313,17 +313,17 @@ internal open class NativeFixture : IDisposable {
         fork string = "",
         json bool = false
     )[]string {
-        let args = List[string]{"claim", "--repo", "owner/project", "--issue", "1"}
+        let args = List[string]{"claim", "owner/project#1"}
         if fork != "" {
             args.AddRange([]string{"--fork", fork})
         }
         args.AddRange([]string{"--model", model, "--effort", effort})
         if let budget = seconds {
-            args.AddRange([]string{"--seconds", budget})
+            args.AddRange([]string{"--time", budget + "s"})
         }
         args.AddRange([]string{"--runs", Path.Combine(Temp.Root, "runs")})
         if reserve != "" {
-            args.AddRange([]string{"--verification-reserve", reserve})
+            args.AddRange([]string{"--verify-time", reserve + "s"})
         }
         if json {
             args.Add("--json")
@@ -515,7 +515,7 @@ internal open class NativeFixture : IDisposable {
 
     internal func ApproveSelf() {
         OwnerAccess()
-        Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+        Call([]string{"approve", "owner/project#1"}, owner: true)
     }
 
     internal func SameRepositoryClaim(code int32 = 0) Result -> Acquire(

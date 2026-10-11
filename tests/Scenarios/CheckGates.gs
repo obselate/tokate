@@ -21,12 +21,12 @@ internal class CheckGates {
             flow.Save()
             flow.ResetTraffic()
             let args = saved ? List[string]{"checks", "--run", test.Run}:
-            List[string]{"checks", "--repo", "owner/project", "--pr", "10"}
+            List[string]{"checks", "owner/project#10"}
             if !human {
                 args.Add("--json")
             }
             if timeout {
-                args.AddRange([]string{"--watch", "--timeout", seconds})
+                args.AddRange([]string{"--watch", "--timeout", seconds + "s"})
             }
             let result = flow.Call(args.ToArray(), code)
             flow.NoInference()

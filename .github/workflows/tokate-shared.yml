@@ -61,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOKATE_REPOSITORY: ${{ github.repository }}
-        run: '"$RUNNER_TEMP/tokate" coordinate --repo "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
+        run: '"$RUNNER_TEMP/tokate" coordinate "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
   admit:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
@@ -80,4 +80,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOKATE_REPOSITORY: ${{ github.repository }}
-        run: '"$RUNNER_TEMP/tokate" admit --repo "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
+        run: '"$RUNNER_TEMP/tokate" admit "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'

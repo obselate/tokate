@@ -28,7 +28,6 @@ internal class GuidedWork {
                 }
                 try {
                     let selected = Args([]string{args.Command, value})
-                    RepositoryInput.Issue(selected)
                     args.Values["--repo"] = selected.Need("repo")
                     if selected.Get("issue") != "" {
                         args.Values["--issue"] = selected.Get("issue")
@@ -392,7 +391,7 @@ internal class GuidedWork {
             if args.Get("repo") == "" {
                 Repository(args)
             }
-            Startup.Check(Args([]string{"status", "--repo", args.Need("repo")}))
+            Startup.Check(Args([]string{"status", args.Need("repo")}))
             if args.Get("issue") == "" {
                 Task(args)
             }

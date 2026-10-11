@@ -30,16 +30,7 @@ internal class OmpChecks {
                     flow.Temp.Env["NO_COLOR"] = "1"
                     let cancelled = TestTerminal.Pty(
                         binary,
-                        []string{
-                            "work",
-                            "owner/project",
-                            "--issue",
-                            "1",
-                            "--seconds",
-                            "60",
-                            "--verification-reserve",
-                            "20"
-                        },
+                        []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
                         flow.Temp,
                         100,
                         "1\n1\nq\n"
@@ -57,7 +48,6 @@ internal class OmpChecks {
                         []string{
                             "defaults",
                             "set",
-                            "--profile",
                             "omp",
                             "--harness",
                             "omp",
@@ -72,19 +62,12 @@ internal class OmpChecks {
                 }
                 Check.That(!File.Exists(Path.Combine(settings, "ran")), "OMP inference started before the claim")
                 flow.NoPr()
-                let selection = mode == "normal" ? []string{"--profile", "omp"}:
+                let selection = mode == "normal" ? []string{"omp"}:
                 []string{"--harness", "omp", "--model", OmpTool.Model, "--effort", "low"}
-                let claim = List[string]{"claim", "--repo", "owner/project", "--issue", "1"}
+                let claim = List[string]{"claim", "owner/project#1"}
                 claim.AddRange(selection)
                 claim.AddRange(
-                    []string{
-                        "--seconds",
-                        "60",
-                        "--verification-reserve",
-                        "20",
-                        "--runs",
-                        Path.Combine(flow.Temp.Root, "runs")
-                    }
+                    []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
                 )
                 let prepared = flow.Acquire(claim.ToArray())
                 let index = prepared.Output.LastIndexOf("Run: ")
@@ -152,13 +135,13 @@ internal class OmpChecks {
         }
 
         private func Pick(extra[]string)[]string {
-            let words = List[string]{"select", "--repo", "owner/project", "--harness", "omp", "--json"}
+            let words = List[string]{"select", "owner/project", "--harness", "omp", "--json"}
             words.AddRange(extra)
             return words.ToArray()
         }
 
         private func Refused(flow NativeFixture, extra[]string, reason string) {
-            let words = List[string]{"select", "--repo", "owner/project", "--harness", "omp"}
+            let words = List[string]{"select", "owner/project", "--harness", "omp"}
             words.AddRange(extra)
             Check.Contains(flow.Call(words.ToArray(), 1).Error, reason)
         }
@@ -221,21 +204,17 @@ internal class OmpChecks {
             Refused(flow, []string{"--model", "plain", "--effort", "absent"}, "Choose --provider for OMP")
             Check.Contains(
                 Check
-                    .Envelope(flow.Call([]string{"doctor", "--managed", "--json"}), "doctor", "ok")["data"]?["tools"]
+                    .Envelope(flow.Call([]string{"doctor", "managed", "--json"}), "doctor", "ok")["data"]?["tools"]
                     ?.ToJsonString() ?? "",
                 "OMP 100.0.0; 2 configured models"
             )
-            let ready = Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}),
-                "doctor",
-                "ok"
-            )
+            let ready = Check.Envelope(flow.Call([]string{"doctor", "managed", "omp", "--json"}), "doctor", "ok")
             Check.Contains(ready["data"]?["tools"]?.ToJsonString() ?? "", "OMP 100.0.0; 2 configured models")
             File.WriteAllText(Path.Combine(settings, "mode"), "empty")
-            let empty = flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}, 1)
+            let empty = flow.Call([]string{"doctor", "managed", "omp", "--json"}, 1)
             Check.Contains(empty.Output, "OMP lists no models")
             File.Delete(Path.Combine(flow.Bin, "omp"))
-            let missing = flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}, 1)
+            let missing = flow.Call([]string{"doctor", "managed", "omp", "--json"}, 1)
             Check.Contains(missing.Output, "OMP was not found")
             Check.That(!File.Exists(Path.Combine(settings, "ran")), "Selection or diagnostics started OMP inference")
             Console.WriteLine("PASS OMP provider, model and effort selection with no-inference diagnostics")
@@ -275,29 +254,22 @@ internal class OmpChecks {
             File.CreateSymbolicLink(Path.Combine(flow.Bin, "omp"), omp)
             File.Delete(Path.Combine(flow.Bin, "codex"))
             File.Delete(Path.Combine(flow.Bin, "codex-impl"))
-            let ready = Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--harness", "omp", "--json"}),
-                "doctor",
-                "ok"
-            )
+            let ready = Check.Envelope(flow.Call([]string{"doctor", "managed", "omp", "--json"}), "doctor", "ok")
             Check.Contains(ready["data"]?["tools"]?.ToJsonString() ?? "", "configured models listed")
             let prepared = flow.Acquire(
                 []string{
                     "claim",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
+                    "owner/project#1",
                     "--harness",
                     "omp",
                     "--model",
                     "synthetic/model:exact",
                     "--effort",
                     "absent",
-                    "--seconds",
-                    mode == "timeout" ? "45": "120",
-                    "--verification-reserve",
-                    "30",
+                    "--time",
+                    mode == "timeout" ? "45s": "120s",
+                    "--verify-time",
+                    "30s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs")
                 }

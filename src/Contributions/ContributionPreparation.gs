@@ -25,14 +25,14 @@ internal class ContributionPreparation {
             Overlaps.RequireDependencies(repo, issue)
             let run = Plan(args, repo, issue, viewer, state, record, args.Need("source"))
             Bind(run, state)
-            let directory = args.Get("continue-from") != "" ? AttemptContinuation.RunDirectory(
-                args,
+            let directory = RunStorage.Allocate(
+                args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
+                repo,
+                issue,
                 run.Text("attempt")
-            ): WorkspacePreparation.RunDirectory(args, run.Text("attempt"))
+            )
             PublicOutput.RunDirectory = directory
-            if Directory.Exists(directory) {
-                throw Exception("Saved contribution already exists; inspect it instead of overwriting")
-            }
+            run.Fields["name"] = Path.GetFileName(directory)
             WorkspacePreparation.Select(run, args.Get("fork"))
             if args.Get("continue-from") != "" {
                 if run.Text("source") != "tokate" || run.Text("attempt") == "" {
@@ -231,11 +231,9 @@ internal class ContributionPreparation {
             run.Fields["claim_request"] = request
             run.Fields["requested_fork"] = args.Get("fork")
             run.Fields["state"] = "claim_pending"
-            let directory = WorkspacePreparation.RunDirectory(args, J.Text(request, "uuid"))
+            let directory = RunStorage.Allocate(RunStorage.Store(args), repo, issue, J.Text(request, "uuid"))
             PublicOutput.RunDirectory = directory
-            if Directory.Exists(directory) || File.Exists(directory) || FileInfo(directory).LinkTarget != nil {
-                throw CliFailure("invalid_state", "Saved claim already exists; inspect its original run")
-            }
+            run.Fields["name"] = Path.GetFileName(directory)
             Directory.CreateDirectory(
                 directory,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute

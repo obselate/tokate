@@ -28,13 +28,13 @@ internal class DonorSelectionChecks {
                 effort
             }
             if profile != "" {
-                args.AddRange([]string{"--profile", profile})
+                args.Add(profile)
             }
             flow.Call(args.ToArray())
         }
 
         private func Select(flow NativeFixture, extra[]string, code int32 = 0) JsonNode {
-            let args = List[string]{"select", "--repo", "owner/project", "--non-interactive"}
+            let args = List[string]{"select", "owner/project", "--non-interactive"}
             args.AddRange(extra)
             let result = flow.Call(args.ToArray(), code)
             flow.NoInference()
@@ -66,7 +66,7 @@ internal class DonorSelectionChecks {
         private func LocalSettings(binary string) {
             using let flow = NativeFixture(binary)
             flow.Temp.Env["PATH"] = "/empty"
-            let read = flow.Call([]string{"defaults", "read"})
+            let read = flow.Call([]string{"defaults", "show"})
             Check.That(Check.Json(read.Output)["default"] == nil, "Missing defaults were fabricated")
             Set(flow)
             let path = Settings(flow)
@@ -77,7 +77,7 @@ internal class DonorSelectionChecks {
                 "Settings permissions are not private"
             )
             Check.That(read.Error == "", "Defaults require harness prerequisites")
-            Check.Contains(flow.Call([]string{"defaults", "read"}).Output, "gpt-6.1-sol")
+            Check.Contains(flow.Call([]string{"defaults", "show"}).Output, "gpt-6.1-sol")
             flow.Call([]string{"defaults", "remove"})
             Check.That(!File.Exists(path), "Defaults were not removed")
             let named = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
@@ -87,7 +87,6 @@ internal class DonorSelectionChecks {
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -121,7 +120,7 @@ internal class DonorSelectionChecks {
             )
             for output in[]string{
                 pi.Output,
-                flow.Call([]string{"defaults", "read", "--profile", "local"}).Output,
+                flow.Call([]string{"defaults", "show", "local"}).Output,
                 flow.Call([]string{"defaults", "list"}).Output
             } {
                 Check.Contains(output, "synthetic/model:exact")
@@ -131,9 +130,9 @@ internal class DonorSelectionChecks {
                 )
             }
             for invalid in[]string{"../escape", ".", "x/y", "bad name"} {
-                flow.Call([]string{"defaults", "read", "--profile", invalid}, 1)
+                flow.Call([]string{"defaults", "show", invalid}, 1)
             }
-            flow.Call([]string{"defaults", "read", "--profile", "missing"}, 1)
+            flow.Call([]string{"defaults", "show", "missing"}, 1)
             let original = File.ReadAllText(named)
             for invalid in[]string{
                 "{\"harness\":\"pi\",\"credentials\":\"synthetic-private-account-data\"}",
@@ -141,59 +140,44 @@ internal class DonorSelectionChecks {
                 String('x', 16385)
             } {
                 File.WriteAllText(named, invalid)
-                flow.Call([]string{"defaults", "read", "--profile", "local"}, 1)
+                flow.Call([]string{"defaults", "show", "local"}, 1)
             }
             File.WriteAllText(named, original)
-            flow.Call([]string{"defaults", "remove", "--profile", "local"})
+            flow.Call([]string{"defaults", "remove", "local"})
             Check.That(!File.Exists(named), "Named profile was not removed")
-            flow.Call([]string{"defaults", "set", "--profile", "codex-only", "--harness", "codex"})
+            flow.Call([]string{"defaults", "set", "codex-only", "--harness", "codex"})
             flow.Call(
-                []string{
-                    "defaults",
-                    "set",
-                    "--profile",
-                    "pi-only",
-                    "--harness",
-                    "pi",
-                    "--endpoint",
-                    "http://127.0.0.1:12345/v1"
-                }
+                []string{"defaults", "set", "pi-only", "--harness", "pi", "--endpoint", "http://127.0.0.1:12345/v1"}
             )
-            flow.Call(
-                []string{"defaults", "set", "--profile", "pi-only", "--model", "local/model", "--effort", "absent"}
-            )
+            flow.Call([]string{"defaults", "set", "pi-only", "--model", "local/model", "--effort", "absent"})
             Check.That(
                 Check.Text(
-                    Check.Json(flow.Call([]string{"defaults", "read", "--profile", "pi-only"}).Output)["default"]?[
-                        "harness"
-                    ]
+                    Check.Json(flow.Call([]string{"defaults", "show", "pi-only"}).Output)["default"]?["harness"]
                 ) == "pi",
                 "Adding model settings changed the profile harness"
             )
-            flow.Call([]string{"defaults", "use", "--profile", "codex-only"})
+            flow.Call([]string{"defaults", "use", "codex-only"})
             Check.That(
                 Check.Text(
-                    Check.Json(flow.Call([]string{"defaults", "read"}).Output)["default"]?["harness"]
+                    Check.Json(flow.Call([]string{"defaults", "show"}).Output)["default"]?["harness"]
                 ) == "codex",
                 "Named Codex profile was not selected"
             )
-            flow.Call([]string{"defaults", "use", "--profile", "pi-only"})
+            flow.Call([]string{"defaults", "use", "pi-only"})
             Check.That(
-                Check.Text(Check.Json(flow.Call([]string{"defaults", "read"}).Output)["default"]?["harness"]) == "pi",
+                Check.Text(Check.Json(flow.Call([]string{"defaults", "show"}).Output)["default"]?["harness"]) == "pi",
                 "Named Pi profile was not selected"
             )
             Check.That(
                 Check.Text(
-                    Check.Json(flow.Call([]string{"defaults", "read", "--profile", "codex-only"}).Output)["default"]?[
-                        "harness"
-                    ]
+                    Check.Json(flow.Call([]string{"defaults", "show", "codex-only"}).Output)["default"]?["harness"]
                 ) == "codex",
                 "Changing defaults overwrote another profile"
             )
-            flow.Call([]string{"defaults", "use", "--profile", "missing"}, 1)
+            flow.Call([]string{"defaults", "use", "missing"}, 1)
             flow.Call([]string{"defaults", "set", "--harness", "omp"})
             Check.That(
-                Check.Text(Check.Json(flow.Call([]string{"defaults", "read"}).Output)["default"]?["provider"]) == "",
+                Check.Text(Check.Json(flow.Call([]string{"defaults", "show"}).Output)["default"]?["provider"]) == "",
                 "External harness default invented managed support"
             )
             flow.Call([]string{"defaults", "set", "--harness", "unknown"}, 1)
@@ -202,7 +186,7 @@ internal class DonorSelectionChecks {
             let privateFile = Path.Combine(flow.Temp.Root, "private-config")
             File.WriteAllText(privateFile, "synthetic-private-account-data")
             File.CreateSymbolicLink(path, privateFile)
-            let refused = flow.Call([]string{"defaults", "read"}, 1)
+            let refused = flow.Call([]string{"defaults", "show"}, 1)
             Check.Contains(refused.Error, "symbolic links")
             Check.That(!refused.Error.Contains("synthetic-private-account-data"), "Settings exposed a linked file")
             flow.Reload()
@@ -255,7 +239,6 @@ internal class DonorSelectionChecks {
             flow.Call(
                 []string{
                     "select",
-                    "--repo",
                     "owner/project",
                     "--harness",
                     "claude",
@@ -274,11 +257,7 @@ internal class DonorSelectionChecks {
             Check.That(flow.State["login_count"] == nil, "Selection inspected private login state")
             flow.Mode("missing_controls")
             Check.Contains(
-                flow.Call(
-                    []string{"select", "--repo", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
-                    1
-                )
-                    .Error,
+                flow.Call([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"}, 1).Error,
                 "required explicit controls"
             )
             flow.NoInference()
@@ -299,12 +278,9 @@ internal class DonorSelectionChecks {
                 flow.Approve()
                 let args = List[string]{
                     "claim",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--seconds",
-                    "30",
+                    "owner/project#1",
+                    "--time",
+                    "30s",
                     "--runs",
                     Path.Combine(flow.Temp.Root, "runs"),
                     "--non-interactive"
@@ -339,27 +315,17 @@ internal class DonorSelectionChecks {
             let defaults = File.ReadAllText(Settings(flow))
             Check.Contains(defaults, custom)
             Check.That(
-                !flow.Call([]string{"defaults", "read"}).Output.Contains(custom),
+                !flow.Call([]string{"defaults", "show"}).Output.Contains(custom),
                 "Public defaults exposed harness path"
             )
             let invalid = flow.Call(
-                []string{"select", "--repo", "owner/project", "--harness-path", custom + "-missing", "--json"},
+                []string{"select", "owner/project", "--harness-path", custom + "-missing", "--json"},
                 1
             )
             Check.Envelope(invalid, "select", "error", "missing_tools")
             Check.That(File.ReadAllText(Settings(flow)) == defaults, "Invalid override changed saved defaults")
             let claimed = flow.Acquire(
-                []string{
-                    "claim",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--seconds",
-                    "30",
-                    "--runs",
-                    Path.Combine(flow.Temp.Root, "runs")
-                }
+                []string{"claim", "owner/project#1", "--time", "30s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
             )
             let run = claimed.Output.Substring(claimed.Output.LastIndexOf("Run: ") + 5).Trim()
             let path = Path.Combine(run, "run.json")
@@ -408,7 +374,7 @@ internal class DonorSelectionChecks {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             ExpandPolicy(flow)
-            let command = "'" + binary + "' select --repo owner/project --plain"
+            let command = "'" + binary + "' select owner/project --plain"
             let result = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
@@ -439,11 +405,8 @@ internal class DonorSelectionChecks {
             flow.NoInference()
             flow.NoPr()
             flow.Approve()
-            let work = "'" + binary + "' work --repo owner/project --issue 1 --runs '" + Path.Combine(
-                flow.Temp.Root,
-                "runs"
-            ) +
-                "' --harness codex --seconds 30 --plain"
+            let work = "'" + binary + "' work owner/project#1 --runs '" + Path.Combine(flow.Temp.Root, "runs") +
+                "' --harness codex --time 30s --plain"
             let declined = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
@@ -498,10 +461,7 @@ internal class DonorSelectionChecks {
             let state = coordination.State()
             let args = List[string]{
                 "prepare",
-                "--repo",
-                "owner/project",
-                "--issue",
-                "1",
+                "owner/project#1",
                 "--state",
                 Check.Text(state["sha"]),
                 "--source",
@@ -539,7 +499,7 @@ internal class DonorSelectionChecks {
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Owner rejects managed provider")
             Check.Contains(
-                flow.Call([]string{"select", "--repo", "owner/project", "--non-interactive"}, 1).Error,
+                flow.Call([]string{"select", "owner/project", "--non-interactive"}, 1).Error,
                 "exact owner tool restrictions"
             )
             flow.Reload()
@@ -579,7 +539,7 @@ internal class DonorSelectionChecks {
                     Check.Contains(Check.Text(rejected["error"]), "known model")
                 }
                 flow.Call([]string{"defaults", "remove"})
-                let command = "'" + binary + "' select --repo owner/project --plain"
+                let command = "'" + binary + "' select owner/project --plain"
                 let chosen = TestProcess.Run(
                     "/usr/bin/script",
                     []string{"-q", "-e", "-c", command, "/dev/null"},
@@ -607,7 +567,7 @@ internal class DonorSelectionChecks {
             using let flow = NativeFixture(binary)
             let path = flow.Temp.Env["PATH"]
             flow.Temp.Env["PATH"] = "/empty"
-            let missing = Check.Envelope(flow.Call([]string{"defaults", "read", "--json"}), "defaults", "ok")
+            let missing = Check.Envelope(flow.Call([]string{"defaults", "show", "--json"}), "defaults", "ok")
             Check.That(missing["data"]?["default"] == nil, "Missing JSON defaults fabricated")
             let saved = Check.Envelope(
                 flow.Call([]string{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "high", "--json"}),
@@ -634,7 +594,7 @@ internal class DonorSelectionChecks {
                 let args = List[string]{
                     "defaults",
                     "set",
-                    "--profile=inferred",
+                    "inferred",
                     pair[0],
                     "--model=gpt-6.1-sol",
                     pair[1] == "pi" ? "--effort=absent": "--effort=high",
@@ -657,7 +617,7 @@ internal class DonorSelectionChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile=explicit",
+                        "explicit",
                         "--harness=codex",
                         "--provider=local-chat-completions",
                         "--model=gpt-6.1-sol",
@@ -697,7 +657,7 @@ internal class DonorSelectionChecks {
             let profilePath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/cloud.json")
             let originalProfile = File.ReadAllText(profilePath)
             let profiled = Check.Envelope(
-                flow.Call([]string{"select", "--repo", "owner/project", "--profile", "cloud", "--json"}),
+                flow.Call([]string{"select", "owner/project", "cloud", "--json"}),
                 "select",
                 "ok"
             )
@@ -706,9 +666,7 @@ internal class DonorSelectionChecks {
                 "Named selection lost its source"
             )
             let overridden = Check.Envelope(
-                flow.Call(
-                    []string{"select", "--repo", "owner/project", "--profile", "cloud", "--effort", "xhigh", "--json"}
-                ),
+                flow.Call([]string{"select", "owner/project", "cloud", "--effort", "xhigh", "--json"}),
                 "select",
                 "ok"
             )
@@ -719,10 +677,10 @@ internal class DonorSelectionChecks {
             )
             flow.Reload()
             let calls = flow.State["api_calls"]?.DeepClone()
-            for rejected in[]string{"--profile=missing", "--harness=pi", "--provider=local-chat-completions"} {
-                let args = List[string]{"select", "--repo", "owner/project", "--json"}
-                if rejected != "--profile=missing" {
-                    args.AddRange([]string{"--profile", "cloud"})
+            for rejected in[]string{"missing", "--harness=pi", "--provider=local-chat-completions"} {
+                let args = List[string]{"select", "owner/project", "--json"}
+                if rejected != "missing" {
+                    args.Add("cloud")
                 }
                 args.Add(rejected)
                 Check.Envelope(flow.Call(args.ToArray(), 1), "select", "error", "command_failed")
@@ -733,17 +691,13 @@ internal class DonorSelectionChecks {
                 []string{"work", "--run", "unused", "--profile", "cloud", "--json"},
                 []string{
                     "prepare",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
+                    "owner/project#1",
                     "--state",
                     String('a', 40),
                     "--source",
                     "external",
                     "--tools",
                     "unused",
-                    "--profile",
                     "cloud",
                     "--json"
                 }
@@ -752,7 +706,7 @@ internal class DonorSelectionChecks {
             }
             for availability in[]string{"unknown", "available"} {
                 let selected = Check.Envelope(
-                    flow.Call([]string{"select", "--repo", "owner/project", "--availability", availability, "--json"}),
+                    flow.Call([]string{"select", "owner/project", "--availability", availability, "--json"}),
                     "select",
                     "ok"
                 )
@@ -767,7 +721,6 @@ internal class DonorSelectionChecks {
                 flow.Call(
                     []string{
                         "select",
-                        "--repo",
                         "owner/project",
                         "--model",
                         "gpt-6.1-sol",
@@ -785,7 +738,7 @@ internal class DonorSelectionChecks {
             )
             let removed = Check.Envelope(flow.Call([]string{"defaults", "remove", "--json"}), "defaults", "ok")
             Check.That(Check.Text(removed["data"]?["removed"]) == "true", "JSON defaults removal missing")
-            let command = "'" + binary + "' select --repo owner/project --json 2> '" + Path.Combine(
+            let command = "'" + binary + "' select owner/project --json 2> '" + Path.Combine(
                 flow.Temp.Root,
                 "diagnostics"
             ) +
@@ -806,7 +759,7 @@ internal class DonorSelectionChecks {
             for profile in[]string{"", "shared"} {
                 let args = List[string]{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "high"}
                 if profile != "" {
-                    args.AddRange([]string{"--profile", profile})
+                    args.Add(profile)
                 }
                 CliDiscovery.Call(binary, args.ToArray(), temp)
             }
@@ -814,14 +767,11 @@ internal class DonorSelectionChecks {
             let oldHash = Check.Hash(Path.Combine(previous, "donor-defaults.json"))
             let stateHome = Path.Combine(temp.Root, "new state")
             temp.Env["XDG_STATE_HOME"] = stateHome
-            Check.Contains(
-                CliDiscovery.Call(binary, []string{"defaults", "read", "--profile", "shared"}, temp).Output,
-                "high"
-            )
+            Check.Contains(CliDiscovery.Call(binary, []string{"defaults", "show", "shared"}, temp).Output, "high")
             for profile in[]string{"", "shared"} {
                 let args = List[string]{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "xhigh"}
                 if profile != "" {
-                    args.AddRange([]string{"--profile", profile})
+                    args.Add(profile)
                 }
                 CliDiscovery.Call(binary, args.ToArray(), temp)
             }
@@ -839,14 +789,14 @@ internal class DonorSelectionChecks {
             )
             for invalid in[]string{"", "relative-state"} {
                 temp.Env["XDG_STATE_HOME"] = invalid
-                let read = Check.Json(CliDiscovery.Call(binary, []string{"defaults", "read"}, temp).Output)
+                let read = Check.Json(CliDiscovery.Call(binary, []string{"defaults", "show"}, temp).Output)
                 Check.That(
                     Check.Text(read["default"]?["effort"]) == "high",
                     "Empty or relative state override changed lookup"
                 )
             }
             temp.Env["XDG_STATE_HOME"] = stateHome
-            CliDiscovery.Call(binary, []string{"defaults", "remove", "--profile", "shared"}, temp)
+            CliDiscovery.Call(binary, []string{"defaults", "remove", "shared"}, temp)
             Check.That(
                 !File.Exists(Path.Combine(current, "donor-profiles/shared.json")) && !File.Exists(
                     Path.Combine(previous, "donor-profiles/shared.json")
@@ -856,7 +806,7 @@ internal class DonorSelectionChecks {
             let path = Path.Combine(current, "donor-defaults.json")
             File.Delete(path)
             File.CreateSymbolicLink(path, Path.Combine(previous, "donor-defaults.json"))
-            CliDiscovery.Call(binary, []string{"defaults", "read"}, temp, 1)
+            CliDiscovery.Call(binary, []string{"defaults", "show"}, temp, 1)
             Check.That(
                 Check.Hash(Path.Combine(previous, "donor-defaults.json")) == oldHash,
                 "Linked defaults were changed"

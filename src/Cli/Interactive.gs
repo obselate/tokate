@@ -143,11 +143,9 @@ internal class Interactive {
                 labels.ToArray()
             )
             return choice > actions.Count ? []string{}: []string{
-                "request",
+                actions[choice - 1].GetString() ?? "",
                 "--run",
-                directory,
-                "--operation",
-                actions[choice - 1].GetString() ?? ""
+                directory
             }
         }
 

@@ -473,19 +473,7 @@ internal class Submission {
             }
             let request = PublicationRequest(run)
             File.WriteAllText(path, J.Write(request) + "\n")
-            Request(
-                Args(
-                    []string{
-                        "request",
-                        "--repo",
-                        run.Text("repo"),
-                        "--issue",
-                        run.Number("issue").ToString(),
-                        "--file",
-                        path
-                    }
-                )
-            )
+            Request(Args([]string{"request", run.Text("repo") + "#" + run.Number("issue").ToString(), "--file", path}))
         }
     }
 }

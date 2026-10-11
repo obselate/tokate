@@ -7,12 +7,9 @@ import System.Text.Json.Nodes
 internal class ContributionStatusChecks {
     shared {
         private func Read(test CoordinationFixture, code int32 = 0, owner bool = false, index bool = false) JsonNode {
-            let args = index ? []string{"status", "--repo", "owner/project", "--json"}: []string{
+            let args = index ? []string{"status", "owner/project", "--json"}: []string{
                 "status",
-                "--repo",
-                "owner/project",
-                "--issue",
-                "1",
+                "owner/project#1",
                 "--json"
             }
             test.Flow.ResetTraffic()
@@ -46,37 +43,22 @@ internal class ContributionStatusChecks {
             test.Initialize(false)
             let waiting = Row(Read(test))
             Check.That(Check.Text(waiting["state"]) == "approval_waiting", "Absent approval is ready")
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
-            test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             let needsRequest = Row(Read(test))
             Check.That(
                 Check.Text(needsRequest["next"]?["role"]) == "donor" && Check.Text(
-                    needsRequest["next"]?["command"]?[5]
+                    needsRequest["next"]?["command"]?[2]
                 ) == "request",
                 "Missing donor access request action"
             )
-            test.Flow.Call(
-                []string{
-                    "access",
-                    "--repo",
-                    "owner/project",
-                    "--operation",
-                    "request",
-                    "--issue",
-                    "1",
-                    "--scope",
-                    "trust"
-                }
-            )
+            test.Flow.Call([]string{"access", "request", "owner/project#1", "--trust"})
             let pending = Read(test, owner: true, index: true)
             Check.That(pending["data"]?["pending_requests"]?.AsArray().Count == 1, "Status hid pending access")
             Check.That(Check.Text(pending["data"]?["next"]?["role"]) == "owner", "Request responsibility missing")
             Check.That(Check.Text(Row(pending)["approval_status"]) == "current", "Task approval was not validated")
             Check.That(Check.Text(Row(Read(test))["state"]) == "access_waiting", "Untrusted donor became eligible")
-            test.Flow.Call(
-                []string{"access", "--repo", "owner/project", "--operation", "trust", "--donor", "donor"},
-                owner: true
-            )
+            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
@@ -103,10 +85,7 @@ internal class ContributionStatusChecks {
             test.Flow.Reload()
             test.Flow.State["access_revoke_after_path"] = nil
             test.Flow.Save()
-            test.Flow.Call(
-                []string{"access", "--repo", "owner/project", "--operation", "restore", "--donor", "donor"},
-                owner: true
-            )
+            test.Flow.Call([]string{"access", "restore", "donor", "owner/project"}, owner: true)
 
             test.Flow.Reload()
             let task = test.Flow.State["issue"] ?? throw Exception("Missing task")
@@ -362,7 +341,7 @@ internal class ContributionStatusChecks {
             let published = Row(Read(test, owner: true))
             Check.That(Check.Text(published["state"]) == "owner_review", "Recorded contribution omitted owner review")
             Check.That(
-                Check.Text(published["next"]?["command"]?[1]) == "verify-pr",
+                Check.Text(published["next"]?["command"]?[1]) == "verify",
                 "Owner receipt verification command omitted"
             )
             Check.Contains(Check.Text(published["drafts"]?[0]?["receipt"]), "unverified")
@@ -391,7 +370,7 @@ internal class ContributionStatusChecks {
             Check.That(
                 Check.Text(expired["state"]) == "owner_review" && expired["drafts"]?.AsArray().Count == 1 && Check.Text(
                     expired["next"]?["command"]?[1]
-                ) == "verify-pr" &&
+                ) == "verify" &&
                     Check.Text(expired["reservation"]?["expired"]) == "true",
                 "Expired lease replaced canonical published PR review"
             )
@@ -449,7 +428,7 @@ internal class ContributionStatusChecks {
                             "History used current branch or readiness authority"
                         )
                     }
-                    let human = test.Flow.Call([]string{"status", "--repo", "owner/project", "--issue", "1", "--plain"})
+                    let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, "State: " + (lifecycle + "_contribution").Replace('_', ' '))
                     Check.Contains(human.Output, "Contribution: " + lifecycle.Replace('_', ' '))
                     Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
@@ -701,16 +680,11 @@ internal class ContributionStatusChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let structured = Read(test)
-            let legacy = test.Flow.Call([]string{"status", "--repo", "owner/project", "--issue", "1"})
+            let legacy = test.Flow.Call([]string{"status", "owner/project#1"})
             let raw = Check.Json(legacy.Output)
             Check.That(raw.ToJsonString() == structured["data"]?.ToJsonString(), "Terminal and structured facts differ")
             test.Flow.Temp.Env["TERM"] = "xterm-256color"
-            let narrow = TestTerminal.Pty(
-                binary,
-                []string{"status", "--repo", "owner/project", "--issue", "1", "--plain"},
-                test.Flow.Temp,
-                40
-            )
+            let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
             Check.Contains(narrow.Output, "Issue: #1 Implement fixture")
             Check.Contains(narrow.Output, "State: reservation needed")
@@ -741,12 +715,12 @@ internal class ContributionStatusChecks {
             test.Flow.Save()
             test.Flow.ResetTraffic()
             test.Flow.Temp.Env["TERM"] = "dumb"
-            let args = []string{"status", "--repo", "owner/project", "--plain"}
+            let args = []string{"status", "owner/project", "--plain"}
             let truncated = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-truncated", truncated)
             Check.Contains(truncated, "Bounded snapshot: some data was omitted.")
             Check.Contains(truncated, "Review donor access and grant eligibility if appropriate.")
-            Check.Contains(truncated, "Command: tokate access --repo owner/project --operation list --issue 1")
+            Check.Contains(truncated, "Command: tokate access list owner/project\r\n")
             test.Flow.Reload()
             let current = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             current["title"] = JsonValue.Create(title)

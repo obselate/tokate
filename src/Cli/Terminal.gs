@@ -207,6 +207,44 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
+        internal func Runs(args Args, rows List[SavedRun], error bool = false) {
+            var width int32 = 3
+            for row in rows {
+                width = Math.Max(width, RunReference.Label(args, row).Length)
+            }
+            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+            for row in rows {
+                Line(
+                    Clean(
+                        "  " + RunReference.Label(args, row).PadRight(width) + "  " + row.Text("state").PadRight(20) +
+                            "  " +
+                            row
+                            .Age().PadRight(4) + "  " + row.Text("model")
+                    ),
+                    "default",
+                    error
+                )
+                if row.Next != "" {
+                    Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
+                }
+            }
+        }
+
+        private func Hint(action[]string) string {
+            let index = Array.IndexOf(action, "--run")
+            if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
+                action[1]
+            )
+                .Runs {
+                return Command(action)
+            }
+            let words = List[string](action)
+            words.RemoveRange(index, 2)
+            words.Remove("--json")
+            words.Insert(2, PublicOutput.RunName)
+            return Command(words.ToArray())
+        }
+
         internal func Command(command JsonElement, flatten bool = true) string {
             let words = StringBuilder()
             if command.ValueKind == JsonValueKind.Array {
@@ -230,7 +268,7 @@ internal class Terminal {
                 words.Append(' ')
             }
             words.Append(
-                Regex.IsMatch(word, "^[A-Za-z0-9_./:-]+$") ? word:
+                Regex.IsMatch(word, "^[A-Za-z0-9_./:-][A-Za-z0-9_./:#-]*$") ? word:
                 "'" + word.Replace("'", "'\"'\"'") + "'"
             )
         }
@@ -318,7 +356,7 @@ internal class Terminal {
                 let summary = RunSummaryArtifacts(PublicOutput.RunDirectory)
                 Message("Saved artifacts: " + summary, "default", true)
                 for action in PublicOutput.Actions {
-                    Message("Next: " + Command(action), "default", true)
+                    Message("Next: " + Hint(action), "default", true)
                 }
             } catch (error Exception) { }
         }
@@ -377,7 +415,7 @@ internal class Terminal {
                     if action[1] == "status" {
                         details = Command(action)
                     } else {
-                        Row("Next", Command(Array.FindAll(action, word -> word != "--json")))
+                        Row("Next", Hint(Array.FindAll(action, word -> word != "--json")))
                     }
                 }
             }

@@ -80,9 +80,7 @@ internal class DonorDefaults {
             }
             if value.ValueKind == JsonValueKind.Undefined {
                 if profile != "" && !allowMissing {
-                    throw Exception(
-                        "Named donor profile is missing; use defaults set --profile NAME. No inference started."
-                    )
+                    throw Exception("Named donor profile is missing; use defaults set NAME. No inference started.")
                 }
                 return JsonElement{}
             }
@@ -232,7 +230,7 @@ internal class DonorDefaults {
                     )
                 )
             }
-            if args.Subject == "read" {
+            if args.Subject == "show" {
                 return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(Read(profile))}))
             }
             if args.Subject == "remove" {
@@ -248,7 +246,7 @@ internal class DonorDefaults {
                 return J.Parse(J.Write(map[string, Object?]{"profile": profile, "removed": existed}))
             }
             if args.Subject == "use" {
-                let selected = Read(args.Need("profile"))
+                let selected = Read(profile)
                 Write(selected)
                 return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(selected)}))
             }

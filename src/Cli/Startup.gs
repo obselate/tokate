@@ -411,7 +411,7 @@ internal class Startup {
                 if J.Text(saved, "harness") != "" {
                     if !DonorSelection.Managed(saved) {
                         throw Exception(
-                            "The default harness uses external work. Choose --harness codex, --harness claude, --harness pi or --harness omp for managed diagnostics."
+                            "The default harness uses external work. Use doctor codex, doctor claude, doctor pi or doctor omp for managed diagnostics."
                         )
                     }
                     for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {

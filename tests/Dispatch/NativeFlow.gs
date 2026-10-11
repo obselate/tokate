@@ -27,6 +27,7 @@ internal partial class NativeFlow : NativeFixture {
                 TestCase[NativeFlow]("ModelPolicyMalformed", async (value NativeFlow) -> value.ModelPolicyMalformed()),
                 TestCase[NativeFlow]("MissingFork", async (value NativeFlow) -> value.MissingFork()),
                 TestCase[NativeFlow]("VerificationReserve", async (value NativeFlow) -> ReserveChecks.All(binary)),
+                TestCase[NativeFlow]("RunNames", async (value NativeFlow) -> value.RunNames()),
                 TestCase[NativeFlow]("ManagedCancellation", async (value NativeFlow) -> value.ManagedCancellation()),
                 TestCase[NativeFlow]("EmptyProtectedPaths", async (value NativeFlow) -> value.EmptyProtectedPaths()),
                 TestCase[NativeFlow]("GitEvidence", async (value NativeFlow) -> value.GitEvidence()),

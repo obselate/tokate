@@ -109,7 +109,7 @@ internal class Diagnostics {
                     Check.That(MetadataWatchPath(descriptor, watched, 33) >= 0, "Cannot watch synthetic target")
                     let result = TestProcess.Run(
                         "/usr/bin/timeout",
-                        []string{"5", binary, "doctor", "--managed", "--json"},
+                        []string{"5", binary, "doctor", "managed", "--json"},
                         temp.Env,
                         cwd: temp.Root
                     )
@@ -167,9 +167,9 @@ internal class Diagnostics {
             File.CreateSymbolicLink(Path.Combine(temp.Root, "bin/setsid"), "/usr/bin/setsid")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\nexit 1\n")
             for words in[]([]string){
-                []string{"doctor", "--owner", "--managed", "--auth"},
-                []string{"doctor", "--owner", "--external"},
-                []string{"doctor", "--managed", "--external", "--non-interactive"}
+                []string{"doctor", "owner", "managed", "--auth"},
+                []string{"doctor", "owner", "external"},
+                []string{"doctor", "managed", "external", "--non-interactive"}
             } {
                 Call(binary, temp, words, "error", "invalid_arguments")
             }
@@ -187,12 +187,12 @@ internal class Diagnostics {
             Check.That(!File.Exists(calls), "Offline commands started prerequisite probes")
             Call(binary, temp, []string{"work", "--run", saved}, "error", "invalid_state")
             Check.That(!File.Exists(calls), "Rejected external saved work probed managed tools")
-            let incomplete = Call(binary, temp, []string{"doctor", "--owner"}, "error", "missing_tools")
+            let incomplete = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
             Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Owner accepted missing Git")
             for name in[]string{"git", "curl", "tar"} {
                 Tool(temp, name, "exit 0\n")
             }
-            let owner = Call(binary, temp, []string{"doctor", "--owner"})
+            let owner = Call(binary, temp, []string{"doctor", "owner"})
             Check.That(
                 Check.Text(owner["data"]?["scope"]) == "owner" && owner["data"]?["tools"]?.AsArray().Count == 8,
                 "Owner checked donor tools"
@@ -210,14 +210,14 @@ internal class Diagnostics {
                 File.CreateSymbolicLink(Path.Combine(longTools, name), Path.Combine(temp.Root, "bin", name))
             }
             temp.Env["PATH"] = longTools
-            let longPath = Call(binary, temp, []string{"doctor", "--owner"})
+            let longPath = Call(binary, temp, []string{"doctor", "owner"})
             Check.That(
                 Check.Text(Row(longPath, "gh")["path"]) == Path.Combine(longTools, "gh"),
                 "Diagnostic tool path was shortened"
             )
             temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\n" + "test \"$1\" = auth && exit 0\nexit 4\n")
-            let auth = Call(binary, temp, []string{"doctor", "--owner", "--auth"}, "error", "authentication_required")
+            let auth = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "authentication_required")
             Check.That(
                 Check.Text(Row(auth, "gh-auth")["status"]) == "authentication_required",
                 "Missing auth not distinguished"
@@ -229,25 +229,19 @@ internal class Diagnostics {
                 "#!/bin/sh\ntest \"$1\" = --version && exit 0\n" +
                     "printf '%s\\n' '123'\nprintf '%s\\n' synthetic-auth-secret >&2\n"
             )
-            let authenticated = Call(binary, temp, []string{"doctor", "--owner", "--auth"})
+            let authenticated = Call(binary, temp, []string{"doctor", "owner", "--auth"})
             Check.That(Check.Text(Row(authenticated, "gh-auth")["status"]) == "ready", "Verified identity was rejected")
-            let missing = Call(binary, temp, []string{"doctor", "--managed"}, "error", "missing_tools")
+            let missing = Call(binary, temp, []string{"doctor", "managed"}, "error", "missing_tools")
             Check.That(Check.Text(Row(missing, "codex")["status"]) == "missing", "Missing Codex not distinguished")
             Check.That(Check.Text(Row(missing, "sandbox")["status"]) == "skipped", "Skipped probe passed")
             Tool(temp, "codex", "exit 17\n")
-            let broken = Call(binary, temp, []string{"doctor", "--managed"}, "error", "missing_tools")
+            let broken = Call(binary, temp, []string{"doctor", "managed"}, "error", "missing_tools")
             Check.That(Check.Text(Row(broken, "codex")["status"]) == "failed", "Broken Codex accepted")
             File.WriteAllText(Path.Combine(temp.Root, "bin/codex"), "#!/missing/interpreter\n")
-            let cannotStart = Call(binary, temp, []string{"doctor", "--managed"}, "error", "missing_tools")
+            let cannotStart = Call(binary, temp, []string{"doctor", "managed"}, "error", "missing_tools")
             Check.Contains(Check.Text(Row(cannotStart, "codex")["detail"]), "could not start")
             Tool(temp, "codex", "test \"$1\" = --version && exit 0\nprintf '%s\\n' 'Logged in using ChatGPT'\nexit 0\n")
-            let donorAuth = Call(
-                binary,
-                temp,
-                []string{"doctor", "--managed", "--auth"},
-                "error",
-                "verification_failed"
-            )
+            let donorAuth = Call(binary, temp, []string{"doctor", "managed", "--auth"}, "error", "verification_failed")
             Check.That(
                 Check.Text(Row(donorAuth, "codex-auth")["status"]) == "ready",
                 "Explicit ChatGPT status not checked"
@@ -257,7 +251,7 @@ internal class Diagnostics {
             File.Delete(Path.Combine(temp.Root, "bin/codex"))
             File.Delete(Path.Combine(temp.Root, "bin/git"))
             File.WriteAllText(calls, "")
-            let archive = Call(binary, temp, []string{"recover", "--run", saved, "--prepare"}, "error", "missing_tools")
+            let archive = Call(binary, temp, []string{"recover", "--run", saved}, "error", "missing_tools")
             Check.That(
                 archive["data"]?["tools"]?.AsArray().Count == 1 && Check.Text(
                     Row(archive, "git")["status"]
@@ -280,10 +274,7 @@ internal class Diagnostics {
                 temp,
                 []string{
                     "prepare",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
+                    "owner/project#1",
                     "--state",
                     String('a', 40),
                     "--source",
@@ -299,26 +290,13 @@ internal class Diagnostics {
             let managed = Call(
                 binary,
                 temp,
-                []string{
-                    "prepare",
-                    "--repo",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--state",
-                    String('a', 40),
-                    "--source",
-                    "tokate"
-                },
+                []string{"prepare", "owner/project#1", "--state", String('a', 40), "--source", "tokate"},
                 "error",
                 "missing_tools"
             )
             Check.That(Check.Text(Row(managed, "codex")["status"]) == "missing", "Managed catalog route omitted Codex")
             for command in[]string{"claim", "select"} {
-                let words = List[string]{command, "--repo", "owner/project"}
-                if command == "claim" {
-                    words.AddRange([]string{"--issue", "1"})
-                }
+                let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
                 let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")
                 Check.That(
                     Check.Text(Row(selection, "codex")["status"]) == "missing",
@@ -326,13 +304,13 @@ internal class Diagnostics {
                 )
             }
             Tool(temp, "gh", "exit 17\n")
-            let failedOwner = Call(binary, temp, []string{"doctor", "--owner", "--auth"}, "error", "missing_tools")
+            let failedOwner = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "missing_tools")
             Check.That(
                 Check.Text(Row(failedOwner, "gh-auth")["status"]) == "skipped",
                 "Failed authentication status passed"
             )
             File.Delete(Path.Combine(temp.Root, "bin/setsid"))
-            let noRunner = Call(binary, temp, []string{"doctor", "--owner"}, "error", "missing_tools")
+            let noRunner = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
             Check.That(Check.Text(Row(noRunner, "gh")["status"]) == "skipped", "PATH discovery proved readiness")
             Console.WriteLine(
                 "PASS scoped diagnostics, conflicts, missing/broken tools, explicit sanitized authentication and offline routes; no inference"
@@ -380,7 +358,7 @@ internal class Diagnostics {
             } {
                 let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/setpriv" || helper == "/usr/bin/unshare"
                 let owner = Check.Envelope(
-                    FixedCall(binary, flow, helper, []string{"doctor", "--owner"}),
+                    FixedCall(binary, flow, helper, []string{"doctor", "owner"}),
                     "doctor",
                     cleanup ? "error": "ok",
                     cleanup ? "missing_tools": ""
@@ -402,12 +380,7 @@ internal class Diagnostics {
                 }
                 if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
-                        FixedCall(
-                            binary,
-                            flow,
-                            helper,
-                            []string{"select", "--repo", "owner/project", "--non-interactive"}
-                        ),
+                        FixedCall(binary, flow, helper, []string{"select", "owner/project", "--non-interactive"}),
                         "select",
                         "error",
                         "missing_tools"
@@ -417,7 +390,7 @@ internal class Diagnostics {
                         "Broken fixed catalog helper accepted"
                     )
                 }
-                let doctorScope = helper == "/usr/bin/env" ? "--managed": "--external"
+                let doctorScope = helper == "/usr/bin/env" ? "managed": "external"
                 let doctor = Check.Envelope(
                     FixedCall(binary, flow, helper, []string{"doctor", doctorScope}),
                     "doctor",
@@ -426,12 +399,12 @@ internal class Diagnostics {
                 )
                 Check.That(
                     Check.Text(Row(doctor, helper)["status"]) == "failed" &&
-                        (doctorScope != "--managed" || Check.Text(Row(doctor, "sandbox")["status"]) == "skipped"),
+                        (doctorScope != "managed" || Check.Text(Row(doctor, "sandbox")["status"]) == "skipped"),
                     "Broken fixed helper was reported as a sandbox failure"
                 )
                 if helper == "/usr/bin/env" {
                     let external = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"doctor", "--external"}),
+                        FixedCall(binary, flow, helper, []string{"doctor", "external"}),
                         "doctor",
                         "error",
                         "missing_tools"
@@ -461,7 +434,7 @@ internal class Diagnostics {
             flow.Temp.Env["PATH"] = linked + ":" + hostile + ":" + flow.Temp.Env["PATH"]
             let trusted = Path.Combine(flow.Bin, "codex")
             let discovered = Check.Envelope(
-                TestProcess.Run(binary, []string{"doctor", "--managed", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
+                TestProcess.Run(binary, []string{"doctor", "managed", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
                 "doctor",
                 "ok"
             )
@@ -477,12 +450,7 @@ internal class Diagnostics {
             for setting in[]string{"CODEX_INSTALL_DIR", "NPM_CONFIG_PREFIX", "BUN_INSTALL_BIN"} {
                 flow.Temp.Env[setting] = setting == "NPM_CONFIG_PREFIX" ? prefix: configured
                 let installed = Check.Envelope(
-                    TestProcess.Run(
-                        binary,
-                        []string{"doctor", "--managed", "--json"},
-                        flow.Temp.Env,
-                        cwd: flow.Upstream
-                    ),
+                    TestProcess.Run(binary, []string{"doctor", "managed", "--json"}, flow.Temp.Env, cwd: flow.Upstream),
                     "doctor",
                     "ok"
                 )
@@ -499,7 +467,7 @@ internal class Diagnostics {
             let explicitPath = Check.Envelope(
                 TestProcess.Run(
                     binary,
-                    []string{"doctor", "--managed", "--harness-path", command, "--json"},
+                    []string{"doctor", "managed", "--harness-path", command, "--json"},
                     flow.Temp.Env,
                     cwd: flow.Upstream
                 ),
@@ -520,7 +488,7 @@ internal class Diagnostics {
             flow.Initialize()
             let managed = TestProcess.Run(
                 binary,
-                []string{"doctor", "--managed", "--json"},
+                []string{"doctor", "managed", "--json"},
                 flow.Temp.Env,
                 cwd: flow.Upstream
             )
@@ -534,7 +502,7 @@ internal class Diagnostics {
             flow.Save()
             let failed = TestProcess.Run(
                 binary,
-                []string{"doctor", "--managed", "--json"},
+                []string{"doctor", "managed", "--json"},
                 flow.Temp.Env,
                 cwd: flow.Upstream
             )
@@ -543,7 +511,7 @@ internal class Diagnostics {
             File.Delete(Path.Combine(flow.Bin, "codex"))
             let external = TestProcess.Run(
                 binary,
-                []string{"doctor", "--external", "--json"},
+                []string{"doctor", "external", "--json"},
                 flow.Temp.Env,
                 cwd: flow.Upstream
             )
@@ -560,7 +528,7 @@ internal class Diagnostics {
             }
             Check.That(!File.Exists(installMarker), "Default doctor downloaded a harness")
             Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--fix", "--yes", "--json"}, 1),
+                flow.Call([]string{"doctor", "managed", "--fix", "--yes", "--json"}, 1),
                 "doctor",
                 "error",
                 "missing_tools"
@@ -568,7 +536,7 @@ internal class Diagnostics {
             Check.That(!File.Exists(installMarker), "Managed scope silently selected a harness to install")
             flow.Call([]string{"defaults", "set", "--harness", "codex"})
             Check.Envelope(
-                flow.Call([]string{"doctor", "--managed", "--fix", "--yes", "--json"}, 1),
+                flow.Call([]string{"doctor", "managed", "--fix", "--yes", "--json"}, 1),
                 "doctor",
                 "error",
                 "missing_tools"
@@ -576,7 +544,7 @@ internal class Diagnostics {
             Check.That(!File.Exists(installMarker), "A missing saved default was installed without an explicit choice")
             flow.Call([]string{"defaults", "remove"})
             Check.Envelope(
-                flow.Call([]string{"doctor", "--harness", "codex", "--fix", "--yes", "--json"}, 1),
+                flow.Call([]string{"doctor", "codex", "--fix", "--yes", "--json"}, 1),
                 "doctor",
                 "error",
                 "command_failed"
@@ -597,7 +565,7 @@ internal class Diagnostics {
             )
             Check.That(!File.Exists(installMarker), "Default discovery ran a harness or installer")
             let preference = Check.Envelope(
-                flow.Call([]string{"doctor", "--set-default", "--harness", "omp", "--json"}),
+                flow.Call([]string{"doctor", "--set-default", "omp", "--json"}),
                 "doctor",
                 "ok"
             )
@@ -698,7 +666,7 @@ internal class Diagnostics {
                     args.AddRange([]string{"--ro-bind", privilege, "/usr/bin/" + name})
                 }
                 args.AddRange(
-                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "--owner", "--fix", "--json"}
+                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "owner", "--fix", "--json"}
                 )
                 Check.Envelope(
                     TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),

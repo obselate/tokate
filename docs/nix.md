@@ -18,7 +18,7 @@ nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
 ```sh
 nix profile add github:obselate/tokate
-tokate doctor --external
+tokate doctor external
 ```
 
 In an existing NixOS flake, add `inputs.tokate.url = "github:obselate/tokate"`
@@ -31,14 +31,14 @@ For Codex:
 
 ```sh
 nix profile add nixpkgs#codex
-tokate doctor --managed --harness codex
+tokate doctor managed codex
 ```
 
 For Pi:
 
 ```sh
 nix profile add github:earendil-works/pi/stable
-tokate doctor --managed --harness pi
+tokate doctor managed pi
 ```
 
 Keep custom profile `bin` directories on `PATH`, or use `--harness-path`.

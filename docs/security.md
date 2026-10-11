@@ -65,6 +65,8 @@ or billing limits. Abrupt termination can leave incomplete evidence.
 Runs live under `$XDG_STATE_HOME/tokate/runs`, falling back to
 `~/.local/state/tokate/runs`, or an explicit `--runs` directory. Empty or relative
 state overrides use the fallback. Saved discovery still finds previous runs.
+A run directory is named `owner-repo-ISSUE-ATTEMPT`. Runs from earlier versions keep
+their directories.
 Profiles prefer the current state directory and read previous profiles when absent.
 Nothing is migrated automatically. Explicit profile removal clears both locations.
 They contain checkouts, metadata, private logs, patches and publication evidence.

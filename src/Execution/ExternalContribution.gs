@@ -203,7 +203,7 @@ internal class ExternalContribution {
                 throw Exception("Expected unexecuted external work or a recorded external verification failure")
             }
             if !retry && (args.Get("seconds") != "" || args.Get("tools") != "") {
-                throw Exception("--seconds and --tools require a failed external verification")
+                throw Exception("--time and --tools require a failed external verification")
             }
             let record = ContributionAuthority.Recheck(run)
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))

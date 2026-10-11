@@ -55,17 +55,7 @@ internal class ReservationRequest {
                 "outcome": pending ? nil: outcome as Object
             }
             if pending {
-                PublicOutput.Actions.Add(
-                    []string{
-                        "tokate",
-                        "request",
-                        "--run",
-                        directory,
-                        "--operation",
-                        J.Text(request, "action"),
-                        "--json"
-                    }
-                )
+                PublicOutput.Actions.Add([]string{"tokate", J.Text(request, "action"), "--run", directory, "--json"})
                 Terminal.Message("Reservation request pending. Saved work: " + directory)
                 return 8
             }

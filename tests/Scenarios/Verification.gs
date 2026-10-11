@@ -20,7 +20,7 @@ internal class VerificationChecks {
             let run = flow.Claim()
             flow.Mode("verification_fail")
             Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "Owner verification failed")
-            flow.Call([]string{"recover", "--run", run, "--prepare"})
+            flow.Call([]string{"recover", "--run", run})
             let commit = CorrectionChecks.Correct(flow, run)
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{

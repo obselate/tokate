@@ -43,7 +43,7 @@ internal open class CoordinationFixture : IDisposable {
     public func Dispose() -> Flow.Dispose()
 
     internal func State() JsonNode -> Check.Json(
-        Flow.Call([]string{"coordination", "--repo", "owner/project", "--issue", Issue.ToString()}).Output
+        Flow.Call([]string{"coordination", "owner/project#" + Issue.ToString()}).Output
     )
 
     internal func ClaimRequest() JsonNode {
@@ -101,7 +101,7 @@ internal open class CoordinationFixture : IDisposable {
     }
 
     internal func Coordinate(path string, code int32 = 0, traffic bool = false) Result -> Flow.Call(
-        []string{"coordinate", "--repo", "owner/project", "--event", path},
+        []string{"coordinate", "owner/project", "--event", path},
         code,
         owner: true,
         traffic: traffic
@@ -198,26 +198,23 @@ internal open class CoordinationFixture : IDisposable {
         let state = State()
         let args = List[string]{
             "prepare",
-            "--repo",
-            "owner/project",
-            "--issue",
-            "1",
+            "owner/project#1",
             "--state",
             Check.Text(state["sha"]),
             "--source",
             source,
             "--tools",
             Tools,
-            "--seconds",
-            seconds,
+            "--time",
+            seconds + "s",
             "--runs",
             Path.Combine(Flow.Temp.Root, "runs")
         }
         if reserve != "" {
-            args.AddRange([]string{"--verification-reserve", reserve})
+            args.AddRange([]string{"--verify-time", reserve + "s"})
         }
         if unlimited {
-            args.RemoveRange(args.IndexOf("--seconds"), 2)
+            args.RemoveRange(args.IndexOf("--time"), 2)
             args.Add("--unlimited")
         }
         let result = Flow.Call(args.ToArray(), code)
