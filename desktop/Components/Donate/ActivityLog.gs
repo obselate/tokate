@@ -111,8 +111,8 @@ open class ActivityLog : Cell[ActivityLogInput] {
             }
         }
         let header = Row{Children: input.Leading?.Invoke() ?? []Blob{}, Gap: 12}.Build()
-        header.Padding = Edges{Left: 22, Right: 10, Top: 8, Bottom: 8}
-        header.MinHeight = 52
+        header.Padding = Edges{Left: 22, Right: 10, Top: 4, Bottom: 4}
+        header.MinHeight = 44
         header.Children.Add(Spacer{}.Build())
         if input.Running && !follow {
             header.Children.Add(

@@ -2,6 +2,7 @@ package TokateDesktop
 
 import Goo
 import System
+import System.Collections.Generic
 
 /// Step IV: a reserved donation from the request to the result, above its output.
 class DonationStepView {
@@ -18,26 +19,24 @@ class DonationStepView {
     func Build(page PageContext, header Blob, message string, tone Tone) Blob {
         let progress = donation.Current.Progress
         let directory = progress.Path
-        return Stack{
-            Gap: 16,
-            Fill: !page.Metrics.Short,
-            Children: []Blob{
-                header,
-                DonationStatus{
-                    Progress: progress,
-                    Message: message,
-                    MessageTone: tone,
-                    Button: page.Button,
-                    Busy: page.Busy,
-                    Cancellable: page.BusyHere,
-                    Stacked: page.Metrics.ContentWidth < 740,
-                    OnStart: () -> donation.Start(),
-                    OnInspectSaved: () -> navigate(Destination.Saved),
-                    OnNew: () -> donation.NewDonation(),
-                    OnViewSaved: () -> openSaved(directory),
-                }.Build(),
-                DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build(),
-            },
-        }.Build()
+        let children = List[Blob]{header}
+        if message != "" {
+            children.Add(Callout{Message: message, Tone: tone}.Build())
+        }
+        children.Add(
+            DonationStatus{
+                Progress: progress,
+                Button: page.Button,
+                Busy: page.Busy,
+                Cancellable: page.BusyHere,
+                Stacked: page.Metrics.ContentWidth < 740,
+                OnStart: () -> donation.Start(),
+                OnInspectSaved: () -> navigate(Destination.Saved),
+                OnNew: () -> donation.NewDonation(),
+                OnViewSaved: () -> openSaved(directory),
+            }.Build()
+        )
+        children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
+        return Stack{Gap: 16, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
     }
 }

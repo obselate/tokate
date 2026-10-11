@@ -6,11 +6,10 @@ import System
 import System.Collections.Generic
 
 /// A reserved donation in every state: what it waits for, its tool and limits, the elapsed time against
-/// the limit, and the action the donor can take next. `Stacked` puts the time below the state.
+/// the limit, and the action the donor can take next. The state, the time and the actions share one row.
+/// `Stacked` puts them in a column.
 data struct DonationStatus {
     var Progress DonationProgress
-    var Message string
-    var MessageTone Tone
     var Button CommandButton
     var Busy bool
     var Cancellable bool
@@ -39,14 +38,7 @@ data struct DonationStatus {
         if done && run.State != "" && run.State != "claimed" {
             heading.Children.Add(StatusBadge{Value: run.Status, Tone: Statuses.ToneOf(run.Status)}.Build())
         }
-        let state = Container{FlexGrow: 1, FlexBasis: Stacked ? Length.Auto: Length(0), MinWidth: 0, Gap: 10, heading}
-        let note = Note(done)
-        if note != "" {
-            state.Children.Add(Label{Content: note, Size: AppTheme.SmallSize, Muted: true}.Build())
-        }
-        if Message != "" {
-            state.Children.Add(Callout{Message: Message, Tone: MessageTone}.Build())
-        }
+        let state = Container{FlexShrink: 1, MinWidth: 0, MaxWidth: 460, Gap: 6, heading}
         if Progress.Path != "" {
             state.Children.Add(
                 Label{
@@ -58,22 +50,31 @@ data struct DonationStatus {
                 }.Build()
             )
         }
-        state.Children.Add(Row{Children: Actions(done)}.Build())
-        let band = Container{
+        let note = Note(done)
+        if note != "" {
+            state.Children.Add(Label{Content: note, Size: AppTheme.SmallSize, Muted: true}.Build())
+        }
+        let row = Container{
             FlexDirection: Stacked ? FlexDirection.Column: FlexDirection.Row,
+            AlignItems: Stacked ? AlignItems.Stretch: AlignItems.Center,
+            Gap: Stacked ? 14: 28,
+            state,
+        }
+        if Progress.Started || run.Unlimited || Progress.Limit > 0 {
+            row.Children.Add(Time())
+        } else if !Stacked {
+            row.Children.Add(Spacer{}.Build())
+        }
+        row.Children.Add(Row{Children: Actions(done)}.Build())
+        return Container{
             FlexShrink: 0,
-            Gap: Stacked ? 16: 28,
-            Padding: Edges{Left: 22, Right: 22, Top: 18, Bottom: 18},
+            Padding: Edges{Left: 22, Right: 22, Top: 16, Bottom: 16},
             BackgroundColor: p.Surface,
             BorderWidth: 1,
             BorderColor: p.Line,
             BorderRadius: AppTheme.PanelRadius,
-            state,
+            row,
         }
-        if Progress.Started || run.Unlimited || Progress.Limit > 0 {
-            band.Children.Add(Time())
-        }
-        return band
     }
 
     private func Note(done bool) string {
@@ -107,57 +108,62 @@ data struct DonationStatus {
         return actions.ToArray()
     }
 
-    /// The clock and the bar. Before the start the clock shows the limit. Unlimited coding time has no bar.
+    /// The clock, the parts of the limit and the bar. Before the start the clock shows the limit. A finished
+    /// donation does not show the parts. Unlimited coding time has no bar.
     private func Time() Blob {
         let p = AppTheme.Current
         let run = Progress.Run
         let limit = Progress.Limit
         let time = Container{
-            Width: Stacked ? Length.Auto: Length(320),
-            FlexShrink: 0,
+            FlexGrow: Stacked ? 0: 1,
+            FlexBasis: Stacked ? Length.Auto: Length(0),
+            MinWidth: Stacked ? 0: 200,
             Gap: 8,
-            JustifyContent: JustifyContent.Center,
-            Padding: Stacked ? Edges{Top: 16}: Edges{Left: 28},
-            BorderWidth: Stacked ? Edges{Top: 1}: Edges{Left: 1},
-            BorderColor: p.Line,
         }
         if !Progress.Started && run.Unlimited {
             time.Children.Add(Label{Content: "Unlimited coding time"}.Build())
             return time
         }
         let clock = DonationProgress.Clock(Progress.Started ? Progress.Elapsed: limit)
-        time.Children.Add(
-            Row{
-                Align: AlignItems.Baseline,
-                Gap: 10,
-                Children: []Blob{
-                    Text{
-                        Content: clock,
-                        FontFamily: AppTheme.MonoFont,
-                        FontSize: AppTheme.TitleSize,
-                        Color: p.Ink,
-                        Accessibility: Accessibility{
-                            Role: AccessibilityRole.Text,
-                            Name: Progress.Started ? "Elapsed " + DonationProgress.ElapsedText(Progress.Elapsed): "Limit " + clock,
-                        },
+        let readout = Row{
+            Align: AlignItems.Baseline,
+            Gap: 10,
+            Children: []Blob{
+                Text{
+                    Content: clock,
+                    FontFamily: AppTheme.MonoFont,
+                    FontSize: AppTheme.TitleSize,
+                    Color: p.Ink,
+                    Accessibility: Accessibility{
+                        Role: AccessibilityRole.Text,
+                        Name: Progress.Started ? "Elapsed " + DonationProgress.ElapsedText(Progress.Elapsed): "Limit " + clock,
                     },
-                    Label{
-                        Content: !Progress.Started ? "limit": limit == 0 ? "elapsed": "of " + DonationProgress.Clock(limit),
-                        Size: AppTheme.SmallSize,
-                        Muted: true,
-                    }.Build(),
                 },
-            }.Build()
-        )
+                Label{
+                    Content: !Progress.Started ? "limit": limit == 0 ? "elapsed": "of " + DonationProgress.Clock(limit),
+                    Size: AppTheme.SmallSize,
+                    Muted: true,
+                }.Build(),
+            },
+        }.Build()
+        time.Children.Add(readout)
+        if limit > 0 && (Progress.Running || !Progress.Started) {
+            readout.Children.Add(Spacer{}.Build())
+            readout.Children.Add(
+                Label{
+                    Content: "Coding " + (run.CodingSeconds / 60).ToString() + " min  ·  Verification " + (
+                        run.VerificationReserve / 60
+                    ).ToString() + " min",
+                    Size: AppTheme.SmallSize,
+                    Muted: true,
+                }.Build()
+            )
+        }
         if limit > 0 {
             time.Children.Add(
                 Meter{
                     Value: Progress.Started ? float64(Progress.Elapsed) / float64(limit): 0,
                     Parts: []float64{float64(run.CodingSeconds), float64(run.VerificationReserve)},
-                    Labels: []string{
-                        "Coding " + (run.CodingSeconds / 60).ToString() + " min",
-                        "Verification " + (run.VerificationReserve / 60).ToString() + " min",
-                    },
                 }.Build()
             )
         }

@@ -29,7 +29,7 @@ data struct DonationRun {
         if !Progress.Started {
             panel.Children.Add(
                 Container{
-                    MinHeight: 52,
+                    MinHeight: 44,
                     JustifyContent: JustifyContent.Center,
                     Padding: Edges{Left: 22, Right: 22},
                     Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
@@ -59,8 +59,13 @@ data struct DonationRun {
                     Running: Progress.Running,
                     Short: Short,
                     Leading: () -> []Blob{
-                        Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
-                        Label{Content: summary, Size: AppTheme.SmallSize, Muted: true}.Build(),
+                        Row{
+                            Align: AlignItems.Baseline,
+                            Children: []Blob{
+                                Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
+                                Label{Content: summary, Size: AppTheme.SmallSize, Muted: true}.Build(),
+                            },
+                        }.Build(),
                     },
                     FollowButton: Button,
                 }
