@@ -26,12 +26,6 @@ class SavedRunView {
             OnPublish: () -> saved.Act(RunAction.Amend),
         }.Build(): nil
         return []Blob{
-            Row{
-                Children: []Blob{
-                    (page.Button with{Label = "Back to contributions", Kind = ButtonKind.Quiet, OnClick = () -> saved.Back()}).Build(),
-                    (page.Button with{Label = "Refresh status", Kind = ButtonKind.Quiet, OnClick = () -> saved.LoadRun()}).Build(),
-                },
-            }.Build(),
             RunDetails{
                 Run: run,
                 Actions: state.Actions,

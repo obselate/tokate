@@ -4,7 +4,7 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The saved work page: the list of saved runs, or the selected run.
+/// The saved work page: the list of saved runs, or the selected run, below the actions for that view.
 class SavedView {
     private let saved SavedWorkService
     private let feedback FeedbackService
@@ -25,11 +25,14 @@ class SavedView {
         let body = List[Blob]{
             Heading{Content: "Saved work", Size: AppTheme.DisplaySize}.Build(),
             Row{
-                Children: []Blob{
+                Children: state.Selected ? []Blob{
+                    (page.Button with{Label = "Back to contributions", OnClick = () -> saved.Back()}).Build(),
+                    (page.Button with{Label = "Refresh status", OnClick = () -> saved.LoadRun()}).Build(),
+                }: []Blob{
                     (page.Button with{
                         Label = state.Reading ? "Stop updating": state.Loaded ? "Refresh contributions": "Find saved work",
                         OnClick = () -> saved.ToggleReading(),
-                        Primary = !state.Selected,
+                        Primary = true,
                     }).Build(),
                     (page.Button with{Label = "Open saved run", OnClick = () -> saved.ToggleImport()}).Build(),
                 },
@@ -42,7 +45,7 @@ class SavedView {
         if notice.Report != "" {
             body.Add(ReportText{Content: notice.Report}.Build())
         }
-        if state.Importing {
+        if state.Importing && !state.Selected {
             body.Add(
                 RunOpener{
                     Path: state.RunPath,
