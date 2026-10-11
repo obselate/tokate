@@ -14,7 +14,7 @@ internal class Worker {
             args.Add(key + "=" + value)
         }
 
-        internal func CodexPath() string -> CodexRuntime.Resolve()
+        internal func CodexPath(path string = "") string -> CodexRuntime.Resolve(path)
 
         internal func Run(
             directory string,
@@ -22,53 +22,32 @@ internal class Worker {
             input string? = nil,
             seconds int32 = 60,
             capture bool = false,
-            budget RuntimeBudget? = nil
+            budget RuntimeBudget? = nil,
+            harnessPath string = ""
         ) CommandResult {
-            let codex = CodexPath()
-            for path in[]string{
-                directory,
-                codex,
-                Environment.GetEnvironmentVariable("HOME") ?? "",
-                Environment.GetEnvironmentVariable("CODEX_HOME") ?? "",
-                Environment.GetEnvironmentVariable("DOTNET_ROOT") ?? ""
-            } {
-                if path == "" || !Path.IsPathFullyQualified(path) {
-                    continue
-                }
-                let canonical = path == codex ? codex: LocalPaths.CanonicalPath(path)
-                if canonical == "/tmp" || canonical.StartsWith("/tmp/") {
-                    throw CliFailure(
-                        "verification_failed",
-                        "Managed runs, harness homes, and tools must be outside /tmp. Move them before starting work."
-                    )
-                }
+            let codex = CodexPath(harnessPath)
+            let checkout = Path.Combine(directory, "checkout")
+            Verification.Validate(checkout)
+            let command = List[string]()
+            let bubblewrap = CodexRuntime.Bubblewrap(codex)
+            if bubblewrap != "" {
+                command.Add(
+                    "PATH=" + Path.GetDirectoryName(bubblewrap) +
+                        ":" +
+                        (Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin")
+                )
             }
-            let wrapper = List[string]{
-                "--die-with-parent",
-                "--unshare-pid",
-                "--bind",
-                "/",
-                "/",
-                "--proc",
-                "/proc",
-                "--dev",
-                "/dev",
-                "--tmpfs",
-                "/tmp",
-                "--dir",
-                "/tmp/tokate-home"
-            }
-            wrapper.AddRange([]string{"--chdir", directory, "--", codex})
-            wrapper.AddRange(args)
+            command.Add(codex)
+            command.AddRange(args)
             let cancellation Chan[bool]? = capture ? Chan[bool](1): nil
             var activity Action[string]? = nil
             if capture && DonationView.Active() {
                 activity = line -> Activity(line)
             }
             return Commands.Run(
-                "bwrap",
-                wrapper.ToArray(),
-                directory,
+                LocalPaths.NeedSystemTool("env", directory),
+                command.ToArray(),
+                checkout,
                 input,
                 seconds,
                 true,
@@ -76,7 +55,6 @@ internal class Worker {
                 outputPath: capture ? Path.Combine(directory, "events.jsonl"): "",
                 errorPath: capture ? Path.Combine(directory, "stderr.log"): "",
                 budget: budget,
-                pidNamespace: true,
                 outputLine: activity
             )
         }
@@ -106,43 +84,57 @@ internal class Worker {
             }
         }
 
-        internal func Filesystem(checkout string, gitRead bool = false) string {
+        internal func Filesystem(checkout string, gitRead bool = false, harnessPath string = "") string {
             let gitMode = gitRead ? "read": "deny"
-            return "{ \":root\" = \"deny\", \":minimal\" = \"read\", \"/tmp\" = \"write\", " + J.Write(checkout) +
+            let codex = CodexPath(harnessPath)
+            let paths = NixRuntime.Paths(NixRuntime.Tools(checkout, []string{codex}).ToArray(), checkout)
+            var policy = "{ \":root\" = \"deny\", \":minimal\" = \"read\", \"/tmp\" = \"write\", " + J.Write(checkout) +
                 " = \"write\", " +
-                J.Write(Path.Combine(checkout, ".git")) + " = " + J.Write(gitMode) + ", " + J.Write(CodexPath()) +
-                " = \"read\" }"
+                J.Write(Path.Combine(checkout, ".git")) + " = " + J.Write(gitMode) + ", " + J.Write(codex) +
+                " = \"read\""
+            let bubblewrap = CodexRuntime.Bubblewrap(codex)
+            if bubblewrap != "" {
+                policy += ", " + J.Write(bubblewrap) + " = \"read\""
+            }
+            if paths.Count > 0 {
+                for path in paths {
+                    policy += ", " + J.Write(path) + " = \"read\""
+                }
+            }
+            return policy + " }"
         }
 
-        internal func Probe(directory string, checkout string) {
+        internal func Probe(directory string, checkout string, harnessPath string = "") {
             let sentinel = Path.Combine(directory, "private-probe")
             let args = List[string]{"sandbox", "-P", "tokate", "--include-managed-config", "-C", checkout}
             var failure Exception? = nil
+            var scriptIndex int32
             try {
                 File.WriteAllText(sentinel, "private")
-                Config(args, "permissions.tokate.filesystem", Filesystem(checkout))
+                Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
                 Config(args, "permissions.tokate.network.enabled", "false")
                 args.AddRange(
                     []string{
                         "--",
-                        "/usr/bin/env",
+                        LocalPaths.NeedSystemTool("env", checkout),
                         "-i",
-                        "PATH=/usr/local/bin:/usr/bin:/bin",
-                        "HOME=/tmp/tokate-home",
-                        "TMPDIR=/tmp/tokate-home",
-                        "/bin/sh",
+                        "PATH=" + NixRuntime.SearchPath(
+                            NixRuntime.Tools(checkout, []string{CodexPath(harnessPath)}).ToArray()
+                        ),
+                        LocalPaths.NeedSystemTool("sh", checkout),
                         "-c",
-                        "test ! -r \"$1\" && test ! -r .git/config && test \"$$HOME\" = /tmp/tokate-home && test \"$$TMPDIR\" = \"$$HOME\" && test ! -d \"$$HOME/.cache/browser\" && probe=$$(mktemp .tokate-probe.XXXXXX) && rm \"$$probe\" && touch /tmp/tokate-probe && mkdir -p \"$$HOME/.cache/browser\" && cache=$$(mktemp \"$$HOME/.cache/browser/tokate-cache.XXXXXX\") && test -z \"$$(find . -samefile \"$$cache\")\" && \"$2\" --version >/dev/null",
+                        "test ! -r \"$1\" && test ! -r .git/config && probe=$$(mktemp .tokate-probe.XXXXXX) && rm \"$$probe\" && scratch=$$(mktemp /tmp/tokate-probe.XXXXXX) && rm \"$$scratch\" && \"$2\" --version >/dev/null",
                         "probe",
                         sentinel,
-                        CodexPath()
+                        CodexPath(harnessPath)
                     }
                 )
-                let result = Run(directory, args.ToArray())
+                scriptIndex = args.Count - 4
+                let result = Run(directory, args.ToArray(), harnessPath: harnessPath)
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw CliFailure(
-                        "verification_failed",
-                        "Managed sandbox isolation probe failed. Check bubblewrap user namespace support and native Codex permission profiles. Tokate does not change security settings."
+                    throw LinuxSandbox.ProbeFailure(
+                        result,
+                        "Managed sandbox isolation probe failed. Check native Codex sandbox support and permission profiles. Tokate does not change security settings."
                     )
                 }
             } catch (error Exception) {
@@ -159,10 +151,10 @@ internal class Worker {
                 throw error
             }
             if File.Exists(Path.Combine(checkout, "global.json")) {
-                args[args.Count - 4] = "dotnet msbuild -nologo -version"
-                args[args.Count - 3] = "toolchain"
+                args[scriptIndex] = "dotnet msbuild -nologo -version"
+                args[scriptIndex + 1] = "toolchain"
                 try {
-                    let toolchain = Run(directory, args.ToArray())
+                    let toolchain = Run(directory, args.ToArray(), harnessPath: harnessPath)
                     if toolchain.Code != 0 || toolchain.Truncated || toolchain.ReadFailed {
                         throw Exception("Pinned SDK startup failed")
                     }
@@ -175,7 +167,7 @@ internal class Worker {
             }
         }
 
-        internal func Doctor() bool {
+        internal func Doctor(harnessPath string = "") bool {
             let root = Path.Combine("/var/tmp", "tokate-doctor-" + Guid.NewGuid().ToString("N"))
             try {
                 Directory.CreateDirectory(
@@ -203,7 +195,7 @@ internal class Worker {
                 if pinned {
                     File.Copy(global, Path.Combine(checkout, "global.json"))
                 }
-                Probe(root, checkout)
+                Probe(root, checkout, harnessPath)
                 return pinned
             } finally {
                 Directory.Delete(root, true)
@@ -213,49 +205,56 @@ internal class Worker {
         internal func Execute(directory string, options Args) {
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
-            if run.Number("version") == 2 && run.Text("source") != "tokate" {
+            if run.Number("version") != 2 || run.Text("source") != "tokate" {
                 throw Exception("External work uses external --run; inference is never launched")
             }
             if run.Text("state") != "claimed" {
                 throw CliFailure(
                     "invalid_state",
-                    "This claim has already run. Use publish to retry publication, or request fresh approval for a new attempt."
+                    "This claim has already run. Use submit for publication, or request a new coding attempt."
                 )
             }
-            if run.Number("version") == 2 &&
-                (
-                run.Fields.ContainsKey("codex_version") || run.Fields.ContainsKey("pi_version") || File.Exists(
+            if (
+                run.Fields.ContainsKey("codex_version") || run.Fields.ContainsKey("pi_version") ||
+                    run
+                    .Fields
+                    .ContainsKey("claude_version") || run.Fields.ContainsKey("omp_version") || File.Exists(
                     Path.Combine(directory, "events.jsonl")
                 ) ||
                     File.Exists(Path.Combine(directory, "report.md"))
             ) {
                 throw Exception("This destination attempt already started execution; no second inference is allowed")
             }
-            if options.Get("continue-truncated") == "true" && run.Text("harness") != "pi" {
-                throw Exception("--continue-truncated requires managed Pi. No inference started.")
-            }
             Terminal.Step("Checking owner approval and donor login...")
+            let record = ContributionAuthority.Recheck(run)
+            let policy = Policy(J.Write(J.Get(record, "policy")))
+            policy.Digest = run.Text("policy_hash")
+            DonorSelection.Revalidate(run, policy)
             let selected = J.Get(run.Element(), "selection")
-            if selected.ValueKind != System.Text.Json.JsonValueKind.Undefined {
-                if V1Continuation.Has(run) {
-                    V1Continuation.Confirm(options, selected)
-                } else {
-                    DonorSelection.Confirm(options, selected)
-                }
-            }
-            let record = ContributionClaim.Recheck(run)
-            if selected.ValueKind != System.Text.Json.JsonValueKind.Undefined {
-                let policy = Policy(J.Write(J.Get(record, "policy")))
-                policy.Digest = run.Text("policy_hash")
-                DonorSelection.Revalidate(run, policy)
+            if AttemptContinuation.Has(run) {
+                AttemptContinuation.Confirm(options, selected)
+            } else {
+                DonorSelection.Confirm(options, selected)
             }
             RuntimeBudget.Validate(run)
             let prompt = TaskContext.Build(run, record)
-            if run.Text("harness") == "pi" {
-                PiHarness.Execute(directory, run, record, prompt, options.Get("continue-truncated") == "true")
+            if run.Text("harness") == "claude" {
+                ClaudeHarness.Execute(directory, run, record, prompt)
                 return
             }
-            let login = Commands.Run(CodexPath(), []string{"login", "status"}, harness: true)
+            if run.Text("harness") == "pi" {
+                PiHarness.Execute(directory, run, record, prompt)
+                return
+            }
+            if run.Text("harness") == "omp" {
+                OmpHarness.Execute(directory, run, record, prompt)
+                return
+            }
+            let harnessPath = run.Text("harness_path")
+            if options.Get("harness-path") != "" && options.Get("harness-path") != harnessPath {
+                throw Exception("The saved run fixes its harness path; use that path or start a fresh claim")
+            }
+            let login = Commands.Run(CodexPath(harnessPath), []string{"login", "status"}, harness: true)
             if login.Code != 0 || !(login.Output + login.Error).Contains("Logged in using ChatGPT") {
                 throw CliFailure(
                     "authentication_required",
@@ -263,102 +262,32 @@ internal class Worker {
                     []string{"codex", "login"}
                 )
             }
-            let version = Commands.Checked(CodexPath(), []string{"--version"}, harness: true)
+            let version = Commands.Checked(CodexPath(harnessPath), []string{"--version"}, harness: true)
             if !version.StartsWith("codex-cli ") {
                 throw Exception("A supported Codex CLI is required")
             }
             let checkout = Path.Combine(directory, "checkout")
-            if run.Number("preparation_version") == 1 {
-                Preparation.Ready(directory, run)
-            } else {
-                if Directory.Exists(checkout) {
-                    throw Exception(
-                        "Checkout already exists. Inspect this interrupted run before requesting fresh approval."
-                    )
-                }
-                Terminal.Step("Preparing isolated checkout...")
-                Commands.Git(
-                    directory,
-                    "clone",
-                    "--quiet",
-                    "--no-checkout",
-                    "--template=",
-                    "--",
-                    "https://github.com/" + run.Text("repo") + ".git",
-                    checkout
-                )
-                if J.Get(J.Get(record, "approval"), "authority_branch").ValueKind != JsonValueKind.Undefined {
-                    Commands.Git(
-                        checkout,
-                        "fetch",
-                        "--quiet",
-                        "--no-tags",
-                        "--no-recurse-submodules",
-                        "origin",
-                        run.Text("base")
-                    )
-                }
-                Commands.Git(checkout, "checkout", "--quiet", "--detach", run.Text("base"))
-                Commands.Git(checkout, "remote", "remove", "origin")
-                for file in Commands.Git(checkout, "ls-files").Split('\n') {
-                    if file.StartsWith(".codex/") || file.Contains("/.codex/") {
-                        throw Exception("Repository Codex configuration is not supported in donor runs")
-                    }
-                }
-            }
-            Probe(directory, checkout)
+            WorkspacePreparation.Ready(directory, run)
+            Probe(directory, checkout, harnessPath)
             let args = List[string]{
                 "exec",
-                "--strict-config",
-                "--ignore-user-config",
-                "--ignore-rules",
-                "--ephemeral",
                 "--json",
                 "--color",
                 "never",
                 "--cd",
                 checkout,
                 "--model",
-                run.Text("model"),
-                "--output-last-message",
-                Path.Combine(directory, "report.md")
+                run.Text("model")
             }
             Config(args, "model_reasoning_effort", J.Write(run.Text("effort")))
-            if selected.ValueKind != System.Text.Json.JsonValueKind.Undefined {
-                Config(args, "model_provider", J.Write(J.Text(selected, "provider")))
-            }
+            Config(args, "model_provider", J.Write(J.Text(selected, "provider")))
             Config(args, "approval_policy", "\"never\"")
-            Config(args, "web_search", "\"disabled\"")
-            Config(args, "allow_login_shell", "false")
             Config(args, "default_permissions", "\"tokate\"")
-            Config(args, "permissions.tokate.filesystem", Filesystem(checkout))
-            Config(args, "permissions.tokate.network.enabled", run.Flag("network") ? "true": "false")
-            Config(args, "shell_environment_policy.inherit", "\"none\"")
-            Config(
-                args,
-                "shell_environment_policy.set",
-                "{ PATH = \"/usr/local/bin:/usr/bin:/bin\", HOME = \"/tmp/tokate-home\", TMPDIR = \"/tmp/tokate-home\" }"
-            )
-            Config(args, "skills.include_instructions", "false")
-            Config(args, "features.skip_host_skill_discovery", "true")
-            for feature in[]string{
-                "apps",
-                "plugins",
-                "hooks",
-                "codex_hooks",
-                "plugin_hooks",
-                "multi_agent",
-                "multi_agent_v2",
-                "shell_snapshot",
-                "shell_snapshot_v2"
-            } {
-                Config(args, "features." + feature, "false")
-            }
+            Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
+            Config(args, "permissions.tokate.network.enabled", "true")
             args.Add("-")
-            ContributionClaim.Recheck(run)
-            if run.Number("preparation_version") == 1 {
-                Preparation.Ready(directory, run)
-            }
+            ContributionAuthority.Recheck(run)
+            WorkspacePreparation.Ready(directory, run)
             run.Fields["state"] = "running"
             run.Fields["failure_stage"] = "inference"
             run.Fields["failure_reason"] = "inference_failed"
@@ -385,7 +314,8 @@ internal class Worker {
                         prompt,
                         run.Flag("unlimited") ? 0: run.Number("seconds"),
                         true,
-                        coding
+                        coding,
+                        harnessPath
                     )
                 }
                 run.Fields["output_truncated"] = result.OutputTruncated

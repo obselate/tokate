@@ -57,7 +57,10 @@ internal class ModelChecklist {
         Add(
             J.Text(value, "model"),
             J.Text(value, "effort"),
-            J.Text(value, "provider") + " / " + harness + (harness == "pi" ? " [Local]": " [Subscription]"),
+            J.Text(value, "provider") +
+                " / " +
+                harness +
+                (harness == "pi" ? " [Local]": harness == "omp" ? " [OMP setup]": " [Subscription]"),
             suggested
         )
     }

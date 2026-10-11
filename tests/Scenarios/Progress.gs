@@ -33,7 +33,6 @@ internal class ProgressChecks {
             for scenario in[]string{
                 "inference_failure",
                 "verification_failure",
-                "publication_failure",
                 "inference_timeout",
                 "verification_timeout",
                 "inference_cancel",
@@ -192,8 +191,8 @@ internal class ProgressChecks {
             )
             let phases = result.Error.Split("Inference:").Length
             Check.That(
-                samples.Count >= 2 && samples.Count <= 3 && phases == samples.Count + 1,
-                "Plain progress did not use bounded exponential intervals"
+                samples.Count >= 3 && samples.Count <= 5 && phases == samples.Count + 1,
+                "Plain progress did not report at a steady interval"
             )
             var elapsed int32 = -1
             var remaining int32 = 26
@@ -207,6 +206,7 @@ internal class ProgressChecks {
                     ) <= 1,
                     "Progress changed or reset the saved allowances"
                 )
+                Check.That(elapsed < 0 || current - elapsed <= 6, "Plain progress interval grew")
                 elapsed = current
                 remaining = coding
             }
@@ -236,18 +236,7 @@ internal class ProgressChecks {
             flow.Temp.Env["TERM"] = "dumb"
             let guided = TestTerminal.Pty(
                 binary,
-                []string{
-                    "work",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--harness",
-                    "codex",
-                    "--model",
-                    "gpt-6.1-sol",
-                    "--effort",
-                    "high"
-                },
+                []string{"work", "owner/project#1", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"},
                 flow.Temp,
                 80,
                 "unlimited\n1\nq\n"
@@ -255,22 +244,16 @@ internal class ProgressChecks {
             Check.That(guided.Code == 1, guided.Output + guided.Error)
             Check.Contains(guided.Output, "Review donation")
             Check.Contains(guided.Output, "No time limit")
+            Check.Contains(guided.Output, "Unlimited coding is allowed.")
+            Check.Contains(guided.Output, "Timed donations and verification are limited to 60 minutes.")
             flow.NoInference()
             Check.Contains(
                 flow.Call(
-                    []string{
-                        "work",
-                        "--unlimited",
-                        "--seconds",
-                        "30",
-                        "--verification-reserve",
-                        "8",
-                        "--non-interactive"
-                    },
+                    []string{"work", "--unlimited", "--time", "30s", "--verify-time", "8s", "--non-interactive"},
                     1
                 )
                     .Error,
-                "excludes --seconds"
+                "excludes --time"
             )
             test.Prepare("external", 1, reserve: "8", unlimited: true)
             test.Prepare("tokate", 1, unlimited: true)
@@ -360,7 +343,7 @@ internal class ProgressChecks {
             flow.Call([]string{"work", "--run", run, "--json", "--plain"}, 1)
             let code = inference ? "inference_failed": (verification ? "verification_failed": "command_failed")
             let failedPhase = publication ? "Publication": (inference ? "Inference": "Verification")
-            let next = publication ? "publish": (verification ? "recover": "status")
+            let next = "status"
             Check.Envelope(result, "work", "error", code)
             Check.Contains(result.Error, failedPhase + " failed (" + code + ")")
             Check.Contains(result.Error, "Next: tokate " + next)

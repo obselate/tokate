@@ -21,12 +21,12 @@ internal class CheckGates {
             flow.Save()
             flow.ResetTraffic()
             let args = saved ? List[string]{"checks", "--run", test.Run}:
-            List[string]{"checks", "--repo", "owner/project", "--pr", "10"}
+            List[string]{"checks", "owner/project#10"}
             if !human {
                 args.Add("--json")
             }
             if timeout {
-                args.AddRange([]string{"--watch", "--timeout", seconds})
+                args.AddRange([]string{"--watch", "--timeout", seconds + "s"})
             }
             let result = flow.Call(args.ToArray(), code)
             flow.NoInference()
@@ -53,10 +53,10 @@ internal class CheckGates {
             Check.Json(result.Output)["data"] ?? throw Exception("Missing checks result")
         )
 
-        private func Gate(data JsonNode, name string, status string) {
+        private func Gate(data JsonNode, name string, status string, context string = "") {
             Check.That(
                 Check.Text(data["gates"]?[name]?["status"]) == status,
-                "Wrong " + name + " gate: " + data.ToJsonString()
+                "Wrong " + name + " gate " + context + ": " + data.ToJsonString()
             )
         }
 
@@ -195,6 +195,38 @@ internal class CheckGates {
                     )
                     Check.Contains(result["required_owner_actions"]?.ToJsonString() ?? "", "linked Actions")
                 }
+            }
+            test.Restore()
+            Passing(test)
+            for state in[]string{"failure", "queued", "action_required"} {
+                test.Restore()
+                Passing(test)
+                flow.Reload()
+                flow.State["check_runs"] = Check.Map(
+                    "total_count",
+                    2,
+                    "check_runs",
+                    JsonArray(
+                        Check.Map("name", "verify", "status", "completed", "conclusion", "success"),
+                        Check.Map(
+                            "name",
+                            "experimental",
+                            "status",
+                            state == "queued" ? "queued": "completed",
+                            "conclusion",
+                            state
+                        )
+                    )
+                )
+                flow.Save()
+                let optional = Data(Read(test))
+                Gate(optional, "checks", "passed")
+                Check.That(Check.Text(optional["machine_status"]) == "passed", "Optional check blocked readiness")
+                Check.Contains(optional["checks"]?.ToJsonString() ?? "", "experimental")
+                Check.That(
+                    Check.Text(optional["owner_inspection_required"]) == (state == "action_required" ? "true": "false"),
+                    "Optional workflow inspection evidence was lost"
+                )
             }
             test.Restore()
             Passing(test)
@@ -358,6 +390,19 @@ internal class CheckGates {
 
         private func Movement(test PublishedContribution) {
             let flow = test.Coordination.Flow
+            test.Restore()
+            Passing(test)
+            File.WriteAllText(Path.Combine(flow.Upstream, "already-advanced.txt"), "Target changed before checks\n")
+            flow.Commit("Advance target before readiness read")
+            let advanced = Data(Read(test, 1))
+            Gate(advanced, "freshness", "stale")
+            Check.That(
+                Check.Text(advanced["reconciliation_required"]) == "true" && Check.Text(
+                    advanced["machine_status"]
+                ) == "failed",
+                "Pre-existing target movement retained machine readiness"
+            )
+            Check.Contains(Check.Text(advanced["reconciliation_next"]), "current donor")
             for kind in[]string{
                 "head",
                 "approval",
@@ -387,7 +432,7 @@ internal class CheckGates {
                 }
                 flow.Save()
                 let result = Data(Read(test, 1))
-                Gate(result, "freshness", "stale")
+                Gate(result, "freshness", kind == "merged-branch" ? "unavailable": "stale", kind)
                 Gate(result, "report", "stale")
                 Gate(result, "checks", "stale")
                 Check.That(
@@ -571,7 +616,7 @@ internal class CheckGates {
 
         internal func All(binary string) {
             for v2 in[]bool{false, true} {
-                using let test = PublishedContribution.Create(binary, v2: v2)
+                using let test = PublishedContribution.Create(binary, external: v2)
                 Success(test)
                 Report(test, v2)
                 CheckEvidence(test)

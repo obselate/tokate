@@ -7,6 +7,101 @@ import System.Text.Json.Nodes
 
 internal class Installer {
     shared {
+        internal func Skill(project string) {
+            using let temp = Temp()
+            let bundle = Path.Combine(temp.Root, "plugin")
+            Directory.CreateDirectory(Path.Combine(bundle, "tokate"))
+            let script = Path.Combine(bundle, "install.sh")
+            File.Copy(Path.Combine(project, "plugins/install.sh"), script)
+            let source = Path.Combine(bundle, "tokate/SKILL.md")
+            File.Copy(Path.Combine(project, "plugins/tokate/SKILL.md"), source)
+            let original = File.ReadAllText(source)
+            let omp = Path.Combine(temp.Root, "bin/omp")
+            File.WriteAllText(
+                omp,
+                "#!/bin/sh\n[ \"$*\" = 'config path' ] || exit 1\nprintf '%s\\n' \"$$TOKATE_TEST_OMP_DIR\"\nexit \"$${TOKATE_TEST_OMP_EXIT:-0}\"\n"
+            )
+            File.SetUnixFileMode(omp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+            temp.Env["TOKATE_TEST_OMP_DIR"] = Path.Combine(temp.Env["HOME"], ".omp/agent")
+            let homes = []string{".agents", ".claude", ".pi/agent", ".omp/agent", ".hermes"}
+            let harnesses = []string{"codex", "claude", "pi", "omp", "hermes"}
+            for i in 0 ... harnesses.Length {
+                let args = []string{script, harnesses[i]}
+                Check.Success(TestProcess.Run("/bin/sh", args, temp.Env))
+                let installed = Path.Combine(temp.Env["HOME"], homes[i], "skills/tokate/SKILL.md")
+                Check.That(File.ReadAllText(installed) == original, "Harness received a different donation skill")
+                Check.Success(TestProcess.Run("/bin/sh", args, temp.Env))
+                File.WriteAllText(source, original + "\nUpdated package.\n")
+                Check.Success(TestProcess.Run("/bin/sh", args, temp.Env))
+                Check.That(File.ReadAllText(installed) == File.ReadAllText(source), "Unmodified skill did not update")
+                File.WriteAllText(installed, "User-edited skill\n")
+                Check.That(
+                    TestProcess.Run("/bin/sh", args, temp.Env).Code == 1,
+                    "Installer replaced a user-edited skill"
+                )
+                Check.That(File.ReadAllText(installed) == "User-edited skill\n", "Edited skill was not preserved")
+                File.WriteAllText(source, original)
+            }
+            let custom = Path.Combine(temp.Root, "custom skills")
+            let customArgs = []string{script, "hermes", custom}
+            Check.Success(TestProcess.Run("/bin/sh", customArgs, temp.Env))
+            let target = Path.Combine(custom, "tokate/SKILL.md")
+            File.Delete(target)
+            File.CreateSymbolicLink(target, source)
+            Check.That(TestProcess.Run("/bin/sh", customArgs, temp.Env).Code == 1, "Installer followed a skill symlink")
+            Check.That(File.ReadAllText(source) == original, "Installer changed its source through a link")
+            let foreign = Path.Combine(temp.Root, "foreign/tokate")
+            Directory.CreateDirectory(foreign)
+            File.WriteAllText(Path.Combine(foreign, "SKILL.md"), "Existing skill\n")
+            Check.That(
+                TestProcess.Run("/bin/sh", []string{script, "codex", Path.GetDirectoryName(foreign) ?? ""}, temp.Env)
+                    .Code == 1,
+                "Installer replaced an unrelated skill"
+            )
+            let resolved = Path.Combine(temp.Root, "omp config/active")
+            temp.Env["TOKATE_TEST_OMP_DIR"] = resolved
+            temp.Env["PI_CONFIG_DIR"] = ".custom-omp"
+            temp.Env["PI_CODING_AGENT_DIR"] = Path.Combine(temp.Root, "other agent")
+            temp.Env["PI_PROFILE"] = "legacy"
+            for profile in[]string{"default", " \t ", "donor", ""} {
+                temp.Env["OMP_PROFILE"] = profile
+                Check.Success(TestProcess.Run("/bin/sh", []string{script, "omp"}, temp.Env))
+                Check.That(
+                    File.ReadAllText(Path.Combine(resolved, "skills/tokate/SKILL.md")) == original,
+                    "Installer ignored OMP's resolved agent directory"
+                )
+            }
+            for invalid in[]string{"", "relative"} {
+                temp.Env["TOKATE_TEST_OMP_DIR"] = invalid
+                Check.That(
+                    TestProcess.Run("/bin/sh", []string{script, "omp"}, temp.Env).Code == 1,
+                    "Installer accepted an invalid OMP directory"
+                )
+            }
+            let failed = Path.Combine(temp.Root, "failed omp")
+            temp.Env["TOKATE_TEST_OMP_DIR"] = failed
+            temp.Env["TOKATE_TEST_OMP_EXIT"] = "17"
+            Check.That(
+                TestProcess.Run("/bin/sh", []string{script, "omp"}, temp.Env).Code == 17 && !Directory.Exists(failed),
+                "Installer ignored OMP discovery failure"
+            )
+            File.Delete(omp)
+            Check.Success(
+                TestProcess.Run("/bin/sh", []string{script, "omp", Path.Combine(temp.Root, "explicit omp")}, temp.Env)
+            )
+            Check.That(
+                TestProcess.Run("/bin/sh", []string{script, "omp"}, temp.Env).Code != 0,
+                "Installer guessed a directory without OMP"
+            )
+            Check.That(
+                TestProcess.Run("/bin/sh", []string{script, "unknown"}, temp.Env).Code == 1,
+                "Installer accepted an unknown harness"
+            )
+            Console.WriteLine(
+                "PASS shared skill installation, updates, custom paths and preservation for five harnesses"
+            )
+        }
+
         internal func Lifecycle(project string, binary string, shell string = "/bin/bash", accountShell string? = nil) {
             using let temp = Temp()
             temp.Env["SHELL"] = shell
@@ -20,7 +115,7 @@ internal class Installer {
             }
             File.WriteAllText(Path.Combine(tools, "account-shell"), accountShell ?? "")
             let version = Check.Success(TestProcess.Run(binary, []string{"--version"}, temp.Env)).Substring(7)
-            let bundleName = "tokate-" + version + "-linux-x64"
+            let bundleName = "tokate-" + version + "-" + ReleaseTools.Runtime()
             let bundle = Path.Combine(temp.Root, bundleName)
             Directory.CreateDirectory(bundle)
             File.Copy(binary, Path.Combine(bundle, "tokate"))
@@ -226,6 +321,9 @@ internal class Installer {
                     File.WriteAllText(profile, "keep-profile")
                 }
                 for i in 0 ... cases.Length / 3 {
+                    if i > 0 && ReleaseTools.Runtime() == "linux-musl-x64" {
+                        continue
+                    }
                     File.WriteAllText(
                         statePath,
                         Check.Map("os", "Linux", "arch", cases[i * 3], "libc", cases[i * 3 + 1]).ToJsonString()

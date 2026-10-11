@@ -14,10 +14,15 @@ internal class DonorSelection {
 
         internal func Supported(value JsonElement) bool ->
         (J.Text(value, "harness") == "codex" && J.Text(value, "provider") == "openai") ||
-            (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions")
+            (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions") ||
+            (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic") ||
+            (J.Text(value, "harness") == "omp" && J.Text(value, "provider") != "")
+
+        // A saved OMP default without a provider is managed; the owner policy supplies the provider.
+        internal func Managed(saved JsonElement) bool -> Supported(saved) || J.Text(saved, "harness") == "omp"
 
         internal func ApplyDefaults(args Args) {
-            if args.Get("run") != "" ||
+            if args.Get("run") != "" || args.Get("source") == "external" ||
                 (
                 args.Command != "select" &&
                     args.Command != "claim" &&
@@ -33,7 +38,7 @@ internal class DonorSelection {
             } catch (error Exception) {
                 if profile != "" {
                     throw Exception(
-                        "Named donor profile is invalid, missing or inaccessible; use defaults read --profile NAME. No inference started."
+                        "Named donor profile is invalid, missing or inaccessible; use defaults show NAME. No inference started."
                     )
                 }
                 return
@@ -43,7 +48,14 @@ internal class DonorSelection {
             let provider = J.Text(saved, "provider")
             let compatible = (args.Get("harness") == "" || args.Get("harness") == harness) &&
                 (args.Get("provider") == "" || args.Get("provider") == provider)
-            if !Supported(saved) || !compatible {
+            if compatible && harness != "" && J.Text(saved, "model") == "" && !Managed(saved) {
+                throw Exception(
+                    "The selected " +
+                        harness +
+                        " profile uses external work. Use that harness for external work or override --harness with a managed tool. No inference started."
+                )
+            }
+            if !Managed(saved) || !compatible {
                 if profile != "" {
                     throw Exception(
                         "Named donor profile conflicts with the selected managed harness/provider. No inference started."
@@ -51,7 +63,15 @@ internal class DonorSelection {
                 }
                 return
             }
-            for key in[]string{"harness", "provider", "endpoint", "pi-root", "node"} {
+            for key in[]string{
+                "harness",
+                "provider",
+                "endpoint",
+                "pi-root",
+                "node",
+                "harness-path",
+                "claude-profile",
+            } {
                 if args.Get(key) == "" && J.Text(saved, key) != "" {
                     args.Values["--" + key] = J.Text(saved, key)
                 }
@@ -61,21 +81,39 @@ internal class DonorSelection {
         internal func Resolve(args Args, policy Policy) JsonElement {
             DonorDefaults.NormalizePair(args)
             let harness = args.Get("harness", "codex")
+            if harness == "omp" && args.Get("provider") == "" {
+                let allowed = policy.Providers("omp")
+                if allowed.Count != 1 {
+                    throw Exception(
+                        "Choose --provider for OMP: the owner policy allows " +
+                            (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
+                            ". No inference started."
+                    )
+                }
+                args.Values["--provider"] = allowed[0]
+            }
             let provider = args.Get("provider", "openai")
-            if args.Get("continue-truncated") == "true" && harness != "pi" {
-                throw Exception("--continue-truncated requires managed Pi. No inference started.")
+            if harness != "claude" && (args.Get("claude-profile") != "") {
+                throw Exception("Claude profile options require the claude harness")
             }
             if harness != "pi" && (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
                 throw Exception("Pi runtime options require the pi harness")
             }
-            if harness != "pi" && (harness != "codex" || provider != "openai") {
+            if harness != "pi" &&
+                harness != "claude" &&
+                harness != "omp" &&
+                (harness != "codex" || provider != "openai") {
                 throw Exception(
                     "Unsupported managed harness/provider: choose codex/openai explicitly. No inference started."
                 )
             }
-            if harness != "pi" && J.Number(policy.Value, "version") != 1 && !policy.AllowsTool(harness, provider) {
+            if harness != "pi" && !policy.AllowsTool(harness, provider) {
                 throw Exception(
-                    "No eligible pair: codex/openai is rejected by current exact owner tool restrictions. No inference started."
+                    "No eligible pair: " +
+                        harness +
+                        "/" +
+                        provider +
+                        " is rejected by current exact owner tool restrictions. No inference started."
                 )
             }
             let saved = args.SavedDefaults
@@ -85,13 +123,18 @@ internal class DonorSelection {
             var effort = args.Get("effort", compatible ? J.Text(saved, "effort"): "")
             let explicitPair = args.Get("model") != "" || args.Get("effort") != ""
             var overridden = explicitPair
-            for key in[]string{"endpoint", "pi-root", "node"} {
+            for key in[]string{"endpoint", "pi-root", "node", "harness-path", "claude-profile"} {
                 overridden = overridden || (args.Get(key) != "" && args.Get(key) != J.Text(saved, key))
             }
             var source = args.Get("profile") != "" ? "saved donor profile " + args.Get("profile") +
                 (overridden ? " with explicit overrides": ""): (
                 explicitPair ? "explicit invocation": "saved donor default"
             )
+            if harness == "claude" {
+                args.Values["--model"] = model
+                args.Values["--effort"] = effort
+                return ClaudeHarness.Select(args, policy, source)
+            }
             if harness == "pi" {
                 if model != "" {
                     args.Values["--model"] = model
@@ -101,7 +144,16 @@ internal class DonorSelection {
                 }
                 return PiHarness.Select(args, policy, source)
             }
-            let capabilities = CodexRuntime.Capabilities()
+            if harness == "omp" {
+                if model != "" {
+                    args.Values["--model"] = model
+                }
+                if effort != "" {
+                    args.Values["--effort"] = effort
+                }
+                return OmpHarness.Select(args, policy, source)
+            }
+            let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))
             var availability = args.Get("availability", "unknown")
             let unavailable = availability == "unavailable" ? model: ""
             let choices = SortedDictionary[string, JsonElement](StringComparer.Ordinal)
@@ -171,7 +223,7 @@ internal class DonorSelection {
                 source = "interactive donor choice"
                 availability = "unknown"
             }
-            policy.Validate(model, effort, 1, false)
+            policy.Validate(model, effort, 1)
             return J.Parse(
                 J.Write(
                     map[string, Object?]{
@@ -204,7 +256,7 @@ internal class DonorSelection {
                     ) +
                         args.Get("verification-reserve", "0") + " reserved for verification"
                 )
-                Terminal.Row("Command network", args.Get("allow-network") == "true" ? "allowed": "denied")
+                Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
                 Terminal.Row("Availability", J.Text(selection, "availability"))
                 Console.Error.Write(
                     args.Command == "claim" ? "Post this claim without inference? [y/N] ": "Post this claim and start this donation when accepted? [y/N] "
@@ -231,7 +283,7 @@ internal class DonorSelection {
                 )
             }
             Console.Error.Write(
-                "Use your Codex allowance with " + J.Text(selection, "harness") + "/" + J.Text(selection, "provider") +
+                "Use your allowance with " + J.Text(selection, "harness") + "/" + J.Text(selection, "provider") +
                     ": " +
                     pair +
                     " (" +
@@ -245,8 +297,8 @@ internal class DonorSelection {
 
         internal func Revalidate(run Data, policy Policy) {
             let selected = J.Get(run.Element(), "selection")
-            if selected.ValueKind == JsonValueKind.Undefined {
-                return
+            if selected.ValueKind != JsonValueKind.Object {
+                throw Exception("Managed runs require saved selection metadata; start a fresh claim")
             }
             let harness = J.Text(selected, "harness")
             let provider = J.Text(selected, "provider")
@@ -256,6 +308,13 @@ internal class DonorSelection {
             }
             if harness != run.Text("harness") || provider != run.Text("provider") {
                 throw Exception(failure)
+            }
+            if harness == "claude" {
+                if provider != "anthropic" || J.Text(selected, "policy_hash") != policy.Digest {
+                    throw Exception(failure)
+                }
+                ClaudeHarness.ValidateSaved(run, policy)
+                return
             }
             if harness == "pi" {
                 if run.Number("version") != 2 || provider != "local-chat-completions" || J.Text(
@@ -267,14 +326,21 @@ internal class DonorSelection {
                 PiHarness.ValidateSaved(run, policy)
                 return
             }
+            if harness == "omp" {
+                if run.Number("version") != 2 || J.Text(selected, "policy_hash") != policy.Digest {
+                    throw Exception(failure)
+                }
+                OmpHarness.ValidateSaved(run, policy)
+                return
+            }
             if J.Text(selected, "policy_hash") != policy.Digest ||
                 harness != "codex" ||
                 provider != "openai" ||
-                (J.Number(policy.Value, "version") != 1 && !policy.AllowsTool(harness, provider)) {
+                (!policy.AllowsTool(harness, provider)) {
                 throw Exception(failure)
             }
-            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"), run.Flag("network"))
-            let capabilities = CodexRuntime.Capabilities()
+            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"))
+            let capabilities = CodexRuntime.Capabilities(run.Text("harness_path"))
             var supported HashSet[string]
             if !capabilities.TryGetValue(run.Text("model"), out supported) || !supported.Contains(run.Text("effort")) {
                 throw Exception("Saved model/effort is no longer compatible with native Codex. No retry or fallback.")

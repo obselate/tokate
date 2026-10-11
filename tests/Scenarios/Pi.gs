@@ -31,16 +31,10 @@ internal class PiChecks {
             if sdk == "" {
                 File.WriteAllText(
                     Path.Combine(installed, "package.json"),
-                    "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-runtime\",\"type\":\"module\"}"
+                    "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-runtime\",\"type\":\"module\",\"bin\":{\"pi\":\"dist/bundle/cli.js\"}}"
                 )
-                File.WriteAllText(
-                    Path.Combine(installed, "dist/index.js"),
-                    TestResources.Template("PiContinuation.mjs")
-                )
-                File.WriteAllText(
-                    Path.Combine(installed, "dist/bundle/cli.js"),
-                    "throw Error('launcher must not run');\n"
-                )
+                File.WriteAllText(Path.Combine(installed, "dist/index.js"), TestResources.Template("PiModels.mjs"))
+                File.WriteAllText(Path.Combine(installed, "dist/bundle/cli.js"), TestResources.Template("PiCli.mjs"))
             } else {
                 Check.Success(
                     TestProcess.Run(
@@ -82,7 +76,6 @@ internal class PiChecks {
             File.SetUnixFileMode(pathNode, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let args = List[string]{
                 "select",
-                "--repo",
                 "owner/project",
                 "--harness",
                 "pi",
@@ -96,7 +89,107 @@ internal class PiChecks {
                 catalog.Endpoint,
                 "--non-interactive"
             }
+            let codex = Path.Combine(flow.Bin, "codex")
+            let hiddenCodex = Path.Combine(flow.Bin, "unused-codex")
+            File.Move(codex, hiddenCodex)
+            try {
+                let diagnosis = Check.Envelope(
+                    flow.Call([]string{"doctor", "managed", "pi", "--pi-root", root, "--node", node, "--json"}),
+                    "doctor",
+                    "ok"
+                )
+                for tool in diagnosis["data"]?["tools"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(tool["name"]) != "codex", "Pi diagnostics required Codex")
+                }
+                flow.Call([]string{"defaults", "set", "--harness", "pi", "--pi-root", root, "--node", node})
+                let inherited = Check.Envelope(flow.Call([]string{"doctor", "managed", "--json"}), "doctor", "ok")
+                for tool in inherited["data"]?["tools"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(tool["name"]) != "codex", "Managed diagnostics ignored the chosen Pi default")
+                }
+                flow.Call([]string{"defaults", "remove"})
+            } finally {
+                File.Move(hiddenCodex, codex)
+            }
+            let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")
+            let curl = Path.Combine(flow.Bin, "curl")
+            File.WriteAllText(curl, "#!/bin/sh\nprintf called > '" + installMarker + "'\nexit 17\n")
+            File.SetUnixFileMode(curl, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+            Check.Envelope(
+                flow.Call(
+                    []string{
+                        "doctor",
+                        "managed",
+                        "pi",
+                        "--pi-root",
+                        root,
+                        "--node",
+                        pathNode,
+                        "--fix",
+                        "--yes",
+                        "--json"
+                    },
+                    1
+                ),
+                "doctor",
+                "error",
+                "missing_tools"
+            )
+            Check.That(!File.Exists(installMarker), "Failed Pi probe triggered installation of an existing runtime")
+            File.Delete(curl)
             let explicitSelection = Check.Json(flow.Call(args.ToArray()).Output)
+            for fields in[]string{
+                ",\"context_window\":7",
+                ",\"context_length\":7",
+                ",\"context_window\":7,\"context_length\":7",
+                ",\"context_window\":null,\"context_length\":7",
+                ",\"context_window\":7,\"context_length\":null"
+            } {
+                catalog.Metadata = fields
+                let selected = Check.Json(flow.Call(args.ToArray()).Output)
+                Check.That(
+                    Check.Text(selected["endpoint_catalog"]?["context_window"]) == "7" && Check.Text(
+                        selected["context_window"]
+                    ) == "32768" &&
+                        Check.Text(selected["max_tokens"]) == "4096",
+                    "Endpoint context aliases replaced configured Pi limits or were lost"
+                )
+                for name in[]string{"runtime_version", "digest", "quantization", "supports_tools"} {
+                    Check.That(
+                        Check.Text(selected["endpoint_catalog"]?[name]) == "unknown",
+                        "Endpoint context alias invented absent model identity"
+                    )
+                }
+            }
+            for fields in[]string{
+                ",\"context_window\":7,\"context_length\":8",
+                ",\"context_window\":\"7\",\"context_length\":7",
+                ",\"context_length\":\"7\"",
+                ",\"context_window\":7,\"context_length\":\"7\"",
+                ",\"context_window\":7,\"context_length\":true",
+                ",\"context_window\":7,\"context_length\":0",
+                ",\"context_window\":7,\"context_length\":-7",
+                ",\"context_window\":7,\"context_length\":7.5",
+                ",\"context_window\":7,\"context_length\":2147483648"
+            } {
+                catalog.Metadata = fields
+                let rejected = List[string](args)
+                rejected.Add("--json")
+                let result = flow.Call(rejected.ToArray(), 1)
+                Check.Envelope(result, "select", "error", "endpoint_unavailable")
+                PrivateCatalog(result.Output + result.Error, catalog.Endpoint)
+            }
+            catalog.Metadata = ""
+            flow.NoInference()
+            Console.WriteLine("PASS Pi endpoint context aliases and invalid metadata without inference")
+            File.Delete(Path.Combine(flow.Bin, "pi"))
+            File.Copy(launcher, Path.Combine(flow.Bin, "pi"))
+            let entrypoint = marker["entrypoint"] ?? throw Exception("Missing Pi entrypoint")
+            entrypoint["type"] = JsonValue.Create("script")
+            File.WriteAllText(markerPath, marker.ToJsonString())
+            Check.That(
+                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Managed Pi script in a separate bin directory lost its SDK"
+            )
             let providerIndex = args.IndexOf("--provider")
             args.RemoveRange(providerIndex, 2)
             let inferredSelection = Check.Json(flow.Call(args.ToArray()).Output)
@@ -107,11 +200,18 @@ internal class PiChecks {
             args.AddRange([]string{"--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Unsupported pi provider")
             args.RemoveRange(args.Count - 2, 2)
+            flow.Call([]string{"defaults", "set", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"})
+            let defaultPath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
+            let savedDefault = File.ReadAllText(defaultPath)
+            Check.That(
+                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Saved Codex default changed the explicit Pi selection with an omitted provider"
+            )
+            Check.That(File.ReadAllText(defaultPath) == savedDefault, "Pi selection changed the saved Codex default")
             flow.Call(
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -124,15 +224,46 @@ internal class PiChecks {
                 }
             )
             let profiled = Check.Json(
-                flow.Call([]string{"select", "--repo", "owner/project", "--profile", "local", "--non-interactive"})
-                    .Output
+                flow.Call([]string{"select", "owner/project", "local", "--non-interactive"}).Output
             )
             let expectedProfile = explicitSelection.DeepClone()
             expectedProfile["source"] = JsonValue.Create("saved donor profile local")
             Check.That(JsonNode.DeepEquals(expectedProfile, profiled), "Saved Pi profile lost selection precedence")
-            args.AddRange([]string{"--profile", "local", "--provider", "openai"})
+            args.AddRange([]string{"local", "--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Named donor profile conflicts")
-            args.RemoveRange(args.Count - 4, 4)
+            args.RemoveRange(args.Count - 3, 3)
+            flow.Call(
+                []string{
+                    "defaults",
+                    "set",
+                    "local",
+                    "--harness",
+                    "pi",
+                    "--model",
+                    "saved-other-model",
+                    "--effort",
+                    "high",
+                    "--endpoint",
+                    "http://127.0.0.1:1/v1"
+                }
+            )
+            let profilePath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
+            let savedProfile = File.ReadAllText(profilePath)
+            args.Add("local")
+            expectedProfile["source"] = JsonValue.Create("saved donor profile local with explicit overrides")
+            Check.That(
+                JsonNode.DeepEquals(expectedProfile, Check.Json(flow.Call(args.ToArray()).Output)),
+                "Omitted Pi provider changed the explicit model, effort or endpoint overrides"
+            )
+            Check.That(File.ReadAllText(profilePath) == savedProfile, "Pi selection changed the named profile")
+            args.RemoveRange(args.Count - 1, 1)
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Owner rejects Pi selection")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "exact pi/local-chat-completions permission")
+            policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            flow.Commit("Restore Pi selection policy")
             args.AddRange([]string{"--node", pathNode})
             flow.Call(args.ToArray(), 1)
             args[args.Count - 1] = actualNode
@@ -164,15 +295,14 @@ internal class PiChecks {
                 Path.Combine(flow.Bin, "pi"),
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             )
+            entrypoint["path"] = JsonValue.Create(launcher)
+            File.WriteAllText(markerPath, marker.ToJsonString())
             let npm = Path.Combine(flow.Bin, "npm")
-            File.WriteAllText(
-                npm,
-                "#!/bin/sh\n[ \"$$1\" = root ] && [ \"$$2\" = --global ] || exit 78\nprintf '%s\\n' '" + root + "'\n"
-            )
+            let npmCalled = Path.Combine(flow.Temp.Root, "unrelated-npm-called")
+            File.WriteAllText(npm, "#!/bin/sh\ntouch '" + npmCalled + "'\nprintf '%s\\n' '" + root + "'\n")
             File.SetUnixFileMode(npm, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
-            Check.Contains(flow.Call(args.ToArray()).Output, "advertised")
-            File.WriteAllText(npm, "#!/bin/sh\nexit 79\n")
-            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Cannot locate the Pi SDK")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Unsupported Pi installation metadata")
+            Check.That(!File.Exists(npmCalled), "Queried an unrelated global npm SDK for an unverified wrapper")
             flow.NoInference()
             flow.NoPr()
             Check.That(flow.State["posted_request"] == nil, "Pi selection posted a claim request")
@@ -183,25 +313,27 @@ internal class PiChecks {
 
         internal func Run(binary string, root string, node string, directory string, endpoint string, mode string) {
             let flow = CoordinationFixture(binary)
-            let catalogRejected = mode.StartsWith("catalog-") && mode != "catalog-metadata" && !mode.StartsWith(
+            let catalogMetadata = mode == "catalog-metadata" ||
+                mode == "catalog-metadata-length" ||
+                mode == "catalog-metadata-aliases"
+            let catalogRejected = mode.StartsWith("catalog-") && !catalogMetadata && !mode.StartsWith(
                 "catalog-recheck-"
             )
-            let interrupted = mode == "cancel" || mode == "length-cancel" || mode == "unlimited-cancel"
+            let interrupted = mode == "cancel" || mode == "unlimited-cancel"
             let unlimited = mode.StartsWith("unlimited")
-            let continuation = mode == "continued" ||
-                mode == "repeated" ||
-                mode == "identity" ||
-                mode == "usage" ||
-                mode == "length-cancel" ||
-                mode == "length-timeout"
+            let reasoning = mode == "reasoning" || mode == "reasoning-off"
+            let effort = mode == "reasoning-off" ? "off": reasoning ? "high": "absent"
             using let cleanup = interrupted ? nil: flow
-            flow.Initialize(approve: false)
+            flow.Flow.Initialize(access: false)
+            flow.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
             let policyPath = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
             policy["model_policy"] = JsonValue.Create("whitelist")
             policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"absent\",\"minimal\",\"high\",\"xhigh\"]}")
+            if mode == "reasoning-off" {
+                policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"off\"]}")
+            }
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
-            policy["allow_network"] = JsonValue.Create(true)
             if unlimited {
                 policy["allow_unlimited"] = JsonValue.Create(true)
             }
@@ -209,14 +341,12 @@ internal class PiChecks {
             File.WriteAllText(policyPath, policy.ToJsonString())
             let custom = Path.Combine(flow.Flow.Upstream, ".pi")
             Directory.CreateDirectory(Path.Combine(custom, "extensions"))
-            File.WriteAllText(Path.Combine(custom, "SYSTEM.md"), "HOSTILE_CONTEXT_SENTINEL")
+            File.WriteAllText(Path.Combine(custom, "SYSTEM.md"), "CONFIGURED_CONTEXT_SENTINEL")
+            File.WriteAllText(Path.Combine(custom, "settings.json"), "{\"retry\":{\"enabled\":false}}")
             File.WriteAllText(
-                Path.Combine(custom, "settings.json"),
-                "{\"extensions\":[\"./extensions/hostile.js\"],\"retry\":{\"enabled\":true}}"
-            )
-            File.WriteAllText(
-                Path.Combine(custom, "extensions/hostile.js"),
-                "throw new Error('HOSTILE_EXTENSION_LOADED');"
+                Path.Combine(custom, "extensions/custom.js"),
+                "import { Type } from '@earendil-works/pi-ai';\n" +
+                    "export default function(pi) { pi.registerTool({ name: 'fixture_tool', label: 'Fixture', description: 'Check the configured extension.', parameters: Type.Object({}), async execute() { return { content: [{ type: 'text', text: 'configured extension worked' }], details: {} }; } }); }\n"
             )
             flow.Flow.Commit("Pi policy and untrusted customization fixture")
             flow.Flow.Approve()
@@ -226,16 +356,21 @@ internal class PiChecks {
             let agentDir = Path.Combine(flow.Flow.Temp.Root, "pi-agent")
             Directory.CreateDirectory(agentDir)
             flow.Flow.Temp.Env["PI_CODING_AGENT_DIR"] = agentDir
+            File.WriteAllText(Path.Combine(agentDir, "settings.json"), "{\"defaultProjectTrust\":\"always\"}")
             let models = Check.Json(
-                "{\"providers\":{\"synthetic\":{\"api\":\"openai-completions\",\"authHeader\":false,\"apiKey\":\"PRIVATE_CREDENTIAL_SENTINEL\",\"models\":[{\"id\":\"synthetic/model:exact\",\"name\":\"Synthetic\",\"contextWindow\":65536,\"maxTokens\":4096,\"reasoning\":false,\"input\":[\"text\"]}]}}}"
+                "{\"providers\":{\"synthetic\":{\"api\":\"openai-completions\",\"authHeader\":false,\"apiKey\":\"tokate-no-auth\",\"models\":[{\"id\":\"synthetic/model:exact\",\"name\":\"Synthetic\",\"contextWindow\":65536,\"maxTokens\":4096,\"reasoning\":false,\"input\":[\"text\"],\"compat\":{\"maxTokensField\":\"max_tokens\"}}]}}}"
             )
             let provider = models["providers"]?["synthetic"] ?? throw Exception("Missing synthetic provider")
             provider["baseUrl"] = JsonValue.Create(endpoint)
-            if mode == "reasoning" {
+            if reasoning {
                 let model = provider["models"]?[0] ?? throw Exception("Missing reasoning model")
                 model["reasoning"] = JsonValue.Create(true)
-                model["thinkingLevelMap"] = Check.Json("{\"minimal\":null,\"high\":\"medium\",\"xhigh\":null}")
-                model["compat"] = Check.Json("{\"thinkingFormat\":\"openai\",\"supportsReasoningEffort\":true}")
+                model["thinkingLevelMap"] = Check.Json(
+                    "{\"off\":\"none\",\"minimal\":null,\"high\":\"medium\",\"xhigh\":null}"
+                )
+                model["compat"] = Check.Json(
+                    "{\"thinkingFormat\":\"openai\",\"supportsReasoningEffort\":true,\"maxTokensField\":\"max_completion_tokens\",\"supportsDeveloperRole\":true,\"requiresReasoningContentOnAssistantMessages\":true}"
+                )
             }
             let modelsPath = Path.Combine(agentDir, "models.json")
             File.WriteAllText(modelsPath, models.ToJsonString())
@@ -246,10 +381,7 @@ internal class PiChecks {
             File.CreateSymbolicLink(Path.Combine(flow.Flow.Bin, "node"), node)
             let args = List[string]{
                 "prepare",
-                "--repo",
-                "owner/project",
-                "--issue",
-                "1",
+                "owner/project#1",
                 "--state",
                 Check.Text(flow.State()["sha"]),
                 "--source",
@@ -261,28 +393,25 @@ internal class PiChecks {
                 "--model",
                 "synthetic/model:exact",
                 "--effort",
-                mode == "reasoning" ? "high": "absent",
+                effort,
                 "--node",
                 node,
                 "--endpoint",
                 endpoint,
-                "--seconds",
-                mode == "length-timeout" ? "20": "90",
-                "--verification-reserve",
-                mode == "length-timeout" ? "5": "30",
+                "--time",
+                "90s",
+                "--verify-time",
+                "30s",
                 "--runs",
                 Path.Combine(flow.Flow.Temp.Root, "runs"),
                 "--non-interactive"
             }
-            if mode == "on" {
-                args.Add("--allow-network")
-            }
             if unlimited {
-                args.RemoveRange(args.IndexOf("--seconds"), 2)
+                args.RemoveRange(args.IndexOf("--time"), 2)
                 args.Add("--unlimited")
-                args[args.IndexOf("--verification-reserve") + 1] = "8"
+                args[args.IndexOf("--verify-time") + 1] = "8s"
             }
-            if mode != "off" {
+            if mode != "profile" {
                 args.AddRange([]string{"--pi-root", root})
             }
             if catalogRejected {
@@ -307,9 +436,9 @@ internal class PiChecks {
                 return
             }
             if mode == "reasoning" {
-                for effort in[]string{"absent", "minimal", "xhigh"} {
+                for unsupportedEffort in[]string{"absent", "minimal", "xhigh"} {
                     let rejected = args.ToArray()
-                    rejected[Array.IndexOf(rejected, "--effort") + 1] = effort
+                    rejected[Array.IndexOf(rejected, "--effort") + 1] = unsupportedEffort
                     Check.Contains(flow.Flow.Call(rejected, 1).Error, "does not support the selected reasoning effort")
                 }
                 flow.Flow.Temp.Env["TERM"] = "dumb"
@@ -319,7 +448,7 @@ internal class PiChecks {
                     []string{"work", "owner/project"},
                     flow.Flow.Temp,
                     80,
-                    "1\n1\n1\n1\n" + endpoint + "\nsynthetic/model:exact\n1\n1\nq\n"
+                    "1\n1\n1\n1\n" + endpoint + "\nsynthetic/model:exact\n1\nq\n"
                 )
                 Check.That(guided.Code == 1, guided.Output + guided.Error)
                 Check.Contains(guided.Output, "Reasoning effort")
@@ -330,7 +459,6 @@ internal class PiChecks {
                     []string{
                         "defaults",
                         "set",
-                        "--profile",
                         "reasoning",
                         "--harness",
                         "pi",
@@ -344,16 +472,16 @@ internal class PiChecks {
                         endpoint
                     }
                 )
-                Check.Contains(flow.Flow.Call([]string{"defaults", "read", "--profile", "reasoning"}).Output, "high")
+                Check.Contains(flow.Flow.Call([]string{"defaults", "show", "reasoning"}).Output, "high")
             }
-            if mode == "off" {
+            if mode == "profile" {
                 for option in[]string{"--effort", "--model", "--endpoint"} {
                     let rejected = args.ToArray()
                     rejected[Array.IndexOf(rejected, option) + 1] = "unsupported"
                     flow.Flow.Call(rejected, 1)
                 }
             }
-            if mode == "off" {
+            if mode == "profile" {
                 provider["baseUrl"] = JsonValue.Create("http://127.0.0.1:1/v1")
                 File.WriteAllText(modelsPath, models.ToJsonString())
                 flow.Flow.Call(args.ToArray(), 1)
@@ -369,12 +497,11 @@ internal class PiChecks {
             File.Delete(Path.Combine(flow.Flow.Bin, "codex-impl"))
             let profilePath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
             var originalProfile = ""
-            if mode == "off" {
+            if mode == "profile" {
                 let stored = flow.Flow.Call(
                     []string{
                         "defaults",
                         "set",
-                        "--profile",
                         "local",
                         "--harness",
                         "pi",
@@ -399,9 +526,7 @@ internal class PiChecks {
                 let defaultPath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
                 File.Copy(profilePath, defaultPath)
                 let unnamed = Check.Envelope(
-                    flow.Flow.Call(
-                        []string{"select", "--repo", "owner/project", "--model", "synthetic/model:exact", "--json"}
-                    ),
+                    flow.Flow.Call([]string{"select", "owner/project", "--model", "synthetic/model:exact", "--json"}),
                     "select",
                     "ok"
                 )
@@ -415,7 +540,7 @@ internal class PiChecks {
                     args.RemoveAt(position + 1)
                     args.RemoveAt(position)
                 }
-                args.AddRange([]string{"--profile", "local"})
+                args.Add("local")
             }
             let prepared = flow.Flow.Call(args.ToArray())
             let selected = provider["models"]?[0] ?? throw Exception("Missing model")
@@ -424,7 +549,7 @@ internal class PiChecks {
             let index = prepared.Output.LastIndexOf("Run: ")
             Check.That(index >= 0, "Pi preparation did not return a run")
             let run = prepared.Output.Substring(index + 5).Trim()
-            if mode == "off" {
+            if mode == "profile" {
                 let state = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
                     Check.Text(state["selection"]?["source"]) == "saved donor profile local with explicit overrides" &&
@@ -432,41 +557,23 @@ internal class PiChecks {
                     "Profile preparation lost private runtime overrides or source"
                 )
                 Check.That(File.ReadAllText(profilePath) == originalProfile, "Pi preparation rewrote its profile")
-                flow.Flow.Call([]string{"defaults", "remove", "--profile", "local"})
+                flow.Flow.Call([]string{"defaults", "remove", "local"})
             }
             let checkout = Path.Combine(run, "checkout")
             let gitPath = Path.Combine(checkout, ".git/config")
             let git = File.ReadAllText(gitPath)
-            let secret = Path.Combine(flow.Flow.Temp.Root, "private-credential")
-            File.WriteAllText(secret, "PRIVATE_CREDENTIAL_SENTINEL")
             File.WriteAllText(
                 Path.Combine(directory, "fixture.json"),
-                Check.Map(
-                    "checkout",
-                    checkout,
-                    "run",
-                    run,
-                    "private",
-                    secret,
-                    "outside",
-                    Path.Combine(flow.Flow.Temp.Root, "denied-write")
-                )
-                    .ToJsonString()
+                Check.Map("checkout", checkout, "run", run).ToJsonString()
             )
             let success = mode == "unlimited" ||
-                mode == "reasoning" ||
-                mode == "off" ||
+                reasoning ||
                 mode == "on" ||
+                mode == "profile" ||
                 mode == "compact" ||
-                mode == "continued" ||
-                mode == "catalog-metadata"
-            let work = List[string]{"work", "--run", run, "--non-interactive"}
-            if mode != "off" {
-                work.Add("--yes")
-            }
-            if continuation {
-                work.Add("--continue-truncated")
-            }
+                mode == "compact-failed" ||
+                catalogMetadata
+            let work = List[string]{"work", "--run", run, "--non-interactive", "--yes"}
             var worked Result
             if mode == "on" {
                 flow.Flow.Temp.Env["TERM"] = "xterm-256color"
@@ -511,13 +618,22 @@ internal class PiChecks {
                     Check.Text(saved["endpoint_catalog"]?["advertised_model"]) == "synthetic/model:exact",
                 "Pi did not record exact endpoint selection and launch evidence"
             )
+            Check.That(
+                Check.Text(saved["selection"]?["context_window"]) == "65536" && Check.Text(
+                    saved["selection"]?["max_tokens"]
+                ) == "4096",
+                "Endpoint metadata replaced configured Pi selection limits"
+            )
             let metadata = Check.Json(
                 "{\"runtime_version\":\"1.2.3\",\"digest\":\"sha256:abc123\",\"quantization\":\"Q4_K_M\",\"context_window\":7,\"supports_tools\":false}"
             )
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
-                let expected = mode == "catalog-metadata" ? Check.Text(metadata[name]): "unknown"
+                let expected = mode == "catalog-metadata" || (catalogMetadata && name == "context_window") ?
+                Check.Text(metadata[name]): "unknown"
                 Check.That(
-                    Check.Text(saved["endpoint_catalog"]?[name]) == expected,
+                    Check.Text(saved["selection"]?["endpoint_catalog"]?[name]) == expected && Check.Text(
+                        saved["endpoint_catalog"]?[name]
+                    ) == expected,
                     "Pi lost optional metadata or invented absent identity"
                 )
             }
@@ -542,14 +658,10 @@ internal class PiChecks {
                     .ToJsonString()
             )
             Check.That(
-                Check.Text(saved["effort"]) == (mode == "reasoning" ? "high": "absent") && Check.Text(
+                Check.Text(saved["effort"]) == effort && Check.Text(
                     saved["observed_invocation"]?["effort"]
                 ) == Check.Text(saved["effort"]),
                 "Pi lost selected effort"
-            )
-            Check.That(
-                Check.Text(saved["observed_invocation"]?["length_continuation_limit"]) == (continuation ? "1": "0"),
-                "Pi did not record the work invocation's continuation allowance"
             )
             Check.That(
                 Check.Text(saved["observed_invocation"]?["context_window"]) == "65536" && Check.Text(
@@ -571,27 +683,13 @@ internal class PiChecks {
                     File.ReadAllText(Path.Combine(checkout, "result.txt")) == "final",
                     "Pi tool changes were lost"
                 )
-                if mode == "continued" {
-                    let report = File.ReadAllText(Path.Combine(run, "report.md"))
-                    Check.Contains(report, "Changes: synthetic edits.")
-                    Check.Contains(report, "Verification: constrained tools.")
-                    Check.Contains(report, "Limitations: no inference.")
-                    Check.That(
-                        !report.Contains("PRIVATE_PARTIAL_LENGTH_SENTINEL"),
-                        "Partial output became the final report"
-                    )
-                }
-                flow.Flow.Call([]string{"submit", "--run", run})
-                flow.Flow.Reload()
-                flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
-                flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
-                flow.Flow.Reload()
-                Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
-                if mode == "continued" {
-                    Check.That(
-                        !Check.Text(flow.Flow.State["pulls"]?[0]?["body"]).Contains("PRIVATE_PARTIAL_LENGTH_SENTINEL"),
-                        "Private partial output escaped into the draft PR"
-                    )
+                if mode == "on" {
+                    flow.Flow.Call([]string{"submit", "--run", run})
+                    flow.Flow.Reload()
+                    flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
+                    flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Flow.Reload()
+                    Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
                 }
             } else {
                 Check.That(saved["turn_completed"] == nil, "Failed Pi response fabricated completion")
@@ -599,20 +697,18 @@ internal class PiChecks {
                     saved["commit"] == nil && saved["verification"] == nil,
                     "Failed Pi inference reached verification or publication"
                 )
-                if mode == "repeated" {
-                    Check.That(
-                        File.ReadAllText(Path.Combine(checkout, "result.txt")) == "final",
-                        "Exhausted continuation discarded the prior tool edit"
-                    )
-                }
             }
-            Check.Success(TestProcess.Run("/bin/sleep", []string{"3"}, flow.Flow.Temp.Env))
+            let child = Path.Combine(checkout, "child-identity")
+            if (success && mode != "unlimited") || interrupted {
+                Check.That(File.Exists(child), "Pi cleanup proof did not start its child")
+            }
+            if File.Exists(child) {
+                TestProcess.Collected(File.ReadAllText(child), "Pi tool left a live descendant")
+            }
             Check.That(
                 !File.Exists(Path.Combine(checkout, "timeout-escaped")),
                 "Pi tool timeout left a live descendant"
             )
-            Check.That(File.ReadAllText(secret) == "PRIVATE_CREDENTIAL_SENTINEL", "Pi changed private data")
-            Check.That(!File.Exists(Path.Combine(flow.Flow.Temp.Root, "denied-write")), "Pi wrote outside the checkout")
             Check.That(!File.Exists(Path.Combine(checkout, "truncated-executed")), "Pi executed a truncated tool call")
             Check.That(File.ReadAllText(gitPath) == git, "Pi changed Git metadata")
             flow.Flow.NoInference()

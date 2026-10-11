@@ -7,12 +7,9 @@ import System.Text.Json.Nodes
 internal class ContributionStatusChecks {
     shared {
         private func Read(test CoordinationFixture, code int32 = 0, owner bool = false, index bool = false) JsonNode {
-            let args = index ? []string{"status", "--repo", "owner/project", "--json"}: []string{
+            let args = index ? []string{"status", "owner/project", "--json"}: []string{
                 "status",
-                "--repo",
-                "owner/project",
-                "--issue",
-                "1",
+                "owner/project#1",
                 "--json"
             }
             test.Flow.ResetTraffic()
@@ -46,43 +43,22 @@ internal class ContributionStatusChecks {
             test.Initialize(false)
             let waiting = Row(Read(test))
             Check.That(Check.Text(waiting["state"]) == "approval_waiting", "Absent approval is ready")
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
-            let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
-            let policy = Check.Json(File.ReadAllText(path))
-            policy["approval_scope"] = JsonValue.Create("task")
-            policy["eligibility"] = JsonValue.Create("trusted")
-            File.WriteAllText(path, policy.ToJsonString())
-            test.Flow.Commit("Trusted status policy")
-            test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             let needsRequest = Row(Read(test))
             Check.That(
                 Check.Text(needsRequest["next"]?["role"]) == "donor" && Check.Text(
-                    needsRequest["next"]?["command"]?[5]
+                    needsRequest["next"]?["command"]?[2]
                 ) == "request",
                 "Missing donor access request action"
             )
-            test.Flow.Call(
-                []string{
-                    "access",
-                    "--repo",
-                    "owner/project",
-                    "--operation",
-                    "request",
-                    "--issue",
-                    "1",
-                    "--scope",
-                    "trust"
-                }
-            )
+            test.Flow.Call([]string{"access", "request", "owner/project#1", "--trust"})
             let pending = Read(test, owner: true, index: true)
             Check.That(pending["data"]?["pending_requests"]?.AsArray().Count == 1, "Status hid pending access")
             Check.That(Check.Text(pending["data"]?["next"]?["role"]) == "owner", "Request responsibility missing")
             Check.That(Check.Text(Row(pending)["approval_status"]) == "current", "Task approval was not validated")
             Check.That(Check.Text(Row(Read(test))["state"]) == "access_waiting", "Untrusted donor became eligible")
-            test.Flow.Call(
-                []string{"access", "--repo", "owner/project", "--operation", "trust", "--donor", "donor"},
-                owner: true
-            )
+            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
@@ -109,10 +85,7 @@ internal class ContributionStatusChecks {
             test.Flow.Reload()
             test.Flow.State["access_revoke_after_path"] = nil
             test.Flow.Save()
-            test.Flow.Call(
-                []string{"access", "--repo", "owner/project", "--operation", "restore", "--donor", "donor"},
-                owner: true
-            )
+            test.Flow.Call([]string{"access", "restore", "donor", "owner/project"}, owner: true)
 
             test.Flow.Reload()
             let task = test.Flow.State["issue"] ?? throw Exception("Missing task")
@@ -168,7 +141,8 @@ internal class ContributionStatusChecks {
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
             let active = Row(Read(test))
-            Check.That(Check.Text(active["state"]) == "attempt_recorded", "Active attempt omitted")
+            Check.That(Check.Text(active["state"]) == "claim_accepted", "Accepted claim omitted")
+            Check.Contains(Check.Text(active["next"]?["action"]), "This claim has been accepted")
             Check.Contains(Check.Text(active["reservation"]?["local_process"]), "does not prove")
             Check.That(
                 Check.Text(active["reservation"]?["attempt"]) == Check.Text(request["uuid"]),
@@ -367,7 +341,7 @@ internal class ContributionStatusChecks {
             let published = Row(Read(test, owner: true))
             Check.That(Check.Text(published["state"]) == "owner_review", "Recorded contribution omitted owner review")
             Check.That(
-                Check.Text(published["next"]?["command"]?[1]) == "verify-pr",
+                Check.Text(published["next"]?["command"]?[1]) == "verify",
                 "Owner receipt verification command omitted"
             )
             Check.Contains(Check.Text(published["drafts"]?[0]?["receipt"]), "unverified")
@@ -396,7 +370,7 @@ internal class ContributionStatusChecks {
             Check.That(
                 Check.Text(expired["state"]) == "owner_review" && expired["drafts"]?.AsArray().Count == 1 && Check.Text(
                     expired["next"]?["command"]?[1]
-                ) == "verify-pr" &&
+                ) == "verify" &&
                     Check.Text(expired["reservation"]?["expired"]) == "true",
                 "Expired lease replaced canonical published PR review"
             )
@@ -421,7 +395,7 @@ internal class ContributionStatusChecks {
         }
 
         private func Historical(binary string) {
-            using let published = PublishedContribution.Create(binary, v2: true)
+            using let published = PublishedContribution.Create(binary, external: true)
             let test = published.Coordination
             for merged in[]bool{true, false} {
                 for deleted in[]bool{false, true} {
@@ -454,7 +428,7 @@ internal class ContributionStatusChecks {
                             "History used current branch or readiness authority"
                         )
                     }
-                    let human = test.Flow.Call([]string{"status", "--repo", "owner/project", "--issue", "1", "--plain"})
+                    let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, "State: " + (lifecycle + "_contribution").Replace('_', ' '))
                     Check.Contains(human.Output, "Contribution: " + lifecycle.Replace('_', ' '))
                     Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
@@ -651,58 +625,6 @@ internal class ContributionStatusChecks {
                 ) == "approval_waiting",
                 "Open PR revived stale approval"
             )
-            using let legacy = CoordinationFixture(binary)
-            legacy.Flow.Initialize()
-            legacy.Flow.Approve()
-            let approvalSha = legacy.Flow.Git("-C", legacy.Flow.Upstream, "rev-parse", "refs/heads/tokate/approvals/1")
-            let approval = Check.Json(
-                legacy.Flow.Git("-C", legacy.Flow.Upstream, "show", approvalSha + ":.github/tokate-approval.json")
-            )
-            let fork = Path.Combine(legacy.Flow.Bin, "fork")
-            let head = legacy.Flow.Git("-C", fork, "rev-parse", "main")
-            let branch = "tokate/issue-1-" + approvalSha.Substring(0, 12)
-            Draft(legacy, Check.Map("uuid", Guid.NewGuid().ToString("D")), head)
-            legacy.Flow.Reload()
-            let pull = legacy.Flow.State["pulls"]?[0] ?? throw Exception("Missing legacy PR")
-            legacy.Flow.State["pull_list_omit_merged"] = JsonValue.Create(true)
-            (pull["head"] ?? throw Exception("Missing legacy head"))["ref"] = JsonValue.Create(branch)
-            pull["body"] = JsonValue.Create(
-                "<!-- tokate-receipt:" + Check.Map(
-                    "version",
-                    1,
-                    "repo",
-                    "owner/project",
-                    "issue",
-                    1,
-                    "approval",
-                    approvalSha,
-                    "donor",
-                    "donor",
-                    "head",
-                    head,
-                    "model",
-                    "gpt-6.1-sol",
-                    "effort",
-                    "high",
-                    "policy",
-                    Check.Text(approval["policy_hash"])
-                )
-                    .ToJsonString() + " -->"
-            )
-            legacy.Flow.Save()
-            for merged in[]bool{true, false} {
-                legacy.Flow.Git("-C", fork, "update-ref", "refs/heads/" + branch, head)
-                Close(legacy, merged, deleted: true)
-                let row = Row(Read(legacy))
-                Check.That(
-                    Check.Text(row["state"]) == (merged ? "merged_contribution": "closed_unmerged_contribution"),
-                    "Legacy history required a live donor branch"
-                )
-                Check.That(
-                    Check.Text(row["drafts"]?[0]?["binding"]) == "historical",
-                    "Legacy historical identity was not checked"
-                )
-            }
         }
 
         private func Discovery(binary string) {
@@ -754,50 +676,25 @@ internal class ContributionStatusChecks {
             )
         }
 
-        private func LegacyAndTerminal(binary string) {
+        private func TerminalOutput(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let structured = Read(test)
-            let legacy = test.Flow.Call([]string{"status", "--repo", "owner/project", "--issue", "1"})
+            let legacy = test.Flow.Call([]string{"status", "owner/project#1"})
             let raw = Check.Json(legacy.Output)
             Check.That(raw.ToJsonString() == structured["data"]?.ToJsonString(), "Terminal and structured facts differ")
             test.Flow.Temp.Env["TERM"] = "xterm-256color"
-            let narrow = TestTerminal.Pty(
-                binary,
-                []string{"status", "--repo", "owner/project", "--issue", "1", "--plain"},
-                test.Flow.Temp,
-                40
-            )
+            let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
             Check.Contains(narrow.Output, "Issue: #1 Implement fixture")
             Check.Contains(narrow.Output, "State: reservation needed")
             Check.Contains(narrow.Output, "Role: donor")
             Check.That(!narrow.Output.Contains('\u001b'), "Narrow plain status contains escapes")
-            using let v1 = NativeFixture(binary)
-            v1.Initialize()
-            v1.Approve()
-            let status = Check.Envelope(
-                v1.Call([]string{"status", "--repo", "owner/project", "--issue", "1", "--json"}),
-                "status",
-                "ok"
-            )
-            Check.That(Check.Text(Row(status)["approval_status"]) == "current", "Legacy remote approval unsupported")
-            v1.Call([]string{"access", "--repo", "owner/project", "--operation", "request", "--issue", "1"})
-            let requested = Check.Envelope(
-                v1.Call([]string{"status", "--repo", "owner/project", "--issue", "1", "--json"}, owner: true),
-                "status",
-                "ok"
-            )
-            Check.That(
-                Check.Text(requested["data"]?["next"]?["command"]?[5]) == "init",
-                "Absent access authority produced an unusable list command"
-            )
         }
 
         private func RepeatedReads(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
             test.Flow.Reload()
             let title = Check.Text(test.Flow.State["issue"]?["title"])
             let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
@@ -818,12 +715,12 @@ internal class ContributionStatusChecks {
             test.Flow.Save()
             test.Flow.ResetTraffic()
             test.Flow.Temp.Env["TERM"] = "dumb"
-            let args = []string{"status", "--repo", "owner/project", "--plain"}
+            let args = []string{"status", "owner/project", "--plain"}
             let truncated = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-truncated", truncated)
             Check.Contains(truncated, "Bounded snapshot: some data was omitted.")
             Check.Contains(truncated, "Review donor access and grant eligibility if appropriate.")
-            Check.Contains(truncated, "Command: tokate access --repo owner/project --operation list --issue 1")
+            Check.Contains(truncated, "Command: tokate access list owner/project\r\n")
             test.Flow.Reload()
             let current = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             current["title"] = JsonValue.Create(title)
@@ -868,7 +765,7 @@ internal class ContributionStatusChecks {
             Published(binary)
             Historical(binary)
             Discovery(binary)
-            LegacyAndTerminal(binary)
+            TerminalOutput(binary)
             RepeatedReads(binary)
             Console.WriteLine(
                 "PASS remote status access, discovery, leases, drafts, checks, historical lifecycle, stale authority, API failures, repeated status invocations, roles, narrow terminals and JSON"

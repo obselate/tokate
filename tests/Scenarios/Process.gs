@@ -125,7 +125,9 @@ internal class ProcessChecks {
                     if mode == "capture_prefix" {
                         Check.That(
                             text.Length == 32 * 1024 * 1024 && text.EndsWith("ABC"),
-                            "Capture contains a gap or tail"
+                            "Capture contains a gap or tail in " + name + ": length " + text.Length.ToString() +
+                                ", suffix " +
+                                text.Substring(Math.Max(0, text.Length - 8))
                         )
                     } else if mode == "capture_scalar" {
                         Check.That(
@@ -263,6 +265,16 @@ internal class ProcessChecks {
                 Check.That(ready, "CLI did not flush evidence before abrupt termination")
                 process.Kill()
                 process.WaitForExit()
+                let identity = File.ReadAllText(Path.Combine(flow.Bin, "child.pid"))
+                for i in 0 ... 500 {
+                    if !TestProcess.Alive(identity) {
+                        break
+                    }
+                    select {
+                        case <- after(TimeSpan.FromMilliseconds(10.0)) { }
+                    }
+                }
+                TestProcess.Collected(identity, "Killed CLI left its harness running")
                 Check.Contains(File.ReadAllText(output), "partial-secret")
                 Check.Contains(File.ReadAllText(error), "synthetic-partial-stderr-secret")
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
@@ -285,7 +297,9 @@ internal class ProcessChecks {
                     }
                 }
             }
-            Console.WriteLine("PASS abruptly terminated CLI retains flushed prefixes without claiming completion")
+            Console.WriteLine(
+                "PASS abruptly terminated CLI stops its harness and retains flushed prefixes without claiming completion"
+            )
         }
     }
 }

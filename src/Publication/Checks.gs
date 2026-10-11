@@ -197,11 +197,36 @@ internal class Checks {
                     binding = currentBinding
                     identity = Identity(pull)
                     target = currentTarget
+                    if run.Flag("incomplete") {
+                        stage = "report"
+                        facts["incomplete"] = true
+                        throw CliFailure(
+                            "invalid_state",
+                            "Incomplete draft needs continued work and independent verification before readiness"
+                        )
+                    }
+                    stage = "freshness"
+                    let history = J.Items(J.Get(run.Element(), "synchronizations"))
+                    let verifiedTarget = history.Count == 0 ? run.Text("base"): J.Text(
+                        history[history.Count - 1],
+                        "upstream"
+                    )
+                    facts["verified_target_revision"] = verifiedTarget
+                    if currentTarget != verifiedTarget {
+                        facts["reconciliation_required"] = true
+                        facts[
+                            "reconciliation_next"
+                        ] = "Ask the current donor to reconcile with the current target and verify the resulting exact commit. Further coding requires a new explicit budget."
+                        throw CliFailure(
+                            "stale_approval",
+                            "Target advanced beyond the contribution's verified base; reconcile and verify the resulting commit"
+                        )
+                    }
                     stage = "report"
                     var reportFailure string = ""
                     try {
                         PublicSummary.Current(
-                            PrBody.ReportText(J.Text(pull, "body"), ""),
+                            PrBody.ReportText(J.Text(pull, "body")),
                             J.Get(run.Element(), "public_summary"),
                             run.Text("commit"),
                             run.Text("public_report")
@@ -220,10 +245,6 @@ internal class Checks {
                     var pending bool
                     var inspection bool
                     for row in J.Items(rows) {
-                        let bucket = J.Text(row, "bucket")
-                        failed = failed || bucket == "fail" || bucket == "cancel"
-                        pending = pending ||
-                            (bucket != "pass" && bucket != "skipping" && bucket != "fail" && bucket != "cancel")
                         inspection = inspection || J.Text(row, "state") == "ACTION_REQUIRED"
                     }
                     let required = List[Object]()
@@ -246,6 +267,7 @@ internal class Checks {
                             }
                         }
                         conflicting = success && !passed
+                        failed = failed || nameFailed
                         pending = pending || !found || !passed
                         if required.Count < 64 {
                             required.Add(

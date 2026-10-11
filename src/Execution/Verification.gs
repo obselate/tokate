@@ -31,60 +31,6 @@ internal class Verification {
             return checks.Count
         }
 
-        internal func Doctor() bool {
-            let root = Path.Combine("/tmp", "tokate-doctor-verification-" + Guid.NewGuid().ToString("N"))
-            Directory.CreateDirectory(root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
-            let checkout = Path.Combine(root, "checkout")
-            try {
-                Directory.CreateDirectory(Path.Combine(checkout, ".git"))
-                File.WriteAllText(Path.Combine(checkout, ".git/config"), "private")
-                let sentinel = Path.Combine(root, "private-probe")
-                File.WriteAllText(sentinel, "private")
-                let global = Path.Combine(Directory.GetCurrentDirectory(), "global.json")
-                if FileInfo(global).LinkTarget != nil {
-                    throw CliFailure(
-                        "verification_failed",
-                        "Repository global.json must be a regular file, not a symbolic link."
-                    )
-                }
-                let pinned = File.Exists(global)
-                if pinned {
-                    File.Copy(global, Path.Combine(checkout, "global.json"))
-                }
-                let result = Run(
-                    checkout,
-                    []string{
-                        "/bin/sh",
-                        "-c",
-                        "test ! -r \"$1\" && test -r .git/config && ! touch .git/tokate-probe && test \"$$HOME\" = /tmp/tokate-home && test \"$$TMPDIR\" = \"$$HOME\" && probe=$$(mktemp .tokate-probe.XXXXXX) && rm \"$$probe\" && touch /tmp/tokate-probe && cache=$$(mktemp \"$$HOME/tokate-probe.XXXXXX\") && test -z \"$$(find . -samefile \"$$cache\")\"",
-                        "probe",
-                        sentinel
-                    },
-                    false,
-                    30
-                )
-                if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Independent verification sandbox probe failed")
-                }
-                if pinned {
-                    try {
-                        let toolchain = Run(checkout, []string{"dotnet", "msbuild", "-nologo", "-version"}, false, 30)
-                        if toolchain.Code != 0 || toolchain.Truncated || toolchain.ReadFailed {
-                            throw Exception("Pinned SDK startup failed")
-                        }
-                    } catch (error Exception) {
-                        throw CliFailure(
-                            "missing_tools",
-                            "Pinned SDK/MSBuild startup failed. Install the global.json SDK in a standard system path; home-directory tools are unavailable."
-                        )
-                    }
-                }
-                return pinned
-            } finally {
-                Directory.Delete(root, true)
-            }
-        }
-
         private func GitDirectory(path string, budget RuntimeBudget? = nil) {
             for entry in Directory.EnumerateFileSystemEntries(path) {
                 budget?.Remaining()
@@ -98,17 +44,13 @@ internal class Verification {
         }
 
         internal func Validate(directory string, budget RuntimeBudget? = nil) string {
-            let absolute = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory))
-            if absolute == "/tmp/tokate-home" || absolute.StartsWith("/tmp/tokate-home/") {
-                throw Exception("Unsupported verification checkout layout: " + absolute)
-            }
             let checkout = LocalPaths.DirectoryPath(directory)
             for root in[]string{"/home", "/run", "/var", "/tmp"} {
                 if checkout == root {
                     throw Exception("Unsupported verification checkout layout: " + checkout)
                 }
             }
-            for root in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/dev", "/proc", "/sys"} {
+            for root in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/dev", "/proc", "/sys", "/nix"} {
                 if checkout == "/" || checkout == root || checkout.StartsWith(root + "/") {
                     throw Exception("Unsupported verification checkout layout: " + checkout)
                 }
@@ -141,89 +83,13 @@ internal class Verification {
             return checkout
         }
 
-        private func RuntimeFile(path string, storage string) string {
-            try {
-                using let source = File.Open(
-                    path,
-                    FileMode.Open,
-                    FileAccess.Read,
-                    FileShare.ReadWrite | FileShare.Delete
-                )
-                let limit = 4 * 1024 * 1024
-                if source.Length > limit {
-                    throw Exception("Exceeds the 4 MiB runtime-file limit")
-                }
-                let copy = Path.Combine(storage, Path.GetFileName(path))
-                using let target = FileStream(
-                    copy,
-                    FileStreamOptions{
-                        Mode: FileMode.CreateNew,
-                        Access: FileAccess.Write,
-                        Share: FileShare.None,
-                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
-                    }
-                )
-                let buffer = [8192]byte
-                var length int32
-                var count int32
-                while (count = source.Read(buffer, 0, Math.Min(buffer.Length, limit - length + 1))) > 0 {
-                    if count > limit - length {
-                        throw Exception("Exceeds the 4 MiB runtime-file limit")
-                    }
-                    target.Write(buffer, 0, count)
-                    length += count
-                }
-                return copy
-            } catch (error Exception) {
-                throw Exception("Cannot prepare verification runtime file " + path + ": " + error.Message, error)
-            }
-        }
-
-        private func RuntimeStorage() DirectoryInfo {
-            try {
-                return Directory.CreateTempSubdirectory("tokate-verification-")
-            } catch (error Exception) {
-                throw Exception(
-                    "Cannot prepare private verification runtime storage in " + Path.GetTempPath() +
-                        ": " +
-                        error.Message,
-                    error
-                )
-            }
-        }
-
-        private func CleanupRuntime(storage string, failure Exception? = nil) {
-            try {
-                Directory.Delete(storage, true)
-            } catch (error Exception) {
-                let original = failure?.Message ?? ""
-                let cleanup = Exception(
-                    (original != "" ? original + "\n": "") +
-                        "Cannot clean verification runtime files at " +
-                        storage +
-                        ": " +
-                        error.Message,
-                    failure ?? error
-                )
-                if failure is CommandInterrupted interrupted {
-                    throw CommandInterrupted(cleanup, interrupted.Result)
-                }
-                if failure is CommandInputInterrupted interruptedInput {
-                    throw CommandInputInterrupted(IOException(cleanup.Message, cleanup), interruptedInput.Result)
-                }
-                throw cleanup
-            }
-        }
-
         internal func Check(
             storage string,
             results List[Object],
             command JsonElement,
             directory string,
-            network bool,
             seconds int32,
-            budget RuntimeBudget? = nil,
-            mountDirectory string = ""
+            budget RuntimeBudget? = nil
         ) CommandResult {
             let checkout = LocalPaths.DirectoryPath(directory)
             let root = LocalPaths.DirectoryPath(storage)
@@ -254,16 +120,7 @@ internal class Verification {
                 for word in J.Items(command) {
                     words.Add(word.GetString() ?? "")
                 }
-                let result = Run(
-                    checkout,
-                    words.ToArray(),
-                    network,
-                    seconds,
-                    outputPath,
-                    errorPath,
-                    budget,
-                    mountDirectory
-                )
+                let result = Run(checkout, words.ToArray(), seconds, outputPath, errorPath, budget)
                 check["state"] = "completed"
                 check["exit_code"] = result.Code
                 Evidence(check, result)
@@ -292,80 +149,21 @@ internal class Verification {
         internal func Run(
             directory string,
             command[]string,
-            network bool,
             seconds int32,
             outputPath string = "",
             errorPath string = "",
-            budget RuntimeBudget? = nil,
-            mountDirectory string = ""
+            budget RuntimeBudget? = nil
         ) CommandResult {
-            if !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/bwrap") {
-                throw Exception(
-                    "Independent verification requires Linux and /usr/bin/bwrap; no host fallback is supported"
-                )
-            }
             let checkout = Validate(directory, budget)
-            let mounted = mountDirectory == "" ? checkout: Validate(mountDirectory, budget)
+            if command.Length == 0 {
+                throw Exception("Verification commands must be argv arrays")
+            }
             for path in[]string{outputPath, errorPath} {
                 if path != "" {
                     let parent = LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
-                    if parent == checkout || parent.StartsWith(checkout + "/") ||
-                        parent == mounted ||
-                        parent.StartsWith(mounted + "/") {
+                    if parent == checkout || parent.StartsWith(checkout + "/") {
                         throw Exception("Verification evidence must be outside the checkout")
                     }
-                    for visible in[]string{
-                        "/usr",
-                        "/bin",
-                        "/sbin",
-                        "/lib",
-                        "/lib64",
-                        "/etc/alternatives",
-                        "/proc",
-                        "/dev"
-                    } {
-                        if parent == visible || parent.StartsWith(visible + "/") {
-                            throw Exception("Verification evidence must be outside sandbox runtime mounts")
-                        }
-                    }
-                }
-            }
-            let git = Path.Combine(checkout, ".git")
-            let args = List[string]{
-                "--die-with-parent",
-                "--new-session",
-                "--unshare-user",
-                "--unshare-pid",
-                "--unshare-ipc",
-                "--unshare-uts",
-                "--cap-drop",
-                "ALL",
-                "--clearenv",
-                "--setenv",
-                "PATH",
-                "/usr/local/bin:/usr/bin:/bin",
-                "--setenv",
-                "HOME",
-                "/tmp/tokate-home",
-                "--setenv",
-                "TMPDIR",
-                "/tmp/tokate-home",
-                "--setenv",
-                "LANG",
-                "C.UTF-8",
-                "--setenv",
-                "GIT_NO_REPLACE_OBJECTS",
-                "1",
-                "--setenv",
-                "GIT_GRAFT_FILE",
-                "/dev/null"
-            }
-            if !network {
-                args.Add("--unshare-net")
-            }
-            for path in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc/alternatives"} {
-                if Directory.Exists(path) {
-                    args.AddRange([]string{"--ro-bind", path, path})
                 }
             }
             let cancellation = Chan[bool](1)
@@ -380,93 +178,30 @@ internal class Verification {
             )
             Console.CancelKeyPress += onCancel
             try {
-                let storage = RuntimeStorage()
-                var result CommandResult
-                try {
-                    let runtimeStorage = LocalPaths.DirectoryPath(storage.FullName)
-                    if runtimeStorage == checkout || runtimeStorage.StartsWith(checkout + "/") ||
-                        runtimeStorage == mounted ||
-                        runtimeStorage
-                        .StartsWith(mounted + "/") {
-                        throw Exception("Verification runtime storage must be outside the checkout: " + runtimeStorage)
+                let arguments = List[string](command)
+                arguments.RemoveAt(0)
+                var outputLine Action[string]? = nil
+                var errorLine Action[string]? = nil
+                if DonationView.Active() {
+                    if outputPath != "" {
+                        outputLine = line -> DonationView.Append(line)
                     }
-                    for path in[]string{
-                        "/etc/ld.so.cache",
-                        "/etc/nsswitch.conf",
-                        "/etc/hosts",
-                        "/etc/resolv.conf",
-                        "/etc/ssl/certs/ca-certificates.crt",
-                        "/etc/ssl/cert.pem",
-                        "/etc/pki/tls/certs/ca-bundle.crt"
-                    } {
-                        if File.Exists(path) {
-                            args.AddRange([]string{"--ro-bind", RuntimeFile(path, storage.FullName), path})
-                        }
+                    if errorPath != "" {
+                        errorLine = line -> DonationView.Append(line)
                     }
-                    args.AddRange(
-                        []string{
-                            "--proc",
-                            "/proc",
-                            "--dev",
-                            "/dev",
-                            "--tmpfs",
-                            "/tmp",
-                            "--dir",
-                            "/tmp/tokate-home",
-                            "--dir",
-                            "/var",
-                            "--tmpfs",
-                            "/var/tmp",
-                            "--bind",
-                            checkout,
-                            mounted,
-                            "--ro-bind",
-                            git,
-                            Path.Combine(mounted, ".git"),
-                            "--chdir",
-                            mounted,
-                            "--"
-                        }
-                    )
-                    args.AddRange(command)
-                    var outputLine Action[string]? = nil
-                    var errorLine Action[string]? = nil
-                    if DonationView.Active() {
-                        if outputPath != "" {
-                            outputLine = line -> DonationView.Append(line)
-                        }
-                        if errorPath != "" {
-                            errorLine = line -> DonationView.Append(line)
-                        }
-                    }
-                    result = Commands.Run(
-                        "/usr/bin/bwrap",
-                        args.ToArray(),
-                        checkout,
-                        seconds: seconds,
-                        isolated: true,
-                        cancellation: cancellation,
-                        outputPath: outputPath,
-                        errorPath: errorPath,
-                        budget: budget,
-                        pidNamespace: true,
-                        outputLine: outputLine,
-                        errorLine: errorLine
-                    )
-                } catch (error Exception) {
-                    CleanupRuntime(storage.FullName, error)
-                    throw error
                 }
-                var failure Exception? = nil
-                if result.Code != 0 {
-                    failure = Exception("Verification command exited " + result.Code.ToString())
-                }
-                try {
-                    CleanupRuntime(storage.FullName, failure)
-                } catch (error Exception) {
-                    result.Code = nil
-                    throw CommandInterrupted(error, result)
-                }
+                let result = Commands.Run(
+                    command[0],
+                    arguments.ToArray(),
+                    checkout,
+                    seconds: seconds,
+                    cancellation: cancellation,
+                    outputPath: outputPath,
+                    errorPath: errorPath,
+                    budget: budget,
+                    outputLine: outputLine,
+                    errorLine: errorLine
+                )
                 select {
                     case <- cancellation {
                         result.Code = nil

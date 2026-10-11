@@ -6,6 +6,7 @@ import re
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
@@ -16,17 +17,28 @@ os.environ["TERM"] = "xterm-256color"
 os.environ["NO_COLOR"] = "1"
 
 
+def checkout(path):
+    git = {key: value for key, value in os.environ.items() if not key.startswith("GIT_CONFIG_")}
+    subprocess.run(["/usr/bin/git", "init", "-q", "-b", "main", path], check=True, env=git)
+    subprocess.run(
+        ["/usr/bin/git", "-C", path, "remote", "add", "origin", "https://github.com/owner/project.git"],
+        check=True, env=git,
+    )
+
+
 def start(path, home=False):
+    if not home:
+        checkout(path)
     pid, fd = pty.fork()
     if pid == 0:
         if home:
             os.execv(binary, [binary])
         os.execv(binary, [
-            binary, "init", "--repo", "owner/project", "--path", path,
+            binary, "init", "owner/project", "--path", path,
             "--model-policy", "whitelist", "--allowed-tools", "codex,pi", "--verification", '[["/usr/bin/true"]]',
             "--required-checks", '["verify"]', "--eligibility", "trusted",
-            "--base-branch", "main", "--network", "deny", "--seconds", "60",
-            "--reservation-seconds", "300", "--pr-text", "Owner notes", "--yes",
+            "--base-branch", "main", "--max-time", "60s",
+            "--reservation-time", "300s", "--pr-text", "Owner notes",
         ])
     resize(fd, 100, 24)
     return pid, fd

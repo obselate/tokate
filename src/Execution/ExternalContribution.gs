@@ -148,7 +148,6 @@ internal class ExternalContribution {
                         "policy_hash",
                         "branch",
                         "seconds",
-                        "network",
                         "source"
                     } {
                         if !RequestData.Same(J.Get(saved.Element(), key), J.Get(run.Element(), key)) {
@@ -204,10 +203,11 @@ internal class ExternalContribution {
                 throw Exception("Expected unexecuted external work or a recorded external verification failure")
             }
             if !retry && (args.Get("seconds") != "" || args.Get("tools") != "") {
-                throw Exception("--seconds and --tools require a failed external verification")
+                throw Exception("--time and --tools require a failed external verification")
             }
-            let record = ContributionClaim.RecheckV2(run)
+            let record = ContributionAuthority.Recheck(run)
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
+            ContributionHandoff.Candidate(J.Get(run.Element(), "handoff"), run.Text("head_repo"), commit)
             let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
             var seconds = run.Number("seconds")
             var tools = J.Get(run.Element(), "tools")
@@ -219,7 +219,7 @@ internal class ExternalContribution {
                 tools = RequestData.FileData(args.Need("tools"), 4096)
                 RequestData.Tools(tools)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
-                policy.ValidateBudget(seconds, run.Flag("network"))
+                policy.ValidateBudget(seconds)
                 policy.ValidateTools(tools, "external")
                 KeepTools(J.Get(run.Element(), "tools"), tools)
                 if J.Count(tools) == J.Count(J.Get(run.Element(), "tools")) {
@@ -330,7 +330,6 @@ internal class ExternalContribution {
                             results,
                             command,
                             checkout,
-                            run.Flag("network"),
                             remaining,
                             budget: budget,
                             workspace: workspace
@@ -358,7 +357,7 @@ internal class ExternalContribution {
                 ) != "" {
                     throw Exception("Independent verification changed the declared commit or checkout")
                 }
-                ContributionClaim.RecheckV2(run)
+                ContributionAuthority.Recheck(run)
                 if retry {
                     RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
                     Unpublished(directory, run)

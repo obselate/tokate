@@ -19,7 +19,7 @@ internal open class CoordinationFixture : IDisposable {
     }
 
     internal func Initialize(approve bool = true) {
-        Flow.Initialize()
+        Flow.Initialize(access: false)
         Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(policyPath))
@@ -30,7 +30,7 @@ internal open class CoordinationFixture : IDisposable {
         let models = policy["models"] ?? throw Exception("Missing models")
         models["claude-sonnet-4-6"] = Check.Json("[\"unknown\"]")
         File.WriteAllText(policyPath, policy.ToJsonString())
-        Flow.Commit("Explicit owner version-2 opt-in")
+        Flow.Commit("Owner tool policy")
         if approve {
             Flow.Approve()
         }
@@ -43,7 +43,7 @@ internal open class CoordinationFixture : IDisposable {
     public func Dispose() -> Flow.Dispose()
 
     internal func State() JsonNode -> Check.Json(
-        Flow.Call([]string{"coordination", "--repo", "owner/project", "--issue", Issue.ToString()}).Output
+        Flow.Call([]string{"coordination", "owner/project#" + Issue.ToString()}).Output
     )
 
     internal func ClaimRequest() JsonNode {
@@ -101,18 +101,15 @@ internal open class CoordinationFixture : IDisposable {
     }
 
     internal func Coordinate(path string, code int32 = 0, traffic bool = false) Result -> Flow.Call(
-        []string{"coordinate", "--repo", "owner/project", "--event", path},
+        []string{"coordinate", "owner/project", "--event", path},
         code,
         owner: true,
         traffic: traffic
     )
 
-    internal func Claim(selected bool = false) JsonNode {
+    internal func Claim() JsonNode {
         let request = ClaimRequest()
-        let path = Event(request)
-        Flow.ResetTraffic()
-        let result = Coordinate(path, traffic: true)
-        Flow.Traffic(selected ? 18: 16, 3, selected ? 9: 8, 0, result)
+        Coordinate(Event(request))
         return request
     }
 
@@ -195,37 +192,30 @@ internal open class CoordinationFixture : IDisposable {
         source string = "external",
         code int32 = 0,
         seconds string = "30",
-        network bool = false,
         reserve string = "",
         unlimited bool = false
     ) string {
         let state = State()
         let args = List[string]{
             "prepare",
-            "--repo",
-            "owner/project",
-            "--issue",
-            "1",
+            "owner/project#1",
             "--state",
             Check.Text(state["sha"]),
             "--source",
             source,
             "--tools",
             Tools,
-            "--seconds",
-            seconds,
+            "--time",
+            seconds + "s",
             "--runs",
             Path.Combine(Flow.Temp.Root, "runs")
         }
         if reserve != "" {
-            args.AddRange([]string{"--verification-reserve", reserve})
+            args.AddRange([]string{"--verify-time", reserve + "s"})
         }
         if unlimited {
-            args.RemoveRange(args.IndexOf("--seconds"), 2)
+            args.RemoveRange(args.IndexOf("--time"), 2)
             args.Add("--unlimited")
-        }
-        if network {
-            args.Add("--allow-network")
         }
         let result = Flow.Call(args.ToArray(), code)
         if code != 0 {

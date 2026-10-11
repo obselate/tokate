@@ -1,12 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "models": {
     "gpt-6.1-sol": [
       "high"
     ]
   },
   "max_seconds": 3600,
-  "allow_network": false,
   "required_checks": [
     "verify"
   ],
@@ -15,5 +14,13 @@
       "bash",
       "scripts/verify.sh"
     ]
+  ],
+  "approval_scope": "task",
+  "eligibility": "trusted",
+  "allowed_tools": [
+    {
+      "harness": "codex",
+      "provider": "openai"
+    }
   ]
 }

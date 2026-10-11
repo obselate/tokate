@@ -63,7 +63,7 @@ internal class PiCatalog {
             }
             let result = map[string, Object?]{"advertised_model": model}
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
-                let field = J.Get(selected, name)
+                let field = name == "context_window" ? Context(selected): J.Get(selected, name)
                 if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
                     result[name] = "unknown"
                     continue
@@ -85,6 +85,26 @@ internal class PiCatalog {
                 result[name] = field
             }
             return J.Parse(J.Write(result))
+        }
+
+        private func Context(model JsonElement) JsonElement {
+            var result JsonElement
+            var context int32
+            for name in[]string{"context_window", "context_length"} {
+                let field = J.Get(model, name)
+                if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
+                    continue
+                }
+                var value int32
+                if field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out value) ||
+                    value <= 0 ||
+                    (result.ValueKind != JsonValueKind.Undefined && context != value) {
+                    throw Exception("Invalid model identity")
+                }
+                result = field
+                context = value
+            }
+            return result
         }
     }
 }

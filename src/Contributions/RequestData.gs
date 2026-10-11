@@ -9,6 +9,8 @@ import System.Text.RegularExpressions
 
 internal class RequestData {
     shared {
+        internal let ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
+
         internal func Same(left JsonElement, right JsonElement) bool {
             if left.ValueKind == JsonValueKind.Undefined || right.ValueKind == JsonValueKind.Undefined {
                 return left.ValueKind == right.ValueKind
@@ -221,7 +223,7 @@ internal class RequestData {
             if J.Count(tools) > 0 {
                 RequestData.Tools(tools)
                 let owner = Policy(J.Write(policy))
-                owner.ValidateEditingTools(tools, "Version-1 owner policy permits only codex/openai correction tools")
+                owner.ValidateTools(tools)
             }
         }
 
@@ -234,6 +236,14 @@ internal class RequestData {
                 "request": request
             }
             return Data.Hash(Canonical(J.Parse(J.Write(binding))))
+        }
+
+        internal func Incomplete(metadata JsonElement) bool {
+            let value = J.Get(metadata, "incomplete")
+            if value.ValueKind != JsonValueKind.Undefined && value.ValueKind != JsonValueKind.True {
+                throw Exception("Incomplete work must be declared explicitly")
+            }
+            return value.ValueKind == JsonValueKind.True
         }
 
         internal func Recorded(state JsonElement, actor JsonElement, request JsonElement) JsonElement {
@@ -273,19 +283,23 @@ internal class RequestData {
             } else if J.Text(value, "action") == "publish" {
                 Keys(
                     metadata,
-                    "fork,branch,head,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256"
+                    "fork,branch,head,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff"
                 )
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "head"))
                 if !Regex.IsMatch(J.Text(metadata, "branch"), "^tokate/v2-[0-9a-f-]{36}$") ||
                     (J.Text(metadata, "source") != "external" && J.Text(metadata, "source") != "tokate") ||
-                    J.Text(metadata, "verification") != "donor-reported-pass" {
+                    J.Text(metadata, "verification") != (Incomplete(metadata) ? "not-passed": "donor-reported-pass") {
                     throw Exception("Invalid contribution declaration")
                 }
                 Tools(J.Get(metadata, "tools"))
-                V2Continuation.Declaration(metadata)
+                ContributionHandoff.Declaration(J.Get(metadata, "handoff"))
+                AttemptContinuation.Declaration(metadata)
                 let correction = J.Get(metadata, "correction")
                 if correction.ValueKind != JsonValueKind.Undefined {
+                    if Incomplete(metadata) {
+                        throw Exception("Incomplete work cannot claim verified correction provenance")
+                    }
                     if J.Text(metadata, "source") != "tokate" {
                         throw Exception("Correction provenance requires managed original work")
                     }

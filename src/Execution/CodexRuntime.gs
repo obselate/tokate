@@ -16,22 +16,28 @@ func RuntimeMetadataOpen(path string, flags int32) int32;
 
 internal class CodexRuntime {
     shared {
-        internal func Capabilities() Dictionary[string, HashSet[string]] {
-            let executable = CodexRuntime.Resolve()
+        internal func Capabilities(path string = "") Dictionary[string, HashSet[string]] {
+            let executable = CodexRuntime.Resolve(path)
             let home = Path.Combine(Path.GetTempPath(), "tokate-models-" + Guid.NewGuid().ToString("N"))
             Directory.CreateDirectory(home, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             try {
                 let prefix = List[string]{
                     "-i",
-                    "PATH=/usr/local/bin:/usr/bin:/bin",
+                    "PATH=" + NixRuntime.SearchPath(NixRuntime.Tools("", []string{executable}).ToArray()),
                     "HOME=" + home,
                     "CODEX_HOME=" + home,
                     executable
                 }
                 let help = List[string](prefix)
                 help.AddRange([]string{"exec", "--help"})
-                let controls = Commands.Run("/usr/bin/env", help.ToArray(), home, seconds: 10, isolated: true)
-                for flag in[]string{"--model", "--config", "--ignore-user-config", "--strict-config"} {
+                let controls = Commands.Run(
+                    LocalPaths.NeedSystemTool("env"),
+                    help.ToArray(),
+                    home,
+                    seconds: 10,
+                    isolated: true
+                )
+                for flag in[]string{"--model", "--config"} {
                     if controls.Code != 0 || !controls.Output.Contains(flag) {
                         throw Exception(
                             "Native Codex does not expose the required explicit controls; no compatible pair"
@@ -40,7 +46,13 @@ internal class CodexRuntime {
                 }
                 let catalog = List[string](prefix)
                 catalog.AddRange([]string{"debug", "models", "--bundled"})
-                let result = Commands.Run("/usr/bin/env", catalog.ToArray(), home, seconds: 10, isolated: true)
+                let result = Commands.Run(
+                    LocalPaths.NeedSystemTool("env"),
+                    catalog.ToArray(),
+                    home,
+                    seconds: 10,
+                    isolated: true
+                )
                 if result.Code != 0 {
                     throw Exception("Cannot verify offline Codex model/effort capabilities; availability is unknown")
                 }
@@ -93,7 +105,7 @@ internal class CodexRuntime {
             return RequestData.Parse(Encoding.UTF8.GetString(bytes), 65536)
         }
 
-        private func Native(path string) bool {
+        internal func Native(path string) bool {
             FileKind(path, 32768)
             using let file = File.OpenRead(path)
             let header = [20]byte
@@ -113,8 +125,43 @@ internal class CodexRuntime {
             ) != 0
         }
 
-        internal func Resolve() string {
-            let selected = LocalPaths.Find("codex")
+        internal func Bubblewrap(executable string) string {
+            let root = Directory.GetParent(executable)?.Parent?.FullName ?? ""
+            let manifest = Path.Combine(root, "codex-package.json")
+            if !File.Exists(manifest) && FileInfo(manifest).LinkTarget == nil {
+                return ""
+            }
+            let metadata = Metadata(manifest)
+            if J.Number(metadata, "layoutVersion") != 1 || J.Text(metadata, "variant") != "codex" || J.Text(
+                metadata,
+                "entrypoint"
+            ) != "bin/codex" ||
+                J.Text(metadata, "resourcesDir") != "codex-resources" || J.Text(metadata, "version") == "" ||
+                (
+                J.Text(metadata, "target") != "x86_64-unknown-linux-musl" && J.Text(
+                    metadata,
+                    "target"
+                ) != "x86_64-unknown-linux-gnu"
+            ) ||
+                executable != Path
+                .Combine(root, "bin/codex") {
+                throw CliFailure(
+                    "verification_failed",
+                    "Unsupported standalone Codex package layout. Repair the selected installation."
+                )
+            }
+            let bubblewrap = Path.Combine(root, "codex-resources/bwrap")
+            if !Native(bubblewrap) {
+                throw CliFailure(
+                    "verification_failed",
+                    "The selected Codex package has no executable native bubblewrap resource. Repair that installation."
+                )
+            }
+            return bubblewrap
+        }
+
+        internal func Resolve(path string = "") string {
+            let selected = LocalPaths.Harness("codex", path)
             if selected == "" {
                 throw CliFailure("missing_tools", "Install Codex and add codex to PATH.")
             }

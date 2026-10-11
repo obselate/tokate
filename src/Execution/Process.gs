@@ -164,7 +164,7 @@ internal class RuntimeBudget {
                     throw Exception("Unlimited coding requires a separate positive verification budget")
                 }
             } else if reserve >= seconds {
-                throw Exception("--verification-reserve must be strictly smaller than the total budget")
+                throw Exception("--verify-time must be shorter than --time")
             }
             return reserve
         }
@@ -201,7 +201,7 @@ internal class RuntimeBudget {
             let total = run.Number("seconds")
             let reserve = run.Number("verification_reserve")
             if run.Flag("unlimited") {
-                return "unlimited coding time; independent verification budget " + reserve.ToString() + "s"
+                return "unlimited coding time, independent verification budget " + reserve.ToString() + "s"
             }
             return "total allowance " + total.ToString() + "s, coding allowance " + (total - reserve).ToString() +
                 "s, verification reserve " +
@@ -353,31 +353,37 @@ internal class Commands {
             outputPath string = "",
             errorPath string = "",
             budget RuntimeBudget? = nil,
-            pidNamespace bool = false,
             outputLine Action[string]? = nil,
             errorLine Action[string]? = nil
         ) CommandResult {
-            let info = ProcessStartInfo(isolated ? "/usr/bin/setsid": "setsid")
-            if !pidNamespace {
-                if !OperatingSystem.IsLinux() || !File.Exists("/usr/bin/unshare") || !File.Exists("/usr/bin/env") {
-                    throw CliFailure(
-                        "missing_tools",
-                        "Command cleanup requires Linux, /usr/bin/unshare, and /usr/bin/env",
-                        summary: "PID namespace prerequisite is unavailable"
-                    )
-                }
-                info.ArgumentList.Add("/usr/bin/unshare")
-                info.ArgumentList.Add("--map-current-user")
-                info.ArgumentList.Add("--pid")
-                info.ArgumentList.Add("--fork")
-                info.ArgumentList.Add("--kill-child")
-                info.ArgumentList.Add("--mount-proc")
-                info.ArgumentList.Add("--")
-                info.ArgumentList.Add("/usr/bin/env")
-                info.ArgumentList.Add("-u")
-                info.ArgumentList.Add("LC_ALL")
-                info.ArgumentList.Add("--")
+            let info = ProcessStartInfo(isolated ? LocalPaths.NeedSystemTool("setsid", cwd): "setsid")
+            info.ArgumentList.Add("--wait")
+            let setpriv = LocalPaths.SystemTool("setpriv", cwd)
+            let unshare = LocalPaths.SystemTool("unshare", cwd)
+            let environment = LocalPaths.SystemTool("env", cwd)
+            if !OperatingSystem.IsLinux() || !LocalPaths.Executable(setpriv) || !LocalPaths.Executable(unshare) ||
+                !LocalPaths
+                .Executable(environment) {
+                throw CliFailure(
+                    "missing_tools",
+                    "Command cleanup requires Linux, setpriv, unshare, and env",
+                    summary: "PID namespace prerequisite is unavailable"
+                )
             }
+            info.ArgumentList.Add(setpriv)
+            info.ArgumentList.Add("--pdeathsig")
+            info.ArgumentList.Add("KILL")
+            info.ArgumentList.Add(unshare)
+            info.ArgumentList.Add("--map-current-user")
+            info.ArgumentList.Add("--pid")
+            info.ArgumentList.Add("--fork")
+            info.ArgumentList.Add("--kill-child")
+            info.ArgumentList.Add("--mount-proc")
+            info.ArgumentList.Add("--")
+            info.ArgumentList.Add(environment)
+            info.ArgumentList.Add("-u")
+            info.ArgumentList.Add("LC_ALL")
+            info.ArgumentList.Add("--")
             info.ArgumentList.Add(exe)
             info.UseShellExecute = false
             info.RedirectStandardOutput = true
@@ -417,6 +423,12 @@ internal class Commands {
             if isolated {
                 info.Environment["PATH"] = "/usr/local/bin:/usr/bin:/bin"
             }
+            let certificates = LocalPaths.Certificates()
+            if certificates != "" {
+                info.Environment["SSL_CERT_FILE"] = certificates
+                info.Environment["GIT_SSL_CAINFO"] = certificates
+                info.Environment["CURL_CA_BUNDLE"] = certificates
+            }
             info.Environment["GH_HOST"] = "github.com"
             info.Environment["GH_PROMPT_DISABLED"] = "1"
             info.Environment["GIT_TERMINAL_PROMPT"] = "0"
@@ -424,9 +436,7 @@ internal class Commands {
             info.Environment["GIT_CONFIG_GLOBAL"] = "/dev/null"
             info.Environment["GIT_NO_REPLACE_OBJECTS"] = "1"
             info.Environment["GIT_GRAFT_FILE"] = "/dev/null"
-            if !pidNamespace {
-                info.Environment["LC_ALL"] = "C"
-            }
+            info.Environment["LC_ALL"] = "C"
             if let signal = cancellation {
                 select {
                     case <- signal {
@@ -595,10 +605,20 @@ internal class Commands {
                 }
                 throw CommandInterrupted(error, result)
             }
-            if !pidNamespace && result.Code != 0 {
+            if result.Code != 0 {
                 for prefix in[]string{
-                    "setsid: failed to execute /usr/bin/unshare:",
-                    "unshare: failed to execute /usr/bin/env:",
+                    "setsid: failed to execute ",
+                    "setpriv: failed to execute ",
+                    "unshare: failed to execute "
+                } {
+                    if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
+                        throw CliFailure(
+                            "missing_tools",
+                            "A PID namespace command helper could not execute. Repair the helper, then run tokate doctor."
+                        )
+                    }
+                }
+                for prefix in[]string{
                     "unshare: unshare failed:",
                     "unshare: mount /proc failed:",
                     "unshare: mount proc on /proc failed:",
@@ -608,11 +628,7 @@ internal class Commands {
                     "unshare: setgroups failed:"
                 } {
                     if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
-                        throw CliFailure(
-                            "missing_tools",
-                            "Cannot start a PID namespace with /usr/bin/unshare",
-                            summary: "PID namespace prerequisite is unavailable"
-                        )
+                        throw LinuxSandbox.NamespaceFailure(result.Error)
                     }
                 }
             }

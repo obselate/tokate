@@ -121,6 +121,7 @@ internal class SuiteDriver {
         for path in[]string{
             "/etc/ld.so.cache",
             "/etc/nsswitch.conf",
+            "/etc/os-release",
             "/etc/hosts",
             "/etc/resolv.conf",
             "/etc/ssl/certs/ca-certificates.crt"

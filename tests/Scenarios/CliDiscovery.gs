@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "doctor update uninstall defaults select init coordinator-setup access coordination request prepare external reconcile authorize-sync revoke-sync repair amend submit coordinate admit policy approve assign revoke claim work recover publish status verify-pr overlaps checks completion help --version"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -89,14 +89,42 @@ internal class CliDiscovery {
             return result
         }
 
+        private func Checkout(flow NativeFixture, root string, repo string = "owner/project") {
+            flow.Git("init", "-q", "-b", "main", root)
+            flow.Git("-C", root, "remote", "add", "origin", "https://github.com/" + repo + ".git")
+        }
+
+        private func Publish(flow NativeFixture, text string?) {
+            let upstream = Path.Combine(flow.Upstream, ".github/tokate.json")
+            if text == nil {
+                File.Delete(upstream)
+            } else {
+                File.WriteAllText(upstream, text)
+            }
+            flow.Git("-C", flow.Upstream, "add", "-A")
+            flow.Git(
+                "-C",
+                flow.Upstream,
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=test@example.test",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "Owner policy"
+            )
+        }
+
         internal func Setup(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             flow.ReleaseReady(hosted: false)
             let root = Path.Combine(flow.Temp.Root, "adopter")
+            let github = Path.Combine(root, ".github")
             let args = []string{
                 "init",
-                "--repo",
                 "owner/project",
                 "--path",
                 root,
@@ -106,24 +134,29 @@ internal class CliDiscovery {
                 "[[\"bash\",\"scripts/verify.sh\"]]",
                 "--required-checks",
                 "[\"verify\"]",
-                "--non-interactive",
-                "--yes"
+                "--non-interactive"
             }
+            Check.Contains(flow.Call(args, 1, true).Error, "does not exist")
+            Directory.CreateDirectory(root)
+            Check.Contains(flow.Call(args, 1, true).Error, "is not a Git checkout")
+            let other = Path.Combine(flow.Temp.Root, "other")
+            Checkout(flow, other, "someone/else")
+            let mismatch = List[string](args)
+            mismatch[3] = other
             Check.Contains(
-                flow.Call([]string{"init", "--repo", "owner/project", "--path", root}, 1, true).Error,
-                "Choose --model-policy"
+                flow.Call(mismatch.ToArray(), 1, true).Error,
+                "is a checkout of someone/else, not owner/project"
             )
+            Check.That(!Directory.Exists(Path.Combine(other, ".github")), "Mismatched checkout received setup files")
+            Checkout(flow, root)
             Check.Contains(flow.Call(args, 1, true).Error, "Bootstrap required")
-            Check.That(!Directory.Exists(root), "Failed setup created adopter files")
+            Check.That(!Directory.Exists(github), "Failed setup created adopter files")
             flow.Reload()
             flow.State["hosted_workflow"] = JsonValue.Create(true)
             flow.Save()
-            let preview = List[string](args)
-            preview.Remove("--yes")
-            Check.Contains(flow.Call(preview.ToArray(), owner: true).Error, "Preview only")
-            Check.That(!Directory.Exists(root), "Preview wrote adopter files")
             let created = flow.Call(args, owner: true)
-            Check.Contains(created.Error, "Proposed complete file")
+            Check.Contains(created.Error, "Added ")
+            Check.Contains(created.Output, "Commit and push")
             Check.Contains(created.Error, "contents write")
             Check.Contains(created.Error, "tokate/contributions/N")
             let policyPath = Path.Combine(root, ".github/tokate.json")
@@ -139,7 +172,7 @@ internal class CliDiscovery {
                 "Unrestricted setup silently restricted models"
             )
             Check.That(
-                Directory.GetFiles(root, "*", SearchOption.AllDirectories).Length == 2,
+                Directory.GetFiles(github, "*", SearchOption.AllDirectories).Length == 2,
                 "New adopter footprint is not two files"
             )
             let yaml = File.ReadAllText(workflowPath)
@@ -147,23 +180,35 @@ internal class CliDiscovery {
                 !yaml.Contains("run:") && !yaml.Contains("checkout") && yaml.Split('\n').Length < 25,
                 "Setup copied runtime code"
             )
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            Publish(flow, original)
+            let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            Check.Contains(repeated.Output, "nothing to commit")
             Check.That(
                 File.ReadAllText(policyPath) == original && File.ReadAllText(workflowPath) == yaml,
                 "Repeated setup changed owner files"
             )
+            let fresh = Path.Combine(flow.Temp.Root, "fresh")
+            Checkout(flow, fresh)
+            flow.Call([]string{"init", "owner/project", "--path", fresh, "--non-interactive"}, owner: true)
+            let freshPolicy = Path.Combine(fresh, ".github/tokate.json")
+            Check.That(
+                File.ReadAllText(freshPolicy) == original,
+                "Setup in a new checkout did not start from the GitHub policy"
+            )
+            let unpushed = original.Replace("\"max_seconds\": 3600", "\"max_seconds\": 1800")
+            Check.That(unpushed != original, "Fixture policy lacks the expected time limit")
+            File.WriteAllText(freshPolicy, unpushed)
+            Check.Contains(
+                flow.Call([]string{"init", "--path", fresh, "--max-time", "900s", "--non-interactive"}, 1, true).Error,
+                "differs from the policy on owner/project@main"
+            )
+            Check.That(File.ReadAllText(freshPolicy) == unpushed, "Setup overwrote an unpushed local policy")
             let renamed = Path.Combine(root, ".github/workflows/owner.yaml")
             File.Move(workflowPath, renamed)
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             Check.That(
                 !File.Exists(workflowPath) && File.ReadAllText(renamed) == yaml && Directory.GetFiles(
-                    root,
+                    github,
                     "*",
                     SearchOption.AllDirectories
                 )
@@ -174,11 +219,10 @@ internal class CliDiscovery {
             let escaped = "custom owner workflow\n# synthetic-preview-\x1b[31m\n"
             File.WriteAllText(workflowPath, escaped)
             let safePreview = flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--plain"},
+                []string{"init", "owner/project", "--path", root, "--non-interactive", "--plain"},
                 owner: true
             )
             Check.That(!safePreview.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
-            Check.Contains(safePreview.Error, "synthetic-preview-")
             Check.Contains(safePreview.Error, "not verified")
             Check.That(File.ReadAllText(workflowPath) == escaped, "Preview changed the custom workflow")
             let custom = Path.Combine(root, ".github/tokate-pr.md")
@@ -187,7 +231,6 @@ internal class CliDiscovery {
             flow.Call(
                 []string{
                     "init",
-                    "--repo",
                     "owner/project",
                     "--path",
                     root,
@@ -199,32 +242,27 @@ internal class CliDiscovery {
                     "manual",
                     "--base-branch",
                     "release",
-                    "--network",
-                    "allow",
-                    "--seconds",
-                    "5400",
-                    "--reservation-seconds",
-                    "300",
+                    "--max-time",
+                    "5400s",
+                    "--reservation-time",
+                    "300s",
                     "--pr-text",
                     "Literal {{issue}} owner text",
                     "--close-message",
                     "Ask the owner for access.",
-                    "--non-interactive",
-                    "--yes"
+                    "--non-interactive"
                 },
                 owner: true
             )
             let restricted = File.ReadAllText(policyPath)
+            Publish(flow, restricted)
             policy = Check.Json(restricted)
             Check.That(
                 Check.Text(policy["target_branch"]) == "release" && Check.Text(policy["max_seconds"]) == "5400" &&
-                    Check.Text(policy["allow_network"]) == "true",
+                    policy["allow_network"] == nil,
                 "Noninteractive settings were not applied"
             )
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", root, "--non-interactive", "--yes"},
-                owner: true
-            )
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             Check.That(
                 File.ReadAllText(policyPath) == restricted && File.ReadAllText(
                     workflowPath
@@ -233,61 +271,77 @@ internal class CliDiscovery {
                     .ReadAllText(custom).EndsWith("Owner customization\n"),
                 "Repeat overwrote customization or restrictions"
             )
-            let invalid = []string{
+            let invalid = []string{"init", "owner/project", "--path", root, "--verification", "[]", "--non-interactive"}
+            flow.Call(invalid, 1, true)
+            Check.That(File.ReadAllText(policyPath) == restricted, "Invalid policy replaced owner work")
+            policy["allowed_tools"] = Check.Json(
+                "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"gufo\"}]"
+            )
+            Publish(flow, policy.ToJsonString())
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            let toolArgs = List[string]{
                 "init",
-                "--repo",
                 "owner/project",
                 "--path",
                 root,
-                "--verification",
-                "[]",
-                "--non-interactive",
-                "--yes"
+                "--allowed-tools",
+                "pi",
+                "--non-interactive"
             }
-            flow.Call(invalid, 1, true)
-            Check.That(File.ReadAllText(policyPath) == restricted, "Invalid policy replaced owner work")
-            let legacy = Path.Combine(flow.Temp.Root, "legacy")
-            Directory.CreateDirectory(Path.Combine(legacy, ".github/workflows"))
-            File.WriteAllText(Path.Combine(legacy, ".github/tokate.json"), TestResources.Template("tokate.json"))
-            File.WriteAllText(Path.Combine(legacy, ".github/workflows/tokate-coordinator.yml"), "legacy owner wiring\n")
-            let legacyText = File.ReadAllText(Path.Combine(legacy, ".github/tokate.json"))
-            flow.Call(
-                []string{"init", "--repo", "owner/project", "--path", legacy, "--non-interactive", "--yes"},
-                owner: true
-            )
+            flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
+            let mixed = Check.Json(File.ReadAllText(policyPath))["allowed_tools"]?.ToJsonString() ?? ""
+            for name in[]string{"omp", "pi"} {
+                Check.Contains(mixed, "\"harness\":\"" + name + "\"")
+            }
+            toolArgs[5] = "claude/anthropic,hermes/openrouter"
+            flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
+            policy = Check.Json(File.ReadAllText(policyPath))
+            let exact = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
-                File.ReadAllText(Path.Combine(legacy, ".github/tokate.json")) == legacyText,
-                "Repeat changed legacy approval binding"
+                exact.Count == 2 && Check.Text(exact[1]?["harness"]) == "hermes",
+                "Exact external tools were not selected"
             )
-            flow.Call(
-                []string{
-                    "init",
-                    "--repo",
-                    "owner/project",
-                    "--path",
-                    legacy,
-                    "--upgrade",
-                    "--non-interactive",
-                    "--yes"
-                },
-                owner: true
-            )
-            let upgraded = Check.Json(File.ReadAllText(Path.Combine(legacy, ".github/tokate.json")))
+            toolArgs[5] = "codex"
+            flow.Call(toolArgs.ToArray(), owner: true)
+            Publish(flow, File.ReadAllText(policyPath))
+            policy = Check.Json(File.ReadAllText(policyPath))
+            let kept = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
             Check.That(
-                Check.Text(upgraded["model_policy"]) == "whitelist" && upgraded["models"]?.ToJsonString() == Check
-                    .Json(TestResources.Template("tokate.json"))["models"]
-                    ?.ToJsonString(),
-                "Upgrade removed model restrictions"
+                kept.Count == 2 && Check.Text(kept[0]?["harness"]) == "hermes",
+                "Managed selection removed external permissions"
             )
+            let beforeInvalidTool = File.ReadAllText(policyPath)
+            toolArgs[5] = "claude/"
+            flow.Call(toolArgs.ToArray(), 1, true)
+            Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Invalid tool pair changed policy")
+            let obsolete = Path.Combine(flow.Temp.Root, "obsolete")
+            Checkout(flow, obsolete)
+            let obsoletePolicy = Check.Json(TestResources.Template("tokate.json"))
+            obsoletePolicy["version"] = JsonValue.Create(1)
+            Publish(flow, obsoletePolicy.ToJsonString())
+            flow.Call([]string{"init", "owner/project", "--path", obsolete, "--non-interactive"}, 1, true)
+            Check.That(
+                !File.Exists(Path.Combine(obsolete, ".github/tokate.json")),
+                "Unsupported GitHub policy was rewritten"
+            )
+            Publish(flow, nil)
             let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
-            let command = "'" + binary + "' init --repo owner/project --path '" + interactiveRoot + "' --plain"
+            Checkout(flow, interactiveRoot)
+            Check.Contains(
+                flow.Call([]string{"init", "owner/project", "--path", interactiveRoot, "--non-interactive"}, 1, true)
+                    .Error,
+                "Choose --model-policy"
+            )
+            let command = "'" + binary + "' init owner/project --path '" + interactiveRoot + "' --plain"
             let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
             env["GH_TOKEN"] = "fixture-owner"
             let terminal = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "whitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n\n\n\n/usr/bin/true\n\nverify, build\n\ny\n"
+                "whitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n\n\n/usr/bin/true\n\nverify, build\n\ny\n"
             )
             Check.Success(terminal)
             Check.That(
@@ -310,7 +364,6 @@ internal class CliDiscovery {
                 []string{
                     "defaults",
                     "set",
-                    "--profile",
                     "local",
                     "--harness",
                     "pi",
@@ -333,6 +386,7 @@ internal class CliDiscovery {
             Console.Write(picker.Output)
             let previousToken = flow.Temp.Env["GH_TOKEN"]
             flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            Checkout(flow, flow.Temp.Root)
             let guided = TestTerminal.Pty(
                 binary,
                 []string{},
@@ -356,7 +410,7 @@ internal class CliDiscovery {
             flow.NoInference()
             flow.NoPr()
             Console.WriteLine(
-                "PASS CLI owner setup: bootstrap, preview, confirmation, two files, repeat, restrictions, upgrade and explicit options"
+                "PASS CLI owner setup: checkout identity, GitHub policy source, direct writes, two files, repeat, restrictions, upgrade and explicit options"
             )
         }
 
@@ -364,7 +418,7 @@ internal class CliDiscovery {
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let calls = Path.Combine(temp.Root, "calls")
-            for name in[]string{"git", "gh", "codex", "setsid", "bwrap"} {
+            for name in[]string{"git", "gh", "codex", "setsid"} {
                 let tool = Path.Combine(bin, name)
                 File.WriteAllText(
                     tool,
@@ -397,28 +451,25 @@ internal class CliDiscovery {
                     "Incorrect inference effects"
                 )
                 Check.That(command["effects"]?.AsObject().Count == 4, "Incomplete read/write effects")
-                Check.That(
-                    command["arguments"]?.ToJsonString().Contains("--json") == true,
-                    "JSON absent from accepted arguments"
-                )
             }
+            Check.That(
+                metadata["data"]?["global_arguments"]?.ToJsonString().Contains("--json") == true,
+                "JSON absent from accepted arguments"
+            )
             for argv in[][]string{
                 []string{"unknown", "--json"},
                 []string{"work", "--unknown", "--json"},
-                []string{"checks", "--run", "saved", "--repo", "owner/project", "--json"},
+                []string{"checks", "--run", "saved", "owner/project#10", "--json"},
                 []string{"doctor", "--json=true"},
                 []string{"status", "--run", "saved", "--json", "--json"},
-                []string{"status", "--run", "saved", "--repo", "owner/project", "--json"},
-                []string{"status", "--run", "saved", "--issue", "1", "--json"},
-                []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--seconds", "30", "--json"},
-                []string{"revoke-sync", "--repo", "owner/project", "--grant", "invalid", "--json"},
-                []string{"revoke-sync", "--repo", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
+                []string{"status", "--run", "saved", "owner/project#10", "--json"},
+                []string{"status", "--run", "saved", "1", "--json"},
+                []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
+                []string{"revoke-sync", "owner/project", "--grant", "invalid", "--json"},
+                []string{"revoke-sync", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
                 []string{
                     "authorize-sync",
-                    "--repo",
-                    "owner/project",
-                    "--pr",
-                    "10",
+                    "owner/project#10",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -427,10 +478,7 @@ internal class CliDiscovery {
                 },
                 []string{
                     "authorize-sync",
-                    "--repo",
-                    "owner/project",
-                    "--pr",
-                    "10",
+                    "owner/project#10",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -443,8 +491,8 @@ internal class CliDiscovery {
                     "saved",
                     "--commit",
                     String('a', 40),
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--sync",
                     "invalid",
                     "--json"
@@ -455,13 +503,13 @@ internal class CliDiscovery {
                     "saved",
                     "--commit",
                     String('a', 40),
-                    "--seconds",
-                    "30",
+                    "--time",
+                    "30s",
                     "--sync",
                     String('a', 40) + "\n",
                     "--json"
                 },
-                []string{"approve", "--issue", "0", "--json"}
+                []string{"approve", "0", "--json"}
             } {
                 Check.Envelope(Call(binary, argv, temp, 1), argv[0], "error", "invalid_arguments")
             }
@@ -473,14 +521,29 @@ internal class CliDiscovery {
                 ),
                 "Structured and plain versions differ"
             )
+            let alias = Check.Json(Call(binary, []string{"version", "--json"}, temp).Output)
+            Check.That(JsonNode.DeepEquals(alias, version), "Version alias result differs")
+            Check.That(
+                Call(binary, []string{"version"}, temp).Output.Trim() == "tokate " + Check.Text(
+                    version["data"]?["version"]
+                ),
+                "Plain version alias differs"
+            )
+            Check.Contains(Call(binary, []string{"version", "--help"}, temp).Output, "Usage: tokate --version")
+            Check.Envelope(
+                Call(binary, []string{"version", "extra", "--json"}, temp, 1),
+                "--version",
+                "error",
+                "invalid_arguments"
+            )
             let defaults = Check.Envelope(Call(binary, []string{"help", "defaults", "--json"}, temp), "help", "ok")[
                 "data"
             ]?["commands"]?[0]
             Check.That(Check.Text(defaults?["effects"]?["local_write"]) == "true", "Defaults write effect missing")
             Check.That(
                 JsonNode.DeepEquals(
-                    defaults?["operations"]?[0]?["required_inputs"],
-                    Check.Json("[\"model\",\"effort\"]")
+                    defaults?["operations"]?[0]?["required_input_sets"],
+                    Check.Json("[[\"harness\"],[\"model\",\"effort\"]]")
                 ),
                 "Defaults set required inputs differ"
             )
@@ -501,24 +564,18 @@ internal class CliDiscovery {
                 Check.That(Check.Text(command?["inference"]) == "false", "Non-inference command advertised inference")
             }
             let workMetadata = Check.Envelope(Call(binary, []string{"help", "work", "--json"}, temp), "help", "ok")
-            for name in[]string{"seconds", "runs", "fork", "allow-network"} {
+            for name in[]string{"time", "runs", "fork", "verify-time"} {
                 var listed bool
                 for input in workMetadata["data"]?["commands"]?[0]?["exclusive_run_inputs"]?.AsArray() ?? JsonArray() {
                     listed = listed || Check.Text(input) == name
                 }
                 Check.That(listed, "Metadata omitted --run conflict: " + name)
-                let argv = name == "allow-network" ? []string{
-                    "work",
-                    "--run",
-                    "saved",
-                    "--allow-network",
-                    "--json"
-                }: []string{"work", "--run", "saved", "--" + name, "1", "--json"}
+                let argv = []string{"work", "--run", "saved", "--" + name, "1s", "--json"}
                 let rejected = Check.Envelope(Call(binary, argv, temp, 1), "work", "error", "invalid_arguments")
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--run conflicts with --" + name)
             }
             Check.Envelope(
-                Call(binary, []string{"checks", "--run", "saved", "--watch", "--timeout", "1", "--json"}, temp, 1),
+                Call(binary, []string{"checks", "--run", "saved", "--watch", "--timeout", "1s", "--json"}, temp, 1),
                 "checks",
                 "error",
                 "invalid_state"
@@ -564,10 +621,10 @@ internal class CliDiscovery {
             temp.Env["PATH"] = empty
             let doctor = TestProcess.Run(binary, []string{"doctor", "--json"}, temp.Env)
             let diagnosis = Check.Envelope(doctor, "doctor", "error", "missing_tools")
-            Check.That(diagnosis["data"]?["tools"]?.AsArray().Count == 9, "Doctor omitted checks")
+            Check.That(diagnosis["data"]?["tools"]?.AsArray().Count == 8, "Doctor omitted common checks")
             Check.That(!doctor.Output.Contains("Tokate environment"), "Doctor emitted prose stdout")
             let blocked = Check.Envelope(
-                TestProcess.Run(binary, []string{"policy", "--repo", "owner/project", "--json"}, temp.Env),
+                TestProcess.Run(binary, []string{"policy", "owner/project", "--json"}, temp.Env),
                 "policy",
                 "error",
                 "missing_tools"
@@ -575,11 +632,7 @@ internal class CliDiscovery {
             Check.That(Check.Text(blocked["next_actions"]?[0]?[1]) == "doctor", "Missing-tools action absent")
             let init = Path.Combine(temp.Root, "project")
             Check.Envelope(
-                TestProcess.Run(
-                    binary,
-                    []string{"init", "--repo", "owner/project", "--path", init, "--json"},
-                    temp.Env
-                ),
+                TestProcess.Run(binary, []string{"init", "owner/project", "--path", init, "--json"}, temp.Env),
                 "init",
                 "error",
                 "missing_tools"
@@ -612,7 +665,7 @@ internal class CliDiscovery {
             let identity = String('x', 3000)
             let record = Check.Map(
                 "version",
-                1,
+                2,
                 "id",
                 "saved",
                 "state",
@@ -818,6 +871,12 @@ internal class CliDiscovery {
             File.WriteAllText(Path.Combine(second, "run.json"), record.ToJsonString())
             let firstBytes = Check.Hash(Path.Combine(first, "run.json"))
             let secondBytes = Check.Hash(Path.Combine(second, "run.json"))
+            let obsolete = Path.Combine(root, "obsolete")
+            Directory.CreateDirectory(obsolete)
+            record["version"] = JsonValue.Create(1)
+            let obsoleteText = record.ToJsonString()
+            File.WriteAllText(Path.Combine(obsolete, "run.json"), obsoleteText)
+            record["version"] = JsonValue.Create(2)
             let broken = Path.Combine(root, "broken")
             let oversized = Path.Combine(root, "oversized")
             Directory.CreateDirectory(broken)
@@ -829,8 +888,12 @@ internal class CliDiscovery {
             let selected = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n99\n1\n3\n3\n2\nq\n")
             Check.Success(selected)
             Check.Contains(selected.Output, "a first")
+            Check.That(
+                File.ReadAllText(Path.Combine(obsolete, "run.json")) == obsoleteText,
+                "Unsupported saved run was changed"
+            )
             Check.Contains(selected.Output, "b second")
-            Check.Contains(selected.Output, "Unreadable entries skipped: 3")
+            Check.Contains(selected.Output, "Unreadable entries skipped: 4")
             Check.Contains(selected.Output, "Choose a number from 1 to 2.")
             Check.Contains(selected.Output, "Start reserved donation")
             let last = selected.Output.Substring(selected.Output.LastIndexOf("Continue contribution"))
@@ -851,6 +914,56 @@ internal class CliDiscovery {
                 Directory.GetFileSystemEntries(first).Length == 1 && Directory.GetFileSystemEntries(second).Length == 1,
                 "Saved inspection created execution artifacts"
             )
+            let named = Path.Combine(root, "owner-project-1-7")
+            Directory.CreateDirectory(named)
+            File.Copy(Path.Combine(second, "run.json"), Path.Combine(named, "run.json"))
+            let listed = Check.Envelope(Call(binary, []string{"runs", "owner/project", "--json"}, temp), "runs", "ok")
+            Check.That(
+                Check.Text(listed["data"]?["runs"]?[0]?["name"]) == "owner/project#1-1" && Check.Text(
+                    listed["data"]?["runs"]?[1]?["run"]
+                ) == second &&
+                    Check.Text(listed["data"]?["runs"]?[2]?["name"]) == "owner/project#1-7",
+                "Saved runs lost stable names"
+            )
+            let exact = Check.Envelope(
+                Call(binary, []string{"status", "owner/project#1-7", "--json"}, temp),
+                "status",
+                "ok"
+            )
+            Check.That(Check.Text(exact["data"]?["run"]) == named, "Run name selected another attempt")
+            Check.Contains(
+                Call(binary, []string{"status", "owner/project#1-9"}, temp, 1).Error,
+                "No saved run owner/project#1-9"
+            )
+            Directory.Delete(named, true)
+            let firstText = File.ReadAllText(Path.Combine(first, "run.json"))
+            let unlimited = Check.Json(firstText)
+            unlimited["unlimited"] = JsonValue.Create(true)
+            unlimited["seconds"] = JsonValue.Create(20)
+            File.WriteAllText(Path.Combine(first, "run.json"), unlimited.ToJsonString())
+            let budget = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n1\n1\n2\n3\nq\n")
+            Check.Success(budget)
+            Check.Contains(budget.Output, "unlimited coding time, independent verification budget 20s")
+            Check.That(!budget.Output.Contains("Coding  0"), "Unlimited saved work displayed zero coding time")
+            Check.That(
+                File.ReadAllText(Path.Combine(first, "run.json")) == unlimited.ToJsonString(),
+                "Declined donation changed saved work"
+            )
+            File.WriteAllText(Path.Combine(first, "run.json"), firstText)
+            let secondText = File.ReadAllText(Path.Combine(second, "run.json"))
+            let partial = Check.Json(secondText)
+            partial["state"] = JsonValue.Create("incomplete_generated")
+            partial["incomplete"] = JsonValue.Create(true)
+            File.WriteAllText(Path.Combine(second, "run.json"), partial.ToJsonString())
+            let incomplete = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n2\n3\nq\n")
+            Check.Success(incomplete)
+            Check.Contains(incomplete.Output, "Submit incomplete work for a draft PR")
+            Check.That(!incomplete.Output.Contains("Submit verified work"), "Incomplete work was labeled verified")
+            Check.That(
+                File.ReadAllText(Path.Combine(second, "run.json")) == partial.ToJsonString(),
+                "Inspection published incomplete work"
+            )
+            File.WriteAllText(Path.Combine(second, "run.json"), secondText)
             Directory.Delete(second, true)
             let cancelled = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
             Check.Success(cancelled)
@@ -890,11 +1003,15 @@ internal class CliDiscovery {
                 TerminalOutput.All(binary)
                 Saved(binary)
             }
+            Contract(binary, shell)
+        }
+
+        internal func Contract(binary string, shell string = "bash") {
             Check.That(shell == "bash" || shell == "zsh" || shell == "fish", "Choose bash, zsh or fish")
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let log = Path.Combine(temp.Root, "calls")
-            for name in[]string{"git", "gh", "codex", "setsid", "bwrap"} {
+            for name in[]string{"git", "gh", "codex", "setsid"} {
                 let tool = Path.Combine(bin, name)
                 File.WriteAllText(
                     tool,
@@ -928,63 +1045,60 @@ internal class CliDiscovery {
             }
             let work = Call(binary, []string{"work", "--help"}, temp).Output
             Check.Contains(work, "inference")
-            Check.Contains(work, "publication step")
-            Check.Contains(work, "default: min(3600, owner limit)")
+            Check.Contains(work, "verify it")
+            Check.Contains(work, "Total budget for coding and verification")
             Check.Contains(work, "(required)")
-            Check.Contains(work, "use --run DIR instead of required inputs")
+            Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
-            Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 300")
+            Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
 
             for argv in[][]string{
                 []string{"nonsense", "--help"},
                 []string{"help", "nonsense"},
                 []string{"help", "work", "extra"},
                 []string{"work", "--unknown=value", "--help"},
-                []string{"work", "--issue=1", "--issue", "1"},
+                []string{"work", "--issue=1"},
+                []string{"work", "1", "2", "3"},
+                []string{"checks", "--pr=1"},
+                []string{"access", "--operation=list"},
                 []string{"work", "--help", "-h"},
                 []string{"work", "--model="},
                 []string{"work", "--model", "--help"},
                 []string{"checks", "--watch=true"},
-                []string{"work", "--allow-network=false"},
-                []string{"checks", "--run=x", "--pr=1"},
+                []string{"work", "--unlimited=false"},
+                []string{"checks", "--run=x", "1"},
                 []string{"checks", "--run=x", "--repo=owner/project"},
-                []string{"work", "--run=x", "--seconds=1"},
+                []string{"work", "--run=x", "--time=1s"},
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
-                []string{"recover", "--run=x", "--seconds=0"},
-                []string{"checks", "--run=x", "--timeout=86401"},
-                []string{"verify-pr", "--repo=owner/project", "--pr=no"},
+                []string{"recover", "--run=x", "--time=0s"},
+                []string{"checks", "--run=x", "--timeout=86401s"},
+                []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},
                 []string{"approve", "--base-branch=release//next", "--help"},
                 []string{"approve", "--base-branch=release.lock", "--help"},
                 []string{"approve", "--base-branch=refs/heads/.hidden", "--help"},
                 []string{"approve", "--base-branch=release", "--base-branch=other", "--help"},
                 []string{"work", "--base-branch=release", "--help"},
-                []string{"revoke", "--repo=owner/project", "--issue=-1"},
-                []string{"work", "--repo=owner/project", "--issue=1", "--model=model", "--effort=invalid"},
-                []string{"work", "--repo=owner/project", "--issue=1", "--model=bad model", "--effort=high"},
-                []string{"revoke", "--repo=other/project", "--issue=https://github.com/owner/project/issues/1"},
-                []string{"revoke", "--issue=2", "https://github.com/owner/project/issues/1"},
-                []string{"revoke", "--issue=https://github.com/owner/project/pull/1"},
-                []string{"revoke", "--issue=https://example.test/owner/project/issues/1"},
-                []string{"work", "owner/project", "--repo=other/project", "--issue=1"},
+                []string{"work", "--profile=x"},
+                []string{"revoke", "owner/project#0"},
+                []string{"work", "owner/project#1", "--model=model", "--effort=invalid"},
+                []string{"work", "owner/project#1", "--model=bad model", "--effort=high"},
+                []string{"revoke", "other/project#1", "owner/project#1"},
+                []string{"revoke", "2", "https://github.com/owner/project/issues/1"},
+                []string{"revoke", "https://github.com/owner/project/pull/1"},
+                []string{"revoke", "https://example.test/owner/project/issues/1"},
+                []string{"work", "owner/project#1", "--repo=other/project"},
                 []string{"work", "https://example.test/owner/project"},
-                []string{"checks", "https://github.com/owner/project/pull/1", "--pr=2"},
+                []string{"checks", "https://github.com/owner/project/pull/1", "2"},
                 []string{"checks", "https://github.com/owner/project/pull/1", "--repo=other/project"},
                 []string{"checks", "https://example.test/owner/project/pull/1"},
                 []string{"work", "owner/project", "--run=x"},
-                []string{"revoke", "--issue=https://github.com/owner/project/issues/0"},
-                []string{"revoke", "--issue=https://github.com/owner/project/issues/999999999999"},
-                []string{
-                    "prepare",
-                    "--repo=owner/project",
-                    "--issue=1",
-                    "--state=bad",
-                    "--source=external",
-                    "--tools=tools.json"
-                },
-                []string{"prepare", "--repo=owner/project", "--issue=1", "--source=invalid"},
+                []string{"revoke", "https://github.com/owner/project/issues/0"},
+                []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
+                []string{"prepare", "owner/project#1", "--state=bad", "--source=external", "--tools=tools.json"},
+                []string{"prepare", "owner/project#1", "--source=invalid"},
                 []string{"external", "--run=x", "--commit=HEAD"},
-                []string{"request", "--repo=owner/project", "--issue=1"},
+                []string{"request", "owner/project#1"},
                 []string{"coordinator-setup", "--repo=owner/project"},
                 []string{"coordinate", "--repo=owner/project"},
                 []string{"submit"},
@@ -992,13 +1106,13 @@ internal class CliDiscovery {
                 []string{"completion", "powershell"},
                 []string{"completion", "powershell", "--help"},
                 []string{"completion", "bash", "extra"},
-                []string{"status", "--run=x", "--repo=owner/project"}
+                []string{"status", "--run=x", "owner/project#1"}
             } {
                 Check.Contains(Call(binary, argv, temp, 1).Error, "Usage:")
             }
             let saved = Path.Combine(temp.Root, "run")
             Directory.CreateDirectory(saved)
-            File.WriteAllText(Path.Combine(saved, "run.json"), "{\"state\":\"claimed\"}")
+            File.WriteAllText(Path.Combine(saved, "run.json"), "{\"version\":2,\"state\":\"claimed\"}")
             Check.Contains(Call(binary, []string{"status", "--run=" + saved}, temp).Output, "claimed")
             Check.That(!File.Exists(log), "Help or invalid inputs invoked a tool")
 
@@ -1029,12 +1143,15 @@ internal class CliDiscovery {
                 } else {
                     command = "source '" +
                         path +
-                        "'; complete -C 'tokate work --mo'; complete -C 'tokate work --effort=hi'"
+                        "'; complete -C 'tokate work --mo'; complete -C 'tokate work --effort=hi'; complete -C 'tokate work --claude-pro'"
                     args = []string{"--no-config", "-c", command}
                 }
                 let output = Check.Success(TestProcess.Run("/usr/bin/" + shell, args, temp.Env))
                 Check.Contains(output, "--model")
                 Check.Contains(output, shell == "zsh" ? "--effort=": "--effort=high")
+                if shell == "fish" {
+                    Check.Contains(output, "--claude-profile")
+                }
                 if shell == "bash" {
                     Check.Contains(output, "--runs=" + Path.Combine(temp.Root, "run with spaces"))
                 }
@@ -1059,8 +1176,8 @@ internal class CliDiscovery {
             Call(binary, []string{"help", "work"}, temp)
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
-            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: --issue")
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "use --repo OWNER/REPO")
+            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: ISSUE")
+            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "name OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
             File.Delete(Path.Combine(bin, "setsid"))
@@ -1069,13 +1186,11 @@ internal class CliDiscovery {
                 []string{"policy", "owner/project"},
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
-                []string{"verify-pr", "https://github.com/owner/project/pull/1"},
+                []string{"verify", "https://github.com/owner/project/pull/1"},
                 []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
-                []string{"work", "--issue=https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", "owner/project#1", "--model=model", "--effort=high"},
                 []string{
                     "work",
-                    "--repo=OWNER/project",
-                    "--issue=01",
                     "https://github.com/owner/project/issues/1#issuecomment-2",
                     "--model=model",
                     "--effort=high"
@@ -1106,7 +1221,7 @@ internal class CliDiscovery {
             let pid = <-observed
             Check.That(!pid.StartsWith("error:"), pid)
             Check.That(clock.Elapsed.TotalSeconds < 8, "Repository discovery exceeded its cleanup bound")
-            Check.Contains(discovery.Error, "Ambiguous or unsupported local remotes")
+            Check.Contains(discovery.Error, "No GitHub remote found")
             Check.That(
                 File.ReadAllText(Path.Combine(temp.Root, "child-lang")) == temp.Env["LANG"],
                 "Child LANG changed"
@@ -1132,11 +1247,37 @@ internal class CliDiscovery {
                 temp.Env,
                 cwd: temp.Root
             )
-            let blocked = Check.Envelope(unavailable, "policy", "error", "missing_tools")
-            Check.Contains(Check.Text(blocked["error"]?["message"]), "PID namespace")
+            let blocked = Check.Envelope(unavailable, "policy", "error", "namespace_unavailable")
+            Check.Contains(Check.Text(blocked["error"]?["message"]), "Namespace startup failed")
             Check.That(
                 !File.Exists(Path.Combine(temp.Root, "namespace-command-started")),
                 "Git ran without a namespace"
+            )
+            let doctor = TestProcess.Run(
+                "/usr/bin/bwrap",
+                []string{
+                    "--unshare-user",
+                    "--disable-userns",
+                    "--bind",
+                    "/",
+                    "/",
+                    "--",
+                    binary,
+                    "doctor",
+                    "external",
+                    "--json"
+                },
+                temp.Env,
+                cwd: temp.Root
+            )
+            let restricted = Check.Envelope(doctor, "doctor", "error", "namespace_unavailable")
+            Check.That(
+                Check.Text(restricted["data"]?["tools"]?[0]?["code"]) == "namespace_unavailable",
+                "Doctor mislabeled namespace failure as missing tools"
+            )
+            Check.That(
+                restricted["next_actions"]?.AsArray().Count == 0,
+                "Doctor offered installation for blocked namespaces"
             )
             File.Delete(Path.Combine(bin, "git"))
             File.CreateSymbolicLink(Path.Combine(bin, "git"), "/usr/bin/git")
@@ -1214,7 +1355,7 @@ internal class CliDiscovery {
             Check.That(!File.Exists(log), "Conflicting push remote invoked GitHub")
             let explicitRepo = TestProcess.Run(
                 binary,
-                []string{"policy", "--repo=https://github.com/owner/project.git"},
+                []string{"policy", "https://github.com/owner/project.git"},
                 temp.Env,
                 cwd: temp.Root
             )

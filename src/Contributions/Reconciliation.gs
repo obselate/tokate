@@ -7,20 +7,12 @@ import System.Text.Json
 internal class Reconciliation {
     shared {
         private func Published(run Data) JsonElement {
-            if (run.Number("version") == 1 && run.Text("state") != "published") ||
-                (run.Number("version") == 2 && run.Text("state") != "generated" && run.Text("state") != "published") ||
-                (run.Number("version") != 1 && run.Number("version") != 2) {
-                throw CliFailure(
-                    "invalid_state",
-                    "Reconcile requires an already-published successful v1/v2 contribution; inspect status and return to the owner for unsupported or failed work."
-                )
+            if run.Number("version") != 2 || (run.Text("state") != "generated" && run.Text("state") != "published") {
+                throw CliFailure("invalid_state", "Reconcile requires a published current contribution")
             }
             let authority = Amendment.Authority(run, nil)
-            let record = run.Number("version") == 2 ? J.Get(authority, "record"): authority
-            let pr = run.Number("version") == 2 ? J.Number(
-                J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"),
-                "pr"
-            ): run.Number("pr")
+            let record = J.Get(authority, "record")
+            let pr = J.Number(J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"), "pr")
             if pr < 1 {
                 throw CliFailure("invalid_state", "No published PR; inspect saved publication before reconciling.")
             }
@@ -36,7 +28,7 @@ internal class Reconciliation {
                         "pr": pr,
                         "receipt": receipt,
                         "upstream": upstream,
-                        "expected": run.Number("version") == 2 ? J.Text(authority, "sha"): ""
+                        "expected": J.Text(authority, "sha")
                     }
                 )
             )
@@ -136,7 +128,7 @@ internal class Reconciliation {
         }
 
         private func Candidate(directory string, checkout string, run Data, intent JsonElement) {
-            Preparation.PublishedSource(checkout, run)
+            WorkspacePreparation.PublishedSource(checkout, run)
             Operations(checkout, intent, true)
             if HeadRef(checkout) != J.Text(intent, "head_ref") {
                 throw CliFailure(
@@ -179,7 +171,7 @@ internal class Reconciliation {
                 ProtectedPaths.LocalTree(checkout, candidate)
             )
             Fresh(run, intent)
-            Preparation.PublishedSource(checkout, run)
+            WorkspacePreparation.PublishedSource(checkout, run)
             Operations(checkout, intent, true)
             Clean(checkout)
             if Head(checkout) != candidate || HeadRef(checkout) != J.Text(intent, "head_ref") {
@@ -204,10 +196,7 @@ internal class Reconciliation {
                 []string{
                     "tokate",
                     "authorize-sync",
-                    "--repo",
-                    run.Text("repo"),
-                    "--pr",
-                    J.Number(intent, "pr").ToString(),
+                    run.Text("repo") + "#" + J.Number(intent, "pr").ToString(),
                     "--commit",
                     candidate,
                     "--upstream",
@@ -216,7 +205,7 @@ internal class Reconciliation {
             )
             Terminal.Message(
                 "Local, unverified candidate C: " + candidate + "; target U: " + J.Text(intent, "upstream") +
-                    ". Owner: authorize-sync for exact C/U, then donor: amend --run DIR --commit C --sync G --seconds N for independent verification and publication."
+                    ". Owner: authorize-sync for exact C/U, then donor: amend --run DIR --commit C --sync G --time TIME for independent verification and publication."
             )
         }
 
@@ -226,7 +215,7 @@ internal class Reconciliation {
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
             let checkout = Path.Combine(directory, "checkout")
-            Preparation.PublishedSource(checkout, run)
+            WorkspacePreparation.PublishedSource(checkout, run)
             let old = J.Get(run.Element(), "reconciliation")
             if args.Get("resume") == "true" {
                 if old.ValueKind != JsonValueKind.Object {
@@ -302,7 +291,7 @@ internal class Reconciliation {
                 J.Text(bound, "upstream")
             )
             Fresh(run, bound)
-            Preparation.PublishedSource(checkout, run)
+            WorkspacePreparation.PublishedSource(checkout, run)
             Operations(checkout, bound, false)
             Clean(checkout)
             if Head(checkout) != start || HeadRef(checkout) != J.Text(bound, "head_ref") {

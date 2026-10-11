@@ -8,9 +8,37 @@ import System.Net.Sockets
 import System.Text
 
 internal class PiCatalog : IDisposable {
+    shared {
+        internal func Configure(flow NativeFixture, endpoint string) {
+            let root = Path.Combine(flow.Temp.Root, "runtime/node_modules")
+            let installed = Path.Combine(root, "@earendil-works/pi-coding-agent")
+            Directory.CreateDirectory(Path.Combine(installed, "dist/bundle"))
+            File.WriteAllText(
+                Path.Combine(installed, "package.json"),
+                "{\"name\":\"@earendil-works/pi-coding-agent\",\"version\":\"fixture-continuation\",\"type\":\"module\",\"bin\":{\"pi\":\"dist/bundle/cli.js\"}}"
+            )
+            File.WriteAllText(Path.Combine(installed, "dist/index.js"), TestResources.Template("PiModels.mjs"))
+            File.WriteAllText(Path.Combine(installed, "dist/bundle/cli.js"), TestResources.Template("PiCli.mjs"))
+            File.SetUnixFileMode(
+                Path.Combine(installed, "dist/bundle/cli.js"),
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            )
+            let config = Path.Combine(flow.Temp.Root, "pi-models")
+            Directory.CreateDirectory(config)
+            flow.Temp.Env["PI_CODING_AGENT_DIR"] = config
+            File.WriteAllText(
+                Path.Combine(config, "models.json"),
+                "{\"providers\":{\"local\":{\"baseUrl\":\"" +
+                    endpoint +
+                    "\",\"api\":\"openai-completions\",\"models\":[{\"id\":\"fixture-model\",\"reasoning\":false,\"contextWindow\":32768,\"maxTokens\":4096}]}}}"
+            )
+        }
+    }
+
     private let Listener TcpListener = TcpListener(IPAddress.Loopback, 0)
     private let Stopped Chan[bool] = Chan[bool](1)
     internal let Endpoint string
+    internal var Metadata string = ""
 
     internal init() {
         Listener.Start()
@@ -35,7 +63,8 @@ internal class PiCatalog : IDisposable {
                     Check.That(header < 63, "Pi catalog request headers exceeded the fixture limit")
                 }
                 let found = request.StartsWith("GET /v1/models HTTP/", StringComparison.Ordinal)
-                let body = found ? "{\"object\":\"list\",\"data\":[{\"id\":\"fixture-model\"}]}": "{}"
+                let body = found ?
+                "{\"object\":\"list\",\"data\":[{\"id\":\"fixture-model\"" + Metadata + "}]}": "{}"
                 let response = Encoding.UTF8.GetBytes(
                     "HTTP/1.1 " +
                         (found ? "200 OK": "404 Not Found") +

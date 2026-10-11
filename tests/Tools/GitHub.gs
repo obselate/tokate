@@ -31,9 +31,10 @@ internal partial class Fixture {
             value["synthetic_padding"] = JsonValue.Create(String('x', Int32.Parse(padding)))
         }
         let etag = "\"" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value.ToJsonString()))) + "\""
-        let initial = State["etag_initial"] == nil ? Check.Text(State["etag_initial_prefix"]) + etag:
+        let custom = Check.Text(State["etag_path"]) == "" || Check.Text(State["etag_path"]) == ApiPath
+        let initial = !custom ? etag: State["etag_initial"] == nil ? Check.Text(State["etag_initial_prefix"]) + etag:
         Check.Text(State["etag_initial"])
-        let returned = State["etag_returned"] == nil ? Check.Text(State["etag_returned_prefix"]) + etag:
+        let returned = !custom ? etag: State["etag_returned"] == nil ? Check.Text(State["etag_returned_prefix"]) + etag:
         Check.Text(State["etag_returned"])
         let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic records")
         var reads int32
@@ -43,7 +44,11 @@ internal partial class Fixture {
             }
         }
         let unchanged = Verb == "GET" &&
-            (Conditional == "If-None-Match: " + initial || (Check.Text(State["etag_force_304"]) == "true" && reads > 1))
+            (
+            Conditional == "If-None-Match: " +
+                initial ||
+                (custom && Check.Text(State["etag_force_304"]) == "true" && reads > 1)
+        )
         if unchanged && Check.Text(State["mode"]).StartsWith("after_304_") {
             let issue = State["issue"] ?? throw Exception("Missing issue")
             if Check.Text(State["mode"]) == "after_304_edit" {
@@ -219,11 +224,13 @@ internal partial class Fixture {
             if login == "missing" {
                 return Response(404)
             }
-            return Answer(Check.Map("login", login, "id", login == "donor" || login == "renamed" ? 123: 124))
+            return Answer(
+                Check.Map("login", login, "id", login == "owner" ? 1: login == "donor" || login == "renamed" ? 123: 124)
+            )
         }
         if path.StartsWith("user/") {
             let id = Int32.Parse(path.Substring(5))
-            return Answer(Check.Map("id", id, "login", id == 123 ? "donor": "other"))
+            return Answer(Check.Map("id", id, "login", id == 1 ? "owner": id == 123 ? "donor": "other"))
         }
         if path.StartsWith("repos/obselate/tokate/releases/tags/") {
             if let release = State["release"] {
@@ -287,6 +294,9 @@ internal partial class Fixture {
             )
         }
         if tail == "" {
+            if let info = State["repository_info"]?[repo] {
+                return Answer(info.DeepClone())
+            }
             if folder == "fork" && State["fork_pending_reads"] != nil && Int32.Parse(
                 Check.Text(State["fork_pending_reads"])
             ) > 0 {
@@ -391,7 +401,8 @@ internal partial class Fixture {
             let comparisonHead = comparison[1].Split(':')
             let sha = comparisonHead[1]
             if comparisonHead[0] != "owner" {
-                Git("upstream", []string{"fetch", Path.Combine(Root, "fork"), sha})
+                let source = State["repository_folders"]?[comparisonHead[0] + "/project"]
+                Git("upstream", []string{"fetch", Path.Combine(Root, source == nil ? "fork": Check.Text(source)), sha})
             }
             let names = GitRaw("upstream", []string{"diff", "--name-status", "-z", "-M", comparison[0], sha}).Split(
                 '\0'
@@ -667,7 +678,7 @@ internal partial class Fixture {
                     "body",
                     Check.Text(body["body"]),
                     "user",
-                    Check.Map("login", actor, "id", actorId),
+                    Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId),
                     "issue_url",
                     "https://api.github.com/repos/owner/project/issues/1"
                 )
@@ -1056,22 +1067,27 @@ internal partial class Fixture {
             let headParts = Check.Text(body["head"]).Split(':')
             let headLogin = headParts[0]
             let branch = headParts[1]
+            let headRepo = headLogin + "/project"
+            let headFolder = State["repository_folders"]?[headRepo]
             let number = Check.Text(State["multiple_pulls"]) == "true" ? 9 + count: 10
             body["number"] = JsonValue.Create(number)
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())
             body["state"] = JsonValue.Create("open")
-            body["user"] = Check.Map("login", actor, "id", actorId)
+            body["user"] = Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
             body["head"] = Check.Map(
                 "sha",
-                Git(headLogin == "owner" ? "upstream": "fork", []string{"rev-parse", branch}),
+                Git(
+                    headFolder == nil ? (headLogin == "owner" ? "upstream": "fork"): Check.Text(headFolder),
+                    []string{"rev-parse", branch}
+                ),
                 "ref",
                 branch,
                 "repo",
-                Check.Map(
+                State["repository_info"]?[headRepo]?.DeepClone() ?? Check.Map(
                     "id",
                     2,
                     "full_name",
-                    headLogin + "/project",
+                    headRepo,
                     "owner",
                     Check.Map("login", headLogin, "id", 123)
                 )

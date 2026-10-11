@@ -30,25 +30,13 @@ try {
     const { contextWindow, maxTokens, reasoning } = model;
     if (!Number.isSafeInteger(contextWindow) || contextWindow < 1 || !Number.isSafeInteger(maxTokens) || maxTokens < 1 || maxTokens > contextWindow) throw new Error();
     if (typeof reasoning !== 'boolean') throw new Error();
-    const thinkingLevelMap = {};
-    const compat = { supportsReasoningEffort: false, thinkingFormat: 'openai' };
     let efforts = ['absent'];
     if (reasoning) {
         const { getSupportedThinkingLevels } = await import(import.meta.resolve('@earendil-works/pi-ai/compat', pathToFileURL(sdkPath).href));
-        const format = model.compat?.thinkingFormat ?? 'openai';
-        if (!['openai', 'openrouter', 'deepseek', 'together', 'zai', 'qwen', 'qwen-chat-template', 'string-thinking', 'ant-ling'].includes(format)) throw new Error();
-        if (format === 'openai' && model.compat?.supportsReasoningEffort === false) throw new Error();
-        compat.thinkingFormat = format;
-        compat.supportsReasoningEffort = model.compat?.supportsReasoningEffort ?? true;
-        for (const [level, value] of Object.entries(model.thinkingLevelMap ?? {})) {
-            if (!['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(level) ||
-                (value !== null && (typeof value !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(value)))) throw new Error();
-            thinkingLevelMap[level] = value;
-        }
-        efforts = getSupportedThinkingLevels(model).filter(level => level !== 'off');
+        efforts = getSupportedThinkingLevels(model);
         if (!efforts.length) throw new Error();
     }
-    process.stdout.write(JSON.stringify({ contextWindow, maxTokens, reasoning, thinkingLevelMap, compat, efforts }) + "\n");
+    process.stdout.write(JSON.stringify({ provider: model.provider, contextWindow, maxTokens, reasoning, efforts }) + "\n");
 } catch {
     process.exitCode = 1;
 }

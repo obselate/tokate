@@ -4,6 +4,7 @@ import System
 import System.Collections.Generic
 import System.IO
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class RunStorage {
     shared {
@@ -16,18 +17,22 @@ internal class RunStorage {
                 throw Exception(error.Message + "; saved run directory: " + directory, error)
             }
             for name in[]string{".lock", "run.json", "run.json.tmp", "claim.posting.json"} {
-                let path = Path.Combine(directory, name)
-                if FileInfo(path).LinkTarget != nil {
+                ControlFile(directory, name)
+            }
+        }
+
+        internal func ControlFile(directory string, name string) {
+            let path = Path.Combine(directory, name)
+            if FileInfo(path).LinkTarget != nil {
+                Reject(directory)
+            }
+            if File.Exists(path) || Directory.Exists(path) {
+                let status = [256]byte
+                if RuntimeMetadataStat(-100, path, 256, 5, status) != 0 ||
+                    (BitConverter.ToUInt32(status, 0) & 5) != 5 ||
+                    (BitConverter.ToUInt16(status, 28) & 61440) != 32768 ||
+                    BitConverter.ToUInt32(status, 16) != 1 {
                     Reject(directory)
-                }
-                if File.Exists(path) || Directory.Exists(path) {
-                    let status = [256]byte
-                    if RuntimeMetadataStat(-100, path, 256, 5, status) != 0 ||
-                        (BitConverter.ToUInt32(status, 0) & 5) != 5 ||
-                        (BitConverter.ToUInt16(status, 28) & 61440) != 32768 ||
-                        BitConverter.ToUInt32(status, 16) != 1 {
-                        Reject(directory)
-                    }
                 }
             }
         }
@@ -51,62 +56,67 @@ internal class RunStorage {
             )
         }
 
-        internal func Discover() JsonElement {
-            let rows = SortedDictionary[string, Object?](StringComparer.Ordinal)
-            var skipped int32
-            var scanned int32
-            var truncated bool
-            for storage in LocalPaths.StateDirectories() {
-                let root = Path.Combine(storage, "runs")
-                if !Directory.Exists(root) {
-                    continue
-                }
-                try {
-                    LocalPaths.DirectoryPath(root)
-                    for directory in Directory.EnumerateDirectories(root) {
-                        if scanned >= 128 {
-                            truncated = true
-                            break
-                        }
-                        scanned++
-                        try {
-                            RunStorage.ControlPaths(directory)
-                            let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
-                            RepositoryIdentity.Repo(J.Text(value, "repo"))
-                            for key in[]string{"id", "repo", "donor", "model", "state"} {
-                                if J.Text(value, key).Length > 256 {
-                                    throw Exception("Saved contribution metadata is too long")
-                                }
-                            }
-                            if J.Number(value, "issue") < 1 || J.Text(value, "state") == "" {
-                                throw Exception("Incomplete saved contribution")
-                            }
-                            rows[directory] = map[string, Object?]{
-                                "run": directory,
-                                "storage": root == Root() ? "current": "previous",
-                                "id": J.Text(value, "id"),
-                                "repo": J.Text(value, "repo"),
-                                "issue": J.Number(value, "issue"),
-                                "donor": J.Text(value, "donor"),
-                                "model": J.Text(value, "model"),
-                                "state": J.Text(value, "state")
-                            }
-                        } catch (error Exception) {
-                            skipped++
-                        }
+        internal func Store(args Args) string -> Path.GetFullPath(args.Get("runs", Root()))
+
+        internal func Prefix(repo string, issue int32) string -> repo.Replace('/', '-').ToLowerInvariant() +
+            "-" +
+            issue.ToString() + "-"
+
+        internal func Number(directory string, prefix string) int32 {
+            let name = Path.GetFileName(directory)
+            var number int32
+            return name.StartsWith(prefix, StringComparison.Ordinal) && Regex.IsMatch(
+                name.Substring(prefix.Length),
+                "^[1-9][0-9]{0,8}\\z"
+            ) &&
+                Int32.TryParse(name.Substring(prefix.Length), out number) ? number: 0
+        }
+
+        internal func Allocate(root string, repo string, issue int32, id string) string {
+            let prefix = Prefix(repo, issue)
+            var number int32
+            if Directory.Exists(root) {
+                let saved = SavedRuns([]string{root})
+                for row in saved.Rows {
+                    if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
+                        PublicOutput.RunDirectory = row.Location
+                        throw Exception("Saved contribution already exists; inspect it instead of overwriting")
                     }
-                } catch (error Exception) {
-                    skipped++
+                    if row.Matches(repo, issue) {
+                        number = Math.Max(number, row.Number)
+                    }
                 }
-                if truncated {
-                    break
+                for directory in Directory.EnumerateDirectories(root, prefix + "*") {
+                    if Number(directory, prefix) == 0 {
+                        continue
+                    }
+                    if !saved.Has(directory) {
+                        Reject(directory)
+                    }
+                    number = Math.Max(number, Number(directory, prefix))
                 }
             }
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{"runs": List[Object?](rows.Values), "skipped": skipped, "truncated": truncated}
-                )
-            )
+            let directory = Path.Combine(root, prefix + (number + 1).ToString())
+            for path in[]string{directory, Path.Combine(root, id)} {
+                if Directory.Exists(path) || File.Exists(path) || FileInfo(path).LinkTarget != nil {
+                    PublicOutput.RunDirectory = path
+                    throw Exception("Saved contribution already exists; inspect it instead of overwriting")
+                }
+            }
+            return directory
+        }
+
+        internal func Roots()[]string {
+            let roots = List[string]()
+            for storage in LocalPaths.StateDirectories() {
+                roots.Add(Path.Combine(storage, "runs"))
+            }
+            return roots.ToArray()
+        }
+
+        internal func Discover() JsonElement {
+            let saved = SavedRuns(Roots(), 128)
+            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated)))
         }
 
         private func Size(path string) int64 {

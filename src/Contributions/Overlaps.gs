@@ -21,6 +21,7 @@ internal class OverlapContribution {
             "identity_status": "unknown",
             "diff_status": "unknown",
             "checks_status": "unknown",
+            "upstream_status": "unknown",
             "dependency_gate": "unknown"
         }
     }
@@ -31,12 +32,18 @@ internal class OverlapContribution {
         Facts["dependency_gate"] = "unknown"
         Facts["dependencies_status"] = "unknown"
         Files = nil
+        Facts["upstream_status"] = "unknown"
+        Facts.Remove("upstream_file_count")
+        Facts.Remove("upstream_overlap_count")
+        Facts.Remove("upstream_paths")
+        Facts.Remove("upstream_paths_complete")
+        Facts.Remove("upstream_next")
     }
 }
 
 internal class Overlaps {
     shared {
-        private let Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify-pr and checks for single-contribution gates."
+        private let Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify and checks for single-contribution gates."
         private var Remaining int32 = 24000
 
         private func Retain(rows List[Object], item Object) {
@@ -199,7 +206,50 @@ internal class Overlaps {
             }
         }
 
-        private func Read(repo string, item OverlapContribution, targets Dictionary[string, string]) {
+        private func Upstream(
+            repo string,
+            item OverlapContribution,
+            base string,
+            target string,
+            changes Dictionary[string, HashSet[string]]
+        ) {
+            let facts = item.Facts
+            if target == "" {
+                throw Exception("Current target is unavailable")
+            }
+            let key = base + ":" + target
+            if !changes.ContainsKey(key) {
+                changes[key] = base == target ? HashSet[string](): GitHubPathEvidence.Diff(repo, base, repo, target)
+            }
+            let paths = List[string]()
+            for path in changes[key] {
+                if item.Files?.Contains(path) == true {
+                    paths.Add(path)
+                }
+            }
+            paths.Sort(StringComparer.Ordinal)
+            let retained = List[Object]()
+            for path in paths {
+                Retain(retained, path)
+            }
+            facts["upstream_status"] = base == target ? "current": "changed"
+            facts["upstream_file_count"] = changes[key].Count
+            facts["upstream_overlap_count"] = paths.Count
+            facts["upstream_paths"] = retained
+            facts["upstream_paths_complete"] = retained.Count == paths.Count
+            if base != target {
+                facts["upstream_next"] = paths.Count > 0 ?
+                "Owner: ask the current donor to reconcile these overlapping paths with the current target, then verify the resulting commit. Further coding requires a new donor budget.":
+                "Owner: no filename overlap was found. Review semantic compatibility and choose merge order; old checks do not verify a reconciled commit."
+            }
+        }
+
+        private func Read(
+            repo string,
+            item OverlapContribution,
+            targets Dictionary[string, string],
+            changes Dictionary[string, HashSet[string]]
+        ) {
             let facts = item.Facts
             try {
                 let pull = GitHub.Api("repos/" + repo + "/pulls/" + item.Number.ToString())
@@ -245,6 +295,11 @@ internal class Overlaps {
                     facts["file_count"] = files.Count
                     facts["diff_base"] = base
                     facts["diff_head"] = binding.Text("commit")
+                    try {
+                        Upstream(repo, item, base, targets[branch], changes)
+                    } catch (error Exception) {
+                        Failure(facts, "upstream", error)
+                    }
                 } catch (error Exception) {
                     Failure(facts, "diff", error)
                 }
@@ -281,10 +336,11 @@ internal class Overlaps {
             let numbers = Cli.PullNumbers(args.Need("prs"))
             let items = List[OverlapContribution]()
             let targets = Dictionary[string, string](StringComparer.Ordinal)
+            let changes = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
             for number in numbers {
                 let item = OverlapContribution(number)
                 items.Add(item)
-                Read(repo, item, targets)
+                Read(repo, item, targets, changes)
             }
             for item in items {
                 try {
@@ -378,10 +434,10 @@ internal class Overlaps {
                 contributions.Add(item.Facts)
                 if item.Binding != nil {
                     PublicOutput.Actions.Add(
-                        []string{"tokate", "verify-pr", "--repo", repo, "--pr", item.Number.ToString(), "--json"}
+                        []string{"tokate", "verify", repo + "#" + item.Number.ToString(), "--json"}
                     )
                     PublicOutput.Actions.Add(
-                        []string{"tokate", "checks", "--repo", repo, "--pr", item.Number.ToString(), "--json"}
+                        []string{"tokate", "checks", repo + "#" + item.Number.ToString(), "--json"}
                     )
                 }
             }

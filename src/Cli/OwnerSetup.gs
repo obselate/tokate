@@ -4,6 +4,7 @@ import System
 import System.Collections.Generic
 import System.IO
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
@@ -29,6 +30,37 @@ internal class OwnerSetup {
             }
             Console.Error.Write("Apply these file changes? [y/N]: ")
             return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
+        }
+
+        internal func Report(path string, before string, after string) {
+            Console.Error.WriteLine(
+                (before == "" ? "Added ": before == after ? "Unchanged ": "Updated ") + Terminal.Clean(path)
+            )
+            if before != after {
+                Console.Error.WriteLine(Terminal.Clean(after))
+            }
+        }
+
+        private func Checkout(path string) string {
+            var result CommandResult
+            try {
+                result = Commands.Run(
+                    "git",
+                    []string{"-c", "core.fsmonitor=false", "rev-parse", "--show-toplevel"},
+                    cwd: path,
+                    seconds: 5
+                )
+            } catch (error Exception) {
+                throw Exception(
+                    Terminal.Clean(path) + " is not a Git checkout; run init inside a checkout or pass --path"
+                )
+            }
+            if result.Code != 0 || result.Output.Trim() == "" {
+                throw Exception(
+                    Terminal.Clean(path) + " is not a Git checkout; run init inside a checkout or pass --path"
+                )
+            }
+            return result.Output.Trim()
         }
 
         private func SetupAnswer(args Args, key string, prompt string, fallback string, interactive bool) string {
@@ -107,33 +139,42 @@ internal class OwnerSetup {
         private func Tools(args Args, fields map[string, Object?], interactive bool) {
             let value = J.Parse(J.Write(fields))
             var requested = args.Get("allowed-tools")
-            if requested == "" && interactive && J.Number(value, "version") == 2 {
+            if requested == "" && interactive {
                 let current = List[string]()
                 for tool in J.Items(J.Get(value, "allowed_tools")) {
                     current.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider"))
                 }
                 Terminal.Message("Current allowed tools: " + String.Join(", ", current), error: true)
                 requested = Answer(
-                    "Allowed tools: codex (Subscription), pi (Local); comma-separated, Enter keeps current"
+                    "Managed tools: codex,claude,pi keeps external and OMP permissions; use harness/provider pairs to replace all; Enter keeps current"
                 )
             }
             if requested == "" {
                 return
             }
-            if J.Number(value, "version") != 2 {
-                throw Exception("Tool selection requires version 2; use --upgrade explicitly")
-            }
             let selected = HashSet[string](StringComparer.Ordinal)
             let tools = List[Object]()
-            for name in requested.Split(',') {
-                let harness = name.Trim()
-                if harness != "codex" && harness != "pi" {
-                    throw Exception("Choose codex, pi, or codex,pi for allowed managed tools")
+            if !requested.Contains('/') {
+                for tool in J.Items(J.Get(value, "allowed_tools")) {
+                    if (!DonorSelection.Supported(tool) || J.Text(tool, "harness") == "omp") && selected.Add(
+                        J.Text(tool, "harness") + "/" + J.Text(tool, "provider")
+                    ) {
+                        tools.Add(tool.Clone())
+                    }
                 }
-                if selected.Add(harness) {
-                    let pair = Args([]string{"defaults", "set", "--harness", harness})
-                    DonorDefaults.NormalizePair(pair)
-                    tools.Add(map[string, Object?]{"harness": harness, "provider": pair.Need("provider")})
+            }
+            for name in requested.Split(',') {
+                let parts = name.Trim().Split('/')
+                let harness = parts[0]
+                let provider = parts.Length == 2 ? parts[1]: DonorDefaults.Provider(harness)
+                if parts.Length > 2 || !Regex.IsMatch(harness, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\\z") || !Regex.IsMatch(
+                    provider,
+                    "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\\z"
+                ) {
+                    throw Exception("Use codex, claude, pi, or exact harness/provider pairs for allowed tools")
+                }
+                if selected.Add(harness + "/" + provider) {
+                    tools.Add(map[string, Object?]{"harness": harness, "provider": provider})
                 }
             }
             fields["allowed_tools"] = tools
@@ -142,8 +183,7 @@ internal class OwnerSetup {
         private func Guide(args Args, fields map[string, Object?]) {
             let repo = args.Need("repo")
             let initial = J.Parse(J.Write(fields))
-            let version = J.Number(initial, "version")
-            if version == 2 && J.Text(initial, "approval_scope") == "task" {
+            if J.Text(initial, "approval_scope") == "task" {
                 let modes = []string{"trusted", "open", "manual"}
                 let current = Array.IndexOf(modes, J.Text(initial, "eligibility")) + 1
                 fields["eligibility"] = modes[
@@ -200,7 +240,8 @@ internal class OwnerSetup {
                         J.Text(tool, "harness") == "pi" ? "Pi (Local)": J.Text(
                             tool,
                             "harness"
-                        ) == "codex" ? "Codex (Subscription)": J.Text(tool, "harness")
+                        ) == "codex" ? "Codex (Subscription)": J.Text(tool, "harness") == "omp" ?
+                        "OMP (" + J.Text(tool, "provider") + ")": J.Text(tool, "harness")
                     )
                 }
                 let action = WizardScreen.Choose(
@@ -219,21 +260,18 @@ internal class OwnerSetup {
                         "\nLimit    " +
                         (J.Number(value, "max_seconds") / 60.0).ToString("0.##") +
                         " minutes total" +
-                        "\nNetwork  " +
-                        (J.Bool(value, "allow_network") ? "Project commands allowed": "Project commands offline") +
                         "\nTools    " +
                         String.Join(", ", tools),
                     []string{
                         "Create policy files",
                         "Change checks or time limit",
                         "Review allowed models",
-                        "Change tools or network",
+                        "Change tools",
                         "Back to home"
                     },
                     "Setup writes local configuration. Review and commit it before approving a task. Existing custom settings and workflow files are preserved."
                 )
                 if action == 1 {
-                    args.Values["--yes"] = "true"
                     return
                 }
                 if action == 5 {
@@ -276,27 +314,50 @@ internal class OwnerSetup {
                     }
                 }
                 if action == 4 {
-                    if version == 2 {
-                        let choice = WizardScreen.Choose(
-                            "Allowed coding tools",
-                            "Owners need neither tool installed.",
-                            []string{"Codex | Subscription", "Pi | Local", "Codex and Pi"}
-                        )
-                        args.Values["--allowed-tools"] = choice == 1 ? "codex": choice == 2 ? "pi": "codex,pi"
-                        Tools(args, fields, false)
+                    let choice = WizardScreen.Choose(
+                        "Allowed coding tools",
+                        "Owners do not need these tools installed.",
+                        []string{
+                            "Codex | Subscription",
+                            "Claude Code | Subscription",
+                            "Pi | Local",
+                            "Codex, Claude Code and Pi",
+                            "Edit exact harness/provider pairs"
+                        }
+                    )
+                    let pairs = List[string]()
+                    for tool in J.Items(J.Get(value, "allowed_tools")) {
+                        pairs.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider"))
                     }
-                    fields["allow_network"] = WizardScreen.Choose(
-                        "Project network",
-                        "Donors must also consent. Inference connectivity is separate.",
-                        []string{"Keep project commands offline", "Allow project command network access"},
-                        selected: J.Bool(value, "allow_network") ? 2: 1
-                    ) == 2
+                    args.Values["--allowed-tools"] = choice == 5 ? Answer(
+                        "Allowed harness/provider pairs",
+                        String.Join(",", pairs)
+                    ):
+                    choice == 1 ? "codex": choice == 2 ? "claude": choice == 3 ? "pi": "codex,claude,pi"
+                    Tools(args, fields, false)
                 }
             }
         }
 
         internal func Run(args Args) {
-            let root = Path.GetFullPath(args.Get("path", "."))
+            let requested = Path.GetFullPath(args.Get("path", "."))
+            if !Directory.Exists(requested) {
+                throw Exception(Terminal.Clean(requested) + " does not exist; pass --path to a checkout")
+            }
+            let root = Checkout(requested)
+            let local = RepositoryInput.Local(root)
+            if args.Get("repo") == "" {
+                args.Values["--repo"] = local
+            } else if !RepositoryIdentity.SameRepo(RepositoryIdentity.Repo(args.Get("repo")), local) {
+                throw Exception(
+                    Terminal.Clean(root) + " is a checkout of " + local + ", not " + args.Get("repo") +
+                        "; pass --path to a checkout of " +
+                        args.Get("repo")
+                )
+            }
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let info = GitHub.Api("repos/" + repo)
+            let upstream = GitHub.FileAt(repo, ".github/tokate.json", J.Text(info, "default_branch"), missing: true)
             let path = SetupPath(root, ".github/tokate.json")
             var workflow = SetupPath(root, ".github/workflows/tokate-coordinator.yml")
             let workflows = Path.Combine(root, ".github/workflows")
@@ -320,10 +381,20 @@ internal class OwnerSetup {
             }
             let template = SetupPath(root, ".github/tokate-pr.md")
             let before = File.Exists(path) ? File.ReadAllText(path): ""
+            if before != "" &&
+                (upstream == "" || RequestData.Canonical(J.Parse(before)) != RequestData.Canonical(J.Parse(upstream))) {
+                throw Exception(
+                    Terminal.Clean(path) + " differs from the policy on " + repo + "@" + J.Text(
+                        info,
+                        "default_branch"
+                    ) +
+                        "; push or discard the local policy before running init"
+                )
+            }
             var existing Policy? = nil
             let fields = map[string, Object?]{}
-            if before != "" {
-                existing = Policy(before)
+            if upstream != "" {
+                existing = Policy(upstream)
                 for field in existing.Value.EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
@@ -333,7 +404,6 @@ internal class OwnerSetup {
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
                 fields["max_seconds"] = 3600
-                fields["allow_network"] = false
             }
             let foreground = !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
                 !Console.IsInputRedirected
@@ -353,8 +423,7 @@ internal class OwnerSetup {
                     "Choose --model-policy unrestricted or whitelist; no model restriction is selected silently"
                 )
             }
-            if existing == nil || args.Get("model-policy") != "" || args.Get("upgrade") == "true" ||
-                mode != existing?.ModelPolicy {
+            if existing == nil || args.Get("model-policy") != "" || mode != existing?.ModelPolicy {
                 fields["model_policy"] = mode
             }
             if mode == "unrestricted" {
@@ -375,22 +444,11 @@ internal class OwnerSetup {
                 }
                 fields["models"] = RequestData.Parse(models)
             }
-            if args.Get("upgrade") == "true" {
-                fields["version"] = 2
-                if !fields.ContainsKey("allowed_tools") {
-                    fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
-                }
-                fields["approval_scope"] = "task"
-                if !fields.ContainsKey("eligibility") {
-                    fields["eligibility"] = "trusted"
-                }
-            }
             Tools(args, fields, interactive)
             let value = J.Parse(J.Write(fields))
             for key in[]string{
                 "eligibility",
                 "base-branch",
-                "network",
                 "seconds",
                 "reservation-seconds",
                 "verification",
@@ -401,9 +459,6 @@ internal class OwnerSetup {
                 let field = key == "base-branch" ? "target_branch": key.Replace('-', '_')
                 let present = J.Get(value, field)
                 var fallback = present.ValueKind == JsonValueKind.Undefined ? "": present.ToString()
-                if key == "network" {
-                    fallback = J.Bool(value, "allow_network") ? "allow": "deny"
-                }
                 if key == "seconds" {
                     fallback = J.Number(value, "max_seconds").ToString()
                 }
@@ -420,12 +475,7 @@ internal class OwnerSetup {
                 if answer == "" {
                     continue
                 }
-                if key == "network" {
-                    if answer != "allow" && answer != "deny" {
-                        throw Exception("Network must be allow or deny")
-                    }
-                    fields["allow_network"] = answer == "allow"
-                } else if key == "seconds" || key == "reservation-seconds" {
+                if key == "seconds" || key == "reservation-seconds" {
                     fields[key == "seconds" ? "max_seconds": field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
                     fields[field] = RequestData.Parse(answer)
@@ -438,16 +488,28 @@ internal class OwnerSetup {
             let text = before != "" && RequestData.Canonical(J.Parse(before)) == RequestData.Canonical(
                 policy.Value
             ) ? before: Pretty(policy.Value)
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
             RepositoryAccess.RequireOwner(repo)
             let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
             CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow))
             let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
             WizardScreen.Close()
-            Preview(path, before, text)
-            Preview(workflow, oldWorkflow, yaml)
+            SetupPath(root, ".github/tokate.json")
+            SetupPath(root, Path.GetRelativePath(root, workflow))
+            if before != text {
+                Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root)
+                File.WriteAllText(path, text)
+            }
+            if oldWorkflow == "" {
+                Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? root)
+                File.WriteAllText(workflow, yaml)
+            }
+            if File.ReadAllText(path) != text || File.ReadAllText(workflow) != yaml {
+                throw Exception("Setup output differs from the generated configuration")
+            }
+            Report(path, before, text)
+            Report(workflow, oldWorkflow, yaml)
             if File.Exists(template) {
-                Preview(template, File.ReadAllText(template), File.ReadAllText(template))
+                Report(template, File.ReadAllText(template), File.ReadAllText(template))
             }
             Terminal.Message(
                 "Owner footprint: " +
@@ -462,42 +524,23 @@ internal class OwnerSetup {
                 true
             )
             Terminal.Message(
-                "Generated state: one tokate/access ref for numeric membership and one tokate/contributions/N ref per v2 issue; legacy approvals and explicit synchronization grant refs remain when present. Setup creates no refs; initialize access before task approval.",
+                "Generated state: one tokate/access ref for numeric membership, one tokate/contributions/N ref per issue, and explicit synchronization grant refs. Setup creates no refs; initialize access before task approval.",
                 "cyan",
                 true
             )
-            if before != "" && before != text {
+            let changed = before != text || oldWorkflow == ""
+            if upstream != "" && RequestData.Canonical(J.Parse(upstream)) != RequestData.Canonical(policy.Value) {
                 Terminal.Message(
                     "Policy changes stale all existing approvals and claims; the owner must approve again. Eligibility revocation separately blocks new work and publication immediately.",
                     "yellow",
                     true
                 )
             }
-            let apply = Confirm(args)
-            if apply {
-                SetupPath(root, ".github/tokate.json")
-                SetupPath(root, Path.GetRelativePath(root, workflow))
-                if (File.Exists(path) ? File.ReadAllText(path): "") != before ||
-                    (File.Exists(workflow) ? File.ReadAllText(workflow): "") != oldWorkflow {
-                    throw Exception("Owner configuration changed during preview; inspect it before repeating setup")
-                }
-                if before != text {
-                    Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root)
-                    File.WriteAllText(path, text)
-                }
-                if oldWorkflow == "" {
-                    Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? root)
-                    File.WriteAllText(workflow, yaml)
-                }
-                Terminal.Message(
-                    "Owner setup saved. Review and commit the policy and workflow before approving work; every PR still needs owner review."
-                )
-            }
-            if apply && (File.ReadAllText(path) != text || File.ReadAllText(workflow) != yaml) {
-                throw Exception("Setup output differs from the reviewed proposal")
-            }
+            Terminal.Message(
+                changed ? "Owner setup written. Commit and push the policy and workflow before approving work; every PR still needs owner review.": "Owner setup already matches; nothing to commit."
+            )
             PublicOutput.ResultData = map[string, Object?]{
-                "applied": apply,
+                "applied": changed,
                 "file_count": File.Exists(template) ? 3: 2,
                 "policy_changed": before != text,
                 "workflow_changed": oldWorkflow == "",

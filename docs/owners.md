@@ -7,26 +7,33 @@ harness or AI subscription is not required. Use public GitHub repositories.
 
 ```sh
 gh auth login
-tokate doctor --owner --auth
-tokate init --repo OWNER/REPO
+tokate doctor owner --auth
+tokate init OWNER/REPO
 ```
 
-Run setup inside your repository. Choose model restrictions, project verification
-commands, required CI checks, time limits and command network permission. Review
-the proposed files before accepting. Commit the policy and workflow to the default
+Run setup inside a checkout of your repository, or pass `--path` to one. Setup
+starts from the policy on your default branch on GitHub, so existing settings carry
+over without repeating options. Choose model restrictions, project verification
+commands, required CI checks and time limits. Setup writes the files directly;
+review the diff, then commit and push the policy and workflow to the default
 branch before approving work. Keep fork CI read-only, without secrets, and require
 its checks in branch protection.
 
 Setup uses a matching stable release. It creates `.github/tokate.json` and a small,
 immutable shared-workflow entry. Existing configuration is preserved. Allow its
 `issue_comment`, `pull_request_target` and `workflow_call` events in GitHub Actions
-policies, including external actors. The coordinator does not execute donor code.
+policies, including external actors. Enable "Allow GitHub Actions to create and
+approve pull requests" in Actions settings. The coordinator does not execute donor code.
 It can close PRs without current owner authorization. Review that behavior before
 enabling the workflow.
 
-New setup uses Trusted access. Select Codex (Subscription), Pi (Local), or both
+New setup uses Trusted access. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
 at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`. Omission preserves
 existing tools; new noninteractive setup defaults to Codex.
+OMP is allowed per provider with exact pairs, such as
+`--allowed-tools codex/openai,omp/openrouter`. Exact pairs replace the whole list,
+which is also how to remove OMP: the `codex,claude,pi` shorthand keeps existing OMP pairs.
+OMP runs with the donor's configuration and no additional isolation.
 
 The model checklist searches as you type. Space selects, Enter accepts, and F2
 adds a model absent from local discovery. Suggestions are not selected for you.
@@ -42,14 +49,17 @@ and other authority files beyond Tokate's built-in protections.
 Write a small issue with scope, acceptance criteria and failure cases, then run:
 
 ```sh
-tokate access --repo OWNER/REPO --operation init
-tokate approve --repo OWNER/REPO --issue 42
-tokate access --repo OWNER/REPO --operation trust --donor DONOR
+tokate access init
+tokate approve 42
+tokate access trust DONOR
 ```
 
-Initialize access once. Trust permits future approved tasks. Use `--operation grant
---donor DONOR --issue 42` for one issue instead. `--operation list` shows requests
-and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
+In a checkout, `42` names issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
+
+See the [positional arguments guide](arguments.md) for references and command forms.
+
+Initialize access once. Trust permits future approved tasks. Use `access grant DONOR 42`
+for one issue instead. `tokate access` shows requests and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
 non-denied donors. Manual eligibility requires an issue grant. Explicit denial
 blocks participation in every mode.
 
@@ -60,8 +70,8 @@ project's build prerequisites.
 ## Review and merge
 
 ```sh
-tokate verify-pr --repo OWNER/REPO --pr 10
-tokate checks --repo OWNER/REPO --pr 10 --watch
+tokate verify 10
+tokate checks 10 --watch
 ```
 
 Inspect the diff before approving a first-time fork workflow. Every required check
@@ -76,7 +86,7 @@ Updating your local CLI does not update the repository's pinned coordinator:
 
 ```sh
 tokate update
-tokate coordinator-setup --repo OWNER/REPO --output tokate-coordinator.yml --yes
+tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
 ```
 
 Review the generated entry and replace the existing coordinator workflow, preserving

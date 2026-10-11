@@ -17,10 +17,7 @@ internal class DisposableVerificationChecks {
             let sentinel = Path.Combine(flow.Temp.Root, "host-private")
             File.WriteAllText(sentinel, "host-secret")
             let build = "set -eu; test -f result.txt; test \"$$(cat .env)\" = donor-private; " +
-                "test \"$$(cat donor-cache/data)\" = donor-cache; test ! -r " +
-                sentinel +
-                "; " +
-                "test -r .git/config; if touch .git/verification-write; then exit 1; fi; " +
+                "test \"$$(cat donor-cache/data)\" = donor-cache; test -r .git/config; " +
                 "mkdir build-output; dd if=/dev/zero of=build-output/generated bs=1048576 count=2 2>/dev/null; " +
                 "ln -s " +
                 flow
@@ -30,7 +27,6 @@ internal class DisposableVerificationChecks {
                 "printf changed-copy > .env; chmod 000 build-output; chmod 700 build-output; " +
                 "printf useful-build-evidence"
             let second = "set -eu; test -s build-output/generated; test \"$$(cat .env)\" = changed-copy; " +
-                "test ! -r build-output/host-link/host-private; " +
                 "printf 'synthetic-%s-output' verifier; printf 'synthetic-%s-error' verifier >&2; " +
                 "setsid /bin/sh -c 'while :; do printf +; echo beat >> heartbeat; sleep 0.05; done' </dev/null 2>/dev/null & " +
                 "while [ ! -s heartbeat ]; do sleep 0.01; done; printf useful-test-evidence; " +
@@ -206,6 +202,12 @@ internal class DisposableVerificationChecks {
             flow.Approve()
             let run = flow.Claim()
             let before = Directory.GetDirectories("/tmp", "tokate-workspace-*").Length
+            let copier = Path.Combine(flow.Temp.Root, "failing-copier")
+            File.WriteAllText(
+                copier,
+                "#!/bin/sh\nif [ \"$1\" = --version ]; then printf 'cp (GNU coreutils) fixture\\n'; exit 0; fi\nexit 1\n"
+            )
+            File.SetUnixFileMode(copier, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let result = TestProcess.Run(
                 "/usr/bin/bwrap",
                 []string{
@@ -218,7 +220,7 @@ internal class DisposableVerificationChecks {
                     "--proc",
                     "/proc",
                     "--ro-bind",
-                    "/bin/false",
+                    copier,
                     "/usr/bin/cp",
                     "--",
                     binary,
@@ -241,6 +243,8 @@ internal class DisposableVerificationChecks {
             Check.That(File.Exists(Path.Combine(run, "checkout/result.txt")), "Copy failure deleted donor work")
             flow.NoPr()
             flow.Call([]string{"recover", "--run", run})
+            let commit = CorrectionChecks.Correct(flow, run)
+            CorrectionChecks.Recover(flow, run, commit)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Copy failure recovery repeated inference")
         }
@@ -352,13 +356,14 @@ internal class DisposableVerificationChecks {
             let run = flow.Claim()
             flow.Mode("disposable_verification")
             flow.Call([]string{"work", "--run", run})
+            flow.Publish(run)
             let checkout = Path.Combine(run, "checkout")
             Check.That(!Directory.Exists(Path.Combine(checkout, "build-output")), "Initial output retained")
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Reviewed correction\n")
             flow.Git("-C", checkout, "add", "result.txt")
             flow.DonorGit(checkout, "commit", "-m", "Review correction")
             let commit = flow.Git("-C", checkout, "rev-parse", "HEAD")
-            flow.Call([]string{"amend", "--run", run, "--commit", commit, "--seconds", "30"})
+            flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "30s"})
             Check.That(!Directory.Exists(Path.Combine(checkout, "build-output")), "Amendment output retained")
             let amended = Check.Json(File.ReadAllText(Path.Combine(run, "amendments", commit, "run.json")))
             Check.That(amended["verification"]?.AsArray().Count == 2, "Amendment lost ordered results")

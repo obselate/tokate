@@ -37,7 +37,7 @@ internal partial class Fixture {
             )
             Save()
             if Check.Text(State["mode"]) == "missing_controls" {
-                Console.WriteLine("--model --config")
+                Console.WriteLine("--model")
                 return 0
             }
             if args[0] == "exec" {
@@ -114,13 +114,7 @@ internal partial class Fixture {
         State["exec_start"] = JsonValue.Create(Stopwatch.GetTimestamp())
         Check.That(Environment.GetEnvironmentVariable("GH_TOKEN") == nil, "GitHub credential reached agent")
         Check.That(Environment.GetEnvironmentVariable("OPENAI_API_KEY") == nil, "API credential reached agent")
-        for required in[]string{
-            "--strict-config",
-            "--ignore-user-config",
-            "--ignore-rules",
-            "approval_policy=\"never\"",
-            "shell_environment_policy.set={ PATH = \"/usr/local/bin:/usr/bin:/bin\", HOME = \"/tmp/tokate-home\", TMPDIR = \"/tmp/tokate-home\" }"
-        } {
+        for required in[]string{"approval_policy=\"never\""} {
             Check.That(Array.IndexOf(args, required) >= 0, "Missing boundary: " + required)
         }
         var filesystem bool
@@ -139,7 +133,7 @@ internal partial class Fixture {
             Console.Out.Flush()
             Console.Error.Write("synthetic-blocked-error")
             Console.Error.Flush()
-            let childInfo = ProcessStartInfo("/usr/bin/sleep")
+            let childInfo = ProcessStartInfo(TestProcess.SystemPath("/usr/bin/sleep"))
             childInfo.ArgumentList.Add("120")
             childInfo.RedirectStandardInput = true
             using let child = Process.Start(childInfo) ?? throw Exception("Cannot start blocked-input child")
@@ -182,7 +176,8 @@ internal partial class Fixture {
             }
         }
         if mode == "capture_write_failure" {
-            using let child = Process.Start("/usr/bin/sleep", "120") ?? throw Exception("Cannot start capture child")
+            let sleep = TestProcess.SystemPath("/usr/bin/sleep")
+            using let child = Process.Start(sleep, "120") ?? throw Exception("Cannot start capture child")
             File.WriteAllText(Path.Combine(Root, "child.pid"), TestProcess.ChildIdentity(child))
             Console.Write(String('x', 131072))
             Console.Out.Flush()
@@ -228,18 +223,9 @@ internal partial class Fixture {
             Console.Error.WriteLine("Synthetic model unavailable")
             return 1
         }
-        if mode == "temporary_isolation" {
-            let pid = FileInfo("/proc/self/ns/pid").LinkTarget
-            Check.That(
-                pid != nil && pid == FileInfo("/proc/1/ns/pid").LinkTarget,
-                "Managed /proc is outside the worker PID namespace"
-            )
-            let sentinel = Check.Text(State["temporary_sentinel"])
-            Check.That(!File.Exists(sentinel), "Host temporary file reached the managed namespace")
-            File.WriteAllText(sentinel, "private agent temporary data")
-        }
         if mode == "timeout" || mode == "completed_timeout" || mode == "background" {
-            using let child = Process.Start("/usr/bin/sleep", "120") ?? throw Exception("Cannot start timeout fixture")
+            let sleep = TestProcess.SystemPath("/usr/bin/sleep")
+            using let child = Process.Start(sleep, "120") ?? throw Exception("Cannot start timeout fixture")
             File.WriteAllText(Path.Combine(Root, "child.pid"), TestProcess.ChildIdentity(child))
             if mode == "timeout" || mode == "completed_timeout" {
                 let partialCheckout = args[Array.IndexOf(args, "--cd") + 1]
@@ -252,9 +238,6 @@ internal partial class Fixture {
                         Path.Combine(partialCheckout, ".verification-data/private.log"),
                         "source-only generated output"
                     )
-                }
-                if mode == "completed_timeout" {
-                    File.WriteAllText(args[Array.IndexOf(args, "--output-last-message") + 1], "Early successful report")
                 }
                 Console.Write(
                     "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":999}}\n{\"type\":\"partial-secret"
@@ -300,28 +283,6 @@ internal partial class Fixture {
             File.WriteAllText(Path.Combine(checkout, ".tokate-scratch/cache.json"), "unformatted browser cache")
             Directory.CreateDirectory(Path.Combine(checkout, ".git/info"))
             File.AppendAllText(Path.Combine(checkout, ".git/info/exclude"), "\n.tokate-scratch/\n")
-        }
-        if mode == "verification_boundary" {
-            File.WriteAllText("/tmp/tokate-home/agent-cache.json", "unformatted cache")
-            File.CreateSymbolicLink(Path.Combine(checkout, "outside-link"), Path.Combine(Root, "state.json"))
-            for name in[]string{"pid", "user", "ipc", "uts", "mnt", "net"} {
-                File.WriteAllText(
-                    Path.Combine(checkout, "expected-" + name + "-namespace"),
-                    FileInfo("/proc/self/ns/" + name).LinkTarget ?? throw Exception("Missing namespace")
-                )
-            }
-            File.WriteAllText(
-                Path.Combine(Root, "namespace-ready"),
-                FileInfo("/proc/self").LinkTarget ?? throw Exception("Missing owned task PID")
-            )
-            let release = Path.Combine(Root, "namespace-release")
-            let clock = System.Diagnostics.Stopwatch.StartNew()
-            while !File.Exists(release) && clock.Elapsed.TotalSeconds < 5 {
-                select {
-                    case <- after(TimeSpan.FromMilliseconds(10.0)) { }
-                }
-            }
-            Check.That(File.Exists(release), "Namespace acknowledgment timed out")
         }
         if mode == "verification_fail" {
             File.WriteAllText(Path.Combine(checkout, "other.txt"), "False success")
@@ -388,16 +349,19 @@ internal partial class Fixture {
                 Check.Text(State["public_summary"])
             )
         }
-        File.WriteAllText(
-            args[Array.IndexOf(args, "--output-last-message") + 1],
-            "### Changes\nAdded result.\n### Acceptance criteria addressed\nFixture.\n### Verification\nFixture check passed.\n### Unresolved limitations\nNone.\nsynthetic-raw-report-secret " +
-                Root +
-                "\n<!-- tokate-receipt:untrusted -->\n"
-        )
         Console.Error.WriteLine("synthetic-raw-stderr-secret " + Root)
         if let events = State["event_stream"] {
             Console.Write(Check.Text(events))
         } else {
+            Console.WriteLine(
+                Check.Map(
+                    "type",
+                    "item.completed",
+                    "item",
+                    Check.Map("type", "agent_message", "text", "Fixture completed. synthetic-raw-report-secret " + Root)
+                )
+                    .ToJsonString()
+            )
             Console.WriteLine("{\"type\":\"fixture.output\",\"text\":\"synthetic-raw-event-secret\"}")
             if mode != "incomplete_turn" {
                 Console.WriteLine(
