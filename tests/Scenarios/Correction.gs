@@ -652,10 +652,13 @@ internal class CorrectionChecks {
         }
 
         private func ChangedCandidate(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{"change_checked_head", "change_checked_tree", "change_checked_patch"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
+                baseline.Restore()
+                flow.Reload()
                 let run = flow.Claim()
                 flow.Mode("staged_whitespace")
                 flow.Call([]string{"work", "--run", run}, 1)
@@ -800,9 +803,14 @@ internal class CorrectionChecks {
         }
 
         private func ManagedRefusals(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for change in[]string{"expiry", "revocation", "identity", "attempt"} {
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, "staged_whitespace")
                 Prepared(flow.Flow, run)
                 let commit = Correct(flow.Flow, run)
@@ -841,11 +849,16 @@ internal class CorrectionChecks {
         }
 
         private func Managed(binary string, modelPolicy string = "") {
+            using let flow = CoordinationFlow(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for originalMode in modelPolicy == "" ? []string{"staged_whitespace", "verification_fail"}: []string{
                 "staged_whitespace"
             } {
-                using let flow = CoordinationFlow(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 if modelPolicy != "" {
                     let path = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
                     let policy = Check.Json(File.ReadAllText(path))
@@ -928,10 +941,15 @@ internal class CorrectionChecks {
         }
 
         private func PublicationResponses(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let initial = FixtureSnapshot(flow.Flow.Temp.Root)
             for corrected in[]bool{false, true} {
                 let faults = corrected ? []string{"issue", "repo", "author", "body", "id"}: []string{"body"}
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                initial.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, corrected ? "staged_whitespace": "")
                 if corrected {
                     Prepared(flow.Flow, run)
@@ -1051,9 +1069,14 @@ internal class CorrectionChecks {
         }
 
         private func InterruptedManaged(binary string) {
+            using let flow = CoordinationFixture(binary)
+            flow.Initialize()
+            let baselineComment = flow.Comment
+            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for mode in[]string{"push_fail_after_write", "request_fail_after_write", "request_fail_before_write"} {
-                using let flow = CoordinationFixture(binary)
-                flow.Initialize()
+                baseline.Restore()
+                flow.Comment = baselineComment
+                flow.Flow.Reload()
                 let run = ManagedRun(flow, "staged_whitespace")
                 Prepared(flow.Flow, run)
                 let commit = Correct(flow.Flow, run)

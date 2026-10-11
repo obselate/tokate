@@ -863,9 +863,13 @@ internal class PreparationChecks {
         }
 
         private func Ownership(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize(false)
+            let baselineComment = test.Comment
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for owner in[]bool{true, false} {
-                using let test = CoordinationFixture(binary)
-                test.Initialize(false)
+                baseline.Restore()
+                test.Comment = baselineComment
                 test.Flow.Reload()
                 test.Flow.State["self_owned"] = JsonValue.Create(true)
                 test.Flow.State["upstream_owner_id"] = JsonValue.Create(owner ? 123: 999)
@@ -1146,9 +1150,14 @@ internal class PreparationChecks {
         }
 
         private func Acquisition(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize()
+            let baselineComment = test.Comment
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for command in[]string{"claim", "work"} {
-                using let test = CoordinationFixture(binary)
-                test.Initialize()
+                baseline.Restore()
+                test.Comment = baselineComment
+                test.Flow.Reload()
                 let run = Acquiring(test, command)
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 let uuid = Check.Text(saved["claim_request"]?["uuid"])
