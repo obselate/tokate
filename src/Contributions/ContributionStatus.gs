@@ -963,6 +963,23 @@ internal class ContributionStatus {
             RunReference.Recent(SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue")))
             if attempts != nil {
                 status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
+                if attempts.Count > 0 && status.Failure == nil {
+                    let latest = attempts[attempts.Count - 1]
+                    var next Object?
+                    if J.Get(latest.Value, "donor_id").ToString() == J.Get(status.Viewer, "id").ToString() &&
+                        PublicOutput
+                        .RunSummary(latest.Location).TryGetValue("next", out next) {
+                        for item in status.Work {
+                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+                            if status.Text(row, "state") == "claim_accepted" &&
+                                row["reservation"] is Dictionary[string, Object?]reservation &&
+                                status.Text(reservation, "actor") == J.Get(latest.Value, "donor_id").ToString() {
+                                row["next"] = next
+                                status.Result["next"] = row["next"]
+                            }
+                        }
+                    }
+                }
             }
             PublicOutput.ResultData = status.Result
             PublicOutput.Truncated = status.Truncated
