@@ -237,7 +237,7 @@ internal class MachineSetup {
 
         internal func Harness(options Args) bool {
             if options.Get("harness") == "" || (options.Command == "doctor" && options.HarnessFromDefault) {
-                Terminal.Message("Choose --harness codex or --harness pi to install a harness.", error: true)
+                Terminal.Message("Use doctor codex or doctor pi to install a harness.", error: true)
                 return false
             }
             let name = options.Get("harness", "codex")
@@ -316,7 +316,7 @@ internal class MachineSetup {
                     if code != 0 {
                         throw CliFailure(
                             "missing_tools",
-                            "The official Pi installer did not complete. Run interactive doctor --managed --harness pi --fix for its Node setup prompts; existing configuration was kept."
+                            "The official Pi installer did not complete. Run interactive doctor pi --fix for its Node setup prompts; existing configuration was kept."
                         )
                     }
                     let path = LocalPaths.Harness("pi")

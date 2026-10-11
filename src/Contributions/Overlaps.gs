@@ -43,7 +43,7 @@ internal class OverlapContribution {
 
 internal class Overlaps {
     shared {
-        private let Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify-pr and checks for single-contribution gates."
+        private let Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify and checks for single-contribution gates."
         private var Remaining int32 = 24000
 
         private func Retain(rows List[Object], item Object) {
@@ -434,10 +434,10 @@ internal class Overlaps {
                 contributions.Add(item.Facts)
                 if item.Binding != nil {
                     PublicOutput.Actions.Add(
-                        []string{"tokate", "verify-pr", "--repo", repo, "--pr", item.Number.ToString(), "--json"}
+                        []string{"tokate", "verify", repo + "#" + item.Number.ToString(), "--json"}
                     )
                     PublicOutput.Actions.Add(
-                        []string{"tokate", "checks", "--repo", repo, "--pr", item.Number.ToString(), "--json"}
+                        []string{"tokate", "checks", repo + "#" + item.Number.ToString(), "--json"}
                     )
                 }
             }

@@ -17,11 +17,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = LifecycleRequest(action)
         let file = Path.Combine(Flow.Temp.Root, "lease-" + Check.Text(request["uuid"]) + ".json")
         File.WriteAllText(file, request.ToJsonString())
-        Flow.Call([]string{"request", "--repo", "owner/project", "--issue", "1", "--file", file}, code)
+        Flow.Call([]string{"request", "owner/project#1", "--file", file}, code)
         if code == 0 {
             Coordinate(Event(request))
             let applied = Check.Text(State()["sha"])
-            Flow.Call([]string{"request", "--repo", "owner/project", "--issue", "1", "--file", file})
+            Flow.Call([]string{"request", "owner/project#1", "--file", file})
             Coordinate(Event(request))
             Check.That(Check.Text(State()["sha"]) == applied, "Lifecycle replay changed authority")
         }
@@ -57,9 +57,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let current = State()
         if Check.Text(current["state"]?["reservation"]?["status"]) == "paused" {
             Check.That(current["state"]?["contribution"] == nil, "Paused worker acquired publication authority")
-            Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, 1, owner: true)
+            Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
         } else {
-            Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         }
         Flow.NoInference()
     }
@@ -165,7 +165,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Git("-C", checkout, "add", "result.txt")
         Flow.DonorGit(checkout, "commit", "-m", "Reviewed amendment")
         let amendedHead = Flow.Git("-C", checkout, "rev-parse", "HEAD")
-        Flow.Call([]string{"amend", "--run", run, "--commit", amendedHead, "--seconds", "30", "--tools", Tools})
+        Flow.Call([]string{"amend", "--run", run, "--commit", amendedHead, "--time", "30s", "--tools", Tools})
         Flow.Reload()
         let amendment = Check.PostedRequest(Flow.State)
         Coordinate(Event(amendment))
@@ -174,7 +174,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let amendments = published["state"]?["amendments"]?.ToJsonString() ?? ""
         for action in[]string{"renew", "pause", "resume", "release"} {
             Lifecycle(action)
-            Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Check.That(
                 (State()["state"]?["contribution"]?.ToJsonString() ?? "") == original,
                 "Lease transition lost publication evidence"
@@ -187,7 +187,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Coordinate(Event(ClaimRequest()))
         Prepare(code: 1)
         Expire()
-        Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         Coordinate(Event(ClaimRequest()))
         Check.That(
             (State()["state"]?["contribution"]?.ToJsonString() ?? "") == original,
@@ -278,7 +278,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Coordinate(Event(request), 1)
         request["expected"] = JsonValue.Create(Check.Text(State()["sha"]))
         File.WriteAllText(path, request.ToJsonString())
-        Flow.Call([]string{"request", "--repo", "owner/project", "--issue", "1", "--file", path}, 1)
+        Flow.Call([]string{"request", "owner/project#1", "--file", path}, 1)
         File.WriteAllText(path, saved)
         Flow.NoInference()
         Flow.NoPr()
@@ -314,28 +314,25 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func LeaseTakeover() {
-        Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
+        Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
         let path = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(path))
         policy["approval_scope"] = JsonValue.Create("task")
         policy["eligibility"] = JsonValue.Create("open")
         File.WriteAllText(path, policy.ToJsonString())
         Flow.Commit("Task scope")
-        Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+        Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
         let claim = ClaimRequest()
         Coordinate(Event(claim))
         let identity = Check.Text(State()["state"]?["identity"]?["id"])
-        Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "deny", "--donor", "donor"}, owner: true)
+        Flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
         for action in[]string{"renew", "pause", "resume"} {
             Coordinate(Event(LifecycleRequest(action)), 1)
         }
         let released = LifecycleRequest("release")
         Coordinate(Event(released, 124), 1)
         Lifecycle("release")
-        Flow.Call(
-            []string{"access", "--repo", "owner/project", "--operation", "restore", "--donor", "donor"},
-            owner: true
-        )
+        Flow.Call([]string{"access", "restore", "donor", "owner/project"}, owner: true)
         Coordinate(Event(ClaimRequest()))
         Expire()
         let predecessor = State()

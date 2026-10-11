@@ -273,7 +273,7 @@ internal class Correction {
                 CorrectionPublication.Remote(run, nil, true)
                 Archive(directory, run, record)
                 Terminal.Message(
-                    "Original evidence preserved. Correct the checkout, commit explicitly, then recover --commit SHA --seconds N. No inference, checks or publication ran."
+                    "Original evidence preserved. Correct the checkout, commit explicitly, then recover --commit SHA --time TIME. No inference, checks or publication ran."
                 )
                 return
             }

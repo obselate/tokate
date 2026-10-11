@@ -27,7 +27,7 @@ probe() {
     shift 3
     mkdir -p "$home_dir/.local/state/tokate/runs/layout-proof"
     printf 'saved-work' > "$home_dir/.local/state/tokate/runs/layout-proof/keep"
-    run "$home_dir" PATH="$bin_dir:$runtime_path" "$@" "$binary" doctor --managed --harness "$harness" --json > "$home_dir/$harness-doctor.json"
+    run "$home_dir" PATH="$bin_dir:$runtime_path" "$@" "$binary" doctor "$harness" --json > "$home_dir/$harness-doctor.json"
     test "$(cat "$home_dir/.local/state/tokate/runs/layout-proof/keep")" = saved-work
     python3 - "$home_dir/$harness-doctor.json" "$home_dir" "$harness" <<'PY'
 import json

@@ -8,30 +8,14 @@ internal class AdmissionChecks {
     shared {
         private func Access(test CoordinationFixture, operation string, issue string = "") {
             if issue == "" {
-                test.Flow.Call(
-                    []string{"access", "--repo", "owner/project", "--operation", operation, "--donor", "donor"},
-                    owner: true
-                )
+                test.Flow.Call([]string{"access", operation, "donor", "owner/project"}, owner: true)
             } else {
-                test.Flow.Call(
-                    []string{
-                        "access",
-                        "--repo",
-                        "owner/project",
-                        "--operation",
-                        operation,
-                        "--donor",
-                        "donor",
-                        "--issue",
-                        issue
-                    },
-                    owner: true
-                )
+                test.Flow.Call([]string{"access", operation, "donor", "owner/project#" + issue}, owner: true)
             }
         }
 
         private func Setup(test CoordinationFixture, mode string, message string? = nil) {
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
+            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
             let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
             policy["approval_scope"] = JsonValue.Create("task")
@@ -44,7 +28,7 @@ internal class AdmissionChecks {
                 File.WriteAllText(path, configured)
                 test.Flow.Commit("Owner admission configuration")
             }
-            test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
         }
 
         private func Pull(
@@ -102,7 +86,7 @@ internal class AdmissionChecks {
             )
             test.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "pull_request_target"
             test.Flow.ResetTraffic()
-            test.Flow.Call([]string{"admit", "--repo", "owner/project", "--event", path}, code, owner: true)
+            test.Flow.Call([]string{"admit", "owner/project", "--event", path}, code, owner: true)
             test.Flow.Reload()
             Check.That(
                 Check.Text(test.Flow.State["pulls"]?[0]?["state"]) == expected,
@@ -173,7 +157,7 @@ internal class AdmissionChecks {
                 Access(test, "untrust")
                 Pull(test, "Fixes #1")
                 Admit(test, "open")
-                test.Flow.Call([]string{"revoke", "--repo", "owner/project", "--issue", "1"}, owner: true)
+                test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                 Pull(test, "Fixes #1")
                 Admit(test, mode == "open" ? "open": "closed")
                 Pull(
@@ -418,11 +402,7 @@ internal class AdmissionChecks {
             Check.Contains(
                 setup
                     .Flow
-                    .Call(
-                    []string{"coordinator-setup", "--repo", "owner/project", "--output", output, "--yes"},
-                    1,
-                    owner: true
-                )
+                    .Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
                     .Error,
                 "November 2, 2026"
             )
@@ -430,10 +410,7 @@ internal class AdmissionChecks {
             setup.Flow.Reload()
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.Save()
-            setup.Flow.Call(
-                []string{"coordinator-setup", "--repo", "owner/project", "--output", output, "--yes"},
-                owner: true
-            )
+            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, owner: true)
             Check.Contains(File.ReadAllText(output), "pull_request_target:")
             File.Delete(output)
             setup.Flow.Reload()
@@ -451,10 +428,7 @@ internal class AdmissionChecks {
                 )
             )
             setup.Flow.Save()
-            setup.Flow.Call(
-                []string{"coordinator-setup", "--repo", "owner/project", "--output", output, "--yes"},
-                owner: true
-            )
+            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, owner: true)
             File.Delete(output)
             setup.Flow.Reload()
             let active = setup.Flow.State["actions_policy"] ?? throw Exception("Missing policy")
@@ -471,11 +445,7 @@ internal class AdmissionChecks {
             Check.Contains(
                 setup
                     .Flow
-                    .Call(
-                    []string{"coordinator-setup", "--repo", "owner/project", "--output", output, "--yes"},
-                    1,
-                    owner: true
-                )
+                    .Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
                     .Error,
                 "actor policy"
             )
@@ -484,15 +454,11 @@ internal class AdmissionChecks {
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.State["actions_policies"] = Check.Map("total_count", 0, "policies", JsonArray())
             setup.Flow.Save()
-            setup.Flow.Call(
-                []string{"coordinator-setup", "--repo", "owner/project", "--output", output, "--yes"},
-                1,
-                owner: true
-            )
+            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
             Check.That(!File.Exists(output), "Missing event policy enabled automatic closure")
             let central = TestResources.Template("coordinator.yml")
             Check.Contains(central, "contents: read")
-            Check.Contains(central, "admit --repo")
+            Check.Contains(central, "admit \"$$TOKATE_REPOSITORY\"")
             Check.That(
                 !central.Contains("checkout") && !central.Contains("github.event.pull_request.body"),
                 "Admission workflow consumed PR code or shell content"

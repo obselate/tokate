@@ -38,7 +38,7 @@ internal class CorrectionChecks {
             seconds string = "30",
             json bool = false
         ) Result {
-            let args = List[string]{"recover", "--run", run, "--commit", commit, "--seconds", seconds}
+            let args = List[string]{"recover", "--run", run, "--commit", commit, "--time", seconds + "s"}
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -69,11 +69,7 @@ internal class CorrectionChecks {
             let failed = File.Exists(Path.Combine(run, "verification.json")) ? File.ReadAllText(
                 Path.Combine(run, "verification.json")
             ): ""
-            let prepared = Check.Envelope(
-                flow.Call([]string{"recover", "--run", run, "--prepare", "--json"}),
-                "recover",
-                "ok"
-            )
+            let prepared = Check.Envelope(flow.Call([]string{"recover", "--run", run, "--json"}), "recover", "ok")
             Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Preparation rewrote saved work")
             Check.That(!File.Exists(Path.Combine(run, "correction.json")), "Preparation created an attempt")
             let archive = Path.Combine(run, "original-evidence")
@@ -92,7 +88,7 @@ internal class CorrectionChecks {
                 Check.That(File.ReadAllText(Path.Combine(archive, "verification.json")) == failed, "Prior checks lost")
             }
             let manifest = File.ReadAllText(Path.Combine(archive, "manifest.json"))
-            flow.Call([]string{"recover", "--run", run, "--prepare"})
+            flow.Call([]string{"recover", "--run", run})
             Check.That(
                 File.ReadAllText(Path.Combine(archive, "manifest.json")) == manifest,
                 "Preparation retry replaced original archive"
@@ -122,9 +118,9 @@ internal class CorrectionChecks {
             let secret = Path.Combine(flow.Temp.Root, "private-evidence")
             File.WriteAllText(secret, "synthetic private data")
             File.CreateSymbolicLink(Path.Combine(checkout, "outside-link"), secret)
-            flow.Call([]string{"recover", "--run", run, "--prepare", "--seconds", "30"}, 1)
-            flow.Call([]string{"recover", "--run", run, "--prepare", "--commit", String('0', 40)}, 1)
-            flow.Call([]string{"recover", "--run", run, "--prepare", "--tools", "missing"}, 1)
+            flow.Call([]string{"recover", "--run", run, "--time", "30s"}, 1)
+            flow.Call([]string{"recover", "--run", run, "--commit", String('0', 40)}, 1)
+            flow.Call([]string{"recover", "--run", run, "--tools", "missing"}, 1)
             flow.Call([]string{"recover", "--run", run, "--commit", String('0', 40)}, 1)
             let manifest = Prepared(flow, run)
             let archive = Path.Combine(run, "original-evidence")
@@ -165,8 +161,8 @@ internal class CorrectionChecks {
             Check.Contains(flow.Body(), "manual/unknown")
             Check.Contains(flow.Body(), "cover only the original completed turn")
             Check.That(!flow.Body().Contains("Fresh attempt seeded"), "Ordinary correction invented interrupted origin")
-            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
-            flow.Call([]string{"recover", "--run", run, "--prepare"}, 1)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Call([]string{"recover", "--run", run}, 1)
             RecoverAndSubmit(flow, run, commit, 1)
             Once(flow, 1)
         }
@@ -233,7 +229,7 @@ internal class CorrectionChecks {
                     .ReadAllText(patch).Trim(),
                 "Corrected binary evidence depends on rename configuration"
             )
-            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Once(flow, 1)
         }
 
@@ -379,7 +375,7 @@ internal class CorrectionChecks {
                 flow.State["pulls"] = pulls
                 flow.Save()
                 if stage == "prepare" {
-                    Check.Contains(flow.Call([]string{"recover", "--run", run, "--prepare"}, 1).Error, "physical PR")
+                    Check.Contains(flow.Call([]string{"recover", "--run", run}, 1).Error, "physical PR")
                     Check.That(!Directory.Exists(Path.Combine(run, "original-evidence")), "Published work was prepared")
                 } else {
                     Check.Contains(RecoverAndSubmit(flow, run, commit, 1).Error, "physical PR")
@@ -433,7 +429,7 @@ internal class CorrectionChecks {
             flow.Initialize()
             flow.Approve()
             let run = flow.Claim()
-            flow.Call([]string{"recover", "--run", run, "--prepare"}, 1)
+            flow.Call([]string{"recover", "--run", run}, 1)
             flow.NoInference()
             flow.Mode("staged_whitespace")
             flow.Call([]string{"work", "--run", run}, 1)
@@ -444,7 +440,7 @@ internal class CorrectionChecks {
                     999
                 ) as JsonNode
                 flow.Save()
-                flow.Call([]string{"recover", "--run", run, "--prepare"}, 1)
+                flow.Call([]string{"recover", "--run", run}, 1)
                 Check.That(!Directory.Exists(Path.Combine(run, "original-evidence")), "Another donor archived work")
                 flow.Reload()
                 flow.State.AsObject().Remove(key)
@@ -481,7 +477,7 @@ internal class CorrectionChecks {
                 flow.Mode(mode)
                 flow.Call([]string{"work", "--run", run}, 1)
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
-                Check.Contains(flow.Call([]string{"recover", "--run", run, "--prepare"}, 1).Error, "incomplete_turn")
+                Check.Contains(flow.Call([]string{"recover", "--run", run}, 1).Error, "incomplete_turn")
                 Check.That(
                     !Directory.Exists(Path.Combine(run, "original-evidence")),
                     "Incomplete turn archived evidence"
@@ -700,7 +696,7 @@ internal class CorrectionChecks {
                 RepositoryFaults.Reject(
                     flow,
                     run,
-                    []string{"recover", "--run", run, "--commit", commit, "--seconds", "30"}
+                    []string{"recover", "--run", run, "--commit", commit, "--time", "30s"}
                 )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "original-evidence/manifest.json")) == original,
@@ -711,7 +707,7 @@ internal class CorrectionChecks {
                 flow.Call([]string{"submit", "--run", run})
                 flow.Reload()
                 test.Coordinate(test.Event(Check.PostedRequest(flow.State)))
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                 Once(flow, 1)
             }
         }
@@ -748,10 +744,7 @@ internal class CorrectionChecks {
                         flow.Commit("Changed policy")
                     }
                     case "access" {
-                        flow.Call(
-                            []string{"access", "--repo", "owner/project", "--operation", "deny", "--donor", "donor"},
-                            owner: true
-                        )
+                        flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "branch" {
                         let fork = Path.Combine(flow.Bin, "fork")
@@ -799,7 +792,7 @@ internal class CorrectionChecks {
                         flow.Expire()
                     }
                     case "revocation" {
-                        flow.Flow.Call([]string{"revoke", "--repo", "owner/project", "--issue", "1"}, owner: true)
+                        flow.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                     }
                     case "identity" {
                         flow.Flow.Reload()
@@ -903,7 +896,7 @@ internal class CorrectionChecks {
                     Check.Text(Read(run, "correction.json")["verification"]) == results,
                     "v2 publication replay reran checks"
                 )
-                flow.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+                flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                 Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Original donor-reported tools")
                 Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Donor-reported correction tools")
                 Recover(flow.Flow, run, commit, 1, flow.Tools)
@@ -1075,7 +1068,7 @@ internal class CorrectionChecks {
             external.Initialize()
             external.Claim()
             let run = external.Prepare()
-            Check.Contains(external.Flow.Call([]string{"recover", "--run", run, "--prepare"}, 1).Error, "external")
+            Check.Contains(external.Flow.Call([]string{"recover", "--run", run}, 1).Error, "external")
             external.Flow.NoInference()
         }
 
@@ -1089,7 +1082,7 @@ internal class CorrectionChecks {
             let corrected = Check.Text(Read(run)["commit"])
             for text in[]string{"First amendment\n", "Second amendment\n"} {
                 let commit = Correct(flow, run, text)
-                let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+                let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
                 flow.Call(args)
                 if let managed = coordinator {
                     flow.Reload()
@@ -1097,7 +1090,7 @@ internal class CorrectionChecks {
                     managed.Coordinate(managed.Event(request))
                     flow.Call(args)
                 }
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"})
+                flow.Call([]string{"verify", "owner/project#10"})
                 flow.Reload()
                 let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing corrected PR")
                 let body = Check.Text(pull["body"])
@@ -1119,7 +1112,7 @@ internal class CorrectionChecks {
                 provenance["head"] = JsonValue.Create(commit)
                 pull["body"] = JsonValue.Create(body.Replace(receiptText, receipt.ToJsonString()))
                 flow.Save()
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, 1)
+                flow.Call([]string{"verify", "owner/project#10"}, 1)
                 pull["body"] = JsonValue.Create(body)
                 flow.Save()
             }
@@ -1127,7 +1120,7 @@ internal class CorrectionChecks {
             File.WriteAllText(Path.Combine(run, "checkout/scripts/verify.sh"), "exit 0\n")
             let protectedCommit = Correct(flow, run)
             Check.Contains(
-                flow.Call([]string{"amend", "--run", run, "--commit", protectedCommit, "--seconds", "30"}, 1).Error,
+                flow.Call([]string{"amend", "--run", run, "--commit", protectedCommit, "--time", "30s"}, 1).Error,
                 "protected owner path"
             )
             Check.That(
@@ -1228,7 +1221,7 @@ internal class CorrectionChecks {
             let previous = Check.Text(Read(run)["commit"])
             File.WriteAllText(decree, "Amended instruction edit\n")
             commit = Correct(test.Flow, run, "Amendment with instruction edit\n")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
             Check.Contains(test.Flow.Call(args, 1).Error, "approved root DECREE.md")
             Check.That(
                 !Directory.Exists(Path.Combine(run, "amendments", commit)),

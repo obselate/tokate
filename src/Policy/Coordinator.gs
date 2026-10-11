@@ -263,7 +263,7 @@ internal class Coordinator {
                 }
                 throw Exception(
                     error.Message +
-                        "\nPR and coordination writes are not atomic. A physical PR may lack valid authority; inspect verify-pr and redeliver the same saved UUID request only after reading current state.",
+                        "\nPR and coordination writes are not atomic. A physical PR may lack valid authority; inspect verify and redeliver the same saved UUID request only after reading current state.",
                     error
                 )
             }

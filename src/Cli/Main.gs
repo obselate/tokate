@@ -5,15 +5,12 @@ import System.IO
 
 func Main(args[]string) int32 {
     Terminal.Initialize()
-    if args.Length > 0 && args[0] == "version" {
-        args[0] = "--version"
-    }
     for argument in args {
         PublicOutput.Enabled = PublicOutput.Enabled || argument == "--json" || argument.StartsWith("--json=")
         Terminal.Plain = Terminal.Plain || argument == "--plain" || argument.StartsWith("--plain=")
         Terminal.Ascii = Terminal.Ascii || argument == "--ascii"
     }
-    PublicOutput.Command = args.Length == 0 || args[0] == "--help" || args[0] == "-h" ? "help": args[0]
+    PublicOutput.Command = Cli.Name(args)
     var traffic bool
     var validated bool
     var options Args? = nil
@@ -34,6 +31,7 @@ func Main(args[]string) int32 {
         PublicOutput.Command = options.Command
         if options.Get("run") != "" {
             PublicOutput.RunDirectory = Path.GetFullPath(options.Need("run"))
+            PublicOutput.RunName = options.Run
             PublicOutput.FailureCode = "invalid_state"
         }
         PublicOutput.ResultData = map[string, Object?]{
@@ -67,6 +65,11 @@ func Main(args[]string) int32 {
         if !validated && !PublicOutput.Enabled {
             Terminal.Message(Cli.ErrorUsage(args), error: true)
         }
+        if let failed = options {
+            if code == "invalid_state" && failed.Attempts.Count > 1 && !PublicOutput.Enabled {
+                Terminal.Runs(failed, RunReference.Recent(failed.Attempts), true)
+            }
+        }
     } finally {
         DonationView.Close()
         WizardScreen.Close()
@@ -75,6 +78,11 @@ func Main(args[]string) int32 {
         }
     }
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
+        if let named = options {
+            if !PublicOutput.Enabled && PublicOutput.RunName == "" {
+                PublicOutput.RunName = RunReference.Name(named, PublicOutput.RunDirectory)
+            }
+        }
         PublicOutput.Next(options, code)
         if options?.Help != true {
             Terminal.RunOutcome(exitCode, code)
@@ -113,6 +121,10 @@ func Dispatch(options Args) int32 {
         } else {
             Console.WriteLine("tokate " + ApplicationInfo.Version())
         }
+        return 0
+    }
+    if options.Command == "runs" {
+        RunReference.Print(options)
         return 0
     }
     if options.Command == "update" || options.Command == "uninstall" {
@@ -196,10 +208,19 @@ func Dispatch(options Args) int32 {
             }
         }
         case "request" {
-            if options.Get("run") != "" {
-                return ReservationRequest.Run(options)
-            }
             Submission.Request(options)
+        }
+        case "pause" {
+            return ReservationRequest.Run(options)
+        }
+        case "resume" {
+            return ReservationRequest.Run(options)
+        }
+        case "renew" {
+            return ReservationRequest.Run(options)
+        }
+        case "release" {
+            return ReservationRequest.Run(options)
         }
         case "prepare" {
             let directory = ContributionPreparation.Prepare(options)
@@ -276,7 +297,7 @@ func Dispatch(options Args) int32 {
                 Terminal.Json(value, "Repository policy")
             }
         }
-        case "verify-pr" {
+        case "verify" {
             let run = ReceiptVerification.Verify(RepositoryIdentity.Repo(options.Need("repo")), options.Number("pr"))
             PublicOutput.ResultData = J.Select(run.Element(), "repo,pr,pr_url,commit")
             Terminal.Message("PR receipt matches owner approval and policy. Model usage remains donor-reported.")

@@ -164,7 +164,7 @@ internal class RuntimeBudget {
                     throw Exception("Unlimited coding requires a separate positive verification budget")
                 }
             } else if reserve >= seconds {
-                throw Exception("--verification-reserve must be strictly smaller than the total budget")
+                throw Exception("--verify-time must be shorter than --time")
             }
             return reserve
         }

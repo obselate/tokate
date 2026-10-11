@@ -5,8 +5,8 @@ selects that archive and verifies its checksum before replacing an installation.
 The CLI does not require an installed .NET runtime.
 
 ```sh
-tokate doctor --external --fix
-tokate doctor --harness codex --fix
+tokate doctor external --fix
+tokate doctor codex --fix
 ```
 
 Setup previews the required `apk` packages and asks before installation. It uses
@@ -18,7 +18,7 @@ then let the official Pi installer manage Pi:
 
 ```sh
 doas apk add nodejs npm
-tokate doctor --harness pi --fix
+tokate doctor pi --fix
 ```
 
 Custom harness and Node paths remain supported. Tokate does not change user

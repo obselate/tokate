@@ -8,11 +8,6 @@ import System.Text.Json
 
 internal class WorkspacePreparation {
     shared {
-        internal func RunDirectory(args Args, id string) string {
-            let root = Path.GetFullPath(args.Get("runs", RunStorage.Root()))
-            return Path.Combine(root, id)
-        }
-
         private func Identity(run Data) string -> Data.Hash(
             J.Write(
                 map[string, Object?]{

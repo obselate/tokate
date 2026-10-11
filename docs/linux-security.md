@@ -3,7 +3,7 @@
 Tokate requires working user and PID namespaces through `unshare`, plus `setpriv`, for descendant cleanup. This is not a sandbox. It does not change
 AppArmor, SELinux, sysctls or container security settings.
 
-`tokate doctor --managed --json` also runs the Codex permission-profile probe for managed Codex.
+`tokate doctor managed --json` also runs the Codex permission-profile probe for managed Codex.
 
 | Diagnostic | Action |
 | --- | --- |

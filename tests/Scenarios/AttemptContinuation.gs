@@ -29,10 +29,7 @@ internal class AttemptContinuationChecks {
         )[]string {
             let args = List[string]{
                 "prepare",
-                "--repo",
-                "owner/project",
-                "--issue",
-                "1",
+                "owner/project#1",
                 "--state",
                 Check.Text(test.State()["sha"]),
                 "--source",
@@ -45,10 +42,10 @@ internal class AttemptContinuationChecks {
                 harness == "pi" ? "fixture-model": "gpt-6.1-sol",
                 "--effort",
                 harness == "pi" ? "absent": "high",
-                "--seconds",
-                seconds,
-                "--verification-reserve",
-                reserve,
+                "--time",
+                seconds + "s",
+                "--verify-time",
+                reserve + "s",
                 "--runs",
                 Path.Combine(test.Flow.Temp.Root, "runs")
             }
@@ -86,11 +83,8 @@ internal class AttemptContinuationChecks {
             endpoint string = ""
         ) string {
             test.Initialize(approve: false)
-            test.Flow.Call([]string{"access", "--repo", "owner/project", "--operation", "init"}, owner: true)
-            test.Flow.Call(
-                []string{"access", "--repo", "owner/project", "--operation", "trust", "--donor", "donor"},
-                owner: true
-            )
+            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "tracked.txt"), "approved\n")
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "baseline.txt"), "baseline\n")
             Directory.CreateDirectory(Path.Combine(test.Flow.Upstream, "folder"))
@@ -110,7 +104,7 @@ internal class AttemptContinuationChecks {
             }
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Continuation authority and complete-diff verification fixture")
-            test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             test.Coordinate(test.Event(test.ClaimRequest()))
             let args = List[string](
                 Args(
@@ -370,7 +364,7 @@ internal class AttemptContinuationChecks {
                 test.Flow.NoPr()
             }
             test.Coordinate(test.Event(request))
-            test.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             test.Flow.Reload()
             let body = Check.Text(test.Flow.State["pulls"]?[0]?["body"])
             Check.Contains(
@@ -389,7 +383,7 @@ internal class AttemptContinuationChecks {
                     body.Substring(0, receiptStart) + receipt.ToJsonString() + body.Substring(receiptEnd)
                 )
                 test.Flow.Save()
-                test.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, 1, owner: true)
+                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
             }
             test.Flow.Reload()
             let pull = test.Flow.State["pulls"]?[0] ?? throw Exception("Missing pull")
@@ -397,7 +391,7 @@ internal class AttemptContinuationChecks {
             test.Flow.Save()
             test.Lifecycle("pause")
             test.Lifecycle("resume")
-            test.Flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         }
 
         private func Refusals(binary string) {
@@ -482,7 +476,7 @@ internal class AttemptContinuationChecks {
                         run["state_sha"] = test.State()["sha"]?.DeepClone()
                     }
                     case "revoked" {
-                        test.Flow.Call([]string{"revoke", "--repo", "owner/project", "--issue", "1"}, owner: true)
+                        test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                     }
                     case "task-changed" {
                         let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
@@ -490,10 +484,7 @@ internal class AttemptContinuationChecks {
                         test.Flow.Save()
                     }
                     case "denied" {
-                        test.Flow.Call(
-                            []string{"access", "--repo", "owner/project", "--operation", "deny", "--donor", "donor"},
-                            owner: true
-                        )
+                        test.Flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "expired" {
                         test.Expire()
@@ -502,7 +493,7 @@ internal class AttemptContinuationChecks {
                         test.Lifecycle("pause")
                     }
                     case "reapproved" {
-                        test.Flow.Call([]string{"approve", "--repo", "owner/project", "--issue", "1"}, owner: true)
+                        test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
                         test.Coordinate(test.Event(test.ClaimRequest()))
                     }
                     case "legacy" {
@@ -548,16 +539,16 @@ internal class AttemptContinuationChecks {
                 let args = List[string](Args(test, source, consent: mode != "consent"))
                 switch mode {
                     case "seconds" {
-                        args.RemoveRange(args.IndexOf("--seconds"), 2)
+                        args.RemoveRange(args.IndexOf("--time"), 2)
                     }
                     case "verification-reserve" {
-                        args.RemoveRange(args.IndexOf("--verification-reserve"), 2)
+                        args.RemoveRange(args.IndexOf("--verify-time"), 2)
                     }
                     case "zero" {
-                        args[args.IndexOf("--verification-reserve") + 1] = "0"
+                        args[args.IndexOf("--verify-time") + 1] = "0s"
                     }
                     case "equal" {
-                        args[args.IndexOf("--verification-reserve") + 1] = "40"
+                        args[args.IndexOf("--verify-time") + 1] = "40s"
                     }
                     case "selection" {
                         args[args.IndexOf("--effort") + 1] = "xhigh"
@@ -574,16 +565,13 @@ internal class AttemptContinuationChecks {
                         test.Flow.Call(
                             []string{
                                 "claim",
-                                "--repo",
-                                "owner/project",
-                                "--issue",
-                                "1",
+                                "owner/project#1",
                                 "--continue-from",
                                 source,
-                                "--seconds",
-                                "40",
-                                "--verification-reserve",
-                                "12"
+                                "--time",
+                                "40s",
+                                "--verify-time",
+                                "12s"
                             },
                             1
                         )
@@ -610,12 +598,7 @@ internal class AttemptContinuationChecks {
             test.Flow.Reload()
             test.Flow.State["preparation_interrupt"] = JsonValue.Create("fetch")
             test.Flow.Save()
-            Prepare(test, args, 1)
-            let fresh = Path.Combine(
-                test.Flow.Temp.Root,
-                "runs",
-                Check.Text(test.State()["state"]?["reservation"]?["attempt"])
-            )
+            let fresh = Prepare(test, args, 1)
             Check.That(
                 Check.Text(Read(fresh)["continuation_phase"]) == "captured",
                 "Interrupted preparation lost capture evidence"

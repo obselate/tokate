@@ -144,17 +144,7 @@ internal class AccessState {
                 "eligible": false,
                 "authority": "unknown"
             }
-            let recovery = []string{
-                "tokate",
-                "access",
-                "--repo",
-                repo,
-                "--operation",
-                "check",
-                "--issue",
-                issue.ToString(),
-                "--json"
-            }
+            let recovery = []string{"tokate", "access", "check", repo + "#" + issue.ToString(), "--json"}
             try {
                 let id = RepositoryIdentity.PositiveId(actor)
                 let info = GitHub.Api("repos/" + repo)
@@ -416,7 +406,7 @@ internal class AccessState {
                                 "donor": donorLogin,
                                 "state": J.Text(pull, "state"),
                                 "merged": J.Get(pull, "merged_at").ValueKind == JsonValueKind.String,
-                                "evidence": "unverified PR receipt; inspect verify-pr and owner review"
+                                "evidence": "unverified PR receipt; inspect verify and owner review"
                             }
                         )
                     } catch (error Exception) { }
@@ -443,7 +433,7 @@ internal class AccessState {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let operation = args.Need("operation")
             if operation != "request" && args.Get("scope") != "" {
-                throw Exception("Only access request takes --scope")
+                throw Exception("Only access request takes --trust")
             }
             if operation == "request" {
                 RequestAccess(repo, args)
@@ -480,7 +470,7 @@ internal class AccessState {
             if (single && args.Get("issue") == "") ||
                 (!single && args.Get("issue") != "") ||
                 (operation == "init" && args.Get("donor") != "") {
-                throw Exception("Only grant/remove require --issue; init takes no donor")
+                throw Exception("Only grant and remove take ISSUE; init takes no LOGIN")
             }
             let access = Load(repo, repoId, true)
             let expected = access.Sha == "" ? GitHub.Branch(repo, J.Text(info, "default_branch")): access.Sha

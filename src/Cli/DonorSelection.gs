@@ -38,7 +38,7 @@ internal class DonorSelection {
             } catch (error Exception) {
                 if profile != "" {
                     throw Exception(
-                        "Named donor profile is invalid, missing or inaccessible; use defaults read --profile NAME. No inference started."
+                        "Named donor profile is invalid, missing or inaccessible; use defaults show NAME. No inference started."
                     )
                 }
                 return

@@ -20,7 +20,7 @@ internal class AmendmentFlow {
             summary bool = true,
             json bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", commit, "--seconds", "30"}
+            let args = List[string]{"amend", "--run", run, "--commit", commit, "--time", "30s"}
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -132,7 +132,7 @@ internal class AmendmentFlow {
                 RepositoryFaults.Reject(
                     flow,
                     run,
-                    []string{"amend", "--run", run, "--commit", commit, "--seconds", "30"},
+                    []string{"amend", "--run", run, "--commit", commit, "--time", "30s"},
                     repositoryError: "identity changed"
                 )
                 Check.That(
@@ -322,7 +322,7 @@ internal class AmendmentFlow {
                 flow.Save()
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 flow.ResetTraffic()
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, 1)
+                flow.Call([]string{"verify", "owner/project#10"}, 1)
                 Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Altered receipt was accepted")
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -348,11 +348,7 @@ internal class AmendmentFlow {
             Check.Contains(body, "cover original work only")
             Check.Contains(body, commit)
             Check.That(!body.Contains("synthetic-raw-"), "Detailed evidence was published")
-            Check.Envelope(
-                flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10", "--json"}, owner: owner),
-                "verify-pr",
-                "ok"
-            )
+            Check.Envelope(flow.Call([]string{"verify", "owner/project#10", "--json"}, owner: owner), "verify", "ok")
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\",\"state\":\"SUCCESS\"}]")
             flow.Save()
             let checks = flow.Call([]string{"checks", "--run", run}, summary ? 0: 1, owner: owner)
@@ -370,7 +366,7 @@ internal class AmendmentFlow {
             let run = PublishedContribution.Original(flow, interruptible: true)
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let commit = Edit(flow, run, "slow-check", "slow")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--seconds", "1", "--json"}
+            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "1s", "--json"}
             let failure = flow.Call(args, 1)
             Check.That(
                 Check.Text(Check.Json(failure.Output)["error"]?["code"]) == "verification_failed",
@@ -471,7 +467,7 @@ internal class AmendmentFlow {
                         "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
                     )
                 } else if failure == "budget" {
-                    flow.Call([]string{"amend", "--run", run, "--commit", commit, "--seconds", "3601"}, 1)
+                    flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "3601s"}, 1)
                     continue
                 } else if failure == "closed" || failure == "merged" {
                     flow.Reload()
@@ -537,10 +533,7 @@ internal class AmendmentFlow {
             if mode == "lost_body_response" || mode == "lost_state_response" || mode == "interrupted_state_write" {
                 flow.Flow.Mode(mode)
                 flow.Coordinate(path, 1)
-                flow.Flow.Call(
-                    []string{"verify-pr", "--repo", "owner/project", "--pr", "10"},
-                    mode == "lost_state_response" ? 0: 1
-                )
+                flow.Flow.Call([]string{"verify", "owner/project#10"}, mode == "lost_state_response" ? 0: 1)
                 flow.Flow.Mode("")
             }
             flow.Flow.ResetTraffic()
@@ -577,7 +570,7 @@ internal class AmendmentFlow {
                 Amend(flow.Flow, run, second)
                 AssertPublished(flow.Flow, run, second)
                 let current = Check.Envelope(
-                    flow.Flow.Call([]string{"coordination", "--repo", "owner/project", "--issue", "1", "--json"}),
+                    flow.Flow.Call([]string{"coordination", "owner/project#1", "--json"}),
                     "coordination",
                     "ok"
                 )

@@ -26,7 +26,7 @@ internal class AttemptContinuation {
             }
         }
 
-        internal func RunDirectory(args Args, attempt string) string {
+        internal func Store(args Args) string {
             let source = LocalPaths.DirectoryPath(args.Need("continue-from"))
             let root = Path.GetDirectoryName(source) ?? throw Exception("Unsupported source run store")
             if args.Get("runs") != "" && LocalPaths.DirectoryPath(args.Need("runs")) != root {
@@ -34,13 +34,13 @@ internal class AttemptContinuation {
                     "Continuation must use the source run store so each destination fence has one saved run"
                 )
             }
-            return Path.Combine(root, attempt)
+            return root
         }
 
         internal func Location(directory string, run Data) {
             if AttemptContinuation.Has(run) && Path.GetFullPath(directory) != Path.Combine(
                 Path.GetDirectoryName(run.Text("continuation_source")) ?? "",
-                run.Text("attempt")
+                run.Text("name") == "" ? run.Text("attempt"): run.Text("name")
             ) {
                 throw Exception(
                     "Continuation destination moved or shares an ambiguous execution fence; use its original saved run"

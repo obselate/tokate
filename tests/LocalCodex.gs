@@ -48,7 +48,7 @@ internal class LocalCodex {
             Check.That(!File.Exists(Path.Combine(checkout, ".git/private-marker")), "Private Git metadata escaped")
             Check.That(File.ReadAllText(outside) == "synthetic-private-value", "Codex changed outside data")
             flow.Publish(run)
-            flow.Call([]string{"verify-pr", "--repo", "owner/project", "--pr", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Console.WriteLine("PASS native Codex configured MCP, sandbox, verification and draft submission")
         }
 
@@ -102,13 +102,12 @@ internal class LocalCodex {
             for selected in[]string{launcher, standalone} {
                 File.Delete(Path.Combine(flow.Bin, "codex"))
                 File.CreateSymbolicLink(Path.Combine(flow.Bin, "codex"), selected)
-                let doctor = Check.Envelope(flow.Call([]string{"doctor", "--managed", "--json"}), "doctor", "ok")
+                let doctor = Check.Envelope(flow.Call([]string{"doctor", "managed", "--json"}), "doctor", "ok")
                 Check.That(doctor["data"]?["tools"] != nil, "Doctor did not report capabilities")
                 let choice = Check.Envelope(
                     flow.Call(
                         []string{
                             "select",
-                            "--repo",
                             "owner/project",
                             "--model",
                             "gpt-6.1-sol",
@@ -188,7 +187,7 @@ internal class LocalCodex {
             File.SetUnixFileMode(unsupported, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             File.Delete(Path.Combine(flow.Bin, "codex"))
             File.CreateSymbolicLink(Path.Combine(flow.Bin, "codex"), unsupported)
-            let refusal = TestProcess.Run(binary, []string{"doctor", "--managed", "--json"}, flow.Temp.Env)
+            let refusal = TestProcess.Run(binary, []string{"doctor", "managed", "--json"}, flow.Temp.Env)
             Check.That(refusal.Code != 0, "Unsupported runtime was accepted")
             Check.Envelope(refusal, "doctor", "error", "verification_failed")
             Check.Contains(refusal.Output, "Unsupported managed Codex runtime layout")

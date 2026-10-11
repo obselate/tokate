@@ -11,6 +11,7 @@ internal class PublicOutput {
         internal var Enabled bool
         internal var Command string = "help"
         internal var RunDirectory string = ""
+        internal var RunName string = ""
         internal var FailureCode string = "command_failed"
         internal var ResultData Object? = nil
         internal var Truncated bool
@@ -19,6 +20,7 @@ internal class PublicOutput {
         internal func Reset(command string = "help") {
             Command = command
             RunDirectory = ""
+            RunName = ""
             FailureCode = "command_failed"
             ResultData = nil
             Truncated = false
@@ -359,6 +361,19 @@ internal class PublicOutput {
                         }
                     }
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
+                    if code == "invalid_state" &&
+                        options != nil &&
+                        options
+                        .Attempts
+                        .Count > 1 &&
+                        ResultData is Dictionary[string, Object?]fields {
+                        fields["attempts"] = SavedRuns.Summary(RunReference.Recent(options.Attempts), 0)["runs"]
+                        for row in RunReference.Recent(options.Attempts) {
+                            if row.Next != "" && row.Location != RunDirectory {
+                                Actions.Add([]string{"tokate", row.Next, "--run", row.Location, "--json"})
+                            }
+                        }
+                    }
                     if Command == "reconcile" {
                         let intent = J.Get(run.Element(), "reconciliation")
                         if code != "" &&
@@ -392,20 +407,17 @@ internal class PublicOutput {
                 Actions.Add(known ? []string{"tokate", "help", Command, "--json"}: []string{"tokate", "help", "--json"})
             } else if code == "missing_tools" {
                 if Command != "doctor" {
-                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "--managed": (
+                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "managed": (
                         Command == "external" ||
                             Command == "amend" ||
                             Command == "recover" ||
-                            Command == "submit" ||
-                            Command == "submit" ? "--external": "--owner"
+                            Command == "submit" ? "external": "owner"
                     )
                     Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
                 }
             }
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
-                Actions.Add(
-                    []string{"tokate", "checks", "--repo", options.Get("repo"), "--pr", options.Get("pr"), "--json"}
-                )
+                Actions.Add([]string{"tokate", "checks", options.Get("repo") + "#" + options.Get("pr"), "--json"})
             }
         }
 

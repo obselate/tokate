@@ -38,17 +38,10 @@ internal class ContributionStatus {
         Object?
     ]{"role": role, "action": action, "command": command ?? []string{}}
 
-    private func AccessReview(repo string, issue string) Dictionary[string, Object?] {
+    private func AccessReview(repo string) Dictionary[string, Object?] {
         if Access?.Sha == "" {
             let command = J.Bool(J.Get(Info, "permissions"), "push") &&
-                Text(Result, "viewer_status") == "observed" ? []string{
-                "tokate",
-                "access",
-                "--repo",
-                repo,
-                "--operation",
-                "init"
-            }: []string{}
+                Text(Result, "viewer_status") == "observed" ? []string{"tokate", "access", "init", repo}: []string{}
             return Next(
                 "owner",
                 "Initialize the absent access authority before reviewing requests; requests grant no eligibility.",
@@ -58,7 +51,7 @@ internal class ContributionStatus {
         return Next(
             "owner",
             "Review donor access and grant eligibility if appropriate.",
-            []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", issue}
+            []string{"tokate", "access", "list", repo}
         )
     }
 
@@ -582,7 +575,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Review donor access and grant eligibility if appropriate.",
-                    []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", Text(row, "issue")}
+                    []string{"tokate", "access", "list", repo}
                 )
             }
             let approval = J.Get(state.Value(), "approval")
@@ -603,18 +596,13 @@ internal class ContributionStatus {
                     next = Next(
                         "donor",
                         "Request owner review for the required donor access.",
-                        []string{
+                        J.Text(approval, "eligibility") == "trusted" ? []string{
                             "tokate",
                             "access",
-                            "--repo",
-                            repo,
-                            "--operation",
                             "request",
-                            "--issue",
-                            Text(row, "issue"),
-                            "--scope",
-                            J.Text(approval, "eligibility") == "trusted" ? "trust": "issue"
-                        }
+                            repo + "#" + Text(row, "issue"),
+                            "--trust"
+                        }: []string{"tokate", "access", "request", repo + "#" + Text(row, "issue")}
                     )
                 }
             }
@@ -638,7 +626,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Restore eligibility for the recorded donor before further work or publication.",
-                    []string{"tokate", "access", "--repo", repo, "--operation", "list", "--issue", Text(row, "issue")}
+                    []string{"tokate", "access", "list", repo}
                 )
             }
             for item in drafts {
@@ -701,7 +689,7 @@ internal class ContributionStatus {
                     draftNext = Next(
                         "owner",
                         "Verify the recorded receipt before reviewing acceptance; status does not establish readiness.",
-                        []string{"tokate", "verify-pr", "--repo", repo, "--pr", Text(draft, "pr")}
+                        []string{"tokate", "verify", repo + "#" + Text(draft, "pr")}
                     )
                 }
                 if Text(draft, "checks_status") == "unavailable" ||
@@ -736,7 +724,7 @@ internal class ContributionStatus {
                 next = Next(
                     "owner",
                     "Refresh status; the PR changed during this read.",
-                    []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                    []string{"tokate", "status", repo + "#" + Text(row, "issue")}
                 )
             } else if Text(draft, "binding") == "mismatch" {
                 stage = "binding_mismatch"
@@ -765,7 +753,7 @@ internal class ContributionStatus {
             next = Next(
                 "owner",
                 "Refresh contribution status; the authority changed during this read.",
-                []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                []string{"tokate", "status", repo + "#" + Text(row, "issue")}
             )
         }
         row["state"] = stage
@@ -842,7 +830,7 @@ internal class ContributionStatus {
                 break
             }
             let row = J.Select(request, "comment,actor,donor,issue,scope")
-            row["next"] = AccessReview(repo, J.Number(request, "issue").ToString())
+            row["next"] = AccessReview(repo)
             displayed.Add(row)
         }
         Result["pending_requests"] = displayed
@@ -900,7 +888,7 @@ internal class ContributionStatus {
                             row["next"] = Next(
                                 "owner",
                                 "Refresh status; donor access changed during this read.",
-                                []string{"tokate", "status", "--repo", repo, "--issue", Text(row, "issue")}
+                                []string{"tokate", "status", repo + "#" + Text(row, "issue")}
                             )
                         }
                     }
@@ -971,6 +959,11 @@ internal class ContributionStatus {
 
         internal func Run(args Args) {
             let status = Snapshot(args)
+            let attempts List[SavedRun]? = args.Get("issue") == "" ? nil:
+            RunReference.Recent(SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue")))
+            if attempts != nil {
+                status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
+            }
             PublicOutput.ResultData = status.Result
             PublicOutput.Truncated = status.Truncated
             PublicOutput.Actions.Clear()
@@ -982,6 +975,10 @@ internal class ContributionStatus {
             }
             if !PublicOutput.Enabled {
                 Terminal.ContributionStatus(J.Parse(J.Write(status.Result)))
+                if attempts != nil && attempts.Count > 0 {
+                    Terminal.Message("Saved runs on this computer:", "default")
+                    Terminal.Runs(args, attempts)
+                }
             }
             if let failure = status.Failure {
                 throw failure

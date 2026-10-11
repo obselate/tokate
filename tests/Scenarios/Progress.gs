@@ -236,18 +236,7 @@ internal class ProgressChecks {
             flow.Temp.Env["TERM"] = "dumb"
             let guided = TestTerminal.Pty(
                 binary,
-                []string{
-                    "work",
-                    "owner/project",
-                    "--issue",
-                    "1",
-                    "--harness",
-                    "codex",
-                    "--model",
-                    "gpt-6.1-sol",
-                    "--effort",
-                    "high"
-                },
+                []string{"work", "owner/project#1", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"},
                 flow.Temp,
                 80,
                 "unlimited\n1\nq\n"
@@ -260,19 +249,11 @@ internal class ProgressChecks {
             flow.NoInference()
             Check.Contains(
                 flow.Call(
-                    []string{
-                        "work",
-                        "--unlimited",
-                        "--seconds",
-                        "30",
-                        "--verification-reserve",
-                        "8",
-                        "--non-interactive"
-                    },
+                    []string{"work", "--unlimited", "--time", "30s", "--verify-time", "8s", "--non-interactive"},
                     1
                 )
                     .Error,
-                "excludes --seconds"
+                "excludes --time"
             )
             test.Prepare("external", 1, reserve: "8", unlimited: true)
             test.Prepare("tokate", 1, unlimited: true)
