@@ -729,7 +729,15 @@ internal class SynchronizationChecks {
                     mode == "edits" ? "local.txt": "shared.txt",
                     "committed donor work\n"
                 )
+                if mode == "edits" {
+                    PublishedContribution.Write(checkout, ".gitignore", "/artifacts/\n/bin/\n/obj/\n")
+                }
                 start = Commit(flow, checkout, "Committed local work")
+            }
+            if mode == "edits" {
+                for path in[]string{"artifacts/build.txt", "bin/build.txt", "obj/build.txt"} {
+                    PublishedContribution.Write(checkout, path, "ignored build output\n")
+                }
             }
             var index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
             if mode == "dirty" {
@@ -975,6 +983,12 @@ internal class SynchronizationChecks {
                     File.ReadAllText(Path.Combine(checkout, "local.txt")) == "committed donor work\n",
                     "Merge lost committed edits"
                 )
+                for path in[]string{"artifacts/build.txt", "bin/build.txt", "obj/build.txt"} {
+                    Check.That(
+                        File.ReadAllText(Path.Combine(checkout, path)) == "ignored build output\n",
+                        "Reconciliation changed ignored build output"
+                    )
+                }
             }
             let grant = Grant(flow, candidate, upstream)
             Amend(flow, run, candidate, grant)
@@ -983,6 +997,21 @@ internal class SynchronizationChecks {
             Amend(flow, run, candidate, grant)
             Check.That(Check.Text(Saved(run)["commit"]) == candidate, "Amend did not publish reconciled candidate")
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            if mode == "edits" {
+                PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")
+                flow.Commit("Upstream ignored path collision")
+                index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
+                let rejected = flow.Call([]string{"reconcile", "--run", run, "--json"}, 1)
+                Check.Contains(rejected.Output + rejected.Error, "Ignored path collision preserved")
+                Check.Contains(rejected.Output + rejected.Error, "artifacts/build.txt")
+                Check.That(
+                    File.ReadAllText(Path.Combine(checkout, "artifacts/build.txt")) == "ignored build output\n" &&
+                        flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate && Convert.ToHexString(
+                        index
+                    ) == Convert.ToHexString(File.ReadAllBytes(Path.Combine(checkout, ".git/index"))),
+                    "Ignored path collision lost work"
+                )
+            }
         }
 
         internal func All(binary string, only string = "", partition int32 = 0) {
