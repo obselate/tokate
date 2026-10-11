@@ -40,7 +40,8 @@ func Main() {
         Resizable: true,
         ResizeBand: 6.0F,
         Root: desktop.Root,
-        Background: Color.Parse("#F3E7D4"),
+        Transparent: true,
+        Background: Color.Transparent,
     }
     desktop.Attach(window)
     try {

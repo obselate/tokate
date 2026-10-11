@@ -6,7 +6,7 @@ import System
 
 /// The window root: navigation beside the workspace, plus an optional overlay. Compact layouts place
 /// navigation inside the workspace instead, so `Navigation` is omitted. The owner supplies `Handle` to
-/// observe window metrics. `Framed` draws a line around a window that is not maximized.
+/// observe window metrics. `Framed` draws a line and round corners on a window that is not maximized.
 ///
 /// This stays stateless on purpose: Goo rebuilds the Cell that owns a handler, so wrapping the whole
 /// tree in a Cell would attribute every page handler to the frame.
@@ -33,6 +33,7 @@ data struct AppFrame {
             OnPointerDown: event -> pointer?.Invoke(event),
             Overflow: Overflow.Hidden,
             BorderWidth: Framed ? 1: 0,
+            BorderRadius: Framed ? AppTheme.PanelRadius: 0,
             BorderColor: AppTheme.Current.Line,
             BackgroundColor: AppTheme.Current.Paper,
             FontFamily: AppTheme.BodyFont,

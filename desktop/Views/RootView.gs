@@ -84,9 +84,6 @@ class RootView : Cell {
 
     private func Sync() {
         app.Theme.Apply()
-        if let window = app.Window.Window {
-            window.Background = AppTheme.Current.Paper
-        }
         app.Art.Paint(app.Theme.Twilight, app.Theme.Settings.OilPaint)
     }
 
