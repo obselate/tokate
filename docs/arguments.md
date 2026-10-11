@@ -12,8 +12,8 @@ Put command targets after the command. Run `tokate help COMMAND` for full syntax
 | `OWNER/REPO` | Repository target. `tokate work OWNER/REPO` opens its issue chooser. |
 | `42-3` | Attempt 3 for issue 42. Use `OWNER/REPO#42-3` to name its repository. |
 
-Commands without an issue or PR operand can take a trailing `OWNER/REPO`; for example,
-`tokate access trust LOGIN OWNER/REPO`.
+Repository-scoped commands without an issue or PR operand can take a trailing
+`OWNER/REPO`; for example, `tokate access trust LOGIN OWNER/REPO`.
 
 For commands whose target is `RUN`, such as `submit`, `pause` and `recover`, a
 bare `42` selects the newest attempt; `42-3` selects attempt 3. If its state does
@@ -42,8 +42,12 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
 | `select` | `OWNER/REPO [PROFILE]` |
 | `overlaps` | 2 to 16 PR references |
-| `access` | `init`; `trust`, `untrust`, `deny` or `restore LOGIN [OWNER/REPO]`; `grant` or `remove LOGIN ISSUE`; `check ISSUE`; `request ISSUE`; optional `list` or `history` filters `LOGIN` and `ISSUE` |
-| `doctor` | Optional mode (`owner`, `managed` or `external`), then `HARNESS`; `owner` and `codex` also work alone |
+| `access init` | Optional `OWNER/REPO` |
+| `access trust`, `untrust`, `deny`, `restore` | `LOGIN [OWNER/REPO]` |
+| `access grant`, `remove` | `LOGIN ISSUE` |
+| `access check`, `request` | `ISSUE` |
+| `access list`, `history` | `[LOGIN] [ISSUE or OWNER/REPO]` |
+| `doctor` | Optional scope (`owner`, `managed` or `external`) and optional `HARNESS`; standalone `owner` and `codex` are valid |
 | `defaults` | `set [NAME]`, `use NAME`, `show [NAME]`, `remove [NAME]`; no subcommand lists saved profiles |
 | `help` | Optional `COMMAND` |
 | `completion` | `bash`, `zsh` or `fish` |
