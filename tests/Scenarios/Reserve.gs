@@ -159,9 +159,7 @@ internal class ReserveChecks {
             flow.Approve()
             let args = []string{
                 "claim",
-                "--repo",
-                "owner/project",
-                "1",
+                "owner/project#1",
                 "--model",
                 "gpt-6.1-sol",
                 "--effort",
@@ -192,9 +190,7 @@ internal class ReserveChecks {
             let result = flow.Acquire(
                 []string{
                     "work",
-                    "--repo",
-                    "owner/project",
-                    "1",
+                    "owner/project#1",
                     "--model",
                     "gpt-6.1-sol",
                     "--effort",

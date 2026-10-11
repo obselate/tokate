@@ -8,9 +8,7 @@ internal class RepositoryIdentityChecks {
     shared {
         private func WorkArgs(flow NativeFixture, repo string, command string = "work")[]string -> []string{
             command,
-            "--repo",
-            repo,
-            "1",
+            repo + "#1",
             "--model",
             "gpt-6.1-sol",
             "--effort",
@@ -23,7 +21,7 @@ internal class RepositoryIdentityChecks {
         }
 
         private func Approve(flow NativeFixture, repo string) {
-            flow.Call([]string{"approve", "--repo", repo, "1"}, owner: true)
+            flow.Call([]string{"approve", repo + "#1"}, owner: true)
             let approval = Check.Json(flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json"))
             Check.That(Check.Text(approval["approval"]?["repo"]) == repo, "Approval spelling was rewritten")
         }
@@ -52,7 +50,7 @@ internal class RepositoryIdentityChecks {
                 ),
                 "Wrong claim repository"
             )
-            flow.Call([]string{"verify", "--repo", "OWNER/PROJECT", "10"}, owner: true)
+            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Mixed-case work repeated inference")
             flow.AutomationAttribution()
@@ -87,7 +85,7 @@ internal class RepositoryIdentityChecks {
             saved["head_repo"] = JsonValue.Create("donor/project")
             File.WriteAllText(path, saved.ToJsonString())
             flow.Publish(run)
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             flow.Reload()
             let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             let body = Check.Text(pull["body"])
@@ -97,7 +95,7 @@ internal class RepositoryIdentityChecks {
             Check.That(Check.Text(pull["body"]) != body, "Cross-repository receipt was not changed")
             flow.Save()
             Check.Contains(
-                flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1, owner: true).Error,
+                flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true).Error,
                 "current exact-commit coordination authority"
             )
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Saved-run validation repeated inference")
@@ -162,22 +160,20 @@ internal class RepositoryIdentityChecks {
             test.Initialize(false)
             let flow = test.Flow
             flow.OwnerAccess()
-            flow.Call([]string{"approve", "--repo", "OwNeR/PrOjEcT", "1"}, owner: true)
+            flow.Call([]string{"approve", "OwNeR/PrOjEcT#1"}, owner: true)
             let claim = test.ClaimRequest()
             var eventPath = test.Event(claim)
             let event = Check.Json(File.ReadAllText(eventPath))
             let repository = event["repository"] ?? throw Exception("Missing event repository")
             repository["full_name"] = JsonValue.Create("OwNeR/PrOjEcT")
             File.WriteAllText(eventPath, event.ToJsonString())
-            flow.Call([]string{"coordinate", "--repo", "OWNER/PROJECT", "--event", eventPath}, owner: true)
+            flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
             let state = test.State()
             let prepared = Check.Envelope(
                 flow.Call(
                     []string{
                         "prepare",
-                        "--repo",
-                        "OWNER/PROJECT",
-                        "1",
+                        "OWNER/PROJECT#1",
                         "--state",
                         Check.Text(state["sha"]),
                         "--source",
@@ -206,8 +202,8 @@ internal class RepositoryIdentityChecks {
             flow.Reload()
             let request = Check.PostedRequest(flow.State)
             eventPath = test.Event(request)
-            flow.Call([]string{"coordinate", "--repo", "OWNER/PROJECT", "--event", eventPath}, owner: true)
-            flow.Call([]string{"verify", "--repo", "OWNER/PROJECT", "10"}, owner: true)
+            flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
+            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
             flow.NoInference()
             flow.AutomationAttribution()
             Console.WriteLine("PASS version-2 repository case variants through saved-run validation and publication")

@@ -80,9 +80,7 @@ internal class DonorDefaults {
             }
             if value.ValueKind == JsonValueKind.Undefined {
                 if profile != "" && !allowMissing {
-                    throw Exception(
-                        "Named donor profile is missing; use defaults set --profile NAME. No inference started."
-                    )
+                    throw Exception("Named donor profile is missing; use defaults set NAME. No inference started.")
                 }
                 return JsonElement{}
             }

@@ -76,7 +76,6 @@ internal class PiChecks {
             File.SetUnixFileMode(pathNode, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let args = List[string]{
                 "select",
-                "--repo",
                 "owner/project",
                 "--harness",
                 "pi",
@@ -225,15 +224,14 @@ internal class PiChecks {
                 }
             )
             let profiled = Check.Json(
-                flow.Call([]string{"select", "--repo", "owner/project", "--profile", "local", "--non-interactive"})
-                    .Output
+                flow.Call([]string{"select", "owner/project", "local", "--non-interactive"}).Output
             )
             let expectedProfile = explicitSelection.DeepClone()
             expectedProfile["source"] = JsonValue.Create("saved donor profile local")
             Check.That(JsonNode.DeepEquals(expectedProfile, profiled), "Saved Pi profile lost selection precedence")
-            args.AddRange([]string{"--profile", "local", "--provider", "openai"})
+            args.AddRange([]string{"local", "--provider", "openai"})
             Check.Contains(flow.Call(args.ToArray(), 1).Error, "Named donor profile conflicts")
-            args.RemoveRange(args.Count - 4, 4)
+            args.RemoveRange(args.Count - 3, 3)
             flow.Call(
                 []string{
                     "defaults",
@@ -251,14 +249,14 @@ internal class PiChecks {
             )
             let profilePath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
             let savedProfile = File.ReadAllText(profilePath)
-            args.AddRange([]string{"--profile", "local"})
+            args.Add("local")
             expectedProfile["source"] = JsonValue.Create("saved donor profile local with explicit overrides")
             Check.That(
                 JsonNode.DeepEquals(expectedProfile, Check.Json(flow.Call(args.ToArray()).Output)),
                 "Omitted Pi provider changed the explicit model, effort or endpoint overrides"
             )
             Check.That(File.ReadAllText(profilePath) == savedProfile, "Pi selection changed the named profile")
-            args.RemoveRange(args.Count - 2, 2)
+            args.RemoveRange(args.Count - 1, 1)
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Owner rejects Pi selection")
@@ -383,9 +381,7 @@ internal class PiChecks {
             File.CreateSymbolicLink(Path.Combine(flow.Flow.Bin, "node"), node)
             let args = List[string]{
                 "prepare",
-                "--repo",
-                "owner/project",
-                "1",
+                "owner/project#1",
                 "--state",
                 Check.Text(flow.State()["sha"]),
                 "--source",
@@ -530,9 +526,7 @@ internal class PiChecks {
                 let defaultPath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
                 File.Copy(profilePath, defaultPath)
                 let unnamed = Check.Envelope(
-                    flow.Flow.Call(
-                        []string{"select", "--repo", "owner/project", "--model", "synthetic/model:exact", "--json"}
-                    ),
+                    flow.Flow.Call([]string{"select", "owner/project", "--model", "synthetic/model:exact", "--json"}),
                     "select",
                     "ok"
                 )
@@ -546,7 +540,7 @@ internal class PiChecks {
                     args.RemoveAt(position + 1)
                     args.RemoveAt(position)
                 }
-                args.AddRange([]string{"--profile", "local"})
+                args.Add("local")
             }
             let prepared = flow.Flow.Call(args.ToArray())
             let selected = provider["models"]?[0] ?? throw Exception("Missing model")
@@ -693,7 +687,7 @@ internal class PiChecks {
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
-                    flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+                    flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                     flow.Flow.Reload()
                     Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
                 }

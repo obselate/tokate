@@ -33,7 +33,7 @@ internal class Positionals {
                 repo,
                 StringComparison.OrdinalIgnoreCase
             ) {
-                throw Exception("Repository argument conflicts with --repo")
+                throw Exception("Repository arguments conflict")
             }
             args.Values["--repo"] = repo
         }
@@ -107,17 +107,22 @@ internal class Positionals {
                 operation == "grant" ||
                 operation == "remove"
             let filter = operation == "list" || operation == "history"
-            Limit(args, operation == "init" ? 1: (operation == "grant" || operation == "remove" || filter ? 3: 2))
+            let issue = operation == "grant" || operation == "remove" || operation == "check" || operation == "request"
+            Limit(args, donor || filter ? 3: 2)
             var i int32 = 1
-            while i < words.Count {
-                if donor && i == 1 {
-                    args.Values["--donor"] = words[i]
-                } else if filter && !Regex.IsMatch(words[i], "^(?:[^#]+#)?[0-9]+\\z") && !words[i].Contains("://") {
-                    args.Values["--donor"] = words[i]
-                } else {
-                    Reference(args, words[i], "issue")
+            if words.Count > i && (donor || (filter && !words[i].Contains("/"))) {
+                args.Values["--donor"] = words[i]
+                i++
+            }
+            if words.Count > i {
+                Reference(args, words[i], issue ? "issue": "repo")
+                if issue && args.Get("issue") == "" {
+                    throw Exception("Expected ISSUE for access " + operation)
                 }
                 i++
+            }
+            if words.Count > i {
+                throw Exception("Unexpected argument: " + words[i])
             }
         }
 
@@ -157,11 +162,41 @@ internal class Positionals {
             } else if target == "access" {
                 Access(args)
             } else if target == "prs" {
-                args.Values["--prs"] = String.Join(",", words)
-            } else {
-                Limit(args, target == "" ? 0: 1)
+                let prs = List[string]()
+                var i int32 = 0
+                while i < words.Count {
+                    Reference(args, words[i], "pr")
+                    prs.Add(args.Get("pr"))
+                    args.Values.Remove("--pr")
+                    i++
+                }
+                args.Values["--prs"] = String.Join(",", prs)
+            } else if target == "repo" && args.Command == "select" {
+                Limit(args, 2)
+                if words.Count == 1 && !words[0].Contains("/") {
+                    args.Values["--profile"] = words[0]
+                } else if words.Count > 0 {
+                    Reference(args, words[0], "repo")
+                    if words.Count > 1 {
+                        args.Values["--profile"] = words[1]
+                    }
+                }
+            } else if target == "repo" {
+                Limit(args, 1)
                 if words.Count == 1 {
+                    Reference(args, words[0], target)
+                }
+            } else {
+                let profileOperand = args.Command == "work" || args.Command == "claim" || args.Command == "prepare"
+                Limit(args, profileOperand ? 2: (target == "" ? 0: 1))
+                if words.Count > 0 {
                     Reference(args, words[0], target == "run" ? "issue": target)
+                    if words.Count > 1 {
+                        if args.Get("issue") == "" || args.Get("attempt") != "" || args.Get("run") != "" {
+                            throw Exception("A profile name must follow an issue number")
+                        }
+                        args.Values["--profile"] = words[1]
+                    }
                 }
             }
             if LeaseLifecycle.Transition(args.Command) {

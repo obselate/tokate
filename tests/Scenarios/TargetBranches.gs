@@ -19,7 +19,7 @@ internal class TargetBranches {
         }
 
         private func Approve(flow NativeFixture, branch string) JsonNode {
-            flow.Call([]string{"approve", "--repo", "owner/project", "1", "--base-branch", branch}, owner: true)
+            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
             let state = flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json")
             return Check.Json(state)["approval"] ?? throw Exception("Missing approval")
         }
@@ -58,12 +58,10 @@ internal class TargetBranches {
                 !Check.Text(pull["body"]).Contains("Untrusted target template"),
                 "Target template weakened authority"
             )
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
-            let stale = Check.Json(
-                flow.Call([]string{"checks", "--repo", "owner/project", "10", "--json"}, 1, owner: true).Output
-            )
+            let stale = Check.Json(flow.Call([]string{"checks", "owner/project#10", "--json"}, 1, owner: true).Output)
             Check.That(
                 Check.Text(stale["data"]?["reconciliation_required"]) == "true" && Check.Text(
                     stale["data"]?["gates"]?["freshness"]?["status"]
@@ -71,11 +69,11 @@ internal class TargetBranches {
                 "Advanced named target did not require reconciliation"
             )
             flow.Git("-C", flow.Upstream, "update-ref", "refs/heads/" + branch, base)
-            flow.Call([]string{"checks", "--repo", "owner/project", "10"}, owner: true)
+            flow.Call([]string{"checks", "owner/project#10"}, owner: true)
             flow.Reload()
             flow.State["check_change"] = JsonValue.Create("base")
             flow.Save()
-            flow.Call([]string{"checks", "--repo", "owner/project", "10"}, 1, owner: true)
+            flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true)
             flow.Reload()
             flow.State["check_change"] = JsonValue.Create("")
             let restored = flow.State["pulls"]?[0]?["base"] ?? throw Exception("Missing base")
@@ -86,16 +84,16 @@ internal class TargetBranches {
             let sha = Check.Text(head["sha"])
             head["sha"] = JsonValue.Create(String('a', 40))
             flow.Save()
-            flow.Call([]string{"checks", "--repo", "owner/project", "10"}, 1, owner: true)
+            flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true)
             head["sha"] = JsonValue.Create(sha)
             let target = flow.State["pulls"]?[0]?["base"] ?? throw Exception("Missing base")
             target["ref"] = JsonValue.Create("main")
             flow.Save()
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
             target["ref"] = JsonValue.Create(branch)
             flow.Save()
             flow.Git("-C", flow.Upstream, "branch", "-D", branch)
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
         }
 
         private func V2(binary string, branch string, external bool) {
@@ -174,11 +172,11 @@ internal class TargetBranches {
             let base = Target(flow, branch)
             if change == "missing" {
                 flow.Git("-C", flow.Upstream, "branch", "-D", branch)
-                flow.Call([]string{"approve", "--repo", "owner/project", "1", "--base-branch", branch}, 1, owner: true)
+                flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, 1, owner: true)
                 flow.NoInference()
                 return
             }
-            flow.Call([]string{"approve", "--repo", "owner/project", "1", "--base-branch", branch}, owner: true)
+            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
             var run = ""
             test.Coordinate(test.Event(test.ClaimRequest()))
             run = test.Prepare()
@@ -264,11 +262,8 @@ internal class TargetBranches {
                 let flow = test.Flow
                 test.Text("synthetic-private-owner-instruction-marker\n")
                 let base = Target(flow, "release")
-                flow.Call(
-                    []string{"approve", "--repo", "owner/project", "1", "--base-branch", "release", "--json"},
-                    owner: true
-                )
-                let result = flow.Call([]string{"coordination", "--repo", "owner/project", "1", "--json"})
+                flow.Call([]string{"approve", "owner/project#1", "--base-branch", "release", "--json"}, owner: true)
+                let result = flow.Call([]string{"coordination", "owner/project#1", "--json"})
                 let approval = Check.Envelope(result, "coordination", "ok")["data"]?["approval"]
                 Check.That(
                     Check.Text(approval?["base_branch"]) == "release" && Check.Text(approval?["base"]) == base &&
@@ -325,7 +320,7 @@ internal class TargetBranches {
                 File.WriteAllText(path, policy.ToJsonString())
                 policyFlow.Commit("Projected owner model and path policy")
                 let projected = Check.Envelope(
-                    policyFlow.Call([]string{"policy", "--repo", "owner/project", "--json"}),
+                    policyFlow.Call([]string{"policy", "owner/project", "--json"}),
                     "policy",
                     "ok"
                 )

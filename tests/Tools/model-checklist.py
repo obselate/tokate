@@ -34,7 +34,7 @@ def start(path, home=False):
         if home:
             os.execv(binary, [binary])
         os.execv(binary, [
-            binary, "init", "--repo", "owner/project", "--path", path,
+            binary, "init", "owner/project", "--path", path,
             "--model-policy", "whitelist", "--allowed-tools", "codex,pi", "--verification", '[["/usr/bin/true"]]',
             "--required-checks", '["verify"]', "--eligibility", "trusted",
             "--base-branch", "main", "--max-time", "60s",

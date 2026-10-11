@@ -202,7 +202,7 @@ internal class DecreeFlow : IDisposable {
                     )
                     test.Flow.NoInference()
                     if change == "unsupported" {
-                        let failure = test.Flow.Call([]string{"approve", "--repo", "owner/project", "1"}, 1, true)
+                        let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
                         Check.Contains(failure.Error, "regular Git blob")
                     } else {
                         test.Flow.Git("-C", Path.Combine(test.Flow.Bin, "fork"), "fetch", test.Flow.Upstream, "main")
@@ -287,7 +287,7 @@ internal class DecreeFlow : IDisposable {
                 )
                 test.Flow.Save()
                 test.Flow.ResetTraffic()
-                let failure = test.Flow.Call([]string{"approve", "--repo", "owner/project", "1"}, 1, true)
+                let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
                 Check.That(
                     failure.Error.Contains("DECREE.md"),
                     "Unsupported " + kind + " did not report DECREE.md: " + failure.Error

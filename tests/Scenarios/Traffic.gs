@@ -44,11 +44,7 @@ internal class CommandTrafficChecks {
         ) Result {
             let path = Path.Combine(flow.Flow.Temp.Root, file)
             File.WriteAllText(path, request.ToJsonString())
-            return flow.Flow.Call(
-                []string{"request", "--repo", "owner/project", "1", "--file", path},
-                code,
-                traffic: true
-            )
+            return flow.Flow.Call([]string{"request", "owner/project#1", "--file", path}, code, traffic: true)
         }
 
         private func RequestReuse(binary string) {
@@ -133,7 +129,7 @@ internal class CommandTrafficChecks {
         }
 
         private func RequestAttempt(binary string, path string, env Dictionary[string, string], output Chan[Result]) {
-            output <- TestProcess.Run(binary, []string{"request", "--repo", "owner/project", "1", "--file", path}, env)
+            output <- TestProcess.Run(binary, []string{"request", "owner/project#1", "--file", path}, env)
         }
 
         private func SameFileRequest(binary string) {
@@ -176,7 +172,7 @@ internal class CommandTrafficChecks {
             flow.Flow.ResetTraffic()
             Budgets(
                 flow.Flow,
-                flow.Flow.Call([]string{"request", "--repo", "owner/project", "1", "--file", path}, traffic: true),
+                flow.Flow.Call([]string{"request", "owner/project#1", "--file", path}, traffic: true),
                 14,
                 0,
                 0,
@@ -339,7 +335,7 @@ internal class CommandTrafficChecks {
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 30, 0, 0, 15)
             flow.Expire()
-            flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1)
+            flow.Flow.Call([]string{"verify", "owner/project#10"}, 1)
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, 1, traffic: true), 3, 0, 0)
             flow.Flow.Reload()
@@ -372,7 +368,7 @@ internal class CommandTrafficChecks {
             direct bool = false
         ) Result -> flow
             .Call(
-            direct ? []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", timeout + "s"}:
+            direct ? []string{"checks", "owner/project#10", "--watch", "--timeout", timeout + "s"}:
             []string{"checks", "--run", run, "--watch", "--timeout", timeout + "s"},
             code,
             traffic: true
@@ -428,7 +424,7 @@ internal class CommandTrafficChecks {
                 flow.ResetTraffic()
                 let timer = Stopwatch.StartNew()
                 let result = kind == "initial-authority" ? flow.Call(
-                    []string{"checks", "--repo", "owner/project", "10", "--watch", "--timeout", "1s"},
+                    []string{"checks", "owner/project#10", "--watch", "--timeout", "1s"},
                     8,
                     traffic: true
                 ): Watch(flow, run, "1")
@@ -521,7 +517,7 @@ internal class CommandTrafficChecks {
                 Check.Envelope(
                     flow.Call(
                         kind == "open" || kind == "not_planned" ?
-                        []string{"checks", "--repo", "owner/project", "10", "--json"}:
+                        []string{"checks", "owner/project#10", "--json"}:
                         []string{"checks", "--run", run, "--json"},
                         kind == "completed" ? 0: 1
                     ),
@@ -546,7 +542,7 @@ internal class CommandTrafficChecks {
             let pending = flow.Call([]string{"checks", "--run", run}, 8, traffic: true)
             Budgets(flow, pending, 43, 0, 0, 27)
             flow.ResetTraffic()
-            let direct = flow.Call([]string{"checks", "--repo", "owner/project", "10"}, 8, traffic: true)
+            let direct = flow.Call([]string{"checks", "owner/project#10"}, 8, traffic: true)
             Budgets(flow, direct, 43, 0, 0, 27)
             let path = Path.Combine(run, "checks.json")
             flow.Reload()

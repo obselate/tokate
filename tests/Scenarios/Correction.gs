@@ -161,7 +161,7 @@ internal class CorrectionChecks {
             Check.Contains(flow.Body(), "manual/unknown")
             Check.Contains(flow.Body(), "cover only the original completed turn")
             Check.That(!flow.Body().Contains("Fresh attempt seeded"), "Ordinary correction invented interrupted origin")
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             flow.Call([]string{"recover", "--run", run}, 1)
             RecoverAndSubmit(flow, run, commit, 1)
             Once(flow, 1)
@@ -229,7 +229,7 @@ internal class CorrectionChecks {
                     .ReadAllText(patch).Trim(),
                 "Corrected binary evidence depends on rename configuration"
             )
-            flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Once(flow, 1)
         }
 
@@ -707,7 +707,7 @@ internal class CorrectionChecks {
                 flow.Call([]string{"submit", "--run", run})
                 flow.Reload()
                 test.Coordinate(test.Event(Check.PostedRequest(flow.State)))
-                flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                 Once(flow, 1)
             }
         }
@@ -744,7 +744,7 @@ internal class CorrectionChecks {
                         flow.Commit("Changed policy")
                     }
                     case "access" {
-                        flow.Call([]string{"access", "--repo", "owner/project", "deny", "donor"}, owner: true)
+                        flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "branch" {
                         let fork = Path.Combine(flow.Bin, "fork")
@@ -792,7 +792,7 @@ internal class CorrectionChecks {
                         flow.Expire()
                     }
                     case "revocation" {
-                        flow.Flow.Call([]string{"revoke", "--repo", "owner/project", "1"}, owner: true)
+                        flow.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                     }
                     case "identity" {
                         flow.Flow.Reload()
@@ -896,7 +896,7 @@ internal class CorrectionChecks {
                     Check.Text(Read(run, "correction.json")["verification"]) == results,
                     "v2 publication replay reran checks"
                 )
-                flow.Flow.Call([]string{"verify", "--repo", "owner/project", "10"}, owner: true)
+                flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                 Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Original donor-reported tools")
                 Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Donor-reported correction tools")
                 Recover(flow.Flow, run, commit, 1, flow.Tools)
@@ -1090,7 +1090,7 @@ internal class CorrectionChecks {
                     managed.Coordinate(managed.Event(request))
                     flow.Call(args)
                 }
-                flow.Call([]string{"verify", "--repo", "owner/project", "10"})
+                flow.Call([]string{"verify", "owner/project#10"})
                 flow.Reload()
                 let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing corrected PR")
                 let body = Check.Text(pull["body"])
@@ -1112,7 +1112,7 @@ internal class CorrectionChecks {
                 provenance["head"] = JsonValue.Create(commit)
                 pull["body"] = JsonValue.Create(body.Replace(receiptText, receipt.ToJsonString()))
                 flow.Save()
-                flow.Call([]string{"verify", "--repo", "owner/project", "10"}, 1)
+                flow.Call([]string{"verify", "owner/project#10"}, 1)
                 pull["body"] = JsonValue.Create(body)
                 flow.Save()
             }

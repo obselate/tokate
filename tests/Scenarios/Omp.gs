@@ -62,9 +62,9 @@ internal class OmpChecks {
                 }
                 Check.That(!File.Exists(Path.Combine(settings, "ran")), "OMP inference started before the claim")
                 flow.NoPr()
-                let selection = mode == "normal" ? []string{"--profile", "omp"}:
+                let selection = mode == "normal" ? []string{"omp"}:
                 []string{"--harness", "omp", "--model", OmpTool.Model, "--effort", "low"}
-                let claim = List[string]{"claim", "--repo", "owner/project", "1"}
+                let claim = List[string]{"claim", "owner/project#1"}
                 claim.AddRange(selection)
                 claim.AddRange(
                     []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
@@ -135,13 +135,13 @@ internal class OmpChecks {
         }
 
         private func Pick(extra[]string)[]string {
-            let words = List[string]{"select", "--repo", "owner/project", "--harness", "omp", "--json"}
+            let words = List[string]{"select", "owner/project", "--harness", "omp", "--json"}
             words.AddRange(extra)
             return words.ToArray()
         }
 
         private func Refused(flow NativeFixture, extra[]string, reason string) {
-            let words = List[string]{"select", "--repo", "owner/project", "--harness", "omp"}
+            let words = List[string]{"select", "owner/project", "--harness", "omp"}
             words.AddRange(extra)
             Check.Contains(flow.Call(words.ToArray(), 1).Error, reason)
         }
@@ -259,9 +259,7 @@ internal class OmpChecks {
             let prepared = flow.Acquire(
                 []string{
                     "claim",
-                    "--repo",
-                    "owner/project",
-                    "1",
+                    "owner/project#1",
                     "--harness",
                     "omp",
                     "--model",

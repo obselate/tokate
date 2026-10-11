@@ -57,11 +57,13 @@ jobs:
           printf '%s  %s\n' "$TOKATE_ARCHIVE_SHA256" "$RUNNER_TEMP/tokate.tar.gz" | sha256sum -c -
           tar -xOzf "$RUNNER_TEMP/tokate.tar.gz" "$TOKATE_MEMBER" > "$RUNNER_TEMP/tokate"
           chmod 755 "$RUNNER_TEMP/tokate"
+          "$RUNNER_TEMP/tokate" coordinate owner/repo --help > /dev/null
+          "$RUNNER_TEMP/tokate" admit owner/repo --help > /dev/null
       - name: Coordinate bounded GitHub request
         env:
           GH_TOKEN: ${{ github.token }}
           TOKATE_REPOSITORY: ${{ github.repository }}
-        run: '"$RUNNER_TEMP/tokate" coordinate --repo "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
+        run: '"$RUNNER_TEMP/tokate" coordinate "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
   admit:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04
@@ -80,4 +82,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TOKATE_REPOSITORY: ${{ github.repository }}
-        run: '"$RUNNER_TEMP/tokate" admit --repo "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
+        run: '"$RUNNER_TEMP/tokate" admit "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'

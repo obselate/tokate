@@ -274,9 +274,7 @@ internal class Diagnostics {
                 temp,
                 []string{
                     "prepare",
-                    "--repo",
-                    "owner/project",
-                    "1",
+                    "owner/project#1",
                     "--state",
                     String('a', 40),
                     "--source",
@@ -292,16 +290,13 @@ internal class Diagnostics {
             let managed = Call(
                 binary,
                 temp,
-                []string{"prepare", "--repo", "owner/project", "1", "--state", String('a', 40), "--source", "tokate"},
+                []string{"prepare", "owner/project#1", "--state", String('a', 40), "--source", "tokate"},
                 "error",
                 "missing_tools"
             )
             Check.That(Check.Text(Row(managed, "codex")["status"]) == "missing", "Managed catalog route omitted Codex")
             for command in[]string{"claim", "select"} {
-                let words = List[string]{command, "--repo", "owner/project"}
-                if command == "claim" {
-                    words.AddRange([]string{"1"})
-                }
+                let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
                 let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")
                 Check.That(
                     Check.Text(Row(selection, "codex")["status"]) == "missing",
@@ -385,12 +380,7 @@ internal class Diagnostics {
                 }
                 if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
-                        FixedCall(
-                            binary,
-                            flow,
-                            helper,
-                            []string{"select", "--repo", "owner/project", "--non-interactive"}
-                        ),
+                        FixedCall(binary, flow, helper, []string{"select", "owner/project", "--non-interactive"}),
                         "select",
                         "error",
                         "missing_tools"

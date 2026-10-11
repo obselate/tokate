@@ -391,7 +391,7 @@ internal class GuidedWork {
             if args.Get("repo") == "" {
                 Repository(args)
             }
-            Startup.Check(Args([]string{"status", "--repo", args.Need("repo")}))
+            Startup.Check(Args([]string{"status", args.Need("repo")}))
             if args.Get("issue") == "" {
                 Task(args)
             }
