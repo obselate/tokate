@@ -31,7 +31,7 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | Command | Positionals |
 | --- | --- |
 | `work` | `ISSUE [PROFILE]`, `OWNER/REPO` to choose an issue, or `RUN` |
-| `claim` | `ISSUE [PROFILE]` |
+| `claim` | `ISSUE [PROFILE]` or `OWNER/REPO` |
 | `prepare` | `ISSUE [PROFILE]`; use `--run DIR` to resume recorded preparation |
 | `submit`, `pause`, `resume`, `renew`, `release`, `recover`, `amend`, `external`, `reconcile` | `RUN` |
 | `status` | `ISSUE`, `OWNER/REPO` or `RUN` |
@@ -40,7 +40,7 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | `runs` | Optional `ISSUE` or `OWNER/REPO` |
 | `approve`, `revoke`, `request`, `coordination` | `ISSUE` |
 | `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
-| `select` | `OWNER/REPO [PROFILE]` |
+| `select` | `OWNER/REPO [PROFILE]` or `PROFILE` |
 | `overlaps` | 2 to 16 PR references |
 | `access init` | Optional `OWNER/REPO` |
 | `access trust`, `untrust`, `deny`, `restore` | `LOGIN [OWNER/REPO]` |
