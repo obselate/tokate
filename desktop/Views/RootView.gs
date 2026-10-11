@@ -107,6 +107,7 @@ class RootView : Cell {
             Busy: activity.Busy,
             BusyHere: activity.Busy && activity.Page == app.Navigation.Current,
             Metrics: app.Window.Metrics,
+            Loader: message -> SkyLoader.Mount(SkyLoaderInput{Message: message, Sun: app.Art.Sun, Moon: app.Art.Moon}),
             OnTop: () -> app.Window.ContentScroller.JumpTo(0, 0),
             OnPopupKey: event -> app.Window.KeyNavigation(event),
             OnPopupPointer: event -> app.Window.FocusHints(false),

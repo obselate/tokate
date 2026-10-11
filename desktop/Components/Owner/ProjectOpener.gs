@@ -11,6 +11,7 @@ data struct ProjectOpener {
     var Loaded bool
     var Button CommandButton
     var Disabled bool
+    var Loader Func[string, Blob]?
     var OnInput Action[string]?
     var OnOpen Action?
     var OnChoose Action[string]?
@@ -22,6 +23,8 @@ data struct ProjectOpener {
         }
         if Loaded && Projects.Length == 0 {
             lines.Add(EmptyMessage{Content: "No repositories found", Icon: "folder_off"}.Build())
+        } else if !Loaded && Disabled && Loader != nil {
+            lines.Add(Loader!!("Reading your repositories"))
         }
         return SectionPanel{
             Title: "Your repositories",

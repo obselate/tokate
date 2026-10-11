@@ -91,6 +91,7 @@ class ContributionsTab {
                 Short: page.Metrics.Short,
                 Busy: page.Busy,
                 ShowApproval: true,
+                Loader: page.Loader,
                 OnChoose: issue -> owner.Select(issue),
             }.Build(),
             IssuePager{

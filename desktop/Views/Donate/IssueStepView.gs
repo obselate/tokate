@@ -47,6 +47,7 @@ class IssueStepView {
                 Listing: search.Current,
                 Short: page.Metrics.Short,
                 Busy: page.Busy,
+                Loader: page.Loader,
                 OnChoose: issue -> donation.Choose(issue),
             }.Build(),
             IssuePager{

@@ -94,6 +94,7 @@ class ProjectView {
                     Loaded: state.ProjectsLoaded,
                     Button: page.Button,
                     Disabled: page.Busy,
+                    Loader: page.Loader,
                     OnInput: value -> owner.SetInput(value),
                     OnOpen: () -> owner.Open(),
                     OnChoose: repository -> owner.OpenRepository(repository),

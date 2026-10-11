@@ -23,6 +23,7 @@ class SavedListView {
                 Reading: state.Reading,
                 Short: page.Metrics.Short,
                 Disabled: page.Busy,
+                Loader: page.Loader,
                 OnOpen: item -> saved.Select(item),
             }.Build(),
             Pager{

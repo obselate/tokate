@@ -12,6 +12,7 @@ data struct SavedTable {
     var Reading bool
     var Short bool
     var Disabled bool
+    var Loader Func[string, Blob]?
     var OnOpen Action[SavedRun]?
 
     func Build() Blob {
@@ -24,9 +25,9 @@ data struct SavedTable {
         }
         if rows.Count == 0 {
             rows.Add(
-                EmptyMessage{
-                    Content: Reading ? "Reading saved contributions": Total == 0 ? "No saved contributions": "No unmerged contributions on this page",
-                    Icon: Reading ? "schedule": "inbox",
+                Reading && Loader != nil ? Loader!!("Reading saved contributions"): EmptyMessage{
+                    Content: Total == 0 ? "No saved contributions": "No unmerged contributions on this page",
+                    Icon: "inbox",
                 }.Build()
             )
         }
