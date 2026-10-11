@@ -595,7 +595,7 @@ internal class CommandTrafficChecks {
                 Check.Json("[{\"passthrough\":true},{\"passthrough\":true},{\"status\":200,\"pause_ms\":6000}]")
             )
             let pending = Check.Envelope(
-                flow.Call([]string{"checks", "--run", run, "--watch", "--timeout", "5", "--json"}, 8),
+                flow.Call([]string{"checks", "--run", run, "--watch", "--timeout", "5s", "--json"}, 8),
                 "checks",
                 "pending"
             )
