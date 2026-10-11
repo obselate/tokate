@@ -589,6 +589,24 @@ internal class CommandTrafficChecks {
                     Budgets(flow, result, kind == "head" ? 35: 27, 0, 0, kind == "head" ? 17: 9)
                 }
             }
+            baseline.Restore()
+            flow.Faults(
+                "repos/owner/project/git/ref/heads/tokate/access",
+                Check.Json("[{\"passthrough\":true},{\"passthrough\":true},{\"status\":200,\"pause_ms\":6000}]")
+            )
+            let pending = Check.Envelope(
+                flow.Call([]string{"checks", "--run", run, "--watch", "--timeout", "5", "--json"}, 8),
+                "checks",
+                "pending"
+            )
+            Check.That(
+                Check.Text(pending["data"]?["machine_status"]) == "pending" && Check.Text(
+                    pending["data"]?["gates"]?["freshness"]?["reason"]
+                ) == "deadline",
+                "Access deadline became an authority failure"
+            )
+            flow.Reload()
+            Check.That(Check.Text(flow.State["fault_index"]) == "3", "Access freshness deadline was not exercised")
         }
 
         private func CacheRetention(binary string) {

@@ -172,6 +172,8 @@ internal class AccessState {
                 }
             } catch (error CliFailure) {
                 throw error
+            } catch (error ApiDeadlineException) {
+                throw error
             } catch (error Exception) {
                 PublicOutput.ResultData = map[string, Object?]{
                     "repo": repo,
