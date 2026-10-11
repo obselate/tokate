@@ -45,7 +45,7 @@ class ProofRegressions(unittest.TestCase):
             self.assertEqual(list(root.glob('claude.*.download')), [])
 
     def test_package_excludes_unlisted_plugin_files(self):
-        documents = ['owners', 'donors', 'recovery', 'security', 'development', 'nix',
+        documents = ['owners', 'donors', 'arguments', 'recovery', 'security', 'development', 'nix',
                      'alpine', 'linux-security', 'linux-harnesses']
         notices = ['dotnet-LICENSE.TXT', 'dotnet-THIRD-PARTY-NOTICES.TXT', 'GSharp.txt', 'Spectre.Console.txt']
         files = ['scripts/package.sh', 'README.md', 'AGENTS.md', 'LICENSE',
