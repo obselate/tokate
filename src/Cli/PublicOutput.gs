@@ -238,7 +238,19 @@ internal class PublicOutput {
                 ) ? "inference_failed": run.Text("failure_reason")
                 let code = KnownReason(reason) ? reason: "command_failed"
                 result["failure_reason"] = code
-                result["error"] = map[string, Object?]{"code": code, "message": Message(code)}
+                result["error"] = map[string, Object?]{
+                    "code": code,
+                    "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": Message(
+                        code
+                    )
+                }
+                if run.Text("source") == "tokate" && run.Number("pr") == 0 {
+                    result["next"] = map[string, Object?]{
+                        "role": "donor",
+                        "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
+                        "command": []string{"tokate", "help", "prepare", "--json"}
+                    }
+                }
             }
             result["artifacts"] = Artifacts(directory)
             if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
@@ -389,6 +401,9 @@ internal class PublicOutput {
                     }
                     if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
+                    }
+                    if run.Text("state") == "failed" && run.Text("source") == "tokate" && run.Number("pr") == 0 {
+                        Actions.Add([]string{"tokate", "help", "prepare", "--json"})
                     }
                     if code != "stale_approval" && code != "invalid_state" {
                         if run.Number("pr") > 0 {

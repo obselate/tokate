@@ -136,7 +136,7 @@ internal class ContributionStatusChecks {
         }
 
         private func Leases(binary string) {
-            using let test = CoordinationFixture(binary)
+            using let test = CoordinationFlow(binary)
             test.Initialize()
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
@@ -178,6 +178,98 @@ internal class ContributionStatusChecks {
             Check.That(
                 !Directory.Exists(Path.Combine(test.Flow.Temp.Root, "runs")),
                 "Remote status required a local run"
+            )
+            test.Coordinate(test.Event(test.ClaimRequest()))
+            File.WriteAllText(
+                test.Tools,
+                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
+            )
+            let args = []string{
+                "prepare",
+                "owner/project#1",
+                "--state",
+                Check.Text(test.State()["sha"]),
+                "--source",
+                "tokate",
+                "--tools",
+                test.Tools,
+                "--time",
+                "30s",
+                "--verify-time",
+                "10s",
+                "--yes"
+            }
+            let prepared = test.Flow.Call(args)
+            let run = prepared.Output.Substring(prepared.Output.LastIndexOf("Run: ") + 5).Trim()
+            let original = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            test.Lifecycle("pause")
+            test.Lifecycle("resume")
+            test.Lifecycle("renew")
+            let failed = Check.Envelope(
+                test.Flow.Call([]string{"work", "owner/project#1", "--yes", "--json"}, 1),
+                "work",
+                "error",
+                "stale_approval"
+            )
+            Check.That(
+                Check.Text(failed["data"]?["run_state"]?["state"]) == "failed" && Check.Text(
+                    failed["data"]?["run_state"]?["failure_reason"]
+                ) == "stale_approval",
+                "Preflight invalidation was not saved"
+            )
+            let invalidated = File.ReadAllText(Path.Combine(run, "run.json"))
+            let saved = Check.Json(invalidated)
+            for field in[]string{"attempt", "state_sha", "seconds", "verification_reserve"} {
+                Check.That(Check.Text(saved[field]) == Check.Text(original[field]), "Invalidation rebound " + field)
+            }
+            let offline = Check.Envelope(
+                test.Flow.Call([]string{"status", "owner/project#1-1", "--json"}),
+                "status",
+                "ok"
+            )
+            Check.Contains(Check.Text(offline["data"]?["next"]?["action"]), "tokate prepare")
+            Check.Contains(Check.Text(offline["data"]?["next"]?["action"]), "explicit new time budget")
+            Check.That(
+                !(offline["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
+                "Offline status recommends stale work"
+            )
+            let local = test.Flow.Call([]string{"status", "owner/project#1-1", "--plain"})
+            Check.Contains(local.Output, "explicit new time budget")
+            Check.That(!local.Output.Contains("Next: tokate work"), "Terminal status recommends stale work")
+            let remote = Read(test)
+            Check.Contains(Check.Text(Row(remote)["next"]?["action"]), "tokate prepare")
+            Check.That(
+                Row(remote)["next"]?.ToJsonString() == remote["data"]?["next"]?.ToJsonString(),
+                "Issue status retained remote start-work guidance"
+            )
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "run.json")) == invalidated,
+                "Status changed the invalidated attempt"
+            )
+            args[Array.IndexOf(args, "--state") + 1] = Check.Text(test.State()["sha"])
+            args[Array.IndexOf(args, "--time") + 1] = "40s"
+            args[Array.IndexOf(args, "--verify-time") + 1] = "12s"
+            let fresh = test.Flow.Call(args)
+            let accepted = Read(test)
+            Check.Contains(Check.Text(Row(accepted)["next"]?["action"]), "The donor can start work")
+            Check.That(!fresh.Output.Contains(run), "Fresh preparation reused the invalidated attempt")
+            test.Flow.NoInference()
+            test.Flow.Mode("inference_exit_failure")
+            Check.Envelope(
+                test.Flow.Call([]string{"work", "owner/project#1", "--yes", "--json"}, 1),
+                "work",
+                "error",
+                "inference_failed"
+            )
+            let stopped = Check.Envelope(
+                test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                "status",
+                "ok"
+            )
+            Check.Contains(Check.Text(Row(stopped)["next"]?["action"]), "explicit new time budget")
+            Check.That(
+                Row(stopped)["next"]?.ToJsonString() == stopped["data"]?["next"]?.ToJsonString(),
+                "Failed execution retained remote start-work guidance"
             )
         }
 

@@ -466,6 +466,10 @@ internal class Terminal {
             if failure != "" {
                 Row("Error", failure, "red")
             }
+            let next = J.Get(value, "next")
+            if next.ValueKind == System.Text.Json.JsonValueKind.Object {
+                StatusAction(next)
+            }
             let correction = J.Get(value, "correction")
             let correctionState = J.Text(correction, "state")
             if correctionState != "" {
