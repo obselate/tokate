@@ -153,7 +153,8 @@ class GitHubCommands {
         func PullRequest(repo string, pr string) []string ->
         []string{"pr", "view", pr, "--repo", repo, "--json", "state,reviewDecision,statusCheckRollup,url"}
 
-        func SearchIssues(repo string, listing IssueListing, page int32) []string {
+        /// One batch of `IssueListing.BatchPages` pages of matching issues.
+        func SearchIssues(repo string, listing IssueListing, batch int32) []string {
             let number = listing.RequestedNumber()
             if number > 0 {
                 return Issue(repo, number.ToString())
@@ -183,9 +184,9 @@ class GitHubCommands {
                 "-f",
                 "order=desc",
                 "-f",
-                "per_page=" + IssueListing.PageSize.ToString(),
+                "per_page=" + (IssueListing.PageSize * IssueListing.BatchPages).ToString(),
                 "-f",
-                "page=" + page.ToString(),
+                "page=" + batch.ToString(),
             }
         }
     }

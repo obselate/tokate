@@ -53,6 +53,9 @@ data struct IssueListing {
     shared {
         let PageSize int32 = 8
 
+        /// The pages that one search request fetches.
+        let BatchPages int32 = 12
+
         func Empty(filter IssueFilter) IssueListing -> IssueListing{
             Query: "",
             AppliedQuery: "",

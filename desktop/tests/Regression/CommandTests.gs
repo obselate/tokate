@@ -99,7 +99,7 @@ func CommandTests() {
     let listing = IssueListing.Empty(IssueFilter.NeedsApproval) with{AppliedQuery = "empty \"results\""}
     Regression.Equal(
         Regression.Args(GitHubCommands.SearchIssues("o/r", listing, 2)),
-        "api search/issues --method GET -f q=repo:o/r is:issue is:open -label:tokate:approved in:title \"empty\" \"results\" -f sort=updated -f order=desc -f per_page=8 -f page=2",
+        "api search/issues --method GET -f q=repo:o/r is:issue is:open -label:tokate:approved in:title \"empty\" \"results\" -f sort=updated -f order=desc -f per_page=96 -f page=2",
         "issue search arguments"
     )
     Regression.Equal(
