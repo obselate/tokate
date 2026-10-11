@@ -4,7 +4,8 @@ import Goo
 import Goo.Widgets.Inputs
 import System
 
-/// A labeled single-line text field. Zero width resolves to 400.
+/// A labeled single-line text field. Zero width resolves to 400. A bare field shows no label and keeps it
+/// as the accessible name.
 data struct InputField {
     var Label string
     var Value string
@@ -13,13 +14,15 @@ data struct InputField {
     var Width float64
     var OnSubmit Action?
     var Disabled bool
+    var Bare bool
 
     func Build() Blob {
         let p = AppTheme.Current
         let change = OnChange
         let submit = OnSubmit
         let field = TextField{
-            Label: Label,
+            Label: Bare ? nil: Label,
+            AccessibilityName: Label,
             Value: Value,
             OnChange: value -> change?.Invoke(value),
             OnSubmit: _ -> submit?.Invoke(),

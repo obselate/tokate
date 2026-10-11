@@ -232,6 +232,7 @@ func WorkspaceFlow() {
         Settle(host)
         Require(!File.Exists(Path.Combine(fixture, "approved")), "Approval ran before confirmation")
         Choose(host, window, adapter, "Go back")
+        Choose(host, window, adapter, "Back to issues")
         Choose(host, window, adapter, "Setup")
         Settle(host)
         Require(FindText(adapter.Root, "dotnet test"), "Existing verification command was lost")

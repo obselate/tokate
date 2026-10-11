@@ -27,13 +27,44 @@ class ProjectView {
 
     func Build(page PageContext) Blob {
         let state = owner.Current
-        let body = List[Blob]{Heading{Content: "My project", Size: AppTheme.DisplaySize}.Build()}
         let notice = feedback.Current
+        let issue = state.Open && state.Tab == OwnerTab.Contributions && state.Selected != nil
+        let body = List[Blob]()
+        if issue {
+            body.AddRange(contributions.Build(page))
+        } else if state.Open {
+            body.Add(
+                Row{
+                    Children: []Blob{
+                        Heading{Content: owner.Repository, Size: AppTheme.DisplaySize}.Build(),
+                        Spacer{}.Build(),
+                        (page.Button with{Label = "Change project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Close()}).Build(),
+                        (page.Button with{
+                            Label = "Refresh project",
+                            Kind = ButtonKind.Icon,
+                            Icon = "refresh",
+                            OnClick = () -> {
+                                if state.Tab == OwnerTab.Access {
+                                    owner.LoadAccess()
+                                } else {
+                                    owner.Refresh()
+                                }
+                            },
+                        }).Build(),
+                    },
+                }.Build()
+            )
+        } else {
+            body.Add(Heading{Content: "My project", Size: AppTheme.DisplaySize}.Build())
+        }
         if notice.Message != "" {
-            body.Add(Callout{Message: notice.Message, Tone: notice.Tone}.Build())
+            body.Insert(1, Callout{Message: notice.Message, Tone: notice.Tone}.Build())
         }
         if notice.Report != "" {
             body.Add(ReportText{Content: notice.Report}.Build())
+        }
+        if issue {
+            return Stack{Gap: 16, Children: body.ToArray()}.Build()
         }
         if !state.Open {
             body.Add(
@@ -48,15 +79,6 @@ class ProjectView {
             )
             return Stack{Gap: 20, Children: body.ToArray()}.Build()
         }
-        body.Add(
-            Row{
-                Children: []Blob{
-                    Heading{Content: owner.Repository}.Build(),
-                    (page.Button with{Label = "Change project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Close()}).Build(),
-                    (page.Button with{Label = "Refresh project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Refresh()}).Build(),
-                },
-            }.Build()
-        )
         let tabs = List[string]()
         for tab in OwnerTabs.All {
             tabs.Add(OwnerTabs.Label(tab))
@@ -77,6 +99,6 @@ class ProjectView {
         } else {
             body.AddRange(contributions.Build(page))
         }
-        return Stack{Gap: 20, Children: body.ToArray()}.Build()
+        return Stack{Gap: 16, Children: body.ToArray()}.Build()
     }
 }

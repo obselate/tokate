@@ -22,9 +22,11 @@ enum ButtonKind {
 ///
 /// `Icon` names a symbol. Icon buttons show it in place of the label; other kinds show it after the label,
 /// or before it when `IconFirst` is set.
-/// `Count` adds a number after the label.
+/// `Count` adds a number after the label. `Name` replaces the label as the accessible name and as the
+/// action that activity is matched to, for short labels that repeat in a list.
 data struct CommandButton {
     var Label string
+    var Name string
     var OnClick Action?
     var Primary bool
     var Disabled bool
@@ -42,11 +44,14 @@ data struct CommandButton {
     var OnCancel Action?
     var OnActivate Action[string]?
 
-    prop Loading bool -> Running && ActiveAction == Label
+    prop Identity string -> (Name ?? "") == "" ? Label: Name
+
+    prop Loading bool -> Running && ActiveAction == Identity
 
     func Build() Blob {
         let p = AppTheme.Current
         let label = Label
+        let identity = Identity
         let click = OnClick
         let cancel = OnCancel
         let activate = OnActivate
@@ -63,12 +68,12 @@ data struct CommandButton {
         let rest = filled ? p.Ink: Kind == ButtonKind.Segment && Primary ? p.Paper: framed ? p.Surface: Color.Transparent
         let button = ActionButton{
             Content: iconOnly ? "": label,
-            AccessibilityName: loading ? "Cancel command": label,
+            AccessibilityName: loading ? "Cancel command": identity,
             OnClick: () -> {
                 if loading {
                     cancel?.Invoke()
                 } else {
-                    activate?.Invoke(label)
+                    activate?.Invoke(identity)
                     click?.Invoke()
                 }
             },

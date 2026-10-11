@@ -3,7 +3,7 @@ package TokateDesktop
 import Goo
 import System
 
-/// The project's open issues, or one issue's approval and contributions.
+/// The project's open issues, or one issue's approval and draft pull requests.
 class ContributionsTab {
     private let owner OwnerService
 
@@ -17,19 +17,51 @@ class ContributionsTab {
         if let issue = state.Selected {
             let repository = owner.Repository
             let number = issue.NumberText
+            let work = state.WorkFor(number)
+            let status = work != nil && work!!.Drafts.Length > 0 ? "Needs review": work != nil ? work!!.State.Replace('_', ' '): issue.IsApproved ?
+            "Approved": "Needs approval"
             return []Blob{
                 Row{
-                    Children: []Blob{(page.Button with{Label = "Back to issues", Kind = ButtonKind.Quiet, OnClick = () -> owner.Deselect()}).Build()},
+                    Children: []Blob{
+                        (page.Button with{
+                            Label = "Back to issues",
+                            Kind = ButtonKind.Quiet,
+                            Icon = "arrow_back",
+                            IconFirst = true,
+                            OnClick = () -> owner.Deselect(),
+                        }).Build(),
+                        Spacer{}.Build(),
+                        (page.Button with{
+                            Label = "Refresh contribution",
+                            Kind = ButtonKind.Quiet,
+                            Icon = "refresh",
+                            OnClick = () -> owner.Inspect(number),
+                        }).Build(),
+                    },
+                }.Build(),
+                PageTitle{
+                    Title: issue.Title,
+                    Caption: repository + " #" + number,
+                    Links: []Blob{
+                        (page.Button with{
+                            Label = "Open issue",
+                            Name = "Open issue #" + number,
+                            Kind = ButtonKind.Quiet,
+                            Icon = "open_in_new",
+                            AllowWhileBusy = true,
+                            OnClick = () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
+                        }).Build(),
+                    },
+                    Trailing: StatusBadge{Value: status, Tone: Statuses.ToneOf(status)}.Build(),
                 }.Build(),
                 OwnerIssueCard{
                     Issue: issue,
-                    Work: state.WorkFor(number),
+                    Work: work,
+                    Reviews: state.Reviews,
                     CanWrite: state.Project.CanWrite,
                     SupportsApproval: state.Policy.Version >= 2,
                     Compact: page.CompactPanels,
                     Button: page.Button,
-                    OnRefresh: () -> owner.Inspect(number),
-                    OnOpen: () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
                     OnApproval: () -> {
                         if issue.IsApproved {
                             owner.Revoke(issue)
@@ -58,6 +90,7 @@ class ContributionsTab {
                 Listing: search.Current,
                 Short: page.Metrics.Short,
                 Busy: page.Busy,
+                ShowApproval: true,
                 OnChoose: issue -> owner.Select(issue),
             }.Build(),
             IssuePager{

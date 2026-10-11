@@ -34,6 +34,17 @@ data struct IssueWork {
     var Drafts []string
 }
 
+/// The owner's last receipt and CI results for a draft pull request. Empty text means not checked.
+data struct DraftReview {
+    var Pr string
+    var Receipt string
+    var Ci string
+
+    prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" ? Tone.Wait: Tone.Fail
+
+    prop CiTone Tone -> Ci == "passed" ? Tone.Done: Ci == "failed" ? Tone.Fail: Tone.Wait
+}
+
 data struct AccessRequest {
     var Donor string
     var Issue string
@@ -144,12 +155,22 @@ data struct OwnerState {
     var Project ProjectInfo
     var Policy Policy
     var Work []IssueWork
+    var Reviews []DraftReview
     var Access AccessList
     var Selected Issue?
     var Setup SetupDraft
     var Preview SetupPreview
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
+
+    func ReviewFor(pr string) DraftReview {
+        for item in Reviews {
+            if item.Pr == pr {
+                return item
+            }
+        }
+        return DraftReview{Pr: pr, Receipt: "", Ci: ""}
+    }
 
     func WorkFor(number string) IssueWork? {
         for item in Work {
@@ -167,6 +188,7 @@ data struct OwnerState {
             Project: ProjectInfo{Repository: "", Branch: ""},
             Policy: Policy.Empty,
             Work: []IssueWork{},
+            Reviews: []DraftReview{},
             Access: AccessList.Empty,
             Setup: SetupDraft.From(Policy.Empty) with{ModelPolicy = ""},
             Preview: SetupPreview.None,

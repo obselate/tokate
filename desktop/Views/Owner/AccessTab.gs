@@ -4,7 +4,7 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// Donor access: pending requests, current members, and direct grants.
+/// Donor access: pending requests, then the donors with access and direct grants.
 class AccessTab {
     private let owner OwnerService
 
@@ -15,58 +15,50 @@ class AccessTab {
     func Build(page PageContext) Blob {
         let state = owner.Current
         let canWrite = state.Project.CanWrite
-        let body = List[Blob]{
-            Row{
-                Children: []Blob{
-                    (page.Button with{Label = "Refresh access", OnClick = () -> owner.LoadAccess()}).Build(),
-                    (page.Button with{
-                        Label = "Initialize access",
-                        OnClick = () -> owner.ChangeAccess("init", ""),
-                        Disabled = !canWrite || state.Access.AccessSha != "",
-                    }).Build(),
-                },
-            }.Build(),
-        }
-        for request in state.Access.Pending {
-            let donor = request.Donor
-            let issue = request.Issue
+        let body = List[Blob]()
+        if state.Access.Loaded && state.Access.AccessSha == "" {
             body.Add(
-                AccessRequestCard{
-                    Request: request,
-                    CanWrite: canWrite,
+                Panel{
                     Compact: page.CompactPanels,
-                    Button: page.Button,
-                    OnGrant: () -> owner.ChangeAccess("grant", donor, issue),
-                    OnTrust: () -> owner.ChangeAccess("trust", donor),
+                    Children: []Blob{
+                        Row{
+                            Children: []Blob{
+                                Label{Content: "Access is not set up for this project."}.Build(),
+                                Spacer{}.Build(),
+                                (page.Button with{
+                                    Label = "Initialize access",
+                                    OnClick = () -> owner.ChangeAccess("init", ""),
+                                    Primary = true,
+                                    Disabled = !canWrite,
+                                }).Build(),
+                            },
+                        }.Build(),
+                    },
                 }.Build()
             )
         }
-        for member in state.Access.Members {
-            let donor = member.Donor
-            let trust = member.Trusted ? "untrust": "trust"
-            let deny = member.Denied ? "restore": "deny"
+        if state.Access.Pending.Length > 0 {
             body.Add(
-                AccessMemberCard{
-                    Member: member,
+                AccessRequests{
+                    Requests: state.Access.Pending,
                     CanWrite: canWrite,
-                    Compact: page.CompactPanels,
                     Button: page.Button,
-                    OnTrust: () -> owner.ChangeAccess(trust, donor),
-                    OnDeny: () -> owner.ChangeAccess(deny, donor),
+                    OnGrant: request -> owner.ChangeAccess("grant", request.Donor, request.Issue),
+                    OnTrust: request -> owner.ChangeAccess("trust", request.Donor),
                 }.Build()
             )
         }
         body.Add(
-            GrantAccessForm.Mount(
-                GrantAccessInput{
+            DonorList.Mount(
+                DonorListInput{
                     Owner: owner,
+                    Members: state.Access.Members,
                     CanWrite: canWrite,
                     Busy: page.Busy,
-                    Compact: page.CompactPanels,
                     Button: page.Button,
                 }
             )
         )
-        return Stack{Gap: 18, Children: body.ToArray()}.Build()
+        return Stack{Gap: 16, Children: body.ToArray()}.Build()
     }
 }

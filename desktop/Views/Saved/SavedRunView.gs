@@ -2,6 +2,7 @@ package TokateDesktop
 
 import Goo
 import System
+import System.Collections.Generic
 
 /// The selected saved run and what can be done with it next.
 class SavedRunView {
@@ -26,6 +27,27 @@ class SavedRunView {
             OnPublish: () -> saved.Act(RunAction.Amend),
             OnCancel: () -> saved.ToggleAmendment(),
         }.Build(): nil
+        let item = state.Chosen
+        let links = List[Blob]{
+            (page.Button with{
+                Label = "Open issue",
+                Kind = ButtonKind.Quiet,
+                Icon = "open_in_new",
+                AllowWhileBusy = true,
+                OnClick = () -> Browser.Open("https://github.com/" + run.Repo + "/issues/" + run.Issue.ToString()),
+            }).Build(),
+        }
+        if run.Pr > 0 {
+            links.Add(
+                (page.Button with{
+                    Label = "Open pull request",
+                    Kind = ButtonKind.Quiet,
+                    Icon = "open_in_new",
+                    AllowWhileBusy = true,
+                    OnClick = () -> Browser.Open("https://github.com/" + run.Repo + "/pull/" + run.Pr.ToString()),
+                }).Build()
+            )
+        }
         return []Blob{
             Row{
                 Children: []Blob{
@@ -45,11 +67,11 @@ class SavedRunView {
                     }).Build(),
                 },
             }.Build(),
-            RunHeader{
-                Item: state.Chosen,
-                Button: page.Button,
-                OnOpenIssue: () -> Browser.Open("https://github.com/" + run.Repo + "/issues/" + run.Issue.ToString()),
-                OnOpenPullRequest: () -> Browser.Open("https://github.com/" + run.Repo + "/pull/" + run.Pr.ToString()),
+            PageTitle{
+                Title: item.Title == "" ? run.Identity: item.Title,
+                Caption: item.Title == "" ? "": run.Identity,
+                Links: links.ToArray(),
+                Trailing: StatusBadge{Value: item.Status(), Tone: Statuses.ToneOf(item.Status())}.Build(),
             }.Build(),
             RunDetails{
                 Item: state.Chosen,

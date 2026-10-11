@@ -8,6 +8,7 @@ data struct IssueTable {
     var Listing IssueListing
     var Short bool
     var Busy bool
+    var ShowApproval bool
     var OnChoose Action[Issue]?
 
     func Build() Blob {
@@ -15,7 +16,7 @@ data struct IssueTable {
         let table = ListPanel{Short: Short}.Build()
         for issue in Listing.Rows {
             let selected = issue
-            table.Children.Add(IssueRow{Issue: issue, Disabled: Busy, OnChoose: () -> choose?.Invoke(selected)}.Build())
+            table.Children.Add(IssueRow{Issue: issue, Disabled: Busy, ShowApproval: ShowApproval, OnChoose: () -> choose?.Invoke(selected)}.Build())
         }
         if Listing.Loaded && Listing.Rows.Length == 0 && !Busy {
             table.Children.Add(EmptyMessage{Content: "No matching issues"}.Build())

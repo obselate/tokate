@@ -97,7 +97,7 @@ class OwnerService {
     func Close() -> Set(Current with{Open = false})
 
     func Refresh() {
-        Set(Current with{Work = []IssueWork{}, Selected = nil})
+        Set(Current with{Work = []IssueWork{}, Reviews = []DraftReview{}, Selected = nil})
         Issues.Search(1, true)
     }
 
@@ -168,13 +168,16 @@ class OwnerService {
             TokateCommands.PullRequestCheck(command, Repository, pr),
             PullRequestCodec.ChecksStatus,
             (reply Reply[string]) -> {
-                if commands.Failed(reply.Outcome) {
+                let failed = commands.Failed(reply.Outcome)
+                let status = (reply.Value ?? "").Replace('_', ' ')
+                if command != "verify-pr" && status == "" {
                     return
                 }
-                feedback.Show(
-                    command == "verify-pr" ? "PR #" + pr + " receipt verified. Review the diff before accepting.":
-                    "PR #" + pr + ": " + (reply.Value ?? "").Replace('_', ' ')
-                )
+                let known = Current.ReviewFor(pr)
+                let reviews = List[DraftReview](Current.Reviews)
+                reviews.RemoveAll(existing -> existing.Pr == pr)
+                reviews.Add(command == "verify-pr" ? known with{Receipt = failed ? "failed": "verified"}: known with{Ci = status})
+                Set(Current with{Reviews = reviews.ToArray()})
             }
         )
     }

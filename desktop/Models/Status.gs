@@ -11,6 +11,7 @@ class Statuses {
             "Claimed, not started",
             "Access requested",
             "Needs approval",
+            "Needs review",
             "generated",
             "incomplete generated",
             "verified",
