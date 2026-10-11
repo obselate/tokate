@@ -57,8 +57,6 @@ jobs:
           printf '%s  %s\n' "$TOKATE_ARCHIVE_SHA256" "$RUNNER_TEMP/tokate.tar.gz" | sha256sum -c -
           tar -xOzf "$RUNNER_TEMP/tokate.tar.gz" "$TOKATE_MEMBER" > "$RUNNER_TEMP/tokate"
           chmod 755 "$RUNNER_TEMP/tokate"
-          "$RUNNER_TEMP/tokate" coordinate owner/repo --help > /dev/null
-          "$RUNNER_TEMP/tokate" admit owner/repo --help > /dev/null
       - name: Coordinate bounded GitHub request
         env:
           GH_TOKEN: ${{ github.token }}

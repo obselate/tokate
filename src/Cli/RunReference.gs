@@ -24,8 +24,14 @@ internal class RunReference {
                 (command.Target != "run" && !named && !optional) {
                 return
             }
-            if args.Command == "work" && !named && args.Get("profile") != "" {
-                return
+            if args.Command == "work" && !named {
+                for key in args.Values.Keys {
+                    if key != "--repo" && key != "--issue" && key != "--runs" && command.ConflictsWithRun(
+                        key.Substring(2)
+                    ) {
+                        return
+                    }
+                }
             }
             var repo = args.Get("repo")
             if repo == "" {
