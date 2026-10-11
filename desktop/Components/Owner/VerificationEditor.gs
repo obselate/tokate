@@ -17,14 +17,14 @@ open class VerificationEditor : Cell[SetupEditorInput] {
 
     protected override func Build(input SetupEditorInput) Blob {
         let owner = input.Owner
-        let rows = List[Blob]{Heading{Content: "Verification", Size: 28}.Build()}
+        let rows = List[Blob]{Heading{Content: "Verification"}.Build()}
         let commands = input.Setup.Commands
         for index in 0 ... commands.Length {
             let current = index
             rows.Add(
                 Row{
                     Children: []Blob{
-                        Label{Content: String.Join(" ", commands[index]), Size: 20}.Build(),
+                        Label{Content: String.Join(" ", commands[index]), Mono: true}.Build(),
                         (input.Button with{
                             Label = "Remove command " + (index + 1).ToString(),
                             OnClick = () -> owner.RemoveCommand(current),

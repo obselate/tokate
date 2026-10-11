@@ -6,5 +6,5 @@ import Goo
 data struct EmptyMessage {
     var Content string
 
-    func Build() Text -> Label{Content: Content, Size: 24}.Build()
+    func Build() Text -> Label{Content: Content, Size: AppTheme.ItemSize}.Build()
 }

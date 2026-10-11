@@ -30,14 +30,14 @@ data struct IssueRow {
                 Disabled: Disabled,
                 Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: "Issue #" + number + ": " + Issue.Title},
                 OnClick: () -> choose?.Invoke(),
-                Container{Width: 65, FlexShrink: 0, Label{Content: "#" + number, Size: 18, Muted: true}.Build()},
+                Container{Width: 65, FlexShrink: 0, Label{Content: "#" + number, Muted: true}.Build()},
                 Container{
                     FlexGrow: 1,
                     FlexBasis: 0,
                     MinWidth: 0,
-                    Heading{Content: Issue.Title, Size: 24, MaxLines: 2}.Build(),
+                    Heading{Content: Issue.Title, Size: AppTheme.ItemSize, MaxLines: 2}.Build(),
                 },
-                Label{Content: Issue.IsApproved ? "Approved": "Open", Size: 16, Muted: true}.Build(),
+                StatusBadge{Value: Issue.IsApproved ? "Approved": "Open", Tone: Issue.IsApproved ? Tone.Done: Tone.Wait}.Build(),
             }
         )
     }

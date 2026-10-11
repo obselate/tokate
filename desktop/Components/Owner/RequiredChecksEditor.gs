@@ -13,12 +13,12 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
         let tags = List[Blob]()
         for check in input.Setup.Checks {
             let selected = check
-            tags.Add((input.Button with{Label = check + " ×", OnClick = () -> owner.RemoveCheck(selected)}).Build())
+            tags.Add((input.Button with{Label = check, Icon = "close", OnClick = () -> owner.RemoveCheck(selected)}).Build())
         }
         return Stack{
             Gap: 18,
             Children: []Blob{
-                Heading{Content: "Required CI checks", Size: 28}.Build(),
+                Heading{Content: "Required CI checks"}.Build(),
                 Row{Children: tags.ToArray()}.Build(),
                 Row{
                     Children: []Blob{

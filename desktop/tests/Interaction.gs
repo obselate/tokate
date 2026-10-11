@@ -346,10 +346,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
             Find(adapter.Root, AccessibilityRole.Text, "a purpose.") != nil,
             "Navigation is blocked during reservation"
         )
-        Require(
-            Find(adapter.Root, AccessibilityRole.Text, "Reserving donation") == nil,
-            "Reservation activity leaked to another view"
-        )
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Show Reserving donation")
         Activate(window, adapter, "Switch to moonlight")
         Settle(host)
         Require(

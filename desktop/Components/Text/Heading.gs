@@ -2,7 +2,7 @@ package TokateDesktop
 
 import Goo
 
-/// Display text in the heading face. Zero size resolves to 42 and nil ink to the theme ink.
+/// Display text in the heading face. Zero size resolves to the title size and nil ink to the theme ink.
 data struct Heading {
     var Content string
     var Size float64
@@ -15,7 +15,7 @@ data struct Heading {
             Content: Content,
             FontFamily: AppTheme.HeadingFont,
             FontWeight: 500,
-            FontSize: Size == 0 ? 42: Size,
+            FontSize: Size == 0 ? AppTheme.TitleSize: Size,
             Color: Ink ?? AppTheme.Current.Ink,
         }
         if Italic {

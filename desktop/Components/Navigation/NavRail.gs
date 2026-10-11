@@ -2,8 +2,8 @@ package TokateDesktop
 
 import Goo
 
-/// Primary navigation: a left rail with a header, or a top bar when compact. `Footer` items sit at the
-/// bottom of the rail and at the end of the bar.
+/// Primary navigation: a left rail with a header, or a top bar when compact. The header moves the window when
+/// dragged. `Footer` items sit at the bottom of the rail and at the end of the bar.
 data struct NavRail {
     var Header Blob?
     var Items []Blob
@@ -22,7 +22,6 @@ data struct NavRail {
                 FlexDirection: FlexDirection.Row,
                 Padding: Edges{Left: 8, Right: 8, Bottom: 4},
                 Gap: 2,
-                BackgroundColor: AppTheme.Current.Paper,
                 BorderWidth: Edges{Bottom: 1},
                 BorderColor: AppTheme.Current.Line,
             }
@@ -38,14 +37,16 @@ data struct NavRail {
             Key: "navigation",
             Width: Narrow ? 202: 226,
             FlexShrink: 0,
-            Padding: Edges{Left: 20, Right: 20, Top: 28, Bottom: 24},
+            Padding: Edges{Left: 20, Right: 20, Bottom: 24},
             BorderWidth: Edges{Right: 1},
             BorderColor: AppTheme.Current.Line,
             Gap: 10,
         }
         if let header = Header {
-            rail.Children.Add(header)
+            rail.Children.Add(Window.DragRegion(Container{Padding: Edges{Top: 28}, header}))
             rail.Children.Add(Rule{Spacing: 14}.Build())
+        } else {
+            rail.Padding = Edges{Left: 20, Right: 20, Top: 28, Bottom: 24}
         }
         for item in items {
             rail.Children.Add(item)

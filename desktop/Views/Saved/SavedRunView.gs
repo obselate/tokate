@@ -28,8 +28,8 @@ class SavedRunView {
         return []Blob{
             Row{
                 Children: []Blob{
-                    (page.Button with{Label = "Back to contributions", OnClick = () -> saved.Back()}).Build(),
-                    (page.Button with{Label = "Refresh status", OnClick = () -> saved.LoadRun()}).Build(),
+                    (page.Button with{Label = "Back to contributions", Kind = ButtonKind.Quiet, OnClick = () -> saved.Back()}).Build(),
+                    (page.Button with{Label = "Refresh status", Kind = ButtonKind.Quiet, OnClick = () -> saved.LoadRun()}).Build(),
                 },
             }.Build(),
             RunDetails{

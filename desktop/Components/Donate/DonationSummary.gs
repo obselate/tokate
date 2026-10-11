@@ -18,8 +18,8 @@ data struct DonationSummary {
             Stack{
                 Gap: 16,
                 Children: []Blob{
-                    Heading{Content: "#" + Issue + "  " + Title, Size: 27}.Build(),
-                    Label{Content: Repository, Size: 17, Muted: true}.Build(),
+                    Heading{Content: "#" + Issue + "  " + Title}.Build(),
+                    Label{Content: Repository, Size: AppTheme.SmallSize, Muted: true}.Build(),
                     Rule{}.Build(),
                     Row{
                         Children: []Blob{

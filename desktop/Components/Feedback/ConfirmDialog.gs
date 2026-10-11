@@ -32,7 +32,7 @@ data struct ConfirmDialog {
             ModalDialog{
                 Open: Open,
                 KeyBindings: KeyBindings,
-                Header: Heading{Content: Title, Size: 32}.Build(),
+                Header: Heading{Content: Title}.Build(),
                 Content: Container{
                     MinHeight: 0,
                     FlexShrink: 1,
@@ -78,7 +78,7 @@ data struct ConfirmDialog {
             Padding: Edges{Left: 16, Right: 16},
             BorderWidth: 1,
             BorderColor: AppTheme.Current.Line,
-            BorderRadius: 5,
+            BorderRadius: AppTheme.ControlRadius,
             BackgroundColor: AppTheme.Current.Paper,
             Focusable: true,
             Focus: AppTheme.FocusStyle(),

@@ -44,7 +44,7 @@ data struct TimeLimits {
             children.Add(
                 Label{
                     Content: "Coding + verification limit: " + (Policy.MaxSeconds / 60).ToString() + " minutes.",
-                    Size: 16,
+                    Size: AppTheme.SmallSize,
                     Muted: true,
                 }.Build()
             )

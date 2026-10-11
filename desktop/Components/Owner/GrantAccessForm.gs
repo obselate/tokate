@@ -22,7 +22,7 @@ open class GrantAccessForm : Cell[GrantAccessInput] {
         return Panel{
             Compact: input.Compact,
             Children: []Blob{
-                Heading{Content: "Grant access", Size: 28}.Build(),
+                Heading{Content: "Grant access"}.Build(),
                 Row{
                     Children: []Blob{
                         InputField{

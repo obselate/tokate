@@ -15,7 +15,7 @@ data struct CancelButton {
                 Padding: Edges{Left: 14, Right: 14, Top: 8, Bottom: 8},
                 BorderWidth: 1,
                 BorderColor: AppTheme.Current.Line,
-                BorderRadius: 4,
+                BorderRadius: AppTheme.ControlRadius,
                 Disabled: Stopping,
                 Focusable: true,
                 Focus: AppTheme.FocusStyle(),
@@ -24,7 +24,7 @@ data struct CancelButton {
                 OnClick: () -> {
                     cancel?.Invoke()
                 },
-                Label{Content: Stopping ? "Stopping": "Cancel", Size: 17}.Build(),
+                Label{Content: Stopping ? "Stopping": "Cancel", Size: AppTheme.SmallSize}.Build(),
             }
         )
     }

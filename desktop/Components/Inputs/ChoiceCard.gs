@@ -29,7 +29,7 @@ data struct ChoiceCard {
                 BackgroundColor: Selected ? p.Paper: p.Surface,
                 BorderWidth: Selected ? 2: 1,
                 BorderColor: Selected ? p.Accent: p.Line,
-                BorderRadius: 6,
+                BorderRadius: AppTheme.ControlRadius,
                 Disabled: Disabled,
                 Focusable: true,
                 Focus: AppTheme.FocusStyle(),
@@ -42,7 +42,7 @@ data struct ChoiceCard {
                     AlignItems: AlignItems.Center,
                     Gap: 12,
                     MaterialIcons.Create(Icon, 24, p.Accent),
-                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Heading{Content: Title, Size: 27}.Build()},
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Heading{Content: Title, Size: AppTheme.ItemSize}.Build()},
                     MaterialIcons.Create("check_circle", 18, Selected ? p.Accent: Color.Transparent),
                 },
             }

@@ -11,7 +11,25 @@ data struct Palette {
     var Accent Color
     var Line Color
     var ChromeHover Color
-    var CloseHover Color
+    var Ok Color
+    var Fail Color
+}
+
+/// The group of a status or message, by who must act next.
+enum Tone {
+    Need,
+    Wait,
+    Done,
+    Fail
+}
+
+/// The colors and icon that show a tone. Tones without an icon have an empty name.
+data struct ToneLook {
+    var Fill Color
+    var Ink Color
+    var Line Color
+    var Edge Color
+    var Icon string
 }
 
 class AppTheme {
@@ -24,7 +42,8 @@ class AppTheme {
             Accent: Color.Parse("#97492E"),
             Line: Color.Parse("#D7CCB7"),
             ChromeHover: Color.Parse("#E4D4B8"),
-            CloseHover: Color.Parse("#97492E"),
+            Ok: Color.Parse("#4F6B3A"),
+            Fail: Color.Parse("#8E2F3C"),
         }
         let Moonlight Palette = Palette{
             Paper: Color.Parse("#23324B"),
@@ -34,13 +53,21 @@ class AppTheme {
             Accent: Color.Parse("#E2BB80"),
             Line: Color.Parse("#526076"),
             ChromeHover: Color.Parse("#35485F"),
-            CloseHover: Color.Parse("#AA563A"),
+            Ok: Color.Parse("#A9C08A"),
+            Fail: Color.Parse("#EFA08F"),
         }
         let BodyFont string = "Newsreader"
         let HeadingFont string = "Cormorant"
         let MonoFont string = "monospace"
         let StoneInk Color = Color.Parse("#303B2B")
-        let CloseInk Color = Color.Parse("#FFF8EB")
+        let DisplaySize float64 = 38
+        let TitleSize float64 = 28
+        let ItemSize float64 = 22
+        let BodySize float64 = 18
+        let SmallSize float64 = 16
+        let CodeSize float64 = 14
+        let ControlRadius float64 = 5
+        let PanelRadius float64 = 8
         let WindowBackground Color = Color.Parse("#F3E7D4")
 
         var Current Palette = Daylight
@@ -56,7 +83,8 @@ class AppTheme {
             Accent: Mix(day.Accent, night.Accent, t),
             Line: Mix(day.Line, night.Line, t),
             ChromeHover: Mix(day.ChromeHover, night.ChromeHover, t),
-            CloseHover: Mix(day.CloseHover, night.CloseHover, t),
+            Ok: Mix(day.Ok, night.Ok, t),
+            Fail: Mix(day.Fail, night.Fail, t),
         }
 
         func Mix(day Color, night Color, amount float64) Color {
@@ -72,6 +100,37 @@ class AppTheme {
         func Apply(twilight float64) {
             Twilight = twilight
             Current = Blend(Daylight, Moonlight, twilight)
+        }
+
+        func Look(tone Tone) ToneLook -> switch tone {
+            case Tone.Wait: ToneLook{
+                Fill: Color.Transparent,
+                Ink: Current.Muted,
+                Line: Current.Line,
+                Edge: Current.Muted,
+                Icon: "hourglass_top",
+            }
+            case Tone.Done: ToneLook{
+                Fill: Mix(Current.Surface, Current.Ok, 0.16),
+                Ink: Current.Ok,
+                Line: Color.Transparent,
+                Edge: Current.Ok,
+                Icon: "task_alt",
+            }
+            case Tone.Fail: ToneLook{
+                Fill: Mix(Current.Surface, Current.Fail, 0.14),
+                Ink: Current.Fail,
+                Line: Color.Transparent,
+                Edge: Current.Fail,
+                Icon: "error",
+            }
+            default: ToneLook{
+                Fill: Current.Accent,
+                Ink: Current.Surface,
+                Line: Color.Transparent,
+                Edge: Current.Accent,
+                Icon: "",
+            }
         }
 
         func FocusStyle() Style -> FocusVisible ? Style{OutlineWidth: 2, OutlineColor: Current.Accent, OutlineOffset: 2}: Style{}

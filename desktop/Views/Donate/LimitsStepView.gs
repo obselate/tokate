@@ -16,7 +16,7 @@ class LimitsStepView {
         let state = donation.Current
         let draft = state.Draft
         let tools = List[Blob]{
-            Heading{Content: "Coding tool", Size: 28}.Build(),
+            Heading{Content: "Coding tool"}.Build(),
             HarnessPicker{Selected: draft.Harness, Disabled: page.Busy, OnChoose: id -> donation.ChooseHarness(id)}.Build(),
         }
         if state.Profiles.Length > 0 {
@@ -48,7 +48,7 @@ class LimitsStepView {
             }.Build()
         )
         return []Blob{
-            Heading{Content: state.Identity + "  " + state.IssueTitle, Size: 27}.Build(),
+            Heading{Content: state.Identity + "  " + state.IssueTitle}.Build(),
             CardColumns{
                 Stacked: page.Metrics.ContentWidth < 740,
                 Cards: []Container{

@@ -3,7 +3,7 @@ package TokateDesktop
 import Goo
 import System
 
-/// Previous and next page buttons with a page summary. Buttons are derived from `Button`; narrow pagers stack.
+/// A page summary with previous and next icon buttons derived from `Button`. Narrow pagers stack.
 data struct Pager {
     var Button CommandButton
     var Page int32
@@ -17,9 +17,24 @@ data struct Pager {
         let page = Page
         let buttons = Row{
             Children: []Blob{
-                (Button with{Label = "Previous page", Primary = false, OnClick = () -> change?.Invoke(page - 1), Disabled = page <= 1}).Build(),
-                (Button with{Label = "Next page", Primary = false, OnClick = () -> change?.Invoke(page + 1), Disabled = page >= LastPage}).Build(),
+                (Button with{
+                    Label = "Previous page",
+                    Kind = ButtonKind.Icon,
+                    Icon = "chevron_left",
+                    Primary = false,
+                    OnClick = () -> change?.Invoke(page - 1),
+                    Disabled = page <= 1,
+                }).Build(),
+                (Button with{
+                    Label = "Next page",
+                    Kind = ButtonKind.Icon,
+                    Icon = "chevron_right",
+                    Primary = false,
+                    OnClick = () -> change?.Invoke(page + 1),
+                    Disabled = page >= LastPage,
+                }).Build(),
             },
+            Gap: 8,
             Justify: JustifyContent.FlexEnd,
         }.Build()
         buttons.FlexGrow = Narrow ? 0: 1
@@ -29,7 +44,8 @@ data struct Pager {
             Gap: 12,
             Label{
                 Content: "Page " + Page.ToString() + " of " + LastPage.ToString() + "  ·  " + Summary,
-                Size: 17,
+                Size: AppTheme.SmallSize,
+                Muted: true,
             }.Build(),
             buttons,
         }

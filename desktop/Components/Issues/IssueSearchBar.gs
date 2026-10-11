@@ -52,7 +52,7 @@ data struct IssueSearchBar {
             )
         }
         if Listing.Truncated {
-            body.Children.Add(Label{Content: "Refine your search to see all matching issues.", Size: 17}.Build())
+            body.Children.Add(Label{Content: "Refine your search to see all matching issues.", Size: AppTheme.SmallSize}.Build())
         }
         return body
     }

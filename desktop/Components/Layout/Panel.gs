@@ -15,7 +15,7 @@ data struct Panel {
             BackgroundColor: AppTheme.Current.Surface,
             BorderWidth: 1,
             BorderColor: AppTheme.Current.Line,
-            BorderRadius: 8,
+            BorderRadius: AppTheme.PanelRadius,
             Children: Children ?? []Blob{},
         }
         if let name = Name {

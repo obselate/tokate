@@ -24,7 +24,7 @@ data struct Dropdown {
                 Width: Width,
                 MaxWidth: Percent(100),
                 Gap: 6,
-                Label{Content: Caption, Size: 16, Muted: true}.Build(),
+                Label{Content: Caption, Size: AppTheme.SmallSize, Muted: true}.Build(),
                 Cell.Mount[ComboBoxInput, ComboBox](
                     nil,
                     ComboBoxInput{
@@ -45,7 +45,7 @@ data struct Dropdown {
                             button.Height = 44
                             button.BackgroundColor = p.Surface
                             button.BorderColor = p.Line
-                            button.BorderRadius = 5
+                            button.BorderRadius = AppTheme.ControlRadius
                             button.Focus = AppTheme.FocusStyle()
                             button.Hover = Style{BorderColor: p.Accent}
                             return button

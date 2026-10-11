@@ -24,8 +24,8 @@ class RootView : Cell {
         app.Theme.Bind(Animate(0.0))
         loadingPulse = Animate(1.0)
         donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> OpenSaved(path))
-        project = ProjectView(app.Owner)
-        saved = SavedView(app.Saved)
+        project = ProjectView(app.Owner, app.Feedback)
+        saved = SavedView(app.Saved, app.Feedback)
         welcome = WelcomeView(app, next -> Navigate(next))
         appearance = AppearanceView(app)
         app.Commands.RememberRun = path -> app.Saved.Remember(path)
@@ -73,8 +73,7 @@ class RootView : Cell {
             loadingPulse.Set(1.0)
             pulsing = false
             pulseElapsed = -1
-        } else if !activity.Streaming &&
-            app.Navigation.Current == activity.Page &&
+        } else if !(activity.Streaming && app.Navigation.Current == activity.Page) &&
             (!pulsing || pulseElapsed != activity.Elapsed) {
             pulsing = true
             pulseElapsed = activity.Elapsed
@@ -116,7 +115,6 @@ class RootView : Cell {
     private func NavigationItem(destination Destination) Blob -> NavItem{
         Title: Destinations.Label(destination),
         Caption: Destinations.Caption(destination),
-        Numeral: Destinations.Numeral(destination),
         Selected: app.Navigation.Current == destination,
         Compact: app.Window.Metrics.Compact,
         OnSelect: () -> Navigate(destination),
@@ -167,7 +165,7 @@ class RootView : Cell {
         }
         let body = List[Blob]()
         if confirmation.Heading != "" {
-            body.Add(Heading{Content: confirmation.Heading, Size: 25}.Build())
+            body.Add(Heading{Content: confirmation.Heading}.Build())
         }
         if confirmation.Tiles.Length > 0 {
             let tiles = List[Blob]()
@@ -213,7 +211,8 @@ class RootView : Cell {
             default: welcome.Build()
         }
         let isWelcome = page == Destination.Welcome
-        let donating = page == Destination.Donate && donate.IsDonating
+        let activity = app.Activity.Current
+        let away = activity.Busy && activity.Visible && activity.Page != page
         let live = page == Destination.Donate && donate.IsLive
         let browsing = switch page {
             case Destination.Donate: donate.IsBrowsing
@@ -231,10 +230,11 @@ class RootView : Cell {
             Children: []Blob{content},
         }.Build()
         let feedback = app.Feedback.Current
-        if feedback.Message != "" && !donating && page != Destination.Donate {
+        let plain = isWelcome || page == Destination.Appearance
+        if feedback.Message != "" && plain {
             frame.Children.Add(Notice{Message: feedback.Message}.Build())
         }
-        if feedback.Report != "" && !donating && page != Destination.Donate {
+        if feedback.Report != "" && plain {
             frame.Children.Add(ReportText{Content: feedback.Report}.Build())
         }
         var overlay Blob? = nil
@@ -250,9 +250,15 @@ class RootView : Cell {
                     "chrome",
                     WindowBarInput{
                         Host: app.Window.Window,
-                        Transparent: isWelcome,
                         Night: app.Theme.Settings.Night,
+                        Compact: metrics.Compact,
+                        Running: away ? activity.Title: "",
+                        Elapsed: DonationProgress.ElapsedText(activity.Elapsed),
+                        Stopping: activity.Stopping,
+                        Pulse: loadingPulse.Value,
                         OnToggleTheme: () -> app.Theme.Toggle(),
+                        OnShowRunning: () -> Navigate(activity.Page),
+                        OnCancel: () -> app.Activity.Cancel(),
                     }
                 ),
                 Navigation: metrics.Compact ? Sidebar(): nil,
@@ -261,6 +267,7 @@ class RootView : Cell {
                 Padding: isWelcome ? 0: metrics.Compact ? 16: 28,
             }.Build(),
             Overlay: overlay,
+            Framed: app.Window.Framed,
             KeyBindings: WidgetKeyBindings.Editing(app.Window.PlatformInput),
             OnKeyDown: event -> app.Window.KeyNavigation(event),
             OnPointerDown: event -> app.Window.FocusHints(false),

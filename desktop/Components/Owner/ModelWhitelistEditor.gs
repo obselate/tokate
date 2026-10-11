@@ -17,7 +17,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
             rows.Add(
                 Row{
                     Children: []Blob{
-                        Label{Content: key + " / " + String.Join(", ", allowance.Efforts), Size: 20}.Build(),
+                        Label{Content: key + " / " + String.Join(", ", allowance.Efforts)}.Build(),
                         (input.Button with{Label = "Remove " + key, OnClick = () -> owner.RemoveModel(key)}).Build(),
                     },
                 }.Build()

@@ -21,7 +21,7 @@ data struct SetupReview {
         let review = Panel{
             Compact: Compact,
             Children: []Blob{
-                Heading{Content: "Project setup", Size: 28}.Build(),
+                Heading{Content: "Project setup"}.Build(),
                 InputField{
                     Label: "Local checkout",
                     Value: Path,
@@ -44,7 +44,7 @@ data struct SetupReview {
             },
         }.Build()
         if Preview.Text != "" {
-            review.Children.Add(ReportText{Content: Preview.Text, Size: 14, MaxHeight: 420}.Build())
+            review.Children.Add(ReportText{Content: Preview.Text, MaxHeight: 420}.Build())
         }
         return review
     }

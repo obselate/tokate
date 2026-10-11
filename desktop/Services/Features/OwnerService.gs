@@ -55,7 +55,7 @@ class OwnerService {
                 (reply Reply[ProjectInfo]) -> Opened(reply)
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 
@@ -106,7 +106,7 @@ class OwnerService {
             TokateCommands.OwnerDoctor(),
             (outcome CommandOutcome) -> {
                 if !commands.Failed(outcome) {
-                    feedback.Show("Owner prerequisites checked.")
+                    feedback.Show("Owner prerequisites checked.", Tone.Done)
                 }
             }
         )
@@ -328,7 +328,7 @@ class OwnerService {
                 directory: setup.Path
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 
@@ -362,7 +362,7 @@ class OwnerService {
                                 Set(Current with{Preview = Current.Preview with{Arguments = []string{}}})
                                 if outcome.ExitCode == 0 {
                                     Set(Current with{Preview = SetupPreview.None})
-                                    feedback.Show("Setup saved. Review and commit the files before approving issues.")
+                                    feedback.Show("Setup saved. Review and commit the files before approving issues.", Tone.Done)
                                 }
                             },
                             directory: directory

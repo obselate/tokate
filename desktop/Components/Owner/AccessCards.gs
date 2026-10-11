@@ -17,9 +17,9 @@ data struct AccessRequestCard {
         Children: []Blob{
             Row{
                 Children: []Blob{
-                    Heading{Content: Request.Donor, Size: 28}.Build(),
-                    StatusBadge{Value: "Access requested"}.Build(),
-                    Label{Content: "#" + Request.Issue, Size: 22}.Build(),
+                    Heading{Content: Request.Donor}.Build(),
+                    StatusBadge{Value: "Access requested", Tone: Tone.Need}.Build(),
+                    Label{Content: "#" + Request.Issue}.Build(),
                 },
             }.Build(),
             Row{
@@ -51,8 +51,8 @@ data struct AccessMemberCard {
         Children: []Blob{
             Row{
                 Children: []Blob{
-                    Heading{Content: Member.Donor, Size: 28}.Build(),
-                    StatusBadge{Value: Member.Badge}.Build(),
+                    Heading{Content: Member.Donor}.Build(),
+                    StatusBadge{Value: Member.Badge, Tone: Statuses.ToneOf(Member.Badge)}.Build(),
                 },
             }.Build(),
             Row{

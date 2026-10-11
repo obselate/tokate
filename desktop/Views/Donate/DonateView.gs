@@ -39,7 +39,7 @@ class DonateView {
         }
         let body = List[Blob]{Header(step)}
         if message != "" {
-            body.Add(Callout{Message: message}.Build())
+            body.Add(Callout{Message: message, Tone: feedback.Current.Tone}.Build())
         }
         if step == DonationStep.Issue {
             body.AddRange(issue.Build(page))
@@ -54,7 +54,7 @@ class DonateView {
     private func Header(step DonationStep) Blob -> Stack{
         Gap: 18,
         Children: []Blob{
-            Heading{Content: DonationSteps.Heading(step), Size: 38}.Build(),
+            Heading{Content: DonationSteps.Heading(step), Size: AppTheme.DisplaySize}.Build(),
             StepIndicator{
                 Names: DonationSteps.Names,
                 Numerals: DonationSteps.Numerals,

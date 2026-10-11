@@ -11,7 +11,7 @@ class FeedbackService {
         this.changed = changed
     }
 
-    func Show(message string) -> Set(Current with{Message = message})
+    func Show(message string, tone Tone = Tone.Need) -> Set(Current with{Message = message, Tone = tone})
 
     func ShowReport(report string) -> Set(Current with{Report = report})
 
@@ -21,11 +21,12 @@ class FeedbackService {
     func ShowOutcome(outcome CommandOutcome) -> Show(
         outcome.Failure != "" ? outcome.Failure: outcome.Pending ?
         "Pending. Another person or the coordinator needs to act.": outcome.ExitCode != 0 ?
-        "This action needs attention.": ""
+        "This action needs attention.": "",
+        outcome.Failure != "" ? Tone.Fail: Tone.Need
     )
 
     /// Shows why a finished command failed and clears the report.
-    func ShowError(outcome CommandOutcome) -> Set(Feedback{Message: outcome.ErrorMessage(), Report: ""})
+    func ShowError(outcome CommandOutcome) -> Set(Feedback{Message: outcome.ErrorMessage(), Report: "", Tone: Tone.Fail})
 
     private func Set(next Feedback) {
         if next != Current {

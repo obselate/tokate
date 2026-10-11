@@ -29,7 +29,7 @@ data struct EligibilityPicker {
         }
         return Panel{
             Compact: Compact,
-            Children: []Blob{Heading{Content: "Who can contribute", Size: 28}.Build(), Row{Children: cards.ToArray()}.Build()},
+            Children: []Blob{Heading{Content: "Who can contribute"}.Build(), Row{Children: cards.ToArray()}.Build()},
         }.Build()
     }
 }
@@ -59,7 +59,7 @@ data struct ToolsPicker {
         }
         return Panel{
             Compact: Compact,
-            Children: []Blob{Heading{Content: "Coding tools", Size: 28}.Build(), Row{Children: cards.ToArray()}.Build()},
+            Children: []Blob{Heading{Content: "Coding tools"}.Build(), Row{Children: cards.ToArray()}.Build()},
         }.Build()
     }
 }
@@ -108,7 +108,7 @@ data struct LimitsEditor {
     func Build() Blob -> Panel{
         Compact: Compact,
         Children: []Blob{
-            Heading{Content: "Limits", Size: 28}.Build(),
+            Heading{Content: "Limits"}.Build(),
             InputField{
                 Label: "Maximum minutes per donation",
                 Value: Minutes,

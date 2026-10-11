@@ -16,13 +16,13 @@ data struct SummaryTile {
         Padding: 20,
         Gap: 12,
         BackgroundColor: AppTheme.Current.Paper,
-        BorderRadius: 6,
+        BorderRadius: AppTheme.ControlRadius,
         Row{
             Children: []Blob{
                 MaterialIcons.Create(Icon, 22, AppTheme.Current.Accent),
-                Label{Content: Title, Size: 16, Muted: true}.Build(),
+                Label{Content: Title, Size: AppTheme.SmallSize, Muted: true}.Build(),
             },
         }.Build(),
-        Heading{Content: Value, Size: 29}.Build(),
+        Heading{Content: Value}.Build(),
     }
 }

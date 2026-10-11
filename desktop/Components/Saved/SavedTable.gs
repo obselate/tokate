@@ -23,7 +23,7 @@ data struct SavedTable {
             }
         }
         if rows.Count == 0 && !Reading {
-            rows.Add(Label{Content: Total == 0 ? "No saved contributions": "No unmerged contributions on this page", Size: 24}.Build())
+            rows.Add(EmptyMessage{Content: Total == 0 ? "No saved contributions": "No unmerged contributions on this page"}.Build())
         }
         return ListPanel{Short: Short, Children: rows.ToArray()}.Build()
     }

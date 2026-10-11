@@ -29,19 +29,19 @@ data struct DonationRun {
             BackgroundColor: p.Surface,
             BorderWidth: 1,
             BorderColor: p.Line,
-            BorderRadius: 5,
+            BorderRadius: AppTheme.PanelRadius,
             Container{
                 Padding: Edges{Left: 18, Right: 18, Top: 14, Bottom: 14},
                 Accessibility: Accessibility{Role: AccessibilityRole.Status, Name: Progress.State, Busy: Progress.Running},
                 Row{
                     Children: []Blob{
                         MaterialIcons.Create(Progress.Running ? "auto_awesome": "task_alt", 24, p.Accent),
-                        Heading{Content: Progress.State, Size: 28}.Build(),
+                        Heading{Content: Progress.State}.Build(),
                     },
                 }.Build(),
                 Label{
                     Content: "Coding: " + run.CodingTime + "   /   Verification: " + run.VerificationTime,
-                    Size: 16,
+                    Size: AppTheme.SmallSize,
                     Muted: true,
                 }.Build(),
             },
@@ -56,7 +56,7 @@ data struct DonationRun {
                     LineName: "Command output",
                     Running: Progress.Running,
                     Short: Short,
-                    Leading: () -> []Blob{Label{Content: elapsed, Size: 17, Muted: true}.Build()},
+                    Leading: () -> []Blob{Label{Content: elapsed, Size: AppTheme.SmallSize, Muted: true}.Build()},
                     Trailing: () -> running ? []Blob{CancelButton{Stopping: button.Stopping, OnCancel: button.OnCancel}.Build()}:
                     []Blob{
                         (button with{Label = "New donation", OnClick = start}).Build(),

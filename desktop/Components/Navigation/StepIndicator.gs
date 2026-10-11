@@ -23,12 +23,12 @@ data struct StepIndicator {
                     AlignItems: AlignItems.Center,
                     Gap: 8,
                     Padding: Edges{Left: 12, Right: 12, Top: 8, Bottom: 8},
-                    BorderRadius: 4,
+                    BorderRadius: AppTheme.ControlRadius,
                     BackgroundColor: active ? p.Surface: Color.Transparent,
                     BorderWidth: Edges{Bottom: active ? 2: 0},
                     BorderColor: p.Accent,
-                    Label{Content: Numerals[i], Size: 16, Muted: !active}.Build(),
-                    Label{Content: Names[i], Size: 16, Muted: !active}.Build(),
+                    Label{Content: Numerals[i], Size: AppTheme.SmallSize, Muted: !active}.Build(),
+                    Label{Content: Names[i], Size: AppTheme.SmallSize, Muted: !active}.Build(),
                 }
             )
         }

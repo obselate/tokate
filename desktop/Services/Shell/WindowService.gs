@@ -35,6 +35,7 @@ class WindowService {
         Window = window
         window.SmoothScrolling = true
         window.WheelScrollScale = 2.0F
+        window.StateChanged += state -> changed()
     }
 
     /// Runs `action` on the UI thread. Returns false when no window can accept it.
@@ -42,6 +43,9 @@ class WindowService {
 
     /// Runs `action` on the UI thread every `milliseconds` until the result is disposed.
     func Every(milliseconds int32, action Action) IDisposable? -> Window?.SetInterval(action, milliseconds)
+
+    /// Whether the window is neither maximized nor fullscreen, so it shows its own edge.
+    prop Framed bool -> Window?.State == WindowState.Normal
 
     prop PlatformInput PlatformInput? -> Window?.PlatformInput
 

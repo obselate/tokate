@@ -19,11 +19,11 @@ data struct RunDetails {
     func Build() Blob {
         let act = OnAction
         let children = List[Blob]{
-            Heading{Content: Run.Identity, Size: 28}.Build(),
+            Heading{Content: Run.Identity}.Build(),
             DetailRow{Caption: "Model", Value: Run.Model + " / " + Run.Effort}.Build(),
         }
         if Run.ErrorMessage != "" {
-            children.Add(Label{Content: Run.ErrorMessage, Size: 18}.Build())
+            children.Add(Callout{Message: Run.ErrorMessage, Tone: Tone.Fail}.Build())
         }
         let buttons = List[Blob]()
         for action in Actions {
@@ -39,9 +39,9 @@ data struct RunDetails {
         if Run.Pr > 0 {
             buttons.Add((Button with{Label = "Amend contribution", OnClick = OnToggleAmendment}).Build())
             buttons.Add((Button with{Label = "Update workspace", OnClick = () -> act?.Invoke(RunAction.Reconcile)}).Build())
-            buttons.Add((Button with{Label = "Open pull request", OnClick = OnOpenPullRequest}).Build())
+            buttons.Add((Button with{Label = "Open pull request", Kind = ButtonKind.Quiet, Icon = "open_in_new", OnClick = OnOpenPullRequest}).Build())
         }
-        buttons.Add((Button with{Label = "Open issue", OnClick = OnOpenIssue}).Build())
+        buttons.Add((Button with{Label = "Open issue", Kind = ButtonKind.Quiet, Icon = "open_in_new", OnClick = OnOpenIssue}).Build())
         children.Add(Row{Children: buttons.ToArray()}.Build())
         if let form = Form {
             children.Add(form)

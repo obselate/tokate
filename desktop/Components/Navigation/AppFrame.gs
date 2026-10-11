@@ -6,7 +6,7 @@ import System
 
 /// The window root: navigation beside the workspace, plus an optional overlay. Compact layouts place
 /// navigation inside the workspace instead, so `Navigation` is omitted. The owner supplies `Handle` to
-/// observe window metrics.
+/// observe window metrics. `Framed` draws a line around a window that is not maximized.
 ///
 /// This stays stateless on purpose: Goo rebuilds the Cell that owns a handler, so wrapping the whole
 /// tree in a Cell would attribute every page handler to the frame.
@@ -15,6 +15,7 @@ data struct AppFrame {
     var Navigation Blob?
     var Workspace Blob
     var Overlay Blob?
+    var Framed bool
     var KeyBindings []KeyBinding?
     var OnKeyDown Action[KeyEvent]?
     var OnPointerDown Action[PointerEvent]?
@@ -31,6 +32,8 @@ data struct AppFrame {
             OnKeyDown: event -> key?.Invoke(event),
             OnPointerDown: event -> pointer?.Invoke(event),
             Overflow: Overflow.Hidden,
+            BorderWidth: Framed ? 1: 0,
+            BorderColor: AppTheme.Current.Line,
             BackgroundColor: AppTheme.Current.Paper,
             FontFamily: AppTheme.BodyFont,
             Color: AppTheme.Current.Ink,

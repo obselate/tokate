@@ -22,7 +22,7 @@ data struct DonationStatus {
             Row{
                 Children: []Blob{
                     MaterialIcons.Create(Progress.Ready ? "task_alt": "hourglass_top", 32, AppTheme.Current.Accent),
-                    Heading{Content: Progress.State, Size: 32}.Build(),
+                    Heading{Content: Progress.State}.Build(),
                 },
             }.Build(),
         }
@@ -38,7 +38,7 @@ data struct DonationStatus {
             children.Add(DetailRow{Caption: "Model", Value: run.Model + " / " + run.Effort}.Build())
         }
         if Message != "" {
-            children.Add(Label{Content: Message, Size: 17, Muted: true}.Build())
+            children.Add(Label{Content: Message, Size: AppTheme.SmallSize, Muted: true}.Build())
         }
         children.Add(
             Row{

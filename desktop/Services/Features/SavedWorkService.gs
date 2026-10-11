@@ -107,7 +107,7 @@ class SavedWorkService {
         }
         Set(Current with{Paths = paths, Reading = false})
         if error != "" {
-            feedback.Show(error)
+            feedback.Show(error, Tone.Fail)
             return
         }
         LoadPage(Current.Page)
@@ -282,7 +282,7 @@ class SavedWorkService {
                 }
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 

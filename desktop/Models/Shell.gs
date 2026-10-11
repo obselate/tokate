@@ -43,14 +43,6 @@ class Destinations {
             }
             return Destination.Welcome
         }
-
-        func Numeral(value Destination) string -> switch value {
-            case Destination.Donate: "II"
-            case Destination.Project: "III"
-            case Destination.Saved: "IV"
-            case Destination.Appearance: "V"
-            default: "I"
-        }
     }
 }
 
@@ -87,6 +79,7 @@ data struct Activity {
 data struct Feedback {
     var Message string
     var Report string
+    var Tone Tone
 }
 
 data struct ConfirmationTile {

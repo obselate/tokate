@@ -20,7 +20,7 @@ data struct Check {
             OnChange: state -> change?.Invoke(state == AccessibilityChecked.True),
             Disabled: Disabled,
             LabelColor: p.Ink,
-            LabelFontSize: 17,
+            LabelFontSize: AppTheme.BodySize,
             LabelFontWeight: 400,
             BackgroundColor: p.Surface,
             CheckedBackgroundColor: p.Ink,

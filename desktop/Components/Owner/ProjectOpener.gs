@@ -14,7 +14,7 @@ data struct ProjectOpener {
 
     func Build() Blob -> Panel{
         Children: []Blob{
-            Heading{Content: "Open a project", Size: 28}.Build(),
+            Heading{Content: "Open a project"}.Build(),
             InputField{
                 Label: "GitHub repository",
                 Value: Input,

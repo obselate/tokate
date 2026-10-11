@@ -15,18 +15,14 @@ class SetupTab {
     func Build(page PageContext) Blob {
         let setup = owner.Current.Setup
         let step = setup.Step
-        let steps = List[Blob]()
-        for index in 0 ... SetupSteps.Names.Length {
-            let target = index
-            steps.Add(
-                (page.Button with{
-                    Label = SetupSteps.Names[index],
-                    OnClick = () -> owner.SetStep(target),
-                    Primary = step == index,
-                }).Build()
-            )
+        let body = List[Blob]{
+            TabRow{
+                Button: page.Button,
+                Tabs: SetupSteps.Names,
+                Selected: step,
+                OnSelect: index -> owner.SetStep(index),
+            }.Build(),
         }
-        let body = List[Blob]{Row{Children: steps.ToArray()}.Build()}
         let editor = SetupEditorInput{Owner: owner, Setup: setup, Busy: page.Busy, Button: page.Button}
         if step == 0 {
             body.Add(Checks(page, editor))
@@ -63,7 +59,7 @@ class SetupTab {
         let policy = state.Policy
         let modelPolicy = setup.EffectiveModelPolicy(policy)
         let models = List[Blob]{
-            Heading{Content: "Models", Size: 28}.Build(),
+            Heading{Content: "Models"}.Build(),
             ModelPolicyPicker{
                 Policy: modelPolicy,
                 Disabled: page.Busy,

@@ -31,8 +31,8 @@ class IssueStepView {
         return []Blob{
             Row{
                 Children: []Blob{
-                    Heading{Content: state.Repository, Size: 27}.Build(),
-                    (page.Button with{Label = "Change repository", OnClick = () -> donation.ChangeRepository()}).Build(),
+                    Heading{Content: state.Repository}.Build(),
+                    (page.Button with{Label = "Change repository", Kind = ButtonKind.Quiet, OnClick = () -> donation.ChangeRepository()}).Build(),
                 },
             }.Build(),
             IssueSearchBar{

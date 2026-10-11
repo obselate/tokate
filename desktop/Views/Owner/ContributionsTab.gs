@@ -19,7 +19,7 @@ class ContributionsTab {
             let number = issue.NumberText
             return []Blob{
                 Row{
-                    Children: []Blob{(page.Button with{Label = "Back to issues", OnClick = () -> owner.Deselect()}).Build()},
+                    Children: []Blob{(page.Button with{Label = "Back to issues", Kind = ButtonKind.Quiet, OnClick = () -> owner.Deselect()}).Build()},
                 }.Build(),
                 OwnerIssueCard{
                     Issue: issue,

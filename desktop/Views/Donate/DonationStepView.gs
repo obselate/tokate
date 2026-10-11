@@ -25,7 +25,7 @@ class DonationStepView {
             Fill: started && !page.Metrics.Short,
             Children: []Blob{
                 header,
-                Label{Content: progress.Path == "" ? state.Identity: run.Identity, Size: 21}.Build(),
+                Label{Content: progress.Path == "" ? state.Identity: run.Identity}.Build(),
             },
         }.Build()
         if !started {
@@ -44,7 +44,7 @@ class DonationStepView {
             return body
         }
         if message != "" {
-            body.Children.Add(Label{Content: message, Size: 17}.Build())
+            body.Children.Add(Label{Content: message}.Build())
         }
         let directory = progress.Path
         body.Children.Add(

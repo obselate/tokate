@@ -98,7 +98,7 @@ class DonationService {
                 }
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 
@@ -248,7 +248,7 @@ class DonationService {
                 }
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 
@@ -288,7 +288,7 @@ class DonationService {
                 () -> Claim(arguments)
             )
         } catch (error Exception) {
-            feedback.Show(error.Message)
+            feedback.Show(error.Message, Tone.Fail)
         }
     }
 
