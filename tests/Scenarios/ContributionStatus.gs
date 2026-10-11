@@ -720,7 +720,7 @@ internal class ContributionStatusChecks {
             TestTerminal.Save("status-truncated", truncated)
             Check.Contains(truncated, "Bounded snapshot: some data was omitted.")
             Check.Contains(truncated, "Review donor access and grant eligibility if appropriate.")
-            Check.Contains(truncated, "Command: tokate access list owner/project#1")
+            Check.Contains(truncated, "Command: tokate access list owner/project\r\n")
             test.Flow.Reload()
             let current = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             current["title"] = JsonValue.Create(title)
