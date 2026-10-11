@@ -22,11 +22,11 @@ data struct SavedTable {
                 rows.Add(SavedRow{Item: item, Index: FirstIndex + index, Disabled: Disabled, OnOpen: OnOpen}.Build())
             }
         }
-        if rows.Count == 0 && !Reading {
+        if rows.Count == 0 {
             rows.Add(
                 EmptyMessage{
-                    Content: Total == 0 ? "No saved contributions": "No unmerged contributions on this page",
-                    Icon: "inbox",
+                    Content: Reading ? "Reading saved contributions": Total == 0 ? "No saved contributions": "No unmerged contributions on this page",
+                    Icon: Reading ? "schedule": "inbox",
                 }.Build()
             )
         }

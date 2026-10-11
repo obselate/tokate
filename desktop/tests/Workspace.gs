@@ -160,6 +160,11 @@ func WorkspaceFlow() {
             Find(adapter.Root, AccessibilityRole.Button, "Previous page")?.Disabled == false,
             "Loading blocks pagination"
         )
+        Require(
+            Find(adapter.Root, AccessibilityRole.Status, "Needs amendment") != nil &&
+                Find(adapter.Root, AccessibilityRole.Status, "Loading") == nil,
+            "A page showed rows before all its runs were read"
+        )
         Choose(host, window, adapter, "Previous page")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh contributions", enabled: true)
         var claimReads = 0
