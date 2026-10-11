@@ -190,6 +190,7 @@ func WorkspaceFlow() {
         )
         Choose(host, window, adapter, "Previous page")
         Choose(host, window, adapter, "My project")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh projects", enabled: true)
         Edit(window, host, adapter, "GitHub repository", "owner/repo")
         Choose(host, window, adapter, "Open project")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #42: Issue 42", enabled: true)

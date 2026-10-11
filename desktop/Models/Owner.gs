@@ -28,6 +28,12 @@ data struct ProjectInfo {
     var Branch string
 }
 
+/// A repository the owner can open as a project.
+data struct ProjectChoice {
+    var Repository string
+    var Description string
+}
+
 data struct IssueWork {
     var Issue string
     var State string
@@ -150,6 +156,8 @@ data struct SetupPreview {
 /// Everything the owner page shows. Text typed into the setup editors lives in their components.
 data struct OwnerState {
     var Input string
+    var Projects []ProjectChoice
+    var ProjectsLoaded bool
     var Open bool
     var Tab OwnerTab
     var Project ProjectInfo
@@ -184,6 +192,7 @@ data struct OwnerState {
     shared {
         let Initial OwnerState = OwnerState{
             Input: "",
+            Projects: []ProjectChoice{},
             Tab: OwnerTab.Contributions,
             Project: ProjectInfo{Repository: "", Branch: ""},
             Policy: Policy.Empty,

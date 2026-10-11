@@ -20,8 +20,8 @@ class ProjectView {
         setup = SetupTab(owner)
     }
 
-    /// Identifies the visible tab and setup step so each starts at the top.
-    prop Key string -> "My project" + OwnerTabs.Label(owner.Current.Tab) + owner.Current.Setup.Step.ToString()
+    /// Identifies the project list, the open project and each issue, so each starts at the top.
+    prop Key string -> "My project" + (owner.Current.Open ? owner.Repository + "#" + (owner.Current.Selected?.NumberText ?? ""): "")
 
     prop IsBrowsing bool -> owner.Current.Browsing
 
@@ -55,28 +55,51 @@ class ProjectView {
                 }.Build()
             )
         } else {
-            body.Add(Heading{Content: "My project", Size: AppTheme.DisplaySize}.Build())
+            body.Add(
+                Row{
+                    Children: []Blob{
+                        Heading{Content: "My project", Size: AppTheme.DisplaySize}.Build(),
+                        Spacer{}.Build(),
+                        (page.Button with{
+                            Label = "Check owner prerequisites",
+                            Kind = ButtonKind.Quiet,
+                            OnClick = () -> owner.CheckPrerequisites(),
+                        }).Build(),
+                        (page.Button with{
+                            Label = "Refresh projects",
+                            Kind = ButtonKind.Icon,
+                            Icon = "refresh",
+                            OnClick = () -> owner.LoadProjects(),
+                        }).Build(),
+                    },
+                }.Build()
+            )
         }
+        let messages = List[Blob]()
         if notice.Message != "" {
-            body.Insert(1, Callout{Message: notice.Message, Tone: notice.Tone}.Build())
+            messages.Add(Callout{Message: notice.Message, Tone: notice.Tone}.Build())
         }
         if notice.Report != "" {
-            body.Add(ReportText{Content: notice.Report}.Build())
+            messages.Add(ReportText{Content: notice.Report}.Build())
         }
         if issue {
+            body.InsertRange(1, messages)
             return Stack{Gap: 16, Children: body.ToArray()}.Build()
         }
         if !state.Open {
             body.Add(
                 ProjectOpener{
                     Input: state.Input,
+                    Projects: state.Projects,
+                    Loaded: state.ProjectsLoaded,
                     Button: page.Button,
                     Disabled: page.Busy,
                     OnInput: value -> owner.SetInput(value),
                     OnOpen: () -> owner.Open(),
-                    OnCheck: () -> owner.CheckPrerequisites(),
+                    OnChoose: repository -> owner.OpenRepository(repository),
                 }.Build()
             )
+            body.InsertRange(1, messages)
             return Stack{Gap: 20, Children: body.ToArray()}.Build()
         }
         let tabs = List[string]()
@@ -84,21 +107,32 @@ class ProjectView {
             tabs.Add(OwnerTabs.Label(tab))
         }
         body.Add(
-            TabRow{
-                Button: page.Button,
-                Tabs: tabs.ToArray(),
-                Selected: Array.IndexOf(OwnerTabs.All, state.Tab),
-                Counts: []int32{0, state.Access.Pending.Length},
-                OnSelect: index -> owner.SelectTab(OwnerTabs.All[index]),
-            }.Build()
+            TabRow.Mount(
+                "project-tabs",
+                TabRowInput{
+                    Button: page.Button,
+                    Tabs: tabs.ToArray(),
+                    Selected: Array.IndexOf(OwnerTabs.All, state.Tab),
+                    Counts: []int32{0, state.Access.Pending.Length},
+                    OnSelect: index -> owner.SelectTab(OwnerTabs.All[index]),
+                }
+            )
         )
         if state.Tab == OwnerTab.Setup {
-            body.Add(setup.Build(page))
+            messages.Add(setup.Build(page))
         } else if state.Tab == OwnerTab.Access {
-            body.Add(access.Build(page))
+            messages.Add(access.Build(page))
         } else {
-            body.AddRange(contributions.Build(page))
+            messages.AddRange(contributions.Build(page))
         }
+        body.Add(
+            Swap{
+                Key: OwnerTabs.Label(state.Tab),
+                Gap: 16,
+                Fill: state.Browsing && !page.Metrics.Short,
+                Children: messages.ToArray(),
+            }.Build()
+        )
         return Stack{Gap: 16, Children: body.ToArray()}.Build()
     }
 }

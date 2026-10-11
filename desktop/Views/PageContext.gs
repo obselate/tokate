@@ -11,6 +11,8 @@ data struct PageContext {
     /// Whether the running command started on the visible page.
     var BusyHere bool
     var Metrics LayoutMetrics
+    /// Scrolls the page to its top.
+    var OnTop Action?
     var OnPopupKey Action[KeyEvent]?
     var OnPopupPointer Action[PointerEvent]?
 

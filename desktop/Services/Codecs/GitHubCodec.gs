@@ -1,11 +1,23 @@
 package TokateDesktop
 
 import System
+import System.Collections.Generic
 import System.Text.Json
 
 class GitHubCodec {
     shared {
         func Login(user JsonElement) string -> Json.Text(user, "login")
+
+        /// The repositories that are not archived and that the user can push to.
+        func Projects(value JsonElement) []ProjectChoice {
+            let projects = List[ProjectChoice]()
+            for item in Json.Items(value) {
+                if Json.Bool(Json.Get(item, "permissions"), "push") && !Json.Bool(item, "archived") {
+                    projects.Add(ProjectChoice{Repository: Json.Text(item, "full_name"), Description: Json.Text(item, "description")})
+                }
+            }
+            return projects.ToArray()
+        }
 
         func Project(repository string, value JsonElement) ProjectInfo -> ProjectInfo{
             Repository: repository,

@@ -15,14 +15,12 @@ class SetupTab {
     func Build(page PageContext) Blob {
         let setup = owner.Current.Setup
         let step = setup.Step
-        let body = List[Blob]{
-            TabRow{
-                Button: page.Button,
-                Tabs: SetupSteps.Names,
-                Selected: step,
-                OnSelect: index -> owner.SetStep(index),
-            }.Build(),
+        let top = page.OnTop
+        let show = (index int32) -> {
+            owner.SetStep(index)
+            top?.Invoke()
         }
+        let body = List[Blob]()
         let editor = SetupEditorInput{Owner: owner, Setup: setup, Busy: page.Busy, Button: page.Button}
         if step == 0 {
             body.Add(Checks(page, editor))
@@ -35,17 +33,26 @@ class SetupTab {
             body.Add(
                 Row{
                     Children: []Blob{
-                        (page.Button with{Label = "Back", OnClick = () -> owner.SetStep(step - 1), Disabled = step == 0}).Build(),
+                        (page.Button with{Label = "Back", OnClick = () -> show(step - 1), Disabled = step == 0}).Build(),
                         (page.Button with{
                             Label = SetupSteps.Next(step),
-                            OnClick = () -> owner.SetStep(step + 1),
+                            OnClick = () -> show(step + 1),
                             Primary = true,
                         }).Build(),
                     },
                 }.Build()
             )
         }
-        return Stack{Gap: 18, Children: body.ToArray()}.Build()
+        return Stack{
+            Gap: 18,
+            Children: []Blob{
+                TabRow.Mount(
+                    "setup-steps",
+                    TabRowInput{Button: page.Button, Tabs: SetupSteps.Names, Selected: step, OnSelect: show}
+                ),
+                Swap{Key: step.ToString(), Gap: 18, Children: body.ToArray()}.Build(),
+            },
+        }.Build()
     }
 
     private func Checks(page PageContext, editor SetupEditorInput) Blob -> Panel{

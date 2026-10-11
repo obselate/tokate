@@ -43,7 +43,32 @@ class OwnerService {
 
     // Project
 
+    /// Called when the page opens: reads the user's repositories the first time.
+    func Enter() {
+        if !Current.Open && !Current.ProjectsLoaded && !activity.Busy {
+            activity.Activate("Refresh projects")
+            LoadProjects()
+        }
+    }
+
+    func LoadProjects() {
+        commands.GitHub[[]ProjectChoice](
+            GitHubCommands.Repositories(),
+            GitHubCodec.Projects,
+            (reply Reply[[]ProjectChoice]) -> {
+                if !commands.Failed(reply.Outcome) {
+                    Set(Current with{Projects = reply.Value, ProjectsLoaded = true})
+                }
+            }
+        )
+    }
+
     func SetInput(value string) -> Edit(Current with{Input = value})
+
+    func OpenRepository(repository string) {
+        Edit(Current with{Input = repository})
+        Open()
+    }
 
     func Open() {
         try {

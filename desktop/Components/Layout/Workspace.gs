@@ -10,6 +10,7 @@ data struct Workspace {
     var Navigation Blob?
     var Content Blob
     var Scrolls bool
+    var Scroller ElementHandle?
     var Padding float64
 
     func Build() Blob {
@@ -26,8 +27,7 @@ data struct Workspace {
         if let navigation = Navigation {
             workspace.Children.Add(navigation)
         }
-        workspace.Children.Add(
-            Container{
+        let content = Container{
                 Key: "content-scroll",
                 FlexGrow: 1,
                 FlexShrink: 1,
@@ -39,7 +39,10 @@ data struct Workspace {
                 Padding: Padding,
                 Content,
             }
-        )
+        if let scroller = Scroller {
+            content.Handle = scroller
+        }
+        workspace.Children.Add(content)
         return workspace
     }
 }

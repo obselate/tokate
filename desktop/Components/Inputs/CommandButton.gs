@@ -88,9 +88,9 @@ data struct CommandButton {
             BackgroundColor: rest,
             TextColor: ink,
             HoverBackgroundColor: filled ? p.Accent: Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Quiet ? p.Surface: p.Paper,
-            ActiveBackgroundColor: p.Accent,
+            ActiveBackgroundColor: Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Segment ? p.Paper: p.Accent,
             DisabledBackgroundColor: filled ? p.Surface: rest,
-            DisabledTextColor: choice ? AppTheme.Mix(p.Muted, p.Paper, 0.5): p.Muted,
+            DisabledTextColor: !choice ? p.Muted: Disabled ? AppTheme.Mix(p.Muted, p.Paper, 0.5): ink,
             BorderColor: filled ? p.Ink: framed ? p.Line: Color.Transparent,
             FocusBorderColor: p.Accent,
             ShowFocusHighlight: AppTheme.FocusVisible,
@@ -132,18 +132,6 @@ data struct CommandButton {
                         BorderRadius: AppTheme.ControlRadius,
                         BackgroundColor: p.Accent,
                         Text{Content: Count.ToString(), FontFamily: AppTheme.BodyFont, FontSize: AppTheme.CodeSize, Color: p.Surface},
-                    }
-                )
-            }
-            if Kind == ButtonKind.Tab {
-                button.Children.Add(
-                    Container{
-                        Position: PositionType.Absolute,
-                        Left: 0,
-                        Right: 0,
-                        Bottom: 0,
-                        Height: 2,
-                        BackgroundColor: Primary ? p.Accent: Color.Transparent,
                     }
                 )
             }

@@ -160,6 +160,9 @@ class GitHubCommands {
 
         func Repository(repo string) []string -> []string{"api", "repos/" + repo}
 
+        /// The public repositories of the user, the last pushed first.
+        func Repositories() []string -> []string{"api", "user/repos?visibility=public&sort=pushed&per_page=30"}
+
         func Issue(repo string, number string) []string -> []string{"api", "repos/" + repo + "/issues/" + number}
 
         func PullRequest(repo string, pr string) []string ->

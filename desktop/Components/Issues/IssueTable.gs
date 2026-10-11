@@ -19,7 +19,7 @@ data struct IssueTable {
             table.Children.Add(IssueRow{Issue: issue, Disabled: Busy, ShowApproval: ShowApproval, OnChoose: () -> choose?.Invoke(selected)}.Build())
         }
         if Listing.Loaded && Listing.Rows.Length == 0 && !Busy {
-            table.Children.Add(EmptyMessage{Content: "No matching issues"}.Build())
+            table.Children.Add(EmptyMessage{Content: "No matching issues", Icon: "search_off"}.Build())
         }
         return table
     }

@@ -8,6 +8,7 @@ class WindowService {
     private let changed Action
     let Viewport ElementHandle = ElementHandle()
     let ContentViewport ElementHandle = ElementHandle()
+    let ContentScroller ElementHandle = ElementHandle()
     var Window Window?
     var Metrics LayoutMetrics = LayoutMetrics.Initial
     var FocusVisible bool

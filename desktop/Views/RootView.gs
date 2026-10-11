@@ -57,6 +57,9 @@ class RootView : Cell {
         if next == Destination.Saved {
             app.Saved.Enter()
         }
+        if next == Destination.Project {
+            app.Owner.Enter()
+        }
     }
 
     /// Shows the saved run at `path`.
@@ -104,6 +107,7 @@ class RootView : Cell {
             Busy: activity.Busy,
             BusyHere: activity.Busy && activity.Page == app.Navigation.Current,
             Metrics: app.Window.Metrics,
+            OnTop: () -> app.Window.ContentScroller.JumpTo(0, 0),
             OnPopupKey: event -> app.Window.KeyNavigation(event),
             OnPopupPointer: event -> app.Window.FocusHints(false),
         }
@@ -261,6 +265,7 @@ class RootView : Cell {
                 Navigation: metrics.Compact ? Sidebar(): nil,
                 Content: frame,
                 Scrolls: !fill,
+                Scroller: app.Window.ContentScroller,
                 Padding: isWelcome ? 0: metrics.Compact ? 16: 28,
             }.Build(),
             Overlay: overlay,
