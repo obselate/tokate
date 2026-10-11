@@ -177,6 +177,13 @@ func ModelTests() {
     tail.Clear()
     tail.Append("five")
     Regression.Check(tail.Lines.Count == 1 && tail.Lines[0].Key == "5", "cleared output keeps keys unique")
+    tail.Append("Progress 10%\rProgress 55%\rProgress 100%\r\n\u001b[1;31mred\u001b[0m and \u001b]8;;https://example.com\u0007link\u001b]8;;\u0007\tdone\u0007")
+    Regression.Check(
+        tail.Lines[1].Content == "Progress 100%" && tail.Lines[2].Content == "red and link\tdone",
+        "output shows what a terminal shows"
+    )
+    tail.Append("\u001b[2K\r\u001b[0m")
+    Regression.Check(tail.Lines.Count == 3 && tail.Lines[2].Content == "red and link\tdone", "output skips lines that only redraw")
 
     let start = AppTheme.Blend(AppTheme.Daylight, AppTheme.Moonlight, 0)
     Regression.Check(
