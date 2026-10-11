@@ -244,7 +244,8 @@ internal class PublicOutput {
                         code
                     )
                 }
-                if run.Text("source") == "tokate" && run.Number("pr") == 0 {
+                if run.Text("source") == "tokate" && run.Number("pr") == 0 &&
+                    (code == "stale_approval" || code == "inference_failed") {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
                         "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
@@ -361,10 +362,11 @@ internal class PublicOutput {
             if RunDirectory != "" {
                 try {
                     let run = Data.Load(RunDirectory)
+                    let summary = RunSummary(RunDirectory)
                     if code != "" && ResultData is Dictionary[string, Object?]fields {
-                        fields["run_state"] = RunSummary(RunDirectory)
+                        fields["run_state"] = summary
                     } else if ResultData == nil {
-                        ResultData = RunSummary(RunDirectory)
+                        ResultData = summary
                     }
                     if options != nil && Command == "amend" && ResultData is Dictionary[string, Object?]fields {
                         let location = Path.Combine(RunDirectory, "amendments", options.Get("commit"))
@@ -402,7 +404,8 @@ internal class PublicOutput {
                     if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
-                    if run.Text("state") == "failed" && run.Text("source") == "tokate" && run.Number("pr") == 0 {
+                    var next Object?
+                    if summary.TryGetValue("next", out next) {
                         Actions.Add([]string{"tokate", "help", "prepare", "--json"})
                     }
                     if code != "stale_approval" && code != "invalid_state" {

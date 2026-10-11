@@ -64,14 +64,16 @@ func Main(args[]string) int32 {
             invalidation.AttemptInvalidated &&
             PublicOutput.Command == "work" &&
             PublicOutput.RunDirectory != "" {
-            using let lease = RunStorage.Lease(PublicOutput.RunDirectory)
-            let run = Data.Load(PublicOutput.RunDirectory)
-            if run.Text("state") == "claimed" && run.Text("source") == "tokate" {
-                run.Fields["state"] = "failed"
-                run.Fields["failure_stage"] = "preflight"
-                run.Fields["failure_reason"] = code
-                run.Save(PublicOutput.RunDirectory)
-            }
+            try {
+                using let lease = RunStorage.Lease(PublicOutput.RunDirectory)
+                let run = Data.Load(PublicOutput.RunDirectory)
+                if run.Text("state") == "claimed" && run.Text("source") == "tokate" {
+                    run.Fields["state"] = "failed"
+                    run.Fields["failure_stage"] = "preflight"
+                    run.Fields["failure_reason"] = code
+                    run.Save(PublicOutput.RunDirectory)
+                }
+            } catch (error Exception) { }
         }
         PublicOutput.Truncated = PublicOutput.Truncated || code == "output_too_large"
         Terminal.Message("tokate: " + (PublicOutput.Enabled ? message: error.Message), "red", true)
