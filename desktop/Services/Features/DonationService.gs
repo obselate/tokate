@@ -439,7 +439,7 @@ class DonationService {
 
     private func Work(directory string, run Run) {
         output.Clear()
-        let channel = chan[string](4096)
+        let channel = chan[string](output.Limit)
         lines = channel
         SetProgress(
             Current.Progress with{

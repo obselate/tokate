@@ -55,7 +55,7 @@ class ProcessRunner {
     private let lines chan[string]?
 
     /// Creates a runner. When `lines` is given, each complete diagnostics line is also offered to it.
-    /// Delivery is best effort: lines are dropped while the channel is full, and `RecentOutput` stays the
+    /// A full channel drops its oldest lines, so it holds the latest ones, and `RecentOutput` stays the
     /// authoritative tail. The owner closes the channel; a runner may be reused for several commands.
     init(lines chan[string]? = nil) {
         this.lines = lines
@@ -216,8 +216,16 @@ func ReadCommandStream(reader StreamReader, output StringBuilder, tail bool = fa
     } catch (error IOException) { }
     if let channel = lines {
         if pending.Length > 0 {
-            channel.Writer.TryWrite(pending.ToString())
+            Offer(channel, pending.ToString())
         }
+    }
+}
+
+/// Offers `line` to `channel`. A full channel drops its oldest line first, so a reader that falls behind
+/// still receives the latest lines.
+func Offer(channel chan[string], line string) {
+    if !channel.Writer.TryWrite(line) && channel.Reader.TryRead(out var oldest) {
+        channel.Writer.TryWrite(line)
     }
 }
 
@@ -225,7 +233,7 @@ func OfferLines(channel chan[string], pending StringBuilder, buffer []char, coun
     for i in 0 ... count {
         let c = buffer[i]
         if c == '\n' {
-            channel.Writer.TryWrite(pending.ToString().TrimEnd('\r'))
+            Offer(channel, pending.ToString().TrimEnd('\r'))
             pending.Clear()
         } else if pending.Length < 65536 {
             pending.Append(c)
