@@ -28,7 +28,12 @@ internal class OmpEvidence {
                 let kind = J.Text(item, "type")
                 if settled &&
                     (
-                    kind == "agent_start" || kind == "turn_start" || kind == "message_start" || kind == "message_end"
+                    kind == "agent_start" || kind == "turn_start" || kind.StartsWith(
+                        "tool_execution_",
+                        StringComparison.Ordinal
+                    ) ||
+                        (kind == "message_start" || kind == "message_update" || kind == "message_end") &&
+                        J.Text(J.Get(item, "message"), "role") != "custom"
                 ) {
                     throw Exception("OMP emitted events after its terminal result")
                 }
