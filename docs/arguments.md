@@ -41,9 +41,9 @@ or budget is given. With a new selection or budget, it starts a new attempt.
 | `approve`, `revoke`, `request`, `coordination` | `ISSUE` |
 | `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
 | `select` | `OWNER/REPO [PROFILE]` |
-| `overlaps` | 2 to 16 PR numbers |
+| `overlaps` | 2 to 16 PR references |
 | `access` | `init`; `trust`, `untrust`, `deny` or `restore LOGIN [OWNER/REPO]`; `grant` or `remove LOGIN ISSUE`; `check ISSUE`; `request ISSUE`; optional `list` or `history` filters `LOGIN` and `ISSUE` |
-| `doctor` | Optional `owner`, `managed` or `external`, then `HARNESS` |
+| `doctor` | Optional mode (`owner`, `managed` or `external`), then `HARNESS`; `owner` and `codex` also work alone |
 | `defaults` | `set [NAME]`, `use NAME`, `show [NAME]`, `remove [NAME]`; no subcommand lists saved profiles |
 | `help` | Optional `COMMAND` |
 | `completion` | `bash`, `zsh` or `fish` |
@@ -58,7 +58,10 @@ or budget is given. With a new selection or budget, it starts a new attempt.
   and `--output FILE`.
 - Harness and model settings remain flags because they select execution, not the
   command target: `--harness`, `--model`, `--effort` and `--provider`.
-- Repository targets and profile names are positionals, not flags.
+- `--fork LOGIN/REPO` selects a donor fork; `--from-pr N` seeds from another
+  donor's last coordinated PR.
+- Issue, PR, repository and profile targets are positionals; source modifiers
+  stay flags.
 - Switches such as `--yes`, `--watch`, `--trust`, `--resume` and `--json` control
   behavior.
 - Time flags need a unit: `--time 30m`, `--verify-time 10m`, `--max-time 2h`,
