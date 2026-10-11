@@ -116,7 +116,7 @@ class OwnerService {
             feedback.Show("Project policy could not be loaded. Check access before applying setup.")
             return
         }
-        Refresh()
+        LoadAccess(() -> Refresh())
     }
 
     func Close() -> Set(Current with{Open = false})
@@ -209,7 +209,8 @@ class OwnerService {
 
     // Access
 
-    func LoadAccess() {
+    /// Reads donor access, then runs `then`. The count of requests on the Access tab comes from this read.
+    func LoadAccess(then Action? = nil) {
         commands.Cli[AccessList](
             TokateCommands.Access(Repository, "list"),
             AccessCodec.Access,
@@ -217,6 +218,7 @@ class OwnerService {
                 if !commands.Failed(reply.Outcome) {
                     Set(Current with{Access = reply.Value})
                 }
+                then?.Invoke()
             }
         )
     }
