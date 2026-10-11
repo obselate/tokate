@@ -80,7 +80,6 @@ enum RunAction {
     Work,
     Prepare,
     Submit,
-    Publish,
     Checks,
     Recover,
     Amend,
@@ -93,7 +92,6 @@ class RunActions {
             case RunAction.Work: "work"
             case RunAction.Prepare: "prepare"
             case RunAction.Submit: "submit"
-            case RunAction.Publish: "publish"
             case RunAction.Checks: "checks"
             case RunAction.Recover: "recover"
             case RunAction.Amend: "amend"
@@ -104,7 +102,6 @@ class RunActions {
             case "work": RunAction.Work
             case "prepare": RunAction.Prepare
             case "submit": RunAction.Submit
-            case "publish": RunAction.Publish
             case "checks": RunAction.Checks
             case "recover": RunAction.Recover
             default: nil
@@ -132,7 +129,6 @@ class RunActions {
             case RunAction.Work: "Start donation"
             case RunAction.Prepare: "Check reservation"
             case RunAction.Submit: "Submit draft PR"
-            case RunAction.Publish: "Publish draft PR"
             case RunAction.Checks: "Check PR and CI"
             case RunAction.Amend: "Amend contribution"
             case RunAction.Reconcile: "Update workspace"
@@ -152,7 +148,6 @@ class RunActions {
         func DialogDetail(action RunAction) string -> switch action {
             case RunAction.Amend: "Publish verified changes to GitHub. The owner reviews and merges."
             case RunAction.Submit: "Publish verified changes to GitHub. The owner reviews and merges."
-            case RunAction.Publish: "Publish verified changes to GitHub. The owner reviews and merges."
             case RunAction.Reconcile: "Merge the current target into this saved workspace."
             case RunAction.Recover: "Run project verification without inference."
             default: "Inspect and continue this contribution."
