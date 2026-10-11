@@ -404,6 +404,8 @@ internal class AmendmentFlow {
             using let original = PublishedContribution.Create(binary)
             using let mutating = PublishedContribution.Create(binary, mutating: true)
             for failure in[]string{
+                "unchanged",
+                "empty-commit",
                 "protected",
                 "protected-unicode",
                 "protected-template",
@@ -425,7 +427,8 @@ internal class AmendmentFlow {
                 let flow = preparation.Coordination.Flow
                 let run = preparation.Run
                 let before = Check.Text(Saved(run)["commit"])
-                let commit = Edit(
+                var commit = failure == "unchanged" ||
+                    failure == "empty-commit" ? before: Edit(
                     flow,
                     run,
                     "Reviewed\n",
@@ -434,7 +437,10 @@ internal class AmendmentFlow {
                     failure == "protected-template" ? ".github/tokate-pr.md": "result.txt"
                 )
                 var tools string = ""
-                if failure == "hidden-index" {
+                if failure == "empty-commit" {
+                    flow.DonorGit(Path.Combine(run, "checkout"), "commit", "--allow-empty", "-m", "Empty amendment")
+                    commit = flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD")
+                } else if failure == "hidden-index" {
                     flow.Git("-C", Path.Combine(run, "checkout"), "update-index", "--assume-unchanged", "result.txt")
                     File.AppendAllText(Path.Combine(run, "checkout/result.txt"), "Hidden edit")
                 } else if failure == "dirty" {
@@ -492,7 +498,17 @@ internal class AmendmentFlow {
                     )
                     continue
                 }
-                Amend(flow, run, commit, 1, tools)
+                let rejected = Amend(flow, run, commit, 1, tools)
+                if failure == "unchanged" || failure == "empty-commit" {
+                    Check.Contains(
+                        rejected.Error,
+                        "The commit has no file changes compared with the published commit. Edit and commit the saved checkout first."
+                    )
+                    Check.That(
+                        !Directory.Exists(Path.Combine(run, "amendments", commit)),
+                        "Unchanged amendment reached verification"
+                    )
+                }
                 Check.That(Check.Text(Saved(run)["commit"]) == before, "Rejected amendment changed saved publication")
                 Check.That(Directory.Exists(Path.Combine(run, "checkout")), "Rejected amendment deleted checkout")
             }
