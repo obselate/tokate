@@ -12,7 +12,6 @@ data struct Policy {
     var Version int32
     var MaxSeconds int32
     var AllowUnlimited bool
-    var AllowNetwork bool
     var TargetBranch string
     var RequiredChecks []string
     var Verification [][]string

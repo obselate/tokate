@@ -332,8 +332,6 @@ class OwnerService {
 
     func SetMinutes(value string) -> EditSetup(Current.Setup with{Minutes = value})
 
-    func SetNetwork(allowed bool) -> EditSetup(Current.Setup with{Network = allowed ? "allow": "deny"})
-
     func SetPath(path string) -> EditSetup(Current.Setup with{Path = path})
 
     /// Writes the policy and workflow into the checkout after confirmation, and keeps the report of the files.

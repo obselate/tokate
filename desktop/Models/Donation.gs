@@ -73,7 +73,6 @@ data struct DonationDraft {
     var Coding string
     var Unlimited bool
     var Verification string
-    var Network bool
 
     func ReserveMinutes() int32 -> int32.TryParse(Verification, out var minutes) ? Math.Max(0, minutes): 0
 

@@ -86,7 +86,6 @@ data struct SetupDraft {
     var Tools string
     var Eligibility string
     var Minutes string
-    var Network string
     var CommandsChanged bool
     var ChecksChanged bool
 
@@ -109,8 +108,6 @@ data struct SetupDraft {
         }
         return allowed.ToArray()
     }
-
-    func EffectiveNetwork(policy Policy) bool -> Network == "" ? policy.AllowNetwork: Network == "allow"
 
     func MinutesSeconds() int32 {
         if !int32.TryParse(Minutes, out var minutes) || minutes < 1 || minutes > 1440 {
@@ -137,7 +134,6 @@ data struct SetupDraft {
             Tools: "",
             Eligibility: "",
             Minutes: "",
-            Network: "",
         }
     }
 }

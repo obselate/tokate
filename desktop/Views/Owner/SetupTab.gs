@@ -95,11 +95,9 @@ class SetupTab {
                 LimitsEditor{
                     Minutes: setup.Minutes,
                     Placeholder: (policy.MaxSeconds / 60).ToString(),
-                    Network: setup.EffectiveNetwork(policy),
                     Disabled: page.Busy,
                     Compact: page.CompactPanels,
                     OnMinutes: value -> owner.SetMinutes(value),
-                    OnNetwork: value -> owner.SetNetwork(value),
                 }.Build(),
             },
         }.Build()

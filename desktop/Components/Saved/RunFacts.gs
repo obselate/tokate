@@ -25,7 +25,6 @@ data struct RunFacts {
         if run.VerificationReserve > 0 {
             facts.Add(DetailRow{Caption: "Verification limit", Value: run.VerificationTime}.Build())
         }
-        facts.Add(DetailRow{Caption: "Network", Value: run.Network ? "Allowed": "Offline"}.Build())
         facts.Add(
             DetailRow{
                 Caption: "Pull request",

@@ -23,7 +23,6 @@ class RunCodec {
                 VerificationReserve: Json.Int(data, "verification_reserve"),
                 Seconds: Json.Int(data, "seconds"),
                 Unlimited: Json.Bool(data, "unlimited"),
-                Network: Json.Bool(data, "network"),
                 Approval: Json.Text(data, "approval"),
                 DonorId: Json.Text(data, "donor_id"),
             }

@@ -38,7 +38,6 @@ data struct Run {
     var VerificationReserve int32
     var Seconds int32
     var Unlimited bool
-    var Network bool
     var Approval string
     var DonorId string
 

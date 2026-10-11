@@ -42,9 +42,7 @@ data struct DonationStatus {
         if Progress.Path != "" {
             state.Children.Add(
                 Label{
-                    Content: (run.Harness == "" ? "": run.Harness + "  ·  ") + run.Model + " / " + run.Effort + "  ·  " + (
-                        run.Network ? "Network allowed": "Network offline"
-                    ),
+                    Content: (run.Harness == "" ? "": run.Harness + "  ·  ") + run.Model + " / " + run.Effort,
                     Size: AppTheme.SmallSize,
                     Muted: true,
                 }.Build()

@@ -27,7 +27,6 @@ class PolicyCodec {
                 Version: Json.Int(value, "version"),
                 MaxSeconds: Json.Int(value, "max_seconds"),
                 AllowUnlimited: Json.Bool(value, "allow_unlimited"),
-                AllowNetwork: Json.Bool(value, "allow_network"),
                 TargetBranch: Json.Text(value, "target_branch"),
                 RequiredChecks: Json.Strings(value, "required_checks"),
                 Verification: commands.ToArray(),

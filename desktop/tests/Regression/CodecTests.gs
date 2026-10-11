@@ -27,14 +27,14 @@ func CodecTests() {
     Regression.Equal(run.Path, "/state/tokate/runs/abc", "run path from data")
     Regression.Equal(run.Harness, "pi", "first tool harness wins")
     Regression.Check(run.Issue == 42 && run.Pr == 7 && run.CodingSeconds == 1800, "run numbers")
-    Regression.Check(run.Network && !run.Unlimited, "run flags")
+    Regression.Check(!run.Unlimited, "run flags")
     Regression.Equal(run.ErrorMessage, "Verification failed.", "run error message")
     Regression.Equal(run.Approval, "appr-1", "run approval")
     Regression.Equal(run.CodingTime, "30 minutes", "coding time text")
 
     let policy = PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))
     Regression.Check(policy.Loaded && policy.Version == 2 && policy.MaxSeconds == 5400, "policy basics")
-    Regression.Check(policy.AllowsUnlimited && !policy.AllowNetwork, "policy flags")
+    Regression.Check(policy.AllowsUnlimited, "policy flags")
     Regression.Equal(String.Join(",", policy.RequiredChecks), "build,test", "required checks")
     Regression.Equal(String.Join(" ", policy.Verification[0]), "/bin/sh -c dotnet test", "verification command")
     Regression.Check(

@@ -4,7 +4,7 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// Coding and verification minutes within the owner's limit, and project network access.
+/// Coding and verification minutes within the owner's limit.
 data struct TimeLimits {
     var Draft DonationDraft
     var Policy Policy
@@ -15,7 +15,6 @@ data struct TimeLimits {
     var OnUnlimited Action[bool]?
     var OnCoding Action[string]?
     var OnVerification Action[string]?
-    var OnNetwork Action[bool]?
 
     func Build() Container {
         let preset = OnPreset
@@ -66,15 +65,6 @@ data struct TimeLimits {
             }.Build()
         )
         children.Add(Row{Children: budgets.ToArray()}.Build())
-        children.Add(Rule{}.Build())
-        children.Add(
-            Check{
-                Label: "Allow project commands to use the network",
-                Value: Draft.Network,
-                OnChange: OnNetwork,
-                Disabled: Disabled,
-            }.Build()
-        )
         return Panel{Compact: Compact, Name: "Time limit settings", Children: children.ToArray()}.Build()
     }
 }

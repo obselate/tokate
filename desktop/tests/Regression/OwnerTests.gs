@@ -49,9 +49,6 @@ func OwnerTests() {
     owner.ToggleTool("codex")
     Regression.Equal(owner.Current.Setup.Tools, "pi", "tools toggle")
 
-    owner.SetNetwork(true)
-    Regression.Check(owner.Current.Setup.EffectiveNetwork(Policy.Empty), "network allowed")
-
     owner.Current = owner.Current with{Written = "files"}
     owner.SetStep(2)
     Regression.Check(owner.Current.Written == "files" && owner.Current.Setup.Step == 2, "changing steps keeps the report")

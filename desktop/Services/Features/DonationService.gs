@@ -215,8 +215,6 @@ class DonationService {
 
     func SetUnlimited(unlimited bool) -> SetDraft(Current.Draft with{Unlimited = unlimited})
 
-    func SetNetwork(network bool) -> SetDraft(Current.Draft with{Network = network})
-
     func Back() {
         feedback.Clear()
         Set(Current with{Step = DonationStep.Issue})
@@ -282,7 +280,6 @@ class DonationService {
                     },
                     Details: []ConfirmationDetail{
                         ConfirmationDetail{Label: "Model", Value: draft.Model + " / " + draft.Effort},
-                        ConfirmationDetail{Label: "Network", Value: draft.Network ? "Allowed": "Offline"},
                     },
                 },
                 () -> Claim(arguments)
@@ -434,7 +431,6 @@ class DonationService {
                         Label: "Model",
                         Value: (run.Harness == "" ? "": run.Harness + " / ") + run.Model + " / " + run.Effort,
                     },
-                    ConfirmationDetail{Label: "Network", Value: run.Network ? "Allowed": "Offline"},
                 },
             },
             () -> Work(progress.Path, run)

@@ -95,15 +95,13 @@ data struct ModelPolicyPicker {
     }
 }
 
-/// The donation time limit and network access.
+/// The donation time limit.
 data struct LimitsEditor {
     var Minutes string
     var Placeholder string
-    var Network bool
     var Disabled bool
     var Compact bool
     var OnMinutes Action[string]?
-    var OnNetwork Action[bool]?
 
     func Build() Blob -> Panel{
         Compact: Compact,
@@ -117,7 +115,6 @@ data struct LimitsEditor {
                 Width: 280,
                 Disabled: Disabled,
             }.Build(),
-            Check{Label: "Allow project network access", Value: Network, OnChange: OnNetwork, Disabled: Disabled}.Build(),
         },
     }.Build()
 }

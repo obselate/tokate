@@ -63,7 +63,6 @@ class LimitsStepView {
                         OnUnlimited: value -> donation.SetUnlimited(value),
                         OnCoding: value -> donation.SetCoding(value),
                         OnVerification: value -> donation.SetVerification(value),
-                        OnNetwork: value -> donation.SetNetwork(value),
                     }.Build(),
                 },
             }.Build(),

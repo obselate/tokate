@@ -34,7 +34,6 @@ data struct DonationSummary {
                     DetailRow{Caption: "Account", Value: Account}.Build(),
                     DetailRow{Caption: "Coding tool", Value: Draft.Harness}.Build(),
                     DetailRow{Caption: "Model", Value: Draft.Model + " / " + Draft.Effort}.Build(),
-                    DetailRow{Caption: "Project network", Value: Draft.Network ? "Allowed": "Offline"}.Build(),
                 },
             }.Build(),
         },
