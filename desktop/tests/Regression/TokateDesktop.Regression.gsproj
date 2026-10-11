@@ -7,8 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*.gs;../../Models/**/*.gs;../../Services/**/*.gs;../../Components/Theme.gs" />
-    <PackageReference Include="Goo" Version="0.7.20" />
-    <PackageReference Include="Goo.Svg" Version="0.7.20" />
+    <PackageReference Include="Goo" Version="0.7.24" />
+    <PackageReference Include="Goo.Svg" Version="0.7.24" />
     <PackageReference Include="Goo.Animations" Version="0.2.5" />
     <Content Include="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

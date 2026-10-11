@@ -1,6 +1,7 @@
 package TokateDesktop
 
 import Goo
+import Goo.Widgets.Data
 import Goo.Widgets.Icons
 import System
 import System.Collections.Generic
@@ -18,17 +19,14 @@ data struct ActivityLogInput {
     var FollowButton CommandButton
 }
 
-/// Streaming command output that follows new lines until the reader scrolls back. Only the visible lines
-/// are built, and an update costs time for the new and dropped lines only, not the whole log. Home and End jump
-/// to either end, and "Follow live" resumes following while the command runs. The header shows the
-/// blobs `Leading` builds on the left and those `Trailing` builds on the right. They are builders because
-/// the log rebuilds on its own, and blobs from an earlier build must not be reused.
+/// Streaming command output that follows new lines until the reader scrolls back, and again once they return
+/// to the end. Only the visible lines are built, and an update builds the new lines only and compares the lines
+/// it keeps. Home and End jump to either end, and "Follow live" resumes following while the command runs. The
+/// header shows the blobs `Leading` builds on the left and those `Trailing` builds on the right. They are
+/// builders because the log rebuilds on its own, and blobs from an earlier build must not be reused.
 open class ActivityLog : Cell[ActivityLogInput] {
     private let viewport ElementHandle = ElementHandle()
-    private var scrollRange float64
-    private var offset float64
     private var follow bool = true
-    private var lines IReadOnlyList[OutputLine] = []OutputLine{}
     private var rowTheme float64 = -1
     private var rowName string = ""
     private var row Func[OutputLine, Blob]? = nil
@@ -36,28 +34,17 @@ open class ActivityLog : Cell[ActivityLogInput] {
 
     init() {
         viewport.MetricsChanged += metrics -> {
-            let following = scrollRange - offset <= 2
-            let changed = metrics.ScrollRange.Y != scrollRange
-            if metrics.ScrollOffset.Y < Math.Min(offset, metrics.ScrollRange.Y) - 1 {
-                follow = false
+            let following = metrics.ScrollRange.Y - metrics.ScrollOffset.Y <= 2
+            if following != follow {
+                follow = following
                 Rebuild()
-            }
-            scrollRange = metrics.ScrollRange.Y
-            offset = metrics.ScrollOffset.Y
-            if changed && following && follow {
-                if lines.Count > 0 {
-                    ScrollToEnd()
-                } else {
-                    viewport.ScrollTo(0, scrollRange)
-                }
             }
         }
     }
 
+    /// Jumps past the end, which the list clamps to its last line and pins again.
     private func ScrollToEnd() {
-        if lines.Count > 0 {
-            viewport.ScrollToItem(lines[lines.Count - 1].Key)
-        }
+        viewport.JumpTo(0, float64(Single.MaxValue))
     }
 
     /// The row builder, kept between builds so unchanged rows are reused. A new theme or name replaces it.
@@ -85,14 +72,12 @@ open class ActivityLog : Cell[ActivityLogInput] {
 
     protected override func Build(input ActivityLogInput) Blob {
         let builder = LineBuilder(input.LineName)
-        var output Blob
-        if input.Lines.Count > 0 {
-            lines = input.Lines
-            output = VirtualLog(lines, lines[0].Position, 22, rowKey, builder)
-        } else {
+        var lines = input.Lines
+        if lines.Count == 0 {
             lines = []OutputLine{OutputLine{Position: -1, Content: input.Placeholder}}
-            output = VirtualRows(lines, 22, rowKey, builder)
         }
+        let output = VirtualRows(lines, 22, rowKey, builder)
+        output.PinToBottom = true
         output.Handle = viewport
         output.Accessibility = Accessibility{Role: AccessibilityRole.Generic, Name: input.Name}
         output.FlexGrow = input.Short ? 0: 1
@@ -101,11 +86,9 @@ open class ActivityLog : Cell[ActivityLogInput] {
         output.Focusable = true
         output.OnKeyDown = event -> {
             if event.Key == Key.Home {
-                follow = false
                 viewport.JumpTo(0, 0)
                 event.PreventDefault()
             } else if event.Key == Key.End {
-                follow = true
                 ScrollToEnd()
                 event.PreventDefault()
             }
@@ -121,11 +104,7 @@ open class ActivityLog : Cell[ActivityLogInput] {
                     Kind = ButtonKind.Quiet,
                     Icon = "south",
                     AllowWhileBusy = true,
-                    OnClick = () -> {
-                        follow = true
-                        ScrollToEnd()
-                        Rebuild()
-                    },
+                    OnClick = ScrollToEnd,
                 }).Build()
             )
         }
