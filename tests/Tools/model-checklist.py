@@ -48,7 +48,7 @@ def resize(fd, width, height):
     fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", height, width, 0, 0))
 
 
-def read(fd, seconds=0.3):
+def read(fd, seconds=0.3, needle=None):
     data = b""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -62,14 +62,13 @@ def read(fd, seconds=0.3):
         if not part:
             break
         data += part
+        if needle is not None and needle in data:
+            break
     return data
 
 
 def expect(fd, needle):
-    data = b""
-    deadline = time.monotonic() + 15
-    while needle not in data and time.monotonic() < deadline:
-        data += read(fd)
+    data = read(fd, 15, needle)
     assert needle in data, (needle, data[-4000:])
     return data
 
