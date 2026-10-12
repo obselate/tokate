@@ -1,24 +1,35 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
 internal class Reconciliation {
     shared {
-        private func Published(run Data) JsonElement {
+        private func Published(run Data, pending string = "") JsonElement {
             if run.Number("version") != 2 || (run.Text("state") != "generated" && run.Text("state") != "published") {
                 throw CliFailure("invalid_state", "Reconcile requires a published current contribution")
             }
-            let authority = Amendment.Authority(run, nil)
+            let old = J.Get(run.Element(), "reconciliation")
+            let synchronization = pending != "" ? pending:
+            J.Text(old, "candidate") != run.Text("commit") ? J.Text(old, "pending"): ""
+            let grant = synchronization == "" ? default(JsonElement): Synchronization.Load(
+                run.Text("repo"),
+                synchronization
+            )
+            let published = J.Text(grant, "previous") == run.Text("commit") ? J.Text(grant, "candidate"): run.Text(
+                "commit"
+            )
+            let authority = Amendment.Authority(run, nil, published: published)
             let record = J.Get(authority, "record")
             let pr = J.Number(J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"), "pr")
             if pr < 1 {
                 throw CliFailure("invalid_state", "No published PR; inspect saved publication before reconciling.")
             }
-            let pull = Amendment.Pull(run, pr, run.Text("commit"), "")
-            Amendment.Remote(run, run.Text("commit"), "")
-            ReceiptVerification.Verify(run.Text("repo"), pr, false)
+            let pull = Amendment.Pull(run, pr, published, "")
+            Amendment.Remote(run, published, "")
+            ReceiptVerification.Verify(run.Text("repo"), pr, pull, false, pending: synchronization)
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
             let upstream = GitHub.Branch(run.Text("repo"), run.Text("base_branch"))
             return J.Parse(
@@ -34,18 +45,17 @@ internal class Reconciliation {
             )
         }
 
-        private func Fresh(run Data, intent JsonElement) JsonElement {
-            let live = Published(run)
+        private func Fresh(run Data, intent JsonElement, moved bool = false, pending string = "") JsonElement {
+            let live = Published(run, pending)
             if run.Text("commit") != J.Text(intent, "previous") || run.Text("approval") != J.Text(intent, "approval") ||
                 run.Text("base") != J.Text(intent, "base") || run.Text("base_branch") != J.Text(intent, "target") ||
-                J.Text(live, "upstream") != J.Text(intent, "upstream") || J.Text(live, "expected") != J.Text(
+                (!moved && J.Text(live, "upstream") != J.Text(intent, "upstream")) ||
+                J.Text(live, "expected") != J.Text(intent, "expected") || J.Number(live, "pr") != J.Number(
                 intent,
-                "expected"
+                "pr"
             ) ||
-                J.Number(live, "pr") != J.Number(intent, "pr") || !RequestData.Same(
-                J.Get(live, "receipt"),
-                J.Get(intent, "receipt")
-            ) {
+                !RequestData
+                .Same(J.Get(live, "receipt"), J.Get(intent, "receipt")) {
                 throw CliFailure(
                     "invalid_state",
                     "Published head, target or approval changed; preserve this workspace and ask the owner to review the saved exact intent. No reset or retarget was performed."
@@ -191,20 +201,24 @@ internal class Reconciliation {
                 "local": true,
                 "verified": false
             }
-            PublicOutput.Actions.Add(
-                []string{
-                    "tokate",
-                    "authorize-sync",
-                    run.Text("repo") + "#" + J.Number(intent, "pr").ToString(),
-                    "--commit",
-                    candidate,
-                    "--upstream",
-                    J.Text(intent, "upstream")
-                }
-            )
+            let authorization = List[string]{
+                "tokate",
+                "authorize-sync",
+                run.Text("repo") + "#" + J.Number(intent, "pr").ToString(),
+                "--commit",
+                candidate,
+                "--upstream",
+                J.Text(intent, "upstream")
+            }
+            if J.Text(intent, "pending") != "" {
+                authorization.AddRange([]string{"--sync", J.Text(intent, "pending")})
+            }
+            PublicOutput.Actions.Add(authorization.ToArray())
             Terminal.Message(
                 "Local, unverified candidate C: " + candidate + "; target U: " + J.Text(intent, "upstream") +
-                    ". Owner: authorize-sync for exact C/U, then donor: amend --run DIR --commit C --sync G --time TIME for independent verification and publication."
+                    ". Owner: authorize-sync for exact C/U" +
+                    (J.Text(intent, "pending") == "" ? "": " with --sync " + J.Text(intent, "pending")) +
+                    ", then donor: amend --run DIR --commit C --sync G --time TIME for independent verification and publication."
             )
         }
 
@@ -227,8 +241,7 @@ internal class Reconciliation {
                 Candidate(directory, checkout, run, old)
                 return
             }
-            if old.ValueKind != JsonValueKind.Undefined &&
-                (J.Text(old, "phase") != "complete" || J.Text(old, "candidate") != run.Text("commit")) {
+            if old.ValueKind != JsonValueKind.Undefined && J.Text(old, "phase") != "complete" {
                 throw CliFailure(
                     "invalid_state",
                     "Saved reconciliation retained; use reconcile --run DIR --resume. Obtain owner authorization and amend the exact completed candidate before starting another reconciliation."
@@ -236,7 +249,66 @@ internal class Reconciliation {
             }
             Operations(checkout, default(JsonElement), false)
             Clean(checkout)
-            let live = Published(run)
+            var pending = J.Text(old, "candidate") == run.Text("commit") ? "": J.Text(old, "pending")
+            var completed bool
+            if old.ValueKind == JsonValueKind.Object && J.Text(old, "phase") == "complete" && J.Text(
+                old,
+                "upstream"
+            ) != GitHub
+                .Branch(run.Text("repo"), run.Text("base_branch")) {
+                let location = Path.Combine(
+                    directory,
+                    "amendments",
+                    RepositoryIdentity.CommitSha(J.Text(old, "candidate"))
+                )
+                if Directory.Exists(location) {
+                    let amendment = Data.Load(location)
+                    OriginalEvidence.Amended(directory, run, amendment)
+                    if amendment.Text("commit") == J.Text(old, "candidate") && amendment.Text("previous") == run.Text(
+                        "commit"
+                    ) &&
+                        amendment.Text("expected") == J.Text(old, "expected") && Amendment.Remote(
+                        run,
+                        amendment.Text("published") == "" ? run.Text("commit"): amendment.Text("published"),
+                        J.Text(old, "candidate")
+                    ) == J
+                        .Text(old, "candidate") {
+                        if Head(checkout) != J.Text(old, "candidate") || HeadRef(checkout) != J.Text(old, "head_ref") {
+                            throw CliFailure("invalid_state", "Saved reconciliation candidate or local branch changed")
+                        }
+                        let authority = Amendment.Authority(run, amendment, ready: false)
+                        if CoordinationState.Head(J.Get(authority, "state")) == amendment.Text("commit") {
+                            let pull = Amendment.Pull(run, amendment.Number("pr"), amendment.Text("commit"), "")
+                            ReceiptVerification.Verify(run.Text("repo"), amendment.Number("pr"), pull, false)
+                            Verification.Results(amendment, J.Get(authority, "record"))
+                            Amendment.Complete(directory, location, run, amendment, pull)
+                            pending = ""
+                            completed = true
+                        } else {
+                            pending = amendment.Text("sync")
+                        }
+                    }
+                }
+            }
+            let live = Published(run, pending)
+            let moved = old.ValueKind == JsonValueKind.Object && J.Text(old, "phase") == "complete" && J.Text(
+                old,
+                "candidate"
+            ) != run.Text("commit") && J.Text(old, "upstream") != J.Text(live, "upstream")
+            if old.ValueKind != JsonValueKind.Undefined &&
+                !moved &&
+                (J.Text(old, "phase") != "complete" || J.Text(old, "candidate") != run.Text("commit")) {
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved reconciliation retained; use reconcile --run DIR --resume. Obtain owner authorization and amend the exact completed candidate before starting another reconciliation."
+                )
+            }
+            if moved {
+                Fresh(run, old, true, pending)
+                if Head(checkout) != J.Text(old, "candidate") || HeadRef(checkout) != J.Text(old, "head_ref") {
+                    throw CliFailure("invalid_state", "Saved reconciliation candidate or local branch changed")
+                }
+            }
             let start = Head(checkout)
             let headRef = HeadRef(checkout)
             if headRef != "HEAD" && headRef != "refs/heads/" + run.Text("branch") {
@@ -274,6 +346,14 @@ internal class Reconciliation {
                 "pr": J.Number(live, "pr"),
                 "receipt": J.Get(live, "receipt"),
                 "phase": "fetching"
+            }
+            if pending != "" {
+                intent["pending"] = pending
+            }
+            if moved || completed {
+                let superseded = Data.From(old)
+                superseded.Fields.Remove("superseded")
+                intent["superseded"] = superseded.Element()
             }
             run.Fields["reconciliation"] = intent
             run.Save(directory)
