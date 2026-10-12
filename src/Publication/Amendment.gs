@@ -396,6 +396,11 @@ internal class Amendment {
                     amendment.Fields["public_summary"] = summary
                 }
                 amendment.Fields["tools"] = tools
+                for key in[]string{"tools", "summary"} {
+                    if args.Get(key) != "" {
+                        amendment.Fields[key + "_argument"] = Path.GetFullPath(args.Get(key))
+                    }
+                }
                 amendment.Fields["pr"] = number
                 amendment.Fields["expected"] = J.Text(authority, "sha")
                 if sync != "" {
