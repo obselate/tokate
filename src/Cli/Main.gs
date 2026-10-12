@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.IO
+import System.Text.Json
 
 func Main(args[]string) int32 {
     Terminal.Initialize()
@@ -316,7 +317,17 @@ func Dispatch(options Args) int32 {
             }
         }
         case "verify" {
-            let run = ReceiptVerification.Verify(RepositoryIdentity.Repo(options.Need("repo")), options.Number("pr"))
+            let repo = RepositoryIdentity.Repo(options.Need("repo"))
+            let number = options.Number("pr")
+            let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString(), missing: true)
+            if pull.ValueKind == JsonValueKind.Undefined {
+                throw Exception("verify takes an open contribution PR, for example tokate verify 42.")
+            }
+            if J.Text(pull, "state") != "open" {
+                let state = J.Bool(pull, "merged") ? "merged": "closed"
+                throw Exception("PR #" + number.ToString() + " is " + state + "; verify checks open contribution PRs.")
+            }
+            let run = ReceiptVerification.Verify(repo, number, pull)
             PublicOutput.ResultData = J.Select(run.Element(), "repo,pr,pr_url,commit")
             Terminal.Message("PR receipt matches owner approval and policy. Model usage remains donor-reported.")
         }

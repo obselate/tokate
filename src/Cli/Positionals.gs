@@ -63,6 +63,9 @@ internal class Positionals {
         }
 
         internal func Reference(args Args, word string, key string) {
+            if args.Command == "verify" && word.Contains("/issues/") {
+                throw Exception("verify takes an open contribution PR, for example tokate verify 42.")
+            }
             let segment = key == "pr" ? "pull": "issues"
             if key != "repo" && word.Contains("://") && word.Contains("/" + segment + "/") {
                 Url(args, word, key, segment)
