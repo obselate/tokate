@@ -39,11 +39,12 @@ data struct ProfileList {
                     Label{Content: Summary(item), Size: AppTheme.SmallSize, Muted: true}.Build(),
                 }
             )
+            let actions = List[Blob]()
             if item.Default {
-                row.Add(StatusBadge{Value: "Default", Tone: Tone.Done}.Build())
-                row.Add((Button with{Label = "Clear default", Kind = ButtonKind.Quiet, OnClick = OnClearDefault}).Build())
+                actions.Add(StatusBadge{Value: "Default", Tone: Tone.Done}.Build())
+                actions.Add((Button with{Label = "Clear default", Kind = ButtonKind.Quiet, OnClick = OnClearDefault}).Build())
             } else {
-                row.Add(
+                actions.Add(
                     (Button with{
                         Label = "Set as default",
                         Name = "Set " + item.Name + " as default",
@@ -52,8 +53,8 @@ data struct ProfileList {
                     }).Build()
                 )
             }
-            row.Add((Button with{Label = "Change", Name = "Change profile " + item.Name, OnClick = () -> edit?.Invoke(item)}).Build())
-            row.Add(
+            actions.Add((Button with{Label = "Change", Name = "Change profile " + item.Name, OnClick = () -> edit?.Invoke(item)}).Build())
+            actions.Add(
                 (Button with{
                     Label = "Remove",
                     Name = "Remove profile " + item.Name,
@@ -61,6 +62,7 @@ data struct ProfileList {
                     OnClick = () -> remove?.Invoke(item),
                 }).Build()
             )
+            row.Add(Row{NoWrap: true, Children: actions.ToArray()}.Build())
             rows.Add(ListRow{Children: row.ToArray()}.Build())
         }
         let panel = Panel{Children: rows.ToArray(), Name: "Saved profiles"}.Build()

@@ -10,11 +10,20 @@ data struct Label {
     var Muted bool
     var Mono bool
     var Ink Color?
+    /// The most lines to show. Longer text ends with an ellipsis. Zero shows all lines.
+    var MaxLines int32
 
-    func Build() Text -> Text{
-        Content: Content,
-        FontFamily: Mono ? AppTheme.MonoFont: AppTheme.BodyFont,
-        FontSize: Size != 0 ? Size: Mono ? AppTheme.CodeSize: AppTheme.BodySize,
-        Color: Ink ?? (Muted ? AppTheme.Current.Muted: AppTheme.Current.Ink),
+    func Build() Text {
+        let text = Text{
+            Content: Content,
+            FontFamily: Mono ? AppTheme.MonoFont: AppTheme.BodyFont,
+            FontSize: Size != 0 ? Size: Mono ? AppTheme.CodeSize: AppTheme.BodySize,
+            Color: Ink ?? (Muted ? AppTheme.Current.Muted: AppTheme.Current.Ink),
+        }
+        if MaxLines > 0 {
+            text.TextMaxLines = MaxLines
+            text.TextTrimming = TextTrimming.Ellipsis
+        }
+        return text
     }
 }

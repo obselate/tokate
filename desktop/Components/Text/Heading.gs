@@ -3,6 +3,7 @@ package TokateDesktop
 import Goo
 
 /// Display text in the heading face. Zero size resolves to the title size and nil ink to the theme ink.
+/// Text that is longer than `MaxLines` ends with an ellipsis.
 data struct Heading {
     var Content string
     var Size float64
@@ -23,6 +24,7 @@ data struct Heading {
         }
         if MaxLines > 0 {
             text.TextMaxLines = MaxLines
+            text.TextTrimming = TextTrimming.Ellipsis
         }
         return text
     }

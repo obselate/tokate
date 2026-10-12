@@ -19,15 +19,15 @@ class AppearanceView {
             Gap: 20,
             Children: []Blob{
                 Heading{Content: "Appearance", Size: AppTheme.DisplaySize}.Build(),
-                Painting.Mount(app, Math.Min(app.Window.Metrics.ContentWidth * 0.4, app.Window.Metrics.WindowHeight * 0.34), true),
+                Painting.Mount(app, Math.Min(app.Window.Metrics.ContentWidth * 0.4, app.Window.Metrics.WindowHeight * 0.3), true),
                 Panel{
                     Compact: compact,
                     Children: []Blob{
                         IconHeading{Icon: "palette", Content: "Theme"}.Build(),
                         Row{
                             Children: []Blob{
-                                Theme("Daylight", "The fresco under the sun.", "light_mode", false, settings.Night, busy),
-                                Theme("Moonlight", "The fresco at night.", "dark_mode", true, settings.Night, busy),
+                                Theme("Daylight", "Light colors.", "light_mode", false, settings.Night, busy),
+                                Theme("Moonlight", "Dark colors.", "dark_mode", true, settings.Night, busy),
                             },
                         }.Build(),
                         Rule{}.Build(),
