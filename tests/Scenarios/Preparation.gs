@@ -1239,6 +1239,11 @@ internal class PreparationChecks {
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "prepare")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "work")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
+            Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "owner reruns the failed workflow run")
+            Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "donor runs the same command again")
+            let status = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
+            Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "owner reruns the failed workflow run")
+            Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "donor runs the same command again")
             let uuid = Check.Text(pending["claim_request"]?["uuid"])
             flow.Reload()
             Check.That(

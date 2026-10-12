@@ -43,12 +43,39 @@ internal class CoordinationState {
                 expires: expires
             )
         } else {
-            GitHub.Api(
-                "repos/" + repo + "/git/refs/heads/" + Ref(issue),
-                map[string, Object?]{"sha": next, "force": false},
-                "PATCH",
-                expires: expires
-            )
+            for attempt in 0 ... 2 {
+                try {
+                    GitHub.Api(
+                        "repos/" + repo + "/git/refs/heads/" + Ref(issue),
+                        map[string, Object?]{"sha": next, "force": false},
+                        "PATCH",
+                        expires: expires
+                    )
+                    break
+                } catch (error CliFailure) {
+                    if attempt > 0 {
+                        throw CliFailure(
+                            error.Code,
+                            error.Message.Replace(
+                                "No automatic retry was made.",
+                                "One conditional ref retry was made after re-reading current state."
+                            ),
+                            httpStatus: error.HttpStatus
+                        )
+                    }
+                    if error.HttpStatus < 500 || error.HttpStatus > 599 {
+                        throw error
+                    }
+                    ApiTransport.Settle()
+                    let current = Load(repo, issue)
+                    if current.Sha == next {
+                        break
+                    }
+                    if current.Sha != expected {
+                        throw error
+                    }
+                }
+            }
         }
         Sha = next
     }

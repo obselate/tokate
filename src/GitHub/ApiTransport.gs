@@ -262,7 +262,8 @@ internal class ApiTransport {
             return CliFailure(
                 status == 401 ? "authentication_required": "command_failed",
                 message,
-                status == 401 ? []string{"gh", "auth", "login"}: []string{}
+                status == 401 ? []string{"gh", "auth", "login"}: []string{},
+                httpStatus: status
             )
         }
 
