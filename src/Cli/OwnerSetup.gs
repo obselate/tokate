@@ -63,68 +63,6 @@ internal class OwnerSetup {
             return result.Output.Trim()
         }
 
-        private func SetupAnswer(args Args, key string, prompt string, fallback string, interactive bool) string {
-            if args.Get(key) != "" {
-                return args.Get(key)
-            }
-            if !interactive {
-                return fallback
-            }
-            if key == "seconds" || key == "reservation-seconds" {
-                let seconds = fallback == "" ? 0: Int32.Parse(fallback)
-                let time = seconds == 0 ? "": seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
-                seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
-                let answer = Answer(prompt, time)
-                return answer == "" ? "": Cli.Seconds(answer, key == "seconds" ? "max-time": "reservation-time")
-            }
-            if key == "models" || key == "verification" {
-                if fallback != "" {
-                    let keep = Answer(
-                        "Keep the existing " + (key == "models" ? "model whitelist": "verification commands") + "?",
-                        "yes"
-                    )
-                    if !String.Equals(keep, "no", StringComparison.OrdinalIgnoreCase) && !String.Equals(
-                        keep,
-                        "n",
-                        StringComparison.OrdinalIgnoreCase
-                    ) {
-                        return fallback
-                    }
-                }
-                if key == "models" {
-                    return ModelChecklist().Run()
-                }
-                let commands = List[Object]()
-                while true {
-                    let command = Answer("Shell command to verify the project (Enter finishes the list)")
-                    if String.IsNullOrWhiteSpace(command) {
-                        return J.Write(commands)
-                    }
-                    commands.Add([]string{"/bin/sh", "-c", command})
-                }
-            }
-            if key == "required-checks" {
-                let names = List[string]()
-                if fallback != "" {
-                    for item in J.Parse(fallback).EnumerateArray() {
-                        names.Add(item.GetString() ?? "")
-                    }
-                }
-                let answer = Answer("Required GitHub check names, separated by commas", String.Join(", ", names))
-                names.Clear()
-                for name in answer.Split(',') {
-                    if name.Trim() != "" {
-                        names.Add(name.Trim())
-                    }
-                }
-                return J.Write(names)
-            }
-            if key == "close-message" {
-                return fallback
-            }
-            return Answer(prompt, fallback)
-        }
-
         private func Answer(prompt string, fallback string = "") string ->
         WizardScreen.Read("Project setup", "", prompt, fallback)
 
@@ -143,19 +81,9 @@ internal class OwnerSetup {
             return path
         }
 
-        private func Tools(args Args, fields map[string, Object?], interactive bool) {
+        private func Tools(args Args, fields map[string, Object?]) {
             let value = J.Parse(J.Write(fields))
-            var requested = args.Get("allowed-tools")
-            if requested == "" && interactive {
-                let current = List[string]()
-                for tool in J.Items(J.Get(value, "allowed_tools")) {
-                    current.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider"))
-                }
-                Terminal.Message("Current allowed tools: " + String.Join(", ", current), error: true)
-                requested = Answer(
-                    "Allowed tools (--allowed-tools): codex,claude,pi keeps external and OMP permissions; use harness/provider pairs to replace all; Enter keeps current"
-                )
-            }
+            let requested = args.Get("allowed-tools")
             if requested == "" {
                 return
             }
@@ -190,7 +118,7 @@ internal class OwnerSetup {
         private func Guide(args Args, fields map[string, Object?]) {
             let repo = args.Need("repo")
             let initial = J.Parse(J.Write(fields))
-            if J.Text(initial, "approval_scope") == "task" {
+            if args.Get("eligibility") == "" && J.Text(initial, "approval_scope") == "task" {
                 let modes = []string{"trusted", "open", "manual"}
                 let current = Array.IndexOf(modes, J.Text(initial, "eligibility")) + 1
                 fields["eligibility"] = modes[
@@ -207,7 +135,8 @@ internal class OwnerSetup {
                     ) - 1
                 ]
             }
-            let restriction = WizardScreen.Choose(
+            let restriction = args.Get("model-policy") != "" ?
+            (args.Get("model-policy") == "unrestricted" ? 1: 2): WizardScreen.Choose(
                 "Allowed models",
                 "Choose how much control you want over the coding model.",
                 []string{"Any supported model", "Choose allowed models"},
@@ -219,13 +148,45 @@ internal class OwnerSetup {
             if restriction == 2 && J.Get(initial, "models").ValueKind != JsonValueKind.Object {
                 fields["models"] = RequestData.Parse(ModelChecklist().Run())
             }
-            if !fields.ContainsKey("verification") {
-                fields["verification"] = RequestData.Parse(SetupAnswer(args, "verification", "", "", true))
-            }
-            if !fields.ContainsKey("required_checks") {
-                fields["required_checks"] = RequestData.Parse(SetupAnswer(args, "required-checks", "", "", true))
-            }
+            var edit = ""
             while true {
+                if !fields.ContainsKey("verification") || edit == "verification" {
+                    let commands = List[Object]()
+                    while true {
+                        let command = WizardScreen.Read(
+                            "Verification commands",
+                            "Enter one shell command at a time. Enter finishes the list.",
+                            "Shell command"
+                        )
+                        if command == "" {
+                            break
+                        }
+                        commands.Add([]string{"/bin/sh", "-c", command})
+                    }
+                    fields["verification"] = commands
+                }
+                if !fields.ContainsKey("required_checks") || edit == "required-checks" {
+                    let names = List[string]()
+                    if fields.ContainsKey("required_checks") {
+                        for item in J.Items(J.Parse(J.Write(fields["required_checks"]))) {
+                            names.Add(item.GetString() ?? "")
+                        }
+                    }
+                    let answer = WizardScreen.Read(
+                        "Required GitHub checks",
+                        "Enter the check names required before merge, separated by commas.",
+                        "Check names",
+                        String.Join(", ", names)
+                    )
+                    names.Clear()
+                    for name in answer.Split(',') {
+                        if name.Trim() != "" {
+                            names.Add(name.Trim())
+                        }
+                    }
+                    fields["required_checks"] = names
+                }
+                edit = ""
                 let value = J.Parse(J.Write(fields))
                 let checks = List[string]()
                 for command in J.Items(J.Get(value, "verification")) {
@@ -268,10 +229,15 @@ internal class OwnerSetup {
                         (J.Number(value, "max_seconds") / 60.0).ToString("0.##") +
                         " minutes total" +
                         "\nTools    " +
-                        String.Join(", ", tools),
+                        String.Join(", ", tools) + "\nBranch   " + J.Text(value, "target_branch") +
+                        "\nReserve  " +
+                        (J.Number(value, "reservation_seconds") / 60.0).ToString("0.##") +
+                        " minutes" +
+                        "\nPR text  " +
+                        J.Text(value, "pr_text"),
                     []string{
                         "Create policy files",
-                        "Change checks or time limit",
+                        "Change checks, times or PR settings",
                         "Review allowed models",
                         "Change tools",
                         "Back to home"
@@ -288,29 +254,47 @@ internal class OwnerSetup {
                     let change = WizardScreen.Choose(
                         "Change project setup",
                         "Use checks that validate this project.",
-                        []string{"Verification commands", "Time limit", "Required GitHub checks", "Back to review"}
+                        []string{
+                            "Verification commands",
+                            "Time limit",
+                            "Required GitHub checks",
+                            "Target branch",
+                            "Reservation time",
+                            "Pull request text",
+                            "Back to review"
+                        }
                     )
                     if change == 1 {
-                        fields["verification"] = RequestData.Parse(SetupAnswer(args, "verification", "", "", true))
+                        edit = "verification"
                     }
-                    if change == 2 {
-                        let seconds = J.Number(value, "max_seconds")
-                        fields["max_seconds"] = int32.Parse(
+                    if change == 2 || change == 5 {
+                        let field = change == 2 ? "max_seconds": "reservation_seconds"
+                        let seconds = J.Number(value, field)
+                        fields[field] = int32.Parse(
                             Cli.Seconds(
                                 WizardScreen.Read(
-                                    "Project time limit",
-                                    "Total time for coding and verification, such as 1h or 30m.",
-                                    "Maximum donor time (--max-time)",
+                                    change == 2 ? "Project time limit": "Reservation time",
+                                    change == 2 ? "Total time for coding and verification, such as 1h or 30m.":
+                                    "Time to reserve a task, such as 24h or 30m.",
+                                    change == 2 ? "Maximum donor time (--max-time)": "Reservation time (--reservation-time)",
                                     seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
                                     seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
                                 ),
-                                "max-time"
+                                change == 2 ? "max-time": "reservation-time"
                             )
                         )
                     }
                     if change == 3 {
-                        fields["required_checks"] = RequestData.Parse(
-                            SetupAnswer(args, "required-checks", "", J.Write(J.Get(value, "required_checks")), true)
+                        edit = "required-checks"
+                    }
+                    if change == 4 || change == 6 {
+                        let field = change == 4 ? "target_branch": "pr_text"
+                        fields[field] = WizardScreen.Read(
+                            change == 4 ? "Target branch": "Pull request text",
+                            change == 4 ? "Choose the branch that receives contributions.":
+                            "Optional owner text appended to pull requests.",
+                            change == 4 ? "Target branch (--base-branch)": "Pull request text (--pr-text)",
+                            J.Text(value, field)
                         )
                     }
                 }
@@ -346,7 +330,7 @@ internal class OwnerSetup {
                         String.Join(",", pairs)
                     ):
                     choice == 1 ? "codex": choice == 2 ? "claude": choice == 3 ? "pi": "codex,claude,pi"
-                    Tools(args, fields, false)
+                    Tools(args, fields)
                 }
             }
         }
@@ -499,44 +483,14 @@ internal class OwnerSetup {
                 fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
                 fields["max_seconds"] = 3600
             }
-            if foreground && args.Guided {
-                Guide(args, fields)
-            }
-            let interactive = foreground && !args.Guided
-            let mode = SetupAnswer(
-                args,
-                "model-policy",
-                "Models: unrestricted or whitelist (--model-policy, explicit choice required)",
-                existing?.ModelPolicy ?? "",
-                interactive
-            )
-            if mode != "unrestricted" && mode != "whitelist" {
-                throw Exception(
-                    "Choose --model-policy unrestricted or whitelist; no model restriction is selected silently"
-                )
-            }
-            if existing == nil || args.Get("model-policy") != "" || mode != existing?.ModelPolicy {
+            let mode = args.Get("model-policy", existing?.ModelPolicy ?? "")
+            if mode != "" && (existing == nil || args.Get("model-policy") != "") {
                 fields["model_policy"] = mode
             }
-            if mode == "unrestricted" {
-                if args.Get("models") != "" {
-                    throw Exception("Unrestricted models excludes --models")
-                }
-                fields.Remove("models")
-            } else {
-                let models = SetupAnswer(
-                    args,
-                    "models",
-                    "Allowed models and efforts as a JSON object; absent means no effort control",
-                    fields.ContainsKey("models") ? J.Write(fields["models"] ?? ""): "",
-                    interactive
-                )
-                if models == "" {
-                    throw Exception("Whitelist setup requires --models JSON")
-                }
-                fields["models"] = RequestData.Parse(models)
+            if args.Get("models") != "" {
+                fields["models"] = RequestData.Parse(args.Get("models"))
             }
-            Tools(args, fields, interactive)
+            Tools(args, fields)
             let value = J.Parse(J.Write(fields))
             for key in[]string{
                 "eligibility",
@@ -548,42 +502,45 @@ internal class OwnerSetup {
                 "pr-text",
                 "close-message"
             } {
-                let field = key == "base-branch" ? "target_branch": key.Replace('-', '_')
+                let field = key == "base-branch" ? "target_branch": key == "seconds" ? "max_seconds":
+                key.Replace('-', '_')
                 let present = J.Get(value, field)
                 var fallback = present.ValueKind == JsonValueKind.Undefined ? "": present.ToString()
-                if key == "seconds" {
-                    fallback = J.Number(value, "max_seconds").ToString()
-                }
-                if interactive && fallback == "" && key == "base-branch" {
+                if foreground && fallback == "" && key == "base-branch" {
                     fallback = J.Text(info, "default_branch")
                 }
-                if interactive && fallback == "" && key == "reservation-seconds" {
+                if foreground && fallback == "" && key == "reservation-seconds" {
                     fallback = "86400"
                 }
-                let answer = SetupAnswer(
-                    args,
-                    key,
-                    switch key {
-                        case "eligibility": "Who can contribute (--eligibility: trusted, open or manual)"
-                        case "base-branch": "Target branch (--base-branch)"
-                        case "seconds": "Maximum donor time (--max-time, e.g. 1h)"
-                        case "reservation-seconds": "Reservation time (--reservation-time, e.g. 30m)"
-                        case "pr-text": "Pull request text (--pr-text)"
-                        default: key
-                    },
-                    fallback,
-                    interactive
-                )
+                let answer = args.Get(key, fallback)
                 if answer == "" {
                     continue
                 }
                 if key == "seconds" || key == "reservation-seconds" {
-                    fields[key == "seconds" ? "max_seconds": field] = Int32.Parse(answer)
+                    fields[field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
                     fields[field] = RequestData.Parse(answer)
                 } else {
                     fields[field] = answer
                 }
+            }
+            if foreground {
+                Guide(args, fields)
+                fields["model_policy"] = args.Need("model-policy")
+            }
+            let selected = args.Get("model-policy", existing?.ModelPolicy ?? "")
+            if selected != "unrestricted" && selected != "whitelist" {
+                throw Exception(
+                    "Choose --model-policy unrestricted or whitelist; no model restriction is selected silently"
+                )
+            }
+            if selected == "unrestricted" {
+                if args.Get("models") != "" {
+                    throw Exception("Unrestricted models excludes --models")
+                }
+                fields.Remove("models")
+            } else if !fields.ContainsKey("models") {
+                throw Exception("Whitelist setup requires --models JSON")
             }
             let candidate = J.Write(fields)
             let policy = Policy(candidate)

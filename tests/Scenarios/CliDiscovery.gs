@@ -383,7 +383,7 @@ internal class CliDiscovery {
             )
             Check.That(!declined.Output.Contains('{'), "Settings confirmation showed raw API bodies")
             Check.That(
-                !declined.Output.Contains("Models: unrestricted"),
+                !declined.Output.Contains("Who can contribute?"),
                 "Setup asked policy questions before settings approval"
             )
             flow.Reload()
@@ -395,18 +395,18 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "yes\nwhitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n2h\n30m\n/usr/bin/true\n\nverify, build\n\ny\n"
+                "yes\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n/usr/bin/true\n\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n"
             )
             Check.Success(terminal)
             Check.That(
                 terminal.Output.IndexOf("Apply these GitHub settings?", StringComparison.Ordinal) < terminal
                     .Output
-                    .IndexOf("Models: unrestricted", StringComparison.Ordinal),
+                    .IndexOf("Who can contribute?", StringComparison.Ordinal),
                 "Setup asked policy questions before checking GitHub settings"
             )
-            Check.Contains(terminal.Output, "Maximum donor time (--max-time, e.g. 1h) [1h]")
+            Check.Contains(terminal.Output, "Maximum donor time (--max-time) [1h]")
             Check.Contains(terminal.Output, "Target branch (--base-branch) [main]")
-            Check.Contains(terminal.Output, "Reservation time (--reservation-time, e.g. 30m) [24h]")
+            Check.Contains(terminal.Output, "Reservation time (--reservation-time) [24h]")
             flow.Reload()
             let eventPolicy = Check.Map(
                 "name",
@@ -439,10 +439,6 @@ internal class CliDiscovery {
                 "Setup did not enable PR creation while preserving workflow permissions"
             )
             Check.That(
-                terminal.Output.Split("Models: unrestricted or whitelist").Length == 2,
-                "Setup asked for model mode more than once"
-            )
-            Check.That(
                 File.Exists(Path.Combine(interactiveRoot, ".github/tokate.json")),
                 "Interactive confirmation did not apply setup"
             )
@@ -457,6 +453,88 @@ internal class CliDiscovery {
                     selected["required_checks"]?.ToJsonString() == "[\"verify\",\"build\"]",
                 "Interactive setup lost selected models, commands or check names"
             )
+            Check.That(
+                Check.Text(selected["target_branch"]) == "release" && Check.Text(
+                    selected["pr_text"]
+                ) == "Owner notes" &&
+                    selected["allowed_tools"]?.ToJsonString() ==
+                "[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
+                "Guided init lost branch, PR text or tool choices"
+            )
+            let savedToken = flow.Temp.Env["GH_TOKEN"]
+            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            for flag in[]string{"", "--non-interactive", "--json", "redirected"} {
+                let optionRoot = Path.Combine(flow.Temp.Root, "options-" + flag.Replace('-', '_'))
+                Checkout(flow, optionRoot)
+                let optionArgs = List[string]{
+                    "init",
+                    "owner/project",
+                    "--path",
+                    optionRoot,
+                    "--model-policy",
+                    "whitelist",
+                    "--models",
+                    "{\"model-a\":[\"high\"]}",
+                    "--allowed-tools",
+                    "claude/anthropic,aider/openrouter",
+                    "--eligibility",
+                    "manual",
+                    "--base-branch",
+                    "release",
+                    "--max-time",
+                    "20m",
+                    "--reservation-time",
+                    "30m",
+                    "--verification",
+                    "[[\"/usr/bin/true\"]]",
+                    "--required-checks",
+                    "[\"verify\"]",
+                    "--pr-text",
+                    "Option notes",
+                    "--close-message",
+                    "Request access.",
+                    "--plain"
+                }
+                if flag.StartsWith("--") {
+                    optionArgs.Add(flag)
+                }
+                let options = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
+                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "1\n": "")
+                Check.Success(options)
+                Check.That(
+                    options.Output.Contains("Review project setup") == (flag == ""),
+                    "Init used the wrong interactive mode"
+                )
+                Check.That(
+                    !options.Output.Contains("Who can contribute?") && !options.Output.Contains(
+                        "Choose how much control"
+                    ) &&
+                        !options
+                        .Output
+                        .Contains("Shell command:") && !options.Output.Contains("Check names:"),
+                    "Explicit options still prompted for policy fields"
+                )
+                let configured = Check.Json(File.ReadAllText(Path.Combine(optionRoot, ".github/tokate.json")))
+                Check.That(
+                    Check.Text(configured["model_policy"]) == "whitelist" &&
+                        configured["models"]?.ToJsonString() == "{\"model-a\":[\"high\"]}" && Check.Text(
+                        configured["eligibility"]
+                    ) == "manual" &&
+                        Check.Text(configured["target_branch"]) == "release" && Check.Text(
+                        configured["max_seconds"]
+                    ) == "1200" &&
+                        Check.Text(configured["reservation_seconds"]) == "1800" &&
+                        configured["verification"]?.ToJsonString() == "[[\"/usr/bin/true\"]]" &&
+                        configured["required_checks"]?.ToJsonString() == "[\"verify\"]" &&
+                        configured["allowed_tools"]?.ToJsonString() ==
+                    "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]" &&
+                        Check.Text(configured["pr_text"]) == "Option notes" && Check.Text(
+                        configured["close_message"]
+                    ) == "Request access.",
+                    "Init changed explicit policy options"
+                )
+            }
+            flow.Temp.Env["GH_TOKEN"] = savedToken
             flow.Call([]string{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "high"})
             flow.Call(
                 []string{
