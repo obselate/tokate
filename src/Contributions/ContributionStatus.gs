@@ -567,7 +567,7 @@ internal class ContributionStatus {
                         repo +
                         "/issues/" +
                         Text(row, "issue") +
-                        " with your selected profile or model and an explicit time budget.":
+                        " with your selected profile or model and an explicit time budget. If your claim is pending and the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again.":
                     "An eligible donor must select the task and prepare a claim request. Inspect access grants if no donor is eligible."
                 )
             } else {
