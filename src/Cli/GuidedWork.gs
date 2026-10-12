@@ -198,12 +198,30 @@ internal class GuidedWork {
                     args.Get("endpoint"),
                     "No-auth loopback Chat Completions URL, including /v1. Tokate does not start a server."
                 )
-                args.Values["--model"] = WizardScreen.Read(
+                PiHarness.Runtime(args)
+                let models = List[string]()
+                let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
+                try {
+                    for entry in J.Items(J.Get(PiCatalog.Read(args.Need("node"), "", endpoint), "data")) {
+                        models.Add(J.Text(entry, "id"))
+                    }
+                } catch (error CliFailure) { }
+                var selected = models.Count + 1
+                if models.Count > 0 {
+                    labels.Clear()
+                    labels.AddRange(models)
+                    labels.Add("Enter another model ID")
+                    selected = WizardScreen.Choose(
+                        "Local model",
+                        "Choose a model advertised by your server and configured in Pi.",
+                        labels.ToArray()
+                    )
+                }
+                args.Values["--model"] = selected <= models.Count ? models[selected - 1]: WizardScreen.Read(
                     "Local model",
                     "Choose the exact model configured in Pi and advertised by your server.",
                     "Model ID"
                 )
-                PiHarness.Runtime(args)
                 let settings = PiBoundary.ModelSettings(
                     args.Need("pi-root"),
                     args.Need("node"),
@@ -234,7 +252,26 @@ internal class GuidedWork {
                 let efforts = List[string]()
                 labels.Clear()
                 if policy.ModelPolicy == "unrestricted" {
-                    let selector = WizardScreen.Read(
+                    let selectors = List[string]()
+                    try {
+                        for entry in OmpRuntime.Models(args.Need("harness-path")) {
+                            if J.Text(entry, "kind") == "chat" && policy.AllowsTool("omp", J.Text(entry, "provider")) {
+                                selectors.Add(J.Text(entry, "selector"))
+                            }
+                        }
+                    } catch (error Exception) { }
+                    var choice = selectors.Count + 1
+                    if selectors.Count > 0 {
+                        labels.AddRange(selectors)
+                        labels.Add("Enter another model ID")
+                        choice = WizardScreen.Choose(
+                            "OMP model",
+                            "Choose a model from your OMP catalog.",
+                            labels.ToArray()
+                        )
+                        labels.Clear()
+                    }
+                    let selector = choice <= selectors.Count ? selectors[choice - 1]: WizardScreen.Read(
                         "OMP model",
                         "Choose the exact model as OMP lists it.",
                         "provider/model",
