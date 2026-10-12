@@ -104,11 +104,26 @@ func WorkspaceFlow() {
         Directory.CreateDirectory(run)
         Directory.SetLastWriteTimeUtc(run, DateTime.UtcNow.AddMinutes(-index))
     }
+    let checkout = Path.Combine(fixture, "checkout")
+    Directory.CreateDirectory(checkout)
+    Script(
+        fixture,
+        "git-commits",
+        "cd \"$$1\" && git init -q && git config user.name t && git config user.email t@t && git config commit.gpgsign false && " +
+            "git commit -q --allow-empty -m published && git rev-parse HEAD && echo x > file && git add file && " +
+            "git commit -q -m 'Correct the work' && git rev-parse HEAD\n"
+    )
+    let commits = ProcessRunner().Run(CommandStart(Path.Combine(fixture, "git-commits"), []string{checkout}), 10).Output.Trim().Split('\n')
+    File.WriteAllText(
+        Path.Combine(storage, "amend", "run.json"),
+        "{\"public_summary\":{\"changes\":[\"Add a fixed header row.\"],\"verification\":[\"Table tests passed.\"],\"limitations\":[]}}"
+    )
     Script(
         bin,
         "tokate",
-        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason='';;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"}\"\n    ;;\n  *) data='{\"work\":[],\"access_status\":\"observed\"}';;\n  esac;;\npolicy) data='{\"policy\":{\"version\":2,\"model_policy\":\"unrestricted\",\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) data='{\"access_sha\":\"existing\",\"members\":[],\"pending\":[]}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Updated .github/tokate.json\\nfixture policy\\n' >&2\n  touch FIXTURE/applied\n  data='{\"applied\":true}';;\napprove) touch FIXTURE/approved; data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\"]]}' \"$$1\" \"$$data\"\n"
+        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason=''; extra=',\"commit\":\"PUBLISHED\",\"artifacts\":{\"checkout\":\"FIXTURE/checkout\"}';;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"$$extra}\"\n    ;;\n  *) data='{\"work\":[],\"access_status\":\"observed\"}';;\n  esac;;\npolicy) data='{\"policy\":{\"version\":2,\"model_policy\":\"unrestricted\",\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) data='{\"access_sha\":\"existing\",\"members\":[],\"pending\":[]}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Updated .github/tokate.json\\nfixture policy\\n' >&2\n  touch FIXTURE/applied\n  data='{\"applied\":true}';;\napprove) touch FIXTURE/approved; data='{}';;\namend)\n  printf '%s\\n' \"$$@\" > FIXTURE/amend-args\n  for arg in \"$$@\"; do case \"$$arg\" in */summary.json) cp \"$$arg\" FIXTURE/amend-summary;; esac; done\n  data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\"]]}' \"$$1\" \"$$data\"\n"
             .Replace("FIXTURE", fixture)
+            .Replace("PUBLISHED", commits[0])
     )
     Script(
         bin,
@@ -336,6 +351,7 @@ func WorkspaceFlow() {
         AwaitControl(host, adapter, AccessibilityRole.Button, "Saved owner/repo #43", enabled: true)
         Choose(host, window, adapter, "Saved owner/repo #43")
         Choose(host, window, adapter, "Amend contribution")
+        AwaitControl(host, adapter, AccessibilityRole.TextInput, "Change 1", "Add a fixed header row.")
         Require(
             Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "30",
             "Donation budget leaked into amendment settings"
@@ -350,6 +366,24 @@ func WorkspaceFlow() {
         Require(
             Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "11",
             "Navigation discarded amendment settings"
+        )
+        Edit(window, host, adapter, "Change 1", "Fix the table header.")
+        Choose(host, window, adapter, "Verify and publish amendment")
+        Choose(host, window, adapter, "Confirm")
+        let published = System.Diagnostics.Stopwatch.StartNew()
+        while !File.Exists(Path.Combine(fixture, "amend-summary")) && published.Elapsed.TotalSeconds < 10 {
+            Settle(host)
+        }
+        Require(
+            File.ReadAllText(Path.Combine(fixture, "amend-summary")) ==
+                "{\"head\":\"" + commits[1] +
+                "\",\"changes\":[\"Fix the table header.\"],\"verification\":[\"Table tests passed.\"],\"limitations\":[]}",
+            "Amendment did not publish the corrected summary for the commit"
+        )
+        let amended = File.ReadAllText(Path.Combine(fixture, "amend-args"))
+        Require(
+            amended.Contains("--time\n11m\n--commit\n" + commits[1] + "\n--summary\n") && !amended.Contains("--tools"),
+            "Amendment arguments are wrong: " + amended
         )
         Choose(host, window, adapter, "Welcome")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Continue owner/repo #43", enabled: true)

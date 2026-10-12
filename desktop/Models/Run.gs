@@ -32,6 +32,7 @@ data struct Run {
     var ErrorMessage string
     var Pr int32
     var Harness string
+    var Provider string
     var Model string
     var Effort string
     var CodingSeconds int32
@@ -48,6 +49,9 @@ data struct Run {
     prop Kind RunState -> Run.Parse(State)
 
     prop Identity string -> Repo + " #" + Issue.ToString()
+
+    /// True when the run names the whole tool of the donation, which a tool declaration needs.
+    prop DeclaresTool bool -> Harness != "" && Provider != "" && Model != "" && Effort != ""
 
     prop Readable bool -> Repo != "" && Issue >= 1
 
@@ -98,10 +102,13 @@ data struct Run {
             FailureReason: "",
             ErrorMessage: "",
             Harness: "",
+            Provider: "",
             Model: "",
             Effort: "",
             Approval: "",
             DonorId: "",
+            Commit: "",
+            Checkout: "",
         }
     }
 }

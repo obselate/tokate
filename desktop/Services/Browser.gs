@@ -2,6 +2,7 @@ package TokateDesktop
 
 import System
 import System.Diagnostics
+import System.IO
 
 class Browser {
     shared {
@@ -9,6 +10,13 @@ class Browser {
         func Open(url string) {
             if Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == "https" && uri.Host == "github.com" {
                 go Launch(url)
+            }
+        }
+
+        /// Opens a directory in the file manager.
+        func OpenFolder(path string) {
+            if Directory.Exists(path) {
+                go Launch(path)
             }
         }
 

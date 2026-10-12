@@ -100,6 +100,35 @@ class Json {
             }
         )
 
+        /// The public summary file that `tokate amend` reads for the candidate commit `head`.
+        func Summary(head string, summary PublicSummary) string -> Write(
+            writer -> {
+                writer.WriteStartObject()
+                writer.WriteString("head", head)
+                writer.WritePropertyName("changes")
+                WriteStrings(writer, summary.Changes)
+                writer.WritePropertyName("verification")
+                WriteStrings(writer, summary.Verification)
+                writer.WritePropertyName("limitations")
+                WriteStrings(writer, summary.Limitations)
+                writer.WriteEndObject()
+            }
+        )
+
+        /// The tool declarations file that names the tool of the donation as the editor.
+        func Tools(run Run) string -> Write(
+            writer -> {
+                writer.WriteStartArray()
+                writer.WriteStartObject()
+                writer.WriteString("harness", run.Harness)
+                writer.WriteString("provider", run.Provider)
+                writer.WriteString("model", run.Model)
+                writer.WriteString("effort", run.Effort)
+                writer.WriteEndObject()
+                writer.WriteEndArray()
+            }
+        )
+
         private func WriteStrings(writer Utf8JsonWriter, values IEnumerable[string]) {
             writer.WriteStartArray()
             for value in values {

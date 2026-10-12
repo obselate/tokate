@@ -17,6 +17,7 @@ class RunCodec {
                 ErrorMessage: Json.Text(Json.Get(data, "error"), "message"),
                 Pr: Json.Int(data, "pr"),
                 Harness: tools.Length > 0 ? Json.Text(tools[0], "harness"): Json.Text(data, "harness"),
+                Provider: tools.Length > 0 ? Json.Text(tools[0], "provider"): "",
                 Model: Json.Text(data, "model"),
                 Effort: Json.Text(data, "effort"),
                 CodingSeconds: Json.Int(data, "coding_seconds"),
@@ -27,6 +28,16 @@ class RunCodec {
                 DonorId: Json.Text(data, "donor_id"),
                 Commit: Json.Text(data, "commit"),
                 Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
+            }
+        }
+
+        /// The public summary in a saved run file. A run without one gives empty lists.
+        func Summary(runFile JsonElement) PublicSummary {
+            let summary = Json.Get(runFile, "public_summary")
+            return PublicSummary{
+                Changes: Json.Strings(summary, "changes"),
+                Verification: Json.Strings(summary, "verification"),
+                Limitations: Json.Strings(summary, "limitations"),
             }
         }
 

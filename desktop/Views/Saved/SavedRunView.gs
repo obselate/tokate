@@ -16,15 +16,20 @@ class SavedRunView {
         let state = saved.Current
         let run = state.Run
         let amendment = state.Amendment
-        let form Blob? = Array.IndexOf(state.Actions, RunAction.Recover) >= 0 || amendment.Open ? AmendmentForm{
+        let recovery = Array.IndexOf(state.Actions, RunAction.Recover) >= 0
+        let form Blob? = recovery || amendment.Open ? AmendmentForm{
             Amendment: amendment,
-            Checkout: run.Checkout,
-            Published: run.Commit,
+            Run: run,
+            Recovery: recovery,
+            Stacked: page.NarrowContent,
             Button: page.Button,
             Disabled: page.Busy,
             OnVerification: value -> saved.SetVerification(value),
             OnSummary: value -> saved.SetSummary(value),
+            OnEdited: value -> saved.SetEdited(value),
             OnTools: value -> saved.SetTools(value),
+            OnOpenCheckout: () -> saved.OpenCheckout(),
+            OnCheck: () -> saved.ReadCorrection(),
             OnPublish: () -> saved.Act(RunAction.Amend),
             OnCancel: () -> saved.ToggleAmendment(),
         }.Build(): nil

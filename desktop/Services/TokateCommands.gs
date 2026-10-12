@@ -112,8 +112,9 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        /// `published` is the candidate commit that the run already published.
-        func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "") []string {
+        /// `published` is the candidate commit that the run already published. `files` is the directory that
+        /// holds the written amendment files; without it the command has only the commit and budget.
+        func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "", files string = "") []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
             if RunActions.NeedsBudget(action) {
                 args.Add("--time")
@@ -122,13 +123,13 @@ class TokateCommands {
             if action == RunAction.Amend {
                 args.Add("--commit")
                 args.Add(amendment.ValidCommit(published))
-                if amendment.Summary != "" {
+                if files != "" {
                     args.Add("--summary")
-                    args.Add(amendment.Summary)
+                    args.Add(RunStore.SummaryFile(files))
                 }
-                if amendment.Tools != "" {
+                if amendment.Edited != EditedBy.Hand {
                     args.Add("--tools")
-                    args.Add(amendment.Tools)
+                    args.Add(amendment.Edited == EditedBy.Other ? amendment.Tools: RunStore.ToolsFile(files))
                 }
             }
             return args.ToArray()

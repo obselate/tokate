@@ -239,19 +239,95 @@ data struct RunGuide {
     }
 }
 
-/// The commit at HEAD of a saved checkout. An empty commit means that the checkout has no correction to publish.
+/// The commit at HEAD of a saved checkout and the number of files that it changes since the published
+/// commit. An empty commit means that the checkout has no correction to publish.
 data struct CheckoutHead {
     var Commit string
     var Subject string
+    var Files int32
+}
+
+/// The public summary of a contribution, as the short lines that the pull request shows.
+data struct PublicSummary {
+    var Changes []string
+    var Verification []string
+    var Limitations []string
+
+    /// The summary without empty lines and outer spaces. Throws when Tokate would reject it.
+    func Valid() PublicSummary {
+        let summary = PublicSummary{
+            Changes: PublicSummary.Filled(Changes),
+            Verification: PublicSummary.Filled(Verification),
+            Limitations: PublicSummary.Filled(Limitations),
+        }
+        if summary.Changes.Length == 0 {
+            throw Exception("Add at least one change to the summary.")
+        }
+        for lines in [][]string{summary.Changes, summary.Verification, summary.Limitations} {
+            for line in lines {
+                if PublicSummary.Problem(line) != "" {
+                    throw Exception("Correct the marked summary lines first.")
+                }
+            }
+        }
+        return summary
+    }
+
+    shared {
+        let Empty PublicSummary = PublicSummary{Changes: []string{}, Verification: []string{}, Limitations: []string{}}
+
+        /// Why Tokate rejects `line` as public text, or an empty string. An empty line has no problem because
+        /// it is left out.
+        func Problem(line string) string {
+            let text = line.Trim()
+            if text == "" {
+                return ""
+            }
+            if text.Length < 3 || text.Length > 200 {
+                return "Use 3 to 200 characters."
+            }
+            if !Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_-]+$") {
+                return "Use only letters, numbers, spaces and . , ; : ! ? ( ) ' + _ -"
+            }
+            if Regex.IsMatch(
+                text,
+                "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|sk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
+            ) {
+                return "Tokate rejects this text. Remove links, addresses and words such as password, secret or key."
+            }
+            return ""
+        }
+
+        private func Filled(lines []string) []string {
+            let result = List[string]()
+            for line in lines {
+                if line.Trim() != "" {
+                    result.Add(line.Trim())
+                }
+            }
+            return result.ToArray()
+        }
+    }
+}
+
+/// Who made the correction that an amendment publishes.
+enum EditedBy {
+    Hand,
+    Donation,
+    Other
 }
 
 /// An amendment publishes the commit at HEAD of the saved checkout, which the form reads when it opens.
 /// Tokate rejects a commit that changes no files, so the form reads a commit only when files changed.
+/// `Checked` is false while the checkout is read. `Tools` is the declarations file for other tools.
 data struct AmendmentDraft {
     var Open bool
+    var Checked bool
     var Commit string
     var Subject string
-    var Summary string
+    var Files int32
+    var Summary PublicSummary
+    var Edited EditedBy
     var Tools string
     var Verification string
 
@@ -273,7 +349,7 @@ data struct AmendmentDraft {
     }
 
     shared {
-        let Initial AmendmentDraft = AmendmentDraft{Commit: "", Subject: "", Summary: "", Tools: "", Verification: "30"}
+        let Initial AmendmentDraft = AmendmentDraft{Commit: "", Subject: "", Summary: PublicSummary.Empty, Tools: "", Verification: "30"}
     }
 }
 

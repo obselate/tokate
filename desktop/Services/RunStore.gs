@@ -52,20 +52,52 @@ class RunStore {
 
         func Exists(path string) bool -> File.Exists(path)
 
-        /// The commit and its subject at HEAD of a saved checkout, when its files differ from `published`.
+        /// The commit at HEAD of a saved checkout, when its files differ from `published`.
         func Correction(checkout string, published string) CheckoutHead {
             if Directory.Exists(checkout) && published != "" {
                 let head = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "log", "-1", "--format=%H%n%s"}), 10)
                 let lines = head.Output.Split('\n')
                 if head.ExitCode == 0 && head.Error == "" && lines.Length > 1 {
                     let commit = lines[0].Trim()
-                    let diff = ProcessRunner().Run(CommandStart("git", []string{"-C", checkout, "diff", "--quiet", published, commit, "--"}), 10)
-                    if diff.ExitCode == 1 {
-                        return CheckoutHead{Commit: commit, Subject: lines[1].Trim()}
+                    let diff = ProcessRunner().Run(
+                        CommandStart("git", []string{"-C", checkout, "diff", "--name-only", published, commit, "--"}),
+                        10
+                    )
+                    let files = diff.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length
+                    if diff.ExitCode == 0 && diff.Error == "" && files > 0 {
+                        return CheckoutHead{Commit: commit, Subject: lines[1].Trim(), Files: files}
                     }
                 }
             }
             return CheckoutHead{Commit: "", Subject: ""}
         }
+
+        /// The public summary that the pull request has now: the one of the amendment that published
+        /// `commit`, or the one of the donation.
+        func Summary(run string, commit string) PublicSummary {
+            let amended = Path.Combine(run, "amendments", commit, "run.json")
+            try {
+                return RunCodec.Summary(Json.ParseFile(commit != "" && File.Exists(amended) ? amended: ClaimFile(run)))
+            } catch (error Exception) {
+                return PublicSummary.Empty
+            }
+        }
+
+        func SummaryFile(directory string) string -> Path.Combine(directory, "summary.json")
+
+        func ToolsFile(directory string) string -> Path.Combine(directory, "tools.json")
+
+        /// Writes the files that one amendment command reads to a new private directory and returns it.
+        /// Empty `tools` writes no tool declarations.
+        func WriteAmendment(summary string, tools string) string {
+            let directory = Directory.CreateTempSubdirectory("tokate-amendment-").FullName
+            File.WriteAllText(SummaryFile(directory), summary)
+            if tools != "" {
+                File.WriteAllText(ToolsFile(directory), tools)
+            }
+            return directory
+        }
+
+        func Remove(directory string) -> Directory.Delete(directory, true)
     }
 }

@@ -2,6 +2,7 @@ package TokateDesktop
 
 import System
 import System.Collections.Generic
+import System.Text
 
 /// The donor's saved runs. Runs are found on disk, read in the background by eight readers and cached. The
 /// visible page is read first and shown in one update, so later pages show at once. A run can be selected to
@@ -285,15 +286,20 @@ class SavedWorkService {
         }
         try {
             let amendment = Current.Amendment
-            let arguments = TokateCommands.RunAction(action, path, amendment, run.Commit)
+            let seconds = TokateCommands.RunActionTimeout(action, amendment)
+            var summary = ""
+            var tools = ""
             if action == RunAction.Amend {
-                for file in []string{amendment.Summary, amendment.Tools} {
-                    if file != "" && !RunStore.Exists(file) {
-                        throw Exception("Selected amendment file does not exist.")
-                    }
+                summary = Json.Summary(amendment.ValidCommit(run.Commit), amendment.Summary.Valid())
+                if Encoding.UTF8.GetByteCount(summary) > 4096 {
+                    throw Exception("The summary is too long. Shorten or remove lines.")
+                }
+                if amendment.Edited == EditedBy.Donation {
+                    tools = Json.Tools(run)
+                } else if amendment.Edited == EditedBy.Other && !RunStore.Exists(amendment.Tools) {
+                    throw Exception("Selected tool declarations file does not exist.")
                 }
             }
-            let seconds = TokateCommands.RunActionTimeout(action, amendment)
             dialogs.Ask(
                 Confirmation{
                     Title: RunActions.DialogTitle(action),
@@ -302,15 +308,21 @@ class SavedWorkService {
                     Heading: "",
                 },
                 () -> {
-                    commands.Cli(
-                        arguments,
+                    let files = summary == "" ? "": RunStore.WriteAmendment(summary, tools)
+                    let started = commands.Cli(
+                        TokateCommands.RunAction(action, path, amendment, run.Commit, files),
                         (outcome CommandOutcome) -> {
-                            if !commands.Failed(outcome) {
+                            Discard(files)
+                            if outcome.Failure == "" && !commands.Failed(outcome) {
                                 LoadRun()
                             }
                         },
-                        seconds: seconds
+                        seconds: seconds,
+                        completeOnError: true
                     )
+                    if !started {
+                        Discard(files)
+                    }
                 }
             )
         } catch (error Exception) {
@@ -318,31 +330,57 @@ class SavedWorkService {
         }
     }
 
-    // Amendment
-
-    /// Opens or closes the amendment form. Opening reads the correction in the saved checkout.
-    func ToggleAmendment() {
-        let opening = !Current.Amendment.Open
-        SetAmendment(Current.Amendment with{Open = opening, Commit = "", Subject = ""})
-        if opening {
-            go ReadCorrection(Current.Run.Checkout, Current.Run.Commit, Current.RunPath)
+    private func Discard(files string) {
+        if files != "" {
+            RunStore.Remove(files)
         }
     }
 
-    private func ReadCorrection(checkout string, published string, path string) {
-        let head = RunStore.Correction(checkout, published)
+    // Amendment
+
+    /// Opens or closes the amendment form. Opening reads the public summary of the run, so the form
+    /// starts with the lines that the pull request shows, and with manual editing as the declared tool.
+    func ToggleAmendment() {
+        let opening = !Current.Amendment.Open
+        SetAmendment(Current.Amendment with{Open = opening, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
+        if opening {
+            ReadCorrection(true)
+        }
+    }
+
+    /// Reads the correction in the saved checkout.
+    func ReadCorrection(opening bool = false) {
+        SetAmendment(Current.Amendment with{Checked = false, Commit = "", Subject = "", Files = 0})
+        go LoadCorrection(Current.Run, Current.RunPath, opening)
+    }
+
+    private func LoadCorrection(run Run, path string, opening bool) {
+        let head = RunStore.Correction(run.Checkout, run.Commit)
+        let summary = opening ? RunStore.Summary(path, run.Commit): PublicSummary.Empty
         window.Post(
             () -> {
                 if Current.RunPath == path && Current.Amendment.Open {
-                    SetAmendment(Current.Amendment with{Commit = head.Commit, Subject = head.Subject})
+                    SetAmendment(
+                        Current.Amendment with{
+                            Checked = true,
+                            Commit = head.Commit,
+                            Subject = head.Subject,
+                            Files = head.Files,
+                            Summary = opening ? summary: Current.Amendment.Summary,
+                        }
+                    )
                 }
             }
         )
     }
 
+    func OpenCheckout() -> Browser.OpenFolder(Current.Run.Checkout)
+
     func SetVerification(minutes string) -> SetAmendment(Current.Amendment with{Verification = minutes})
 
-    func SetSummary(path string) -> SetAmendment(Current.Amendment with{Summary = path})
+    func SetSummary(summary PublicSummary) -> SetAmendment(Current.Amendment with{Summary = summary})
+
+    func SetEdited(edited EditedBy) -> SetAmendment(Current.Amendment with{Edited = edited})
 
     func SetTools(path string) -> SetAmendment(Current.Amendment with{Tools = path})
 

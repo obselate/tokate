@@ -80,13 +80,20 @@ func CommandTests() {
 
     let amendment = AmendmentDraft.Initial with{
         Commit = "0123456789abcdef0123456789abcdef01234567",
-        Summary = "/tmp/summary.json",
+        Edited = EditedBy.Donation,
         Verification = "7",
     }
     Regression.Equal(
-        Regression.Args(TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment)),
-        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/summary.json",
+        Regression.Args(TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment, files: "/tmp/a")),
+        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/a/tools.json",
         "amend arguments"
+    )
+    Regression.Equal(
+        Regression.Args(
+            TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment with{Edited = EditedBy.Other, Tools = "/tmp/tools.json"}, files: "/tmp/a")
+        ),
+        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/tools.json",
+        "amend arguments with a tool declarations file"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.RunAction(RunAction.Submit, "/runs/1", amendment)),
