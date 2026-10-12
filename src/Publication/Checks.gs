@@ -56,6 +56,7 @@ internal class Checks {
             observed List[Object],
             facts Dictionary[string, Object?],
             directory string,
+            verbose bool,
             ref previous string
         ) {
             PublicOutput.Checks(run, J.Parse(J.Write(observed)), facts["checks_status"]?.ToString() ?? "unread", facts)
@@ -85,8 +86,17 @@ internal class Checks {
             )
             Terminal.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
             if !PublicOutput.Enabled {
-                Terminal.Checks(J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks"))
-                Terminal.Json(J.Parse(J.Write(facts)), "Check gates and required owner actions")
+                if facts["owner_review"]?.ToString() == "required" {
+                    Terminal.Message("Owner review: read the diff, then merge.", "default")
+                }
+                if verbose {
+                    Terminal.Checks(
+                        J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks")
+                    )
+                    let evidence = Dictionary[string, Object?](facts)
+                    evidence.Remove("owner_inspection_required")
+                    Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
+                }
             }
         }
 
@@ -404,7 +414,7 @@ internal class Checks {
                         facts["required_owner_actions"] = approval ? []string{ApprovalAction, ReportAction, Review}:
                         []string{ReportAction, Review}
                     }
-                    Show(run, observed, facts, directory, ref previous)
+                    Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
                     if failed {
                         return 1
                     }
@@ -468,7 +478,7 @@ internal class Checks {
                             facts["required_owner_actions"] = []string{ApprovalAction, action, Review}
                         }
                     }
-                    Show(run, observed, facts, directory, ref previous)
+                    Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
                     throw error
                 }
                 ApiTransport.PollWait()

@@ -75,7 +75,7 @@ internal class CliCommand(
         name != "ascii" &&
         (
         (Name == "work" && name != "yes" && name != "non-interactive") ||
-            (Name == "checks" && name != "watch" && name != "timeout") ||
+            (Name == "checks" && name != "watch" && name != "timeout" && name != "verbose") ||
             Name == "prepare" ||
             Name == "status"
     )
@@ -199,6 +199,7 @@ internal class Cli {
             ),
             CliOption("path", "DIR", "Repository directory; default: current directory"),
             CliOption("watch", "", "Wait for checks; default: off"),
+            CliOption("verbose", "", "Show check evidence and required owner actions"),
             CliOption("timeout", "TIME", "Check wait limit, at most 24h; default: 20m"),
             CliOption("state", "SHA", "Exact coordination-state commit"),
             CliOption("source", "SOURCE", "Coding source", "external tokate"),
@@ -269,10 +270,10 @@ internal class Cli {
             ),
             CliCommand(
                 "checks",
-                "run,watch,timeout",
+                "run,watch,timeout,verbose",
                 "repo,pr",
                 "Read PR receipt, report, CI and freshness gates; a saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
-                "PR | RUN [--watch] [--timeout TIME]",
+                "PR | RUN [--watch] [--timeout TIME] [--verbose]",
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
                 target: "pr",
