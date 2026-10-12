@@ -10,12 +10,15 @@ internal class Correction {
     shared {
         internal func Save(directory string, correction Data) {
             let current = Path.Combine(directory, "correction.json")
+
             if File.Exists(current) {
                 let previous = Data.Read(current)
+
                 if previous.Text("uuid") != correction.Text("uuid") {
                     previous.Write(Path.Combine(directory, "correction-" + previous.Text("uuid"), "record.json"))
                 }
             }
+
             correction.Write(Path.Combine(directory, "correction.json"))
             correction.Write(Path.Combine(directory, "correction-" + correction.Text("uuid"), "record.json"))
         }
@@ -38,15 +41,18 @@ internal class Correction {
         internal func Candidate(checkout string, run Data, commit string, record JsonElement) string {
             Verification.Candidate(checkout)
             RepositoryIdentity.CommitSha(commit)
+
             if Commands.Git(checkout, "rev-parse", "HEAD") != commit || Commands.GitRaw(
                 checkout,
                 []string{"status", "--porcelain=v1", "--untracked-files=all"}
             ) != "" {
                 throw CliFailure("invalid_state", "Correction requires a clean checkout at the declared exact commit")
             }
+
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), commit)
             Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", run.Text("base"), commit, "--")
             ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Text("base"), commit)
+
             return Patch(checkout, run.Text("base"), commit)
         }
 
@@ -54,6 +60,7 @@ internal class Correction {
             let checkout = Path.Combine(directory, "checkout")
             let patch = Candidate(checkout, run, correction.Text("commit"), record)
             let patchPath = Path.Combine(directory, "correction-" + correction.Text("uuid"), "candidate.patch")
+
             if Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != correction.Text("tree") || Data.Hash(
                 patch
             ) != correction.Text("patch_sha256") || patch != File.ReadAllText(patchPath) {
@@ -68,14 +75,18 @@ internal class Correction {
                     "Correction requires a current managed contribution; external work uses external --run"
                 )
             }
+
             let state = run.Text("state")
+
             if run.Number("pr") != 0 || state == "published" {
                 throw CliFailure(
                     "invalid_state",
                     "Contribution already published; correction recovery is only before first publication"
                 )
             }
+
             let reason = run.Text("failure_reason")
+
             if (state != "failed" && state != "generated") ||
                 reason == "inference_failed" ||
                 reason == "inference_interrupted" ||
@@ -86,6 +97,7 @@ internal class Correction {
                     "incomplete_turn: correction requires a completed successful inference turn"
                 )
             }
+
             try {
                 return CodexEvidence.CompletedUsage(
                     directory,
@@ -99,19 +111,24 @@ internal class Correction {
         internal func Authority(directory string, run Data, requireArchive bool = false) JsonElement {
             let record = ContributionAuthority.Recheck(run)
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+
             if J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object {
                 throw CliFailure("invalid_state", "Contribution already published")
             }
+
             let archive = Path.Combine(directory, "original-evidence")
+
             if requireArchive || Directory.Exists(archive) {
                 OriginalEvidence.Load(directory, run)
                 let pinned = J.Parse(File.ReadAllText(Path.Combine(archive, "approval.json")))
+
                 for key in[]string{"approval", "policy", "template"} {
                     if RequestData.Canonical(J.Get(pinned, key)) != RequestData.Canonical(J.Get(record, key)) {
                         throw CliFailure("stale_approval", "Original approval, policy or template changed")
                     }
                 }
             }
+
             return record
         }
 
@@ -119,29 +136,36 @@ internal class Correction {
             run.Fields["commit"] = correction.Text("commit")
             run.Fields["verification"] = J.Get(correction.Element(), "verification")
             let summary = J.Get(correction.Element(), "public_summary")
+
             if summary.ValueKind == JsonValueKind.Undefined {
                 run.Fields.Remove("public_summary")
             } else {
                 run.Fields["public_summary"] = summary
             }
+
             run.Fields.Remove("summary_patch_sha256")
             run.Fields["correction"] = Provenance(correction)
             run.Fields["state"] = "generated"
             run.Fields.Remove("error")
             run.Fields.Remove("failure_reason")
             run.Fields.Remove("failure_stage")
+
             run.Save(directory)
         }
 
         private func CopyTree(source string, target string, links List[Object], relative string = "") {
             Directory.CreateDirectory(target)
+
             for entry in Directory.EnumerateFileSystemEntries(source) {
                 let name = Path.GetFileName(entry)
+
                 if relative == "" && name == ".git" {
                     continue
                 }
+
                 let path = relative == "" ? name: relative + "/" + name
                 let info = FileInfo(entry)
+
                 if info.LinkTarget != nil {
                     links.Add(map[string, Object?]{"path": path, "target": info.LinkTarget})
                 } else if Directory.Exists(entry) {
@@ -154,23 +178,30 @@ internal class Correction {
 
         internal func Archive(directory string, run Data, record JsonElement) {
             LocalPaths.DirectoryPath(directory)
+
             let final = Path.Combine(directory, "original-evidence")
+
             if FileInfo(final).LinkTarget != nil {
                 throw CliFailure("invalid_state", "Original evidence archive must not be a link")
             }
+
             if Directory.Exists(final) {
                 OriginalEvidence.Load(directory)
                 return
             }
+
             let checkout = Verification.Validate(Path.Combine(directory, "checkout"))
             let temporary = Path.Combine(directory, "original-evidence-" + Guid.NewGuid().ToString("N") + ".tmp")
+
             Directory.CreateDirectory(
                 temporary,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             )
+
             try {
                 let missing = List[string]()
                 let links = List[Object]()
+
                 for file in[]string{
                     "run.json",
                     "events.jsonl",
@@ -185,16 +216,20 @@ internal class Correction {
                     "pr-body.md"
                 } {
                     let source = Path.Combine(directory, file)
+
                     if FileInfo(source).LinkTarget != nil {
                         throw Exception("Original saved records must not be links: " + file)
                     }
+
                     if File.Exists(source) {
                         OriginalEvidence.CopyFile(source, Path.Combine(temporary, file))
                     } else {
                         missing.Add(file)
                     }
                 }
+
                 OriginalEvidence.VerificationArtifacts(directory, temporary)
+
                 File.WriteAllText(Path.Combine(temporary, "approval.json"), J.Write(record) + "\n")
                 File.WriteAllText(
                     Path.Combine(temporary, "staged.patch"),
@@ -232,7 +267,9 @@ internal class Correction {
                     Path.Combine(temporary, "status.txt"),
                     Commands.GitRaw(checkout, []string{"status", "--porcelain=v1", "--untracked-files=all"})
                 )
+
                 CopyTree(checkout, Path.Combine(temporary, "checkout"), links)
+
                 File.WriteAllText(
                     Path.Combine(temporary, "capture.json"),
                     J.Write(
@@ -247,7 +284,9 @@ internal class Correction {
                     ) +
                         "\n"
                 )
+
                 OriginalEvidence.Seal(temporary)
+
                 Directory.Move(temporary, final)
             } finally {
                 if Directory.Exists(temporary) {
@@ -258,7 +297,9 @@ internal class Correction {
 
         internal func Tools(path string, policy JsonElement) JsonElement {
             let tools = path == "" ? J.Parse("[]"): RequestData.FileData(path, 4096)
+
             RequestData.CorrectionTools(tools, policy)
+
             return tools
         }
 
@@ -280,8 +321,11 @@ internal class Correction {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+
             Completed(directory, run)
+
             let record = Authority(directory, run, requireArchive: args.Get("prepare") != "true")
+
             if args.Get("prepare") == "true" {
                 if Publication.Pulls(run).Count != 0 {
                     throw CliFailure(
@@ -289,23 +333,32 @@ internal class Correction {
                         "Contribution already has a physical PR; inspect publication instead"
                     )
                 }
+
                 CorrectionPublication.Remote(run, nil, true)
+
                 Archive(directory, run, record)
+
                 Terminal.Message(
                     "Original evidence preserved. Correct the checkout, commit explicitly, then recover --commit SHA --time TIME. No inference, checks or publication ran."
                 )
+
                 return
             }
+
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
             let seconds = args.Number("seconds")
+
             if seconds > J.Number(J.Get(record, "policy"), "max_seconds") {
                 throw CliFailure("stale_approval", "Correction verification budget exceeds original owner limit")
             }
+
             let tools = Tools(args.Get("tools"), J.Get(record, "policy"))
             let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
             let current = Path.Combine(directory, "correction.json")
+
             if File.Exists(current) {
                 let saved = Data.Read(current)
+
                 if saved.Text("commit") == commit {
                     if !RequestData.Same(J.Get(saved.Element(), "public_summary"), summary) || saved.Number(
                         "seconds"
@@ -313,21 +366,26 @@ internal class Correction {
                         RequestData.Canonical(J.Get(saved.Element(), "tools")) != RequestData.Canonical(tools) {
                         throw CliFailure("invalid_state", "Saved correction budget or provenance changed")
                     }
+
                     if saved.Text("state") != "verified" {
                         throw CliFailure(
                             "verification_failed",
                             "Correction verification failed or was interrupted; a new corrected commit is an explicit new attempt"
                         )
                     }
+
                     Exact(directory, run, saved, record)
                     Activate(directory, run, saved)
+
                     Terminal.Message(
                         "Correction already verified. Use submit --run " +
                             directory +
                             "; checks and inference were not repeated."
                     )
+
                     return
                 }
+
                 if J.Get(saved.Element(), "publication").ValueKind == JsonValueKind.Object {
                     throw CliFailure(
                         "invalid_state",
@@ -335,51 +393,74 @@ internal class Correction {
                     )
                 }
             }
+
             let correction = Data()
             correction.Fields["version"] = 1
             correction.Fields["uuid"] = Guid.NewGuid().ToString("D")
             correction.Fields["commit"] = commit
             correction.Fields["seconds"] = seconds
+
             if summary.ValueKind != JsonValueKind.Undefined {
                 correction.Fields["public_summary"] = summary
             }
+
             correction.Fields["tools"] = tools
             correction.Fields["state"] = "validating"
             correction.Fields["failure_stage"] = "candidate_validation"
             correction.Fields["failure_reason"] = "candidate_invalid"
+
             let attempt = Path.Combine(directory, "correction-" + correction.Text("uuid"))
+
             Directory.CreateDirectory(attempt)
             Save(directory, correction)
+
             try {
                 if Publication.Pulls(run).Count != 0 {
                     throw CliFailure("invalid_state", "Contribution already has a physical PR")
                 }
+
                 CorrectionPublication.Remote(run, correction, true)
+
                 let checkout = Path.Combine(directory, "checkout")
                 let patch = Candidate(checkout, run, commit, record)
+
                 correction.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
                 correction.Fields["patch_sha256"] = Data.Hash(patch)
+
                 File.WriteAllText(Path.Combine(attempt, "candidate.patch"), patch)
+
                 Save(directory, correction)
+
                 Exact(directory, run, correction, record)
+
                 correction.Fields["state"] = "verifying"
                 correction.Fields["failure_stage"] = "owner_verification"
                 correction.Fields["failure_reason"] = "verification_failed"
+
                 Save(directory, correction)
+
                 let results = List[Object]()
                 let timer = Stopwatch.StartNew()
                 var failed bool
+
                 File.WriteAllText(Path.Combine(attempt, "verification.json"), J.Write(results))
+
                 let budget = RuntimeBudget(timer, seconds)
+
                 {
                     using let workspace = VerificationWorkspace.Create(checkout, budget)
+
                     for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
                         let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
+
                         if remaining < 1 {
                             throw CliFailure("verification_failed", "Correction verification budget exhausted")
                         }
+
                         correction.Fields["verification"] = results
+
                         Save(directory, correction)
+
                         let result = Terminal.Verify(
                             attempt,
                             results,
@@ -389,19 +470,28 @@ internal class Correction {
                             budget: budget,
                             workspace: workspace
                         )
+
                         correction.Fields["verification"] = results
+
                         File.WriteAllText(Path.Combine(attempt, "verification.json"), J.Write(results) + "\n")
+
                         Save(directory, correction)
+
                         failed = failed || result.Code != 0
                     }
+
                     correction.Fields["failure_stage"] = "changed_candidate"
                     correction.Fields["failure_reason"] = "candidate_changed"
+
                     workspace.Unchanged(budget)
                 }
+
                 correction.Fields["verification_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
                 correction.Fields["failure_stage"] = "changed_candidate"
                 correction.Fields["failure_reason"] = "candidate_changed"
+
                 Exact(directory, run, correction, record)
+
                 if failed {
                     correction.Fields["failure_stage"] = "owner_verification"
                     correction.Fields["failure_reason"] = "verification_failed"
@@ -410,18 +500,25 @@ internal class Correction {
                         "Owner verification failed for the explicit correction; all results are preserved"
                     )
                 }
+
                 Authority(directory, run)
+
                 correction.Fields["state"] = "verified"
                 correction.Fields.Remove("failure_stage")
                 correction.Fields.Remove("failure_reason")
+
                 Save(directory, correction)
+
                 Activate(directory, run, correction)
             } catch (error Exception) {
                 correction.Fields["state"] = "failed"
                 correction.Fields["error"] = error.Message
+
                 Save(directory, correction)
+
                 let code = error is CliFailure failure ? failure.Code:
                 (correction.Text("failure_reason") == "verification_failed" ? "verification_failed": "invalid_state")
+
                 throw CliFailure(
                     code,
                     PublicOutput.Enabled ? PublicOutput.Message(code):
@@ -429,6 +526,7 @@ internal class Correction {
                     summary: error is CliFailure safe ? safe.Summary: PublicOutput.Message(code)
                 )
             }
+
             Terminal.Message("Exact corrected commit passed every original owner check. Use submit --run " + directory)
         }
     }
