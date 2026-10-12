@@ -65,13 +65,16 @@ internal class Completion {
                 text.AppendLine(
                     "  if [[ $$prev == = ]] && (( COMP_CWORD > 1 )); then prev=$${COMP_WORDS[COMP_CWORD-2]}; fi"
                 )
+                text.AppendLine("  if [[ $$cur == = && $$prev == --* ]]; then cur=''; fi")
                 text.AppendLine("  case $$prev in")
                 for option in Cli.Options {
-                    if option.Value == "DIR" {
+                    if option.Value == "DIR" || option.Value == "FILE" {
                         text.AppendLine(
                             "    --" +
                                 option.Name +
-                                ") while IFS= read -r candidate; do COMPREPLY+=(\"$$candidate\"); done < <(compgen -d -- \"$$cur\") ;;"
+                                ") compopt -o filenames 2>/dev/null; while IFS= read -r candidate; do COMPREPLY+=(\"$$candidate\"); done < <(compgen -" +
+                                (option.Value == "DIR" ? "d": "f") +
+                                " -- \"$$cur\") ;;"
                         )
                     } else if option.Choices != "" {
                         text.AppendLine(
