@@ -59,9 +59,9 @@ internal class OmpEvidence {
                     }
 
                     let usage = J.Get(message, "usage")
-                    input = Count(usage, "input", input)
-                    cached = Count(usage, "cacheRead", cached)
-                    generated = Count(usage, "output", generated)
+                    input = HarnessUsage.Count(usage, "input", input, "OMP")
+                    cached = HarnessUsage.Count(usage, "cacheRead", cached, "OMP")
+                    generated = HarnessUsage.Count(usage, "output", generated, "OMP")
                 } else if kind == "agent_end" && J.Get(item, "isTerminal").ValueKind != JsonValueKind.False {
                     if lastStop == "length" {
                         throw Exception(
@@ -123,23 +123,6 @@ internal class OmpEvidence {
                 "(?i)\\b(sk|pk|rk|key|gh[pousr]|github_pat|xox[a-z])[-_][A-Za-z0-9_-]{6,}|[A-Za-z0-9_-]{32,}",
                 "[redacted]"
             )
-        }
-
-        private func Count(value JsonElement, key string, total int64) int64 {
-            let number = J.Get(value, key)
-            var count int64
-
-            if number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out count) ||
-                count < 0 ||
-                count > 9007199254740991 {
-                throw Exception("Invalid harness-reported OMP usage")
-            }
-
-            if total > 9007199254740991 - count {
-                throw Exception("OMP usage exceeds its safe integer range")
-            }
-
-            return total + count
         }
     }
 }
