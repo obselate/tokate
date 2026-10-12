@@ -1074,13 +1074,44 @@ internal class SynchronizationChecks {
                     )
                 }
             }
-            let grant = Grant(flow, candidate, upstream, pending: pending)
+            var grant = Grant(flow, candidate, upstream, pending: pending)
+            if mode == "moving-target-pushed" {
+                flow.Mode("push_fail")
+                Amend(flow, run, candidate, grant, 1)
+                flow.Mode("")
+                PublishedContribution.Write(flow.Upstream, "movement.txt", "target moved before pending push\n")
+                flow.Commit("Move target before pending push")
+                let failed = Amend(flow, run, candidate, grant, 1)
+                Check.Contains(failed.Output + failed.Error, "Synchronization target moved")
+                flow.Call([]string{"reconcile", "--run", run})
+                candidate = Check.Text(Saved(run)["reconciliation"]?["candidate"])
+                upstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
+                grant = Grant(flow, candidate, upstream, pending: pending)
+            }
             Amend(flow, run, candidate, grant)
             flow.Reload()
             coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
             Amend(flow, run, candidate, grant)
             Check.That(Check.Text(Saved(run)["commit"]) == candidate, "Amend did not publish reconciled candidate")
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            if mode == "moving-target-pushed" {
+                PublishedContribution.Write(flow.Upstream, "movement.txt", "target changed again\n")
+                flow.Commit("Move target after recovery")
+                let reconciled = Check.Json(flow.Call([]string{"reconcile", "--run", run, "--json"}).Output)
+                Check.That(
+                    Check.Text(Saved(run)["reconciliation"]?["pending"]) == "",
+                    "Retained published pending grant"
+                )
+                Check.That(reconciled["next_actions"]?[0]?.AsArray().Count == 7, "Owner action retained pending grant")
+                candidate = Check.Text(Saved(run)["reconciliation"]?["candidate"])
+                upstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
+                let nextGrant = Grant(flow, candidate, upstream)
+                Amend(flow, run, candidate, nextGrant)
+                flow.Reload()
+                coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
+                Amend(flow, run, candidate, nextGrant)
+                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            }
             if mode == "edits" {
                 PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")
                 flow.Commit("Upstream ignored path collision")

@@ -11,7 +11,9 @@ internal class Reconciliation {
             if run.Number("version") != 2 || (run.Text("state") != "generated" && run.Text("state") != "published") {
                 throw CliFailure("invalid_state", "Reconcile requires a published current contribution")
             }
-            let synchronization = pending == "" ? J.Text(J.Get(run.Element(), "reconciliation"), "pending"): pending
+            let old = J.Get(run.Element(), "reconciliation")
+            let synchronization = pending != "" ? pending:
+            J.Text(old, "candidate") != run.Text("commit") ? J.Text(old, "pending"): ""
             let grant = synchronization == "" ? default(JsonElement): Synchronization.Load(
                 run.Text("repo"),
                 synchronization
@@ -239,9 +241,16 @@ internal class Reconciliation {
                 Candidate(directory, checkout, run, old)
                 return
             }
+            if old.ValueKind != JsonValueKind.Undefined && J.Text(old, "phase") != "complete" {
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved reconciliation retained; use reconcile --run DIR --resume. Obtain owner authorization and amend the exact completed candidate before starting another reconciliation."
+                )
+            }
             Operations(checkout, default(JsonElement), false)
             Clean(checkout)
-            var pending = J.Text(old, "pending")
+            var pending = J.Text(old, "candidate") == run.Text("commit") ? "": J.Text(old, "pending")
+            var completed bool
             if old.ValueKind == JsonValueKind.Object && J.Text(old, "phase") == "complete" && J.Text(
                 old,
                 "upstream"
@@ -260,7 +269,7 @@ internal class Reconciliation {
                     ) &&
                         amendment.Text("expected") == J.Text(old, "expected") && Amendment.Remote(
                         run,
-                        run.Text("commit"),
+                        amendment.Text("published") == "" ? run.Text("commit"): amendment.Text("published"),
                         J.Text(old, "candidate")
                     ) == J
                         .Text(old, "candidate") {
@@ -274,6 +283,7 @@ internal class Reconciliation {
                             Verification.Results(amendment, J.Get(authority, "record"))
                             Amendment.Complete(directory, location, run, amendment, pull)
                             pending = ""
+                            completed = true
                         } else {
                             pending = amendment.Text("sync")
                         }
@@ -340,8 +350,10 @@ internal class Reconciliation {
             if pending != "" {
                 intent["pending"] = pending
             }
-            if old.ValueKind == JsonValueKind.Object {
-                intent["superseded"] = old
+            if moved || completed {
+                let superseded = Data.From(old)
+                superseded.Fields.Remove("superseded")
+                intent["superseded"] = superseded.Element()
             }
             run.Fields["reconciliation"] = intent
             run.Save(directory)
