@@ -467,6 +467,12 @@ internal class Terminal {
                 Row("Error", failure, "red")
             }
             let next = J.Get(value, "next")
+            let amendment = J.Get(value, "amendment")
+            if J.Text(amendment, "state") == "requested" {
+                Row("Amendment", "requested")
+                Row("Previous commit", J.Text(amendment, "previous"))
+                Row("Candidate commit", J.Text(amendment, "commit"))
+            }
             if next.ValueKind == System.Text.Json.JsonValueKind.Object {
                 StatusAction(next)
             }

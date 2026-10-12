@@ -222,6 +222,42 @@ internal class PublicOutput {
                 result["amendments"] = Rows(amendments, "id,previous,head")
                 result["amendment_count"] = J.Count(amendments)
             }
+            let amendmentDirectory = Path.Combine(directory, "amendments")
+            if Directory.Exists(amendmentDirectory) {
+                for location in Directory.EnumerateDirectories(amendmentDirectory) {
+                    if !File.Exists(Path.Combine(location, "run.json")) {
+                        continue
+                    }
+                    let amendment = Data.Load(location)
+                    if amendment.Text("state") != "requested" || amendment.Text("previous") != run.Text("commit") {
+                        continue
+                    }
+                    result["amendment"] = ChangeSummary(amendment, location)
+                    let command = List[string]{
+                        "tokate",
+                        "amend",
+                        "--run",
+                        directory,
+                        "--commit",
+                        amendment.Text("commit"),
+                        "--time",
+                        amendment.Number("seconds").ToString() + "s"
+                    }
+                    for key in[]string{"tools", "summary", "sync"} {
+                        let argument = amendment.Text(key == "sync" ? key: key + "_argument")
+                        if argument != "" {
+                            command.AddRange([]string{"--" + key, argument})
+                        }
+                    }
+                    command.Add("--json")
+                    result["next"] = map[string, Object?]{
+                        "role": "donor",
+                        "action": "Await coordinator outcome, then re-run the same amend command with the original tools and summary options to record publication.",
+                        "command": command.ToArray()
+                    }
+                    break
+                }
+            }
             let correctionPath = Path.Combine(directory, "correction.json")
             if File.Exists(correctionPath) {
                 let correction = Data.Read(correctionPath)
@@ -412,12 +448,10 @@ internal class PublicOutput {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
                     var next Object?
-                    if summary.TryGetValue("next", out next) {
-                        Actions.Add(
-                            run.Text("failure_reason") == "public_summary_invalid" ?
-                            []string{"tokate", "submit", "--run", RunDirectory, "--json"}:
-                            []string{"tokate", "help", "prepare", "--json"}
-                        )
+                    if summary.TryGetValue("next", out next) &&
+                        next is Dictionary[string, Object?]guidance &&
+                        guidance["command"] is []string command {
+                        Actions.Add(command)
                     }
                     if code != "stale_approval" && code != "invalid_state" {
                         if run.Number("pr") > 0 {

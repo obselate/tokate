@@ -3,6 +3,7 @@ package TokateTests
 import System
 import System.Collections.Generic
 import System.IO
+import System.Linq
 import System.Text.Json.Nodes
 import Tokate
 
@@ -589,7 +590,47 @@ internal class AmendmentFlow {
             for call in flow.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 Check.That(Check.Text(call["method"]) == "GET", "Applied amendment request repeated writes")
             }
-            Amend(flow.Flow, run, commit, tools: tools)
+            let status = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+            let pending = status["data"]?["amendment"]
+            let previous = Check.Text(Check.Json(original)["commit"])
+            Check.That(
+                Check.Text(pending?["state"]) == "requested" && Check.Text(pending?["previous"]) == previous &&
+                    Check.Text(pending?["commit"]) == commit,
+                "Status omitted requested amendment commits"
+            )
+            Check.That(
+                Check.Text(status["data"]?["commit"]) == previous && status["data"]?["amendments"] == nil,
+                "Status reported an incomplete amendment as published"
+            )
+            Check.That(
+                Check.Text(Saved(Path.Combine(run, "amendments", commit))["state"]) == "requested",
+                "Status completed an amendment"
+            )
+            let next = status["data"]?["next"]
+            Check.That(Check.Text(next?["role"]) == "donor", "Amendment completion responsibility missing")
+            Check.Contains(Check.Text(next?["action"]), "re-run the same amend command")
+            let command = next?["command"]?.AsArray() ?? throw Exception("Missing amendment completion command")
+            Check.That(
+                Check.Text(command[1]) == "amend" && Check.Text(command[3]) == run && Check.Text(
+                    command[5]
+                ) == commit &&
+                    Check.Text(command[7]) == "30s",
+                "Amendment completion command changed run, commit or budget"
+            )
+            Check.That(
+                status["next_actions"]?.AsArray().Any(
+                    action -> action?.ToJsonString() == command.ToJsonString()
+                ) == true,
+                "Amendment completion command missing from next actions"
+            )
+            flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).ToArray())
+            let completed = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+            Check.That(
+                completed["data"]?["amendment"] == nil && completed["data"]?["next"] == nil && Check.Text(
+                    completed["data"]?["amendments"]?[0]?["head"]
+                ) == commit,
+                "Completed amendment retained pending guidance or lost publication"
+            )
             AssertOriginal(run, original)
             AssertPublished(flow.Flow, run, commit)
             Check.That(
