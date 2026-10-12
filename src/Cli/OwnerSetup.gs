@@ -621,7 +621,78 @@ internal class OwnerSetup {
             ) ? before: Pretty(policy.Value)
             let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
             let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
+            var protectionNote = ""
+            try {
+                let branch = J.Text(policy.Value, "target_branch")
+                let protectionPath = "repos/" + repo + "/branches/" + Uri.EscapeDataString(branch) + "/protection"
+                let protection = GitHub.Api(protectionPath, missing: true)
+                let statusChecks = J.Get(protection, "required_status_checks")
+                let required = HashSet[string](StringComparer.Ordinal)
+                for check in J.Items(J.Get(statusChecks, "checks")) {
+                    required.Add(J.Text(check, "context"))
+                }
+                for context in J.Items(J.Get(statusChecks, "contexts")) {
+                    required.Add(context.GetString() ?? "")
+                }
+                let missing = List[string]()
+                for check in J.Items(J.Get(policy.Value, "required_checks")) {
+                    let name = check.GetString() ?? ""
+                    if required.Add(name) {
+                        missing.Add(name)
+                    }
+                }
+                if missing.Count > 0 {
+                    let names = String.Join(", ", missing)
+                    if !foreground ||
+                        (
+                        protection.ValueKind != JsonValueKind.Undefined &&
+                            statusChecks.ValueKind != JsonValueKind.Object
+                    ) {
+                        protectionNote = "Add " +
+                            names +
+                            " as required checks in GitHub Settings > Branches > " +
+                            branch +
+                            "."
+                    } else if WizardScreen.Choose(
+                        "GitHub branch protection",
+                        "Require checks on " + branch + ": " + names + ". No other protection changes.",
+                        []string{"Apply", "Skip"},
+                        selected: 2
+                    ) == 1 {
+                        if protection.ValueKind == JsonValueKind.Undefined {
+                            GitHub.Api(
+                                protectionPath,
+                                map[string, Object?]{
+                                    "required_status_checks": map[string, Object?]{
+                                        "strict": false,
+                                        "contexts": missing
+                                    },
+                                    "enforce_admins": false,
+                                    "required_pull_request_reviews": nil,
+                                    "restrictions": nil
+                                },
+                                method: "PUT"
+                            )
+                        } else {
+                            GitHub.Api(
+                                protectionPath + "/required_status_checks/contexts",
+                                map[string, Object?]{"contexts": missing},
+                                method: "POST"
+                            )
+                        }
+                    }
+                }
+            } catch (error OperationCanceledException) {
+                throw error
+            } catch (error WizardHome) {
+                throw error
+            } catch (error Exception) {
+                protectionNote = "GitHub branch protection: " + Terminal.Clean(error.Message)
+            }
             WizardScreen.Close()
+            if protectionNote != "" && !PublicOutput.Enabled {
+                Terminal.Message(protectionNote)
+            }
             SetupPath(root, ".github/tokate.json")
             SetupPath(root, Path.GetRelativePath(root, workflow))
             if before != text {

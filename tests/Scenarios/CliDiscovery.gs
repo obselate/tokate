@@ -397,7 +397,7 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "yes\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n"
+                "yes\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n1\n"
             )
             Check.Success(terminal)
             Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
@@ -418,6 +418,13 @@ internal class CliDiscovery {
             Check.Contains(terminal.Output, "Target branch (--base-branch) [main]")
             Check.Contains(terminal.Output, "Reservation time (--reservation-time) [24h]")
             flow.Reload()
+            Check.Contains(terminal.Output, "GitHub branch protection")
+            Check.Contains(terminal.Output, "Require checks on release: verify, build. No other protection changes.")
+            Check.That(
+                flow.State["branch_protection"]?.ToJsonString() ==
+                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\",\"build\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
+                "Setup did not require the policy checks with the exact protection settings"
+            )
             let eventPolicy = Check.Map(
                 "name",
                 "Tokate coordinator events",
@@ -496,6 +503,9 @@ internal class CliDiscovery {
                     "[{\"name\":\"verify\",\"bucket\":\"pass\"},{\"name\":\"verify\",\"bucket\":\"pass\"},{\"name\":\"build (linux, debug)\",\"bucket\":\"pass\"}]"
                 )
                 flow.State["api_calls"] = JsonArray()
+                flow.State["branch_protection"] = Check.Json(
+                    "{\"required_status_checks\":{\"contexts\":[\"verify\",\"build\"],\"checks\":[{\"context\":\"build (linux, debug)\"}]}}"
+                )
                 flow.Save()
                 let suggested = TestProcess.Run(
                     "/usr/bin/script",
@@ -515,6 +525,10 @@ internal class CliDiscovery {
                     parts[2] == "" ? "/usr/bin/true\n\n3\n\nverify, build\n1\n": "\n1\n\n\n2\n1\n"
                 )
                 Check.Success(suggested)
+                Check.That(
+                    !suggested.Output.Contains("GitHub branch protection"),
+                    "Setup offered checks already required"
+                )
                 Check.Contains(suggested.Output, "1  verify")
                 Check.Contains(suggested.Output, "2  build (linux, debug)")
                 Check.Contains(suggested.Output, "3  Enter names")
