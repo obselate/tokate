@@ -6,6 +6,7 @@ import System.Collections.Generic
 
 /// Short lines that the user edits in place, removes or adds, up to `Limit`. `Name` names each line, such
 /// as "Change 2". `Problem` gives the reason that a line is not accepted, which shows below the line.
+/// The fields are controlled because a removed line changes the text of the lines after it.
 data struct LineList {
     var Caption string
     var Name string
@@ -24,32 +25,30 @@ data struct LineList {
         for i in 0 ... lines.Length {
             let index = i
             let title = Name + " " + (i + 1).ToString()
-            let line = List[Blob]{
+            children.Add(
                 Row{
                     NoWrap: true,
                     Gap: 4,
+                    Align: AlignItems.FlexStart,
                     Children: []Blob{
-                        Container{
-                            FlexGrow: 1,
-                            FlexBasis: 0,
-                            MinWidth: 0,
-                            InputField{
-                                Label: title,
-                                Bare: true,
-                                Value: lines[i],
-                                OnChange: value -> {
-                                    let next = List[string](lines)
-                                    next[index] = value
-                                    change?.Invoke(next.ToArray())
-                                },
-                                Placeholder: Placeholder,
-                                Width: 2000,
-                                Disabled: Disabled,
-                            }.Build(),
-                        },
+                        InputField{
+                            Label: title,
+                            Bare: true,
+                            Fill: true,
+                            Controlled: true,
+                            Value: lines[i],
+                            OnChange: value -> {
+                                let next = List[string](lines)
+                                next[index] = value
+                                change?.Invoke(next.ToArray())
+                            },
+                            Placeholder: Placeholder,
+                            Problem: Problem?.Invoke(lines[i]) ?? "",
+                            Disabled: Disabled,
+                        }.Build(),
                         (Button with{
                             Label = "Remove",
-                            Name = "Remove " + title,
+                            Name = "Remove " + title.ToLowerInvariant(),
                             Kind = ButtonKind.Icon,
                             Icon = "close",
                             OnClick = () -> {
@@ -59,13 +58,8 @@ data struct LineList {
                             },
                         }).Build(),
                     },
-                }.Build(),
-            }
-            let problem = Problem?.Invoke(lines[i]) ?? ""
-            if problem != "" {
-                line.Add(Label{Content: problem, Size: AppTheme.SmallSize, Ink: AppTheme.Current.Fail}.Build())
-            }
-            children.Add(Stack{Gap: 4, Children: line.ToArray()}.Build())
+                }.Build()
+            )
         }
         children.Add(
             Row{

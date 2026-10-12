@@ -367,7 +367,17 @@ func WorkspaceFlow() {
             Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "11",
             "Navigation discarded amendment settings"
         )
-        Edit(window, host, adapter, "Change 1", "Fix the table header.")
+        Choose(host, window, adapter, "Add change")
+        Edit(window, host, adapter, "Change 2", "Fix the table header.")
+        let first = Find(adapter.Root, AccessibilityRole.TextInput, "Change 1") ?? throw Exception("Missing first change")
+        Require(window.PerformAccessibilityAction(first.Id, AccessibilityActionRequest(AccessibilityAction.Focus)), "Cannot focus the first change")
+        Settle(host)
+        Choose(host, window, adapter, "Remove change 1")
+        Require(
+            Find(adapter.Root, AccessibilityRole.TextInput, "Change 1")?.Value == "Fix the table header." &&
+                Find(adapter.Root, AccessibilityRole.TextInput, "Change 2") == nil,
+            "Removing the focused line left its text in the next line: " + (Find(adapter.Root, AccessibilityRole.TextInput, "Change 1")?.Value ?? "none")
+        )
         Choose(host, window, adapter, "Verify and publish amendment")
         Choose(host, window, adapter, "Confirm")
         let published = System.Diagnostics.Stopwatch.StartNew()
