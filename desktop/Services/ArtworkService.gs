@@ -10,7 +10,7 @@ import System.Numerics
 /// Painted artwork. Core images load at startup. Page landscapes decode on workers as soon as the service
 /// is attached, so they are ready before their page opens, and `changed` runs on the UI thread once each is ready.
 class ArtworkService : IDisposable {
-    let Backdrop ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("backdrop.png")))
+    let Backdrop ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("backdrop.jpg")))
     let Hands ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("hands-smooth.png")))
     let Sun ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("sun.png")))
     let Moon ImageSource = ImageSource.Decode(File.ReadAllBytes(Asset("moon.png")))
@@ -112,8 +112,8 @@ class Landscape : IDisposable {
     let Moonlight ImageSource
 
     init(name string) {
-        Daylight = ImageSource.Decode(File.ReadAllBytes(Asset(name + "-daylight.png")))
-        Moonlight = ImageSource.Decode(File.ReadAllBytes(Asset(name + "-moonlight.png")))
+        Daylight = ImageSource.Decode(File.ReadAllBytes(Asset(name + "-daylight.jpg")))
+        Moonlight = ImageSource.Decode(File.ReadAllBytes(Asset(name + "-moonlight.jpg")))
     }
 
     func Dispose() {
