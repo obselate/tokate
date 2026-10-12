@@ -173,10 +173,18 @@ class OwnerService {
     func Approve(issue Issue) {
         let number = issue.NumberText
         let branch = Current.Project.Branch
+        var drafts = []string{}
+        for work in Current.Work {
+            if work.Issue == number {
+                drafts = work.Drafts
+            }
+        }
         Confirm(
             "Approve issue #" + number,
             TokateCommands.Approve(Repository, number, branch),
-            "Authorize issue #" + number + " on " + branch + " under the current project policy.",
+            "Authorize issue #" + number + " on " + branch + " under the current project policy." +
+                (drafts.Length > 0 ? "\n\nThis issue has a contribution under an earlier approval (PR #" + String.Join(", #", drafts) +
+                "). A new approval replaces its reservation, and the donor cannot amend the contribution after that.": ""),
             false
         )
     }
