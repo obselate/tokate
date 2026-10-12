@@ -738,7 +738,7 @@ internal class AmendmentFlow {
                     let result = Check.Envelope(rejected, "amend", "error", "stale_approval")
                     Check.Contains(
                         Check.Text(result["error"]?["message"]),
-                        "The reservation is gone. Return to the owner before amending."
+                        "The reservation is gone. Return to the owner."
                     )
                 } else {
                     Amend(flow.Flow, run, commit, 1)

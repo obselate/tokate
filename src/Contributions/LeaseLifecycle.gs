@@ -16,6 +16,9 @@ internal class LeaseLifecycle {
         internal func Owner(state CoordinationState, actor JsonElement, active bool = false) {
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
+            if reservation.ValueKind != JsonValueKind.Object {
+                throw CliFailure("stale_approval", "The reservation is gone. Return to the owner.")
+            }
             RepositoryIdentity.PositiveId(actor)
             if RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) != RepositoryIdentity.PositiveId(actor) ||
                 CoordinationState.Unix(reservation, "expires") <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() || J.Text(
