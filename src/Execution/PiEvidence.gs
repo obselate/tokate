@@ -61,15 +61,15 @@ internal class PiEvidence {
                     }
 
                     let usage = J.Get(message, "usage")
-                    input = Count(usage, "input", input)
-                    cached = Count(usage, "cacheRead", cached)
-                    generated = Count(usage, "output", generated)
+                    input = HarnessUsage.Count(usage, "input", input, "Pi")
+                    cached = HarnessUsage.Count(usage, "cacheRead", cached, "Pi")
+                    generated = HarnessUsage.Count(usage, "output", generated, "Pi")
                 } else if kind == "compaction_end" {
                     let usage = J.Get(J.Get(item, "result"), "usage")
                     if usage.ValueKind == JsonValueKind.Object {
-                        input = Count(usage, "input", input)
-                        cached = Count(usage, "cacheRead", cached)
-                        generated = Count(usage, "output", generated)
+                        input = HarnessUsage.Count(usage, "input", input, "Pi")
+                        cached = HarnessUsage.Count(usage, "cacheRead", cached, "Pi")
+                        generated = HarnessUsage.Count(usage, "output", generated, "Pi")
                     }
                 } else if kind == "agent_settled" {
                     if lastStop == "length" {
@@ -101,19 +101,23 @@ internal class PiEvidence {
                 "output_tokens": generated
             }
         }
+    }
+}
 
-        private func Count(value JsonElement, key string, total int64) int64 {
+internal class HarnessUsage {
+    shared {
+        internal func Count(value JsonElement, key string, total int64, harness string) int64 {
             let number = J.Get(value, key)
             var count int64
 
             if number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out count) ||
                 count < 0 ||
                 count > 9007199254740991 {
-                throw Exception("Invalid harness-reported Pi usage")
+                throw Exception("Invalid harness-reported " + harness + " usage")
             }
 
             if total > 9007199254740991 - count {
-                throw Exception("Pi usage exceeds its safe integer range")
+                throw Exception(harness + " usage exceeds its safe integer range")
             }
 
             return total + count

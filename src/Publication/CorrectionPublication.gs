@@ -214,13 +214,6 @@ internal class CorrectionPublication {
             return state
         }
 
-        private func Posted(run Data, request JsonElement) bool -> Submission.Posted(
-            RepositoryIdentity.Repo(run.Text("repo")),
-            run.Number("issue"),
-            J.Get(run.Element(), "donor_id"),
-            request
-        )
-
         internal func SubmitLocked(directory string, run Data) {
             let correction = Data.Read(Path.Combine(directory, "correction.json"))
 
@@ -311,7 +304,12 @@ internal class CorrectionPublication {
                 }
 
                 if stage == "request_pending" || stage == "requested" || existing.ValueKind != JsonValueKind.Undefined {
-                    if !Posted(run, J.Get(intent, "request")) {
+                    if !Submission.Posted(
+                        RepositoryIdentity.Repo(run.Text("repo")),
+                        run.Number("issue"),
+                        J.Get(run.Element(), "donor_id"),
+                        J.Get(intent, "request")
+                    ) {
                         throw Exception(
                             "interrupted_publication: saved request has no unique physical comment; refusing blind retry"
                         )
