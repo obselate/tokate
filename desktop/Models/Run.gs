@@ -45,6 +45,8 @@ data struct Run {
     var Commit string
     /// The directory of the saved checkout.
     var Checkout string
+    /// The donor does the work without a managed donation.
+    var External bool
     /// The commit of an amendment that waits for the coordinator, or "".
     var Amending string
     /// The command that Tokate gives to finish that amendment.

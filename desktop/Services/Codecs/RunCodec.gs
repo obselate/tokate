@@ -29,6 +29,7 @@ class RunCodec {
                 DonorId: Json.Text(data, "donor_id"),
                 Commit: Json.Text(data, "commit"),
                 Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
+                External: Json.Text(data, "source") == "external",
                 Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"): "",
                 Finish: Json.Strings(Json.Get(data, "next"), "command"),
             }

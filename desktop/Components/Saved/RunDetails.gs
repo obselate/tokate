@@ -45,15 +45,6 @@ data struct RunDetails {
                 },
             }.Build(),
         }
-        if guide.Text != "" {
-            children.Add(Label{Content: guide.Text}.Build())
-        }
-        if run.ErrorMessage != "" {
-            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
-        }
-        if Note.Message != "" {
-            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
-        }
         let shown = List[RunAction]()
         for action in Actions {
             shown.Add(action)
@@ -61,6 +52,19 @@ data struct RunDetails {
         if run.Pr > 0 {
             shown.Add(RunAction.Amend)
             shown.Add(RunAction.Reconcile)
+        }
+        var text = guide.Text
+        if guide.Main != nil && !shown.Contains(guide.Main!!) {
+            text = run.External ? "This contribution uses external work. Continue it with the Tokate command line.": "No action is available now. Refresh the status to see a change."
+        }
+        if text != "" {
+            children.Add(Label{Content: text}.Build())
+        }
+        if run.ErrorMessage != "" {
+            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
+        }
+        if Note.Message != "" {
+            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
         }
         var lead = guide.Main != nil ? shown.IndexOf(guide.Main!!): -1
         for index in 0 ... shown.Count {
