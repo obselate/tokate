@@ -11,6 +11,7 @@ internal class Policy {
     internal var Digest string = ""
     internal var ModelPolicy string = "whitelist"
     internal var Eligibility string = ""
+
     internal init(text string) {
         Value = J.Parse(text)
         Digest = Data.Hash(text)
@@ -18,54 +19,69 @@ internal class Policy {
         if version != 2 {
             throw Exception("Unsupported policy version; use the current version-2 policy")
         }
+
         for key in[]string{"pr_text", "close_message", "target_branch"} {
             var occurrences int32
+
             for field in Value.EnumerateObject() {
                 if field.Name == key {
                     occurrences++
                 }
             }
+
             if occurrences > 1 {
                 throw Exception("Duplicate policy field " + key)
             }
+
             let item = J.Get(Value, key)
             if item.ValueKind != JsonValueKind.Undefined {
                 if item.ValueKind != JsonValueKind.String || Encoding.UTF8.GetByteCount(item.GetString() ?? "") > 4096 {
                     throw Exception(key + " must be bounded plain text")
                 }
+
                 let text = item.GetString() ?? ""
+
                 for c in text {
                     if c == '\0' || (Char.IsControl(c) && c != '\n' && c != '\r' && c != '\t') {
                         throw Exception(key + " contains control characters")
                     }
                 }
+
                 if text.Contains("<!-- tokate") {
                     throw Exception(key + " cannot contain Tokate ownership markers")
                 }
+
                 if key == "target_branch" {
                     RepositoryIdentity.Branch(text)
                 }
             }
         }
+
         ProtectedPaths.Validate(J.Get(Value, "protected_paths"))
+
         var eligibilityFields int32
         var scopeFields int32
+
         for field in Value.EnumerateObject() {
             if field.Name == "eligibility" {
                 eligibilityFields++
             }
+
             if field.Name == "approval_scope" {
                 scopeFields++
             }
         }
+
         RequestData.Parse(text, 1024 * 1024)
         Eligibility = J.Text(Value, "eligibility")
         let eligible = Eligibility == "open" || Eligibility == "trusted" || Eligibility == "manual"
         if eligibilityFields != 1 || scopeFields != 1 || J.Text(Value, "approval_scope") != "task" || !eligible {
             throw Exception("Policy requires approval_scope task and eligibility open, trusted or manual")
         }
+
         var modes int32
         var modelMaps int32
+
         for field in Value.EnumerateObject() {
             if field.Name == "model_policy" {
                 modes++
@@ -75,16 +91,20 @@ internal class Policy {
                     (mode.GetString() != "whitelist" && mode.GetString() != "unrestricted") {
                     throw Exception("model_policy must be exactly whitelist or unrestricted, without duplicates")
                 }
+
                 ModelPolicy = mode.GetString() ?? ""
             }
+
             if field.Name == "models" {
                 modelMaps++
             }
         }
+
         let models = J.Get(Value, "models")
         if modes > 0 && modelMaps > 1 {
             throw Exception("Explicit model policy cannot contain duplicate models fields")
         }
+
         if ModelPolicy == "unrestricted" {
             if models.ValueKind != JsonValueKind.Undefined &&
                 (models.ValueKind != JsonValueKind.Object || models.EnumerateObject().MoveNext()) {
@@ -93,68 +113,83 @@ internal class Policy {
         } else if models.ValueKind != JsonValueKind.Object {
             throw Exception("Policy models must map model names to effort arrays")
         }
+
         var count int32
         if models.ValueKind == JsonValueKind.Object {
             for model in models.EnumerateObject() {
                 if !Regex.IsMatch(model.Name, RequestData.ModelPattern) {
                     throw Exception("Invalid model name")
                 }
+
                 let efforts = J.Items(model.Value)
                 if efforts.Count == 0 {
                     throw Exception("Each model needs allowed efforts")
                 }
+
                 for effort in efforts {
                     if effort.ValueKind != JsonValueKind.String || !ValidEffort(effort.GetString() ?? "") {
                         throw Exception("Invalid reasoning effort")
                     }
                 }
+
                 count++
             }
         }
+
         let maxSeconds = J.Number(Value, "max_seconds")
         if (ModelPolicy == "whitelist" && count == 0) || maxSeconds < 1 || maxSeconds > 86400 {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
+
         let unlimited = J.Get(Value, "allow_unlimited").ValueKind
         if unlimited != JsonValueKind.Undefined && unlimited != JsonValueKind.True && unlimited != JsonValueKind.False {
             throw Exception("allow_unlimited must be boolean")
         }
+
         if unlimited != JsonValueKind.Undefined {
             RequestData.Parse(text, 1024 * 1024)
         }
+
         let commands = J.Items(J.Get(Value, "verification"))
         if commands.Count == 0 {
             throw Exception("At least one verification command is required")
         }
+
         for command in commands {
             let words = J.Items(command)
             if words.Count == 0 {
                 throw Exception("Verification commands must be argv arrays")
             }
+
             for word in words {
                 if word.ValueKind != JsonValueKind.String || String.IsNullOrWhiteSpace(word.GetString()) {
                     throw Exception("Invalid verification argument")
                 }
             }
         }
+
         let checks = J.Items(J.Get(Value, "required_checks"))
         if checks.Count == 0 {
             throw Exception("At least one required check is needed")
         }
+
         for check in checks {
             if check.ValueKind != JsonValueKind.String || String.IsNullOrWhiteSpace(check.GetString()) {
                 throw Exception("Invalid required check name")
             }
         }
+
         let reservation = J.Get(Value, "reservation_seconds")
         if reservation.ValueKind != JsonValueKind.Undefined &&
             (J.Number(Value, "reservation_seconds") < 300 || J.Number(Value, "reservation_seconds") > 604800) {
             throw Exception("reservation_seconds must be from 300 to 604800 (default 86400)")
         }
+
         let allowedTools = J.Items(J.Get(Value, "allowed_tools"))
         if allowedTools.Count == 0 {
             throw Exception("Version 2 requires allowed_tools harness/provider pairs")
         }
+
         for tool in allowedTools {
             if J.Text(tool, "harness") == "" || J.Text(tool, "provider") == "" {
                 throw Exception("Each allowed tool needs harness and provider")
@@ -166,12 +201,15 @@ internal class Policy {
         if Array.IndexOf("off minimal low medium high xhigh max ultra".Split(' '), effort) >= 0 {
             return true
         }
+
         if effort == "unknown" {
             return true
         }
+
         if effort != "absent" {
             return false
         }
+
         return J.Get(Value, "model_policy").ValueKind == JsonValueKind.String
     }
 
@@ -179,11 +217,13 @@ internal class Policy {
         if ModelPolicy == "unrestricted" {
             return true
         }
+
         for item in J.Items(J.Get(J.Get(Value, "models"), model)) {
             if item.GetString() == effort {
                 return true
             }
         }
+
         return false
     }
 
@@ -197,6 +237,7 @@ internal class Policy {
         if ModelPolicy == "unrestricted" {
             return nil
         }
+
         let models = List[string]()
         let entries = J.Get(Value, "models")
         if entries.ValueKind == JsonValueKind.Object {
@@ -206,6 +247,7 @@ internal class Policy {
                 }
             }
         }
+
         return models
     }
 
@@ -223,17 +265,21 @@ internal class Policy {
             !ValidEffort(effort) {
             throw Exception("Invalid model name or reasoning effort")
         }
+
         if !external && !ManagedPair(model, effort) {
             throw Exception("Tokate-managed execution requires a known model and supported effort control")
         }
+
         if !Allows(model, effort) {
             throw Exception("Model/effort pair is not allowed by the repository policy")
         }
+
         ValidateBudget(seconds)
     }
 
     internal func ValidatePi(model string, effort string, seconds int32) {
         RequestData.ModelIdentifier(model)
+
         if !AllowsTool("pi", "local-chat-completions") ||
             !ValidEffort(effort) ||
             effort == "unknown" ||
@@ -244,12 +290,14 @@ internal class Policy {
                 "Managed pi requires version 2, exact pi/local-chat-completions permission, an exact model and allowed reasoning effort"
             )
         }
+
         ValidateBudget(seconds)
     }
 
     internal func ValidateOmp(provider string, model string, effort string, seconds int32) {
         RequestData.Token(provider)
         RequestData.ModelIdentifier(model)
+
         if !AllowsTool("omp", provider) ||
             !ValidEffort(effort) ||
             effort == "unknown" ||
@@ -262,6 +310,7 @@ internal class Policy {
                     " permission, an exact model and allowed reasoning effort"
             )
         }
+
         ValidateBudget(seconds)
     }
 
@@ -269,6 +318,7 @@ internal class Policy {
         if unlimited && !J.Bool(Value, "allow_unlimited") {
             throw Exception("Repository policy does not allow unlimited coding")
         }
+
         if seconds < 1 || seconds > J.Number(Value, "max_seconds") {
             throw Exception("Runtime exceeds repository policy")
         }
@@ -279,9 +329,11 @@ internal class Policy {
         if declarations.Count == 0 {
             throw Exception("Version 2 needs a nonempty tool declaration")
         }
+
         if source != "external" && source != "tokate" {
             throw Exception("Invalid contribution source")
         }
+
         if source == "tokate" {
             if declarations.Count != 1 ||
                 !(
@@ -302,16 +354,19 @@ internal class Policy {
                 )
             }
         }
+
         for tool in declarations {
             if !AllowsTool(J.Text(tool, "harness"), J.Text(tool, "provider")) {
                 throw Exception("Declared harness/provider is not allowed by owner policy")
             }
+
             if source == "tokate" && J.Text(tool, "harness") == "claude" && !ClaudeCode.Pair(
                 J.Text(tool, "model"),
                 J.Text(tool, "effort")
             ) {
                 throw Exception("Unsupported native Claude model/effort pair")
             }
+
             if source == "tokate" && J.Text(tool, "harness") == "pi" {
                 ValidatePi(J.Text(tool, "model"), J.Text(tool, "effort"), 1)
             } else if source == "tokate" && J.Text(tool, "harness") == "omp" {
@@ -324,11 +379,13 @@ internal class Policy {
 
     internal func Providers(harness string) List[string] {
         let providers = List[string]()
+
         for pair in J.Items(J.Get(Value, "allowed_tools")) {
             if J.Text(pair, "harness") == harness && !providers.Contains(J.Text(pair, "provider")) {
                 providers.Add(J.Text(pair, "provider"))
             }
         }
+
         return providers
     }
 
@@ -338,6 +395,7 @@ internal class Policy {
                 return true
             }
         }
+
         return false
     }
 
