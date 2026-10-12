@@ -229,6 +229,26 @@ internal partial class NativeFlow : NativeFixture {
             "tokate@users.noreply.github.com"
         )
         Call([]string{"verify", "owner/project#10"}, owner: true)
+        Git("-C", Upstream, "config", "remote.origin.url", "https://github.com/owner/project")
+        for state in[]string{"closed", "merged"} {
+            Reload()
+            let pull = State["pulls"]?[0] ?? throw Exception("Missing PR")
+            pull["state"] = JsonValue.Create("closed")
+            pull["merged"] = JsonValue.Create(state == "merged")
+            (State["issue"] ?? throw Exception("Missing issue"))["state"] = JsonValue.Create("closed")
+            Save()
+            for target in[]string{"10", "https://github.com/owner/project/pull/10"} {
+                let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
+                Check.That(result.Code == 1, "Verify accepted a closed PR")
+                Check.Contains(result.Error, "PR #10 is " + state + "; verify checks open contribution PRs.")
+            }
+        }
+        Faults("repos/owner/project/pulls/1", Check.Json("[{\"status\":404}]"))
+        for target in[]string{"1", "https://github.com/owner/project/issues/1"} {
+            let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
+            Check.That(result.Code == 1, "Verify accepted an issue")
+            Check.Contains(result.Error, "verify takes an open contribution PR, for example tokate verify 42.")
+        }
     }
 
     internal func ModelPolicyMalformed() {
