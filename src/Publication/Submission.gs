@@ -373,6 +373,35 @@ internal class Submission {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+            if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
+                "failure_reason"
+            ) == "public_summary_invalid" &&
+                run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 && args.Get(
+                "incomplete"
+            ) != "true" {
+                let record = ContributionAuthority.Recheck(run)
+                let timer = Stopwatch.StartNew()
+                let elapsed = run.Number("elapsed_seconds")
+                try {
+                    Contribution.Finish(
+                        directory,
+                        run,
+                        record,
+                        J.Select(J.Get(run.Element(), "usage"), "input_tokens,cached_input_tokens,output_tokens"),
+                        timer,
+                        run.Number("seconds"),
+                        run.Number("verification_reserve"),
+                        elapsed
+                    )
+                } catch (error Exception) {
+                    run.Fields["state"] = "failed"
+                    run.Fields["error"] = error.Message
+                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+                    run.Save(directory)
+                    throw error
+                }
+                CommitPrepared(directory, run)
+            }
             if args.Get("incomplete") == "true" {
                 Partial(directory, run)
             }
