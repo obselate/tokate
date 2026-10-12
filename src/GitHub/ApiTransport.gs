@@ -211,9 +211,13 @@ internal class ApiTransport {
         private func Wait(seconds double) {
             CheckDeadline()
             if seconds > 0 {
-                let remaining = Deadline - Clock.Elapsed.TotalSeconds
-                select {
-                    case <- after(TimeSpan.FromSeconds(Math.Min(seconds, remaining))) { }
+                let until = Math.Min(Clock.Elapsed.TotalSeconds + seconds, Deadline)
+                var remaining = until - Clock.Elapsed.TotalSeconds
+                while remaining > 0 {
+                    select {
+                        case <- after(TimeSpan.FromSeconds(remaining)) { }
+                    }
+                    remaining = until - Clock.Elapsed.TotalSeconds
                 }
             }
             CheckDeadline()
