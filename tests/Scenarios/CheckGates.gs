@@ -570,14 +570,21 @@ internal class CheckGates {
                 Passing(test)
                 let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
                 pull["state"] = JsonValue.Create("closed")
-                if kind == "merged" {
-                    pull["merged"] = JsonValue.Create(true)
-                }
+                pull["merged"] = JsonValue.Create(kind == "merged")
                 flow.Save()
-                let result = Data(Read(test, 1))
-                Gate(result, "lifecycle", "failed")
+                let result = Data(Read(test))
+                Gate(result, "lifecycle", "historical")
                 Gate(result, "receipt", "unread")
                 Check.That(Check.Text(result["owner_review"]) == "historical", "Historical lifecycle hidden")
+                Check.That(
+                    Check.Text(result["pr_observation"]?["state"]) == "closed" && Check.Text(
+                        result["pr_observation"]?["merged"]
+                    ) == (kind == "merged" ? "true": "false"),
+                    "Historical PR observation missing"
+                )
+                let human = Read(test, human: true)
+                let message = "PR #10 was " + (kind == "merged" ? "merged.": "closed without merge.")
+                Check.That(human.Output.Trim() == message, "Historical checks printed a gate summary")
             }
         }
 
