@@ -514,7 +514,10 @@ internal class EligibilityChecks {
                 first
                     .Output
                     .Trim()
-                    .EndsWith("Approval recorded. Request a contribution reservation to begin work.\n" + notice),
+                    .EndsWith(
+                    "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1\n" +
+                        notice
+                ),
                 "First repository approval did not explain state branches"
             )
             let repeatedApproval = empty.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)

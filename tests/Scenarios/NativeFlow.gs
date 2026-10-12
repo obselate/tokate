@@ -38,7 +38,10 @@ internal partial class NativeFlow : NativeFixture {
         File.WriteAllText(codex, "not executable")
         let result = Call([]string{"approve", "owner/project#1"}, owner: true)
         Check.That(result.Error == "", "Owner command warned about donor tools")
-        Check.Contains(result.Output, "Approval recorded")
+        Check.Contains(
+            result.Output,
+            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1"
+        )
         Check.Contains(
             Call([]string{"work", "owner/project#1", "--model", "model", "--effort", "high"}, 1).Error,
             "Install or repair the tools needed"
