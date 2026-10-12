@@ -18,7 +18,12 @@ internal class RepositoryAccess {
             )
             let reference = GitHub.Api("repos/" + fork + "/git/ref/heads/" + J.Text(metadata, "branch"))
             if J.Text(J.Get(reference, "object"), "sha") != J.Text(metadata, "head") {
-                throw Exception("Fork branch does not point to the exact declared commit")
+                throw Exception(
+                    "Fork branch does not point to the exact declared commit. Push it with: git push https://github.com/" +
+                        fork +
+                        ".git " +
+                        J.Text(metadata, "head") + ":refs/heads/" + J.Text(metadata, "branch")
+                )
             }
             return info
         }
