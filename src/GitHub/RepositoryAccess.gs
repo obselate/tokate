@@ -8,6 +8,7 @@ internal class RepositoryAccess {
         internal func ValidateFork(repo string, metadata JsonElement, actor JsonElement) JsonElement {
             let fork = RepositoryIdentity.Repo(J.Text(metadata, "fork"))
             let info = GitHub.Api("repos/" + fork)
+
             RepositoryAccess.ValidateRepository(
                 repo,
                 fork,
@@ -16,6 +17,7 @@ internal class RepositoryAccess {
                 push: false,
                 upstream: GitHub.Api("repos/" + repo)
             )
+
             let reference = GitHub.Api("repos/" + fork + "/git/ref/heads/" + J.Text(metadata, "branch"))
             if J.Text(J.Get(reference, "object"), "sha") != J.Text(metadata, "head") {
                 throw Exception(
@@ -25,6 +27,7 @@ internal class RepositoryAccess {
                         J.Text(metadata, "head") + ":refs/heads/" + J.Text(metadata, "branch")
                 )
             }
+
             return info
         }
 
@@ -34,7 +37,9 @@ internal class RepositoryAccess {
             let upstream = GitHub.Api("repos/" + repo)
             let info = RepositoryIdentity.SameRepo(repo, head) ? upstream: GitHub.Api("repos/" + head)
             let saved = run.Element()
+
             ValidateRepository(repo, head, J.Get(saved, "donor_id"), info, upstream: upstream)
+
             for binding in[]string{"preparation_repo_id", "preparation_head_id"} {
                 let expected = J.Get(saved, binding)
                 if expected.ValueKind != JsonValueKind.Undefined && RepositoryIdentity.PositiveId(expected) !=
@@ -46,9 +51,11 @@ internal class RepositoryAccess {
 
         internal func RequireOwner(repo string) JsonElement {
             let info = GitHub.Api("repos/" + repo)
+
             if !J.Bool(J.Get(info, "permissions"), "push") {
                 throw Exception("Repository write permission is required")
             }
+
             return info
         }
 
@@ -67,6 +74,7 @@ internal class RepositoryAccess {
             ) {
                 throw Exception("Selected upstream repository identity changed")
             }
+
             let owner = RepositoryIdentity.PositiveId(J.Get(J.Get(info, "owner"), "id"))
             if owner != RepositoryIdentity.PositiveId(actor) || !String.Equals(
                 J.Text(info, "full_name"),
@@ -76,9 +84,11 @@ internal class RepositoryAccess {
                 (push && !J.Bool(J.Get(info, "permissions"), "push")) {
                 throw Exception("Head repository must be writable and numerically owned by the authenticated donor")
             }
+
             if String.Equals(head, repo, StringComparison.OrdinalIgnoreCase) {
                 return
             }
+
             let parent = J.Get(info, "parent")
             if !J.Bool(info, "fork") || !String.Equals(
                 J.Text(parent, "full_name"),
