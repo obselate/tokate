@@ -40,6 +40,7 @@ internal class CommandLines {
                 Observe.Invoke(Line.ToString())
             } catch (error Exception) { }
         }
+
         Line.Clear()
         Oversize = false
     }
@@ -89,16 +90,19 @@ internal class CommandCancellation {
 
     internal func Cancel() {
         let active = <-Lifetime
+
         try {
             if !active {
                 return
             }
+
             if let signal = Signal {
                 select {
                     case signal <- true { }
                     default { }
                 }
             }
+
             KillGroup(-Process.Id, 9)
         } finally {
             Lifetime <- active
@@ -109,6 +113,7 @@ internal class CommandCancellation {
         if Signal != nil {
             event.Cancel = true
         }
+
         Cancel()
     }
 
@@ -143,10 +148,12 @@ internal class RuntimeBudget {
         if Seconds == 0 {
             return -1
         }
+
         let remaining = Math.Floor(Seconds * 1000.0 - Timer.Elapsed.TotalMilliseconds)
         if remaining < 1 {
             throw Exception("Runtime allowance exhausted")
         }
+
         return Convert.ToInt32(remaining)
     }
 
@@ -159,6 +166,7 @@ internal class RuntimeBudget {
 
         internal func Reserve(args Args, seconds int32) int32 {
             let reserve = args.Get("verification-reserve") == "" ? 0: args.Number("verification-reserve")
+
             if args.Get("unlimited") == "true" {
                 if reserve < 1 || reserve != seconds {
                     throw Exception("Unlimited coding requires a separate positive verification budget")
@@ -166,16 +174,19 @@ internal class RuntimeBudget {
             } else if reserve >= seconds {
                 throw Exception("--verify-time must be shorter than --time")
             }
+
             return reserve
         }
 
         internal func Validate(run Data) {
             let unlimited = J.Get(run.Element(), "unlimited")
+
             if unlimited.ValueKind != JsonValueKind.Undefined &&
                 unlimited.ValueKind != JsonValueKind.True &&
                 unlimited.ValueKind != JsonValueKind.False {
                 throw Exception("Invalid saved unlimited coding choice")
             }
+
             if run.Flag("unlimited") &&
                 (
                 run.Number("version") != 2 || run.Text("source") != "tokate" || run.Number(
@@ -185,6 +196,7 @@ internal class RuntimeBudget {
             ) {
                 throw Exception("Unlimited coding requires managed v2 work and a separate positive verification budget")
             }
+
             let field = J.Get(run.Element(), "verification_reserve")
             var reserve int32
             if field.ValueKind != JsonValueKind.Undefined &&
@@ -203,6 +215,7 @@ internal class RuntimeBudget {
             if run.Flag("unlimited") {
                 return "unlimited coding time, independent verification budget " + reserve.ToString() + "s"
             }
+
             return "total allowance " + total.ToString() + "s, coding allowance " + (total - reserve).ToString() +
                 "s, verification reserve " +
                 reserve.ToString() + "s"
@@ -222,7 +235,9 @@ internal class Commands {
             if path == "" {
                 return nil
             }
+
             LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
+
             return FileStream(
                 path,
                 FileStreamOptions{
@@ -245,9 +260,11 @@ internal class Commands {
             let result = CommandOutput()
             let text = StringBuilder()
             var lines CommandLines? = nil
+
             if let observer = observe {
                 lines = CommandLines(observer)
             }
+
             try {
                 using let writer StreamWriter? = capture == nil ? nil: StreamWriter(
                     capture,
@@ -255,19 +272,25 @@ internal class Commands {
                     8192,
                     true
                 )
+
                 if writer != nil {
                     writer.AutoFlush = true
                 }
+
                 let buffer = [8192]char
                 var count int32
+
                 while (count = reader.Read(buffer, 0, buffer.Length)) > 0 {
                     var retained = result.Truncated ? 0: Math.Min(count, 32 * 1024 * 1024 - text.Length)
+
                     if retained > 0 && text.Length + retained == 32 * 1024 * 1024 && Char.IsHighSurrogate(
                         buffer[retained - 1]
                     ) {
                         retained -= 1
                     }
+
                     result.Truncated = result.Truncated || retained < count
+
                     if retained > 0 {
                         text.Append(buffer, 0, retained)
                         lines?.Add(buffer, retained)
@@ -285,8 +308,10 @@ internal class Commands {
                 result.Failure = error
                 failed <- error
             }
+
             lines?.Flush()
             result.Text = text.ToString()
+
             output <- result
         }
 
@@ -301,6 +326,7 @@ internal class Commands {
 
         private func Write(writer StreamWriter, input string?, completed Chan[Exception?]) {
             var failure Exception? = nil
+
             try {
                 if input != nil {
                     writer.Write(input)
@@ -316,18 +342,22 @@ internal class Commands {
                     }
                 }
             }
+
             completed <- failure
         }
 
         internal func Wait(info ProcessStartInfo, started Chan[Process?], completed Chan[Exception?]) {
             var process Process? = nil
             var failure Exception? = nil
+
             try {
                 process = Process.Start(info) ?? throw Exception("Cannot start " + info.ArgumentList[0])
             } catch (error Exception) {
                 failure = error
             }
+
             started <- process
+
             if let child = process {
                 try {
                     child.WaitForExit()
@@ -335,6 +365,7 @@ internal class Commands {
                     failure = error
                 }
             }
+
             completed <- failure
         }
 
@@ -358,9 +389,11 @@ internal class Commands {
         ) CommandResult {
             let info = ProcessStartInfo(isolated ? LocalPaths.NeedSystemTool("setsid", cwd): "setsid")
             info.ArgumentList.Add("--wait")
+
             let setpriv = LocalPaths.SystemTool("setpriv", cwd)
             let unshare = LocalPaths.SystemTool("unshare", cwd)
             let environment = LocalPaths.SystemTool("env", cwd)
+
             if !OperatingSystem.IsLinux() || !LocalPaths.Executable(setpriv) || !LocalPaths.Executable(unshare) ||
                 !LocalPaths
                 .Executable(environment) {
@@ -370,6 +403,7 @@ internal class Commands {
                     summary: "PID namespace prerequisite is unavailable"
                 )
             }
+
             info.ArgumentList.Add(setpriv)
             info.ArgumentList.Add("--pdeathsig")
             info.ArgumentList.Add("KILL")
@@ -385,21 +419,27 @@ internal class Commands {
             info.ArgumentList.Add("LC_ALL")
             info.ArgumentList.Add("--")
             info.ArgumentList.Add(exe)
+
             info.UseShellExecute = false
             info.RedirectStandardOutput = true
             info.RedirectStandardError = true
             info.RedirectStandardInput = true
+
             if cwd != "" {
                 info.WorkingDirectory = cwd
             }
+
             for arg in args {
                 info.ArgumentList.Add(arg)
             }
+
             info.Environment.Clear()
             let requirements = List[string]{"PATH", "HOME", "LANG"}
+
             if harness {
                 requirements.Add("CODEX_HOME")
             }
+
             if github {
                 requirements.AddRange(
                     []string{
@@ -412,23 +452,28 @@ internal class Commands {
                     }
                 )
             }
+
             for key in requirements {
                 if isolated {
                     continue
                 }
+
                 if let value = Environment.GetEnvironmentVariable(key) {
                     info.Environment[key] = value
                 }
             }
+
             if isolated {
                 info.Environment["PATH"] = "/usr/local/bin:/usr/bin:/bin"
             }
+
             let certificates = LocalPaths.Certificates()
             if certificates != "" {
                 info.Environment["SSL_CERT_FILE"] = certificates
                 info.Environment["GIT_SSL_CAINFO"] = certificates
                 info.Environment["CURL_CA_BUNDLE"] = certificates
             }
+
             info.Environment["GH_HOST"] = "github.com"
             info.Environment["GH_PROMPT_DISABLED"] = "1"
             info.Environment["GIT_TERMINAL_PROMPT"] = "0"
@@ -437,6 +482,7 @@ internal class Commands {
             info.Environment["GIT_NO_REPLACE_OBJECTS"] = "1"
             info.Environment["GIT_GRAFT_FILE"] = "/dev/null"
             info.Environment["LC_ALL"] = "C"
+
             if let signal = cancellation {
                 select {
                     case <- signal {
@@ -445,6 +491,7 @@ internal class Commands {
                     default { }
                 }
             }
+
             using let outputCapture = Capture(outputPath)
             using let errorCapture = Capture(errorPath)
             let requested = milliseconds > 0 ? milliseconds: seconds * 1000
@@ -461,12 +508,14 @@ internal class Commands {
             let failed = Chan[Exception](4)
             let clock = Stopwatch.StartNew()
             using let deadline = after(allowance)
+
             go Commands.Wait(info, started, exited)
             let launched = <-started
             if launched == nil {
                 let failure = <-exited
                 throw failure ?? Exception("Cannot start " + exe)
             }
+
             using let process = launched
             var outputReader StreamReader? = nil
             var callback CommandCancellation? = nil
@@ -483,6 +532,7 @@ internal class Commands {
             var output = CommandOutput()
             var stderrOutput = CommandOutput()
             var terminal Exception? = nil
+
             try {
                 let reader = strictOutput ? StreamReader(
                     process.StandardOutput.BaseStream,
@@ -495,6 +545,7 @@ internal class Commands {
                 let handler = ConsoleCancelEventHandler(active.OnCancel)
                 Console.CancelKeyPress += handler
                 onCancel = handler
+
                 go Commands.Write(process.StandardInput, input, stdin)
                 inputStarted = true
                 go Commands.Read(reader, stdout, failed, outputCapture, outputLine)
@@ -502,11 +553,14 @@ internal class Commands {
                 go Commands.Read(process.StandardError, stderr, failed, errorCapture, errorLine)
                 errorStarted = true
                 ready = true
+
                 while !inputDone || !outputDone || !errorDone || !exitDone {
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
                         throw Exception("Runtime limit reached for " + exe)
                     }
+
                     var failure Exception? = nil
+
                     select {
                         case let error = <- stdin {
                             inputDone = true
@@ -538,19 +592,23 @@ internal class Commands {
                             throw Exception("Runtime limit reached for " + exe)
                         }
                     }
+
                     select {
                         case <- cancelled {
                             throw Exception("Command cancelled: " + exe)
                         }
                         default { }
                     }
+
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
                         throw Exception("Runtime limit reached for " + exe)
                     }
+
                     if let error = failure {
                         throw error
                     }
                 }
+
                 result.Code = process.ExitCode
             } catch (error Exception) {
                 terminal = error
@@ -558,31 +616,42 @@ internal class Commands {
                 if let handler = onCancel {
                     Console.CancelKeyPress -= handler
                 }
+
                 if let active = callback {
                     active.Stop()
                 }
+
                 KillGroup(-process.Id, 9)
+
                 if !process.HasExited {
                     try {
                         process.Kill(true)
                     } catch (error InvalidOperationException) { }
                 }
+
                 process.WaitForExit()
+
                 if !exitDone {
                     <-exited
                 }
+
                 if inputStarted && !inputDone {
                     <-stdin
                 }
+
                 if outputStarted && !outputDone {
                     output = <-stdout
                 }
+
                 if errorStarted && !errorDone {
                     stderrOutput = <-stderr
                 }
+
                 outputReader?.Dispose()
             }
+
             Collect(result, output, stderrOutput)
+
             if terminal == nil {
                 select {
                     case <- cancelled {
@@ -590,21 +659,28 @@ internal class Commands {
                     }
                     default { }
                 }
+
                 if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
                     terminal = Exception("Runtime limit reached for " + exe)
                 }
             }
+
             terminal = terminal ?? output.Failure ?? stderrOutput.Failure
+
             if let error = terminal {
                 result.Code = nil
+
                 if !ready {
                     throw error
                 }
+
                 if error is IOException io && inputFailed {
                     throw CommandInputInterrupted(io, result)
                 }
+
                 throw CommandInterrupted(error, result)
             }
+
             if result.Code != 0 {
                 for prefix in[]string{
                     "setsid: failed to execute ",
@@ -618,6 +694,7 @@ internal class Commands {
                         )
                     }
                 }
+
                 for prefix in[]string{
                     "unshare: unshare failed:",
                     "unshare: mount /proc failed:",
@@ -632,6 +709,7 @@ internal class Commands {
                     }
                 }
             }
+
             return result
         }
 
@@ -652,6 +730,7 @@ internal class Commands {
                     summary: exe + " failed. Inspect private artifacts when available."
                 )
             }
+
             return result.Output.Trim()
         }
 
@@ -667,7 +746,9 @@ internal class Commands {
                 "-c",
                 "protocol.ext.allow=never"
             }
+
             all.AddRange(args)
+
             return Run(
                 "git",
                 all.ToArray(),
@@ -684,6 +765,7 @@ internal class Commands {
             if result.Code != 0 {
                 throw Exception("git failed: " + result.Error + result.Output)
             }
+
             return result.Output.Trim()
         }
 
@@ -695,11 +777,13 @@ internal class Commands {
                 ) > 32 * 1024 * 1024 {
                     throw Exception("Cannot read complete Git path evidence: " + result.Error)
                 }
+
                 return result.Output
             } catch (error CommandInterrupted) {
                 if error.Result.ReadFailed && error.InnerException is DecoderFallbackException {
                     throw Exception("Cannot read complete Git path evidence", error)
                 }
+
                 throw error
             }
         }

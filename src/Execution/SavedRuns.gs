@@ -75,12 +75,15 @@ internal class SavedRuns {
             skippedEntries List[Object?]? = nil
         ) Dictionary[string, Object?] {
             let items = List[Object?]()
+
             for row in rows {
                 if items.Count == 128 {
                     break
                 }
+
                 items.Add(row.Summary())
             }
+
             return map[string, Object?]{
                 "runs": items,
                 "skipped": skipped,
@@ -93,10 +96,12 @@ internal class SavedRuns {
     internal init(roots[]string, limit int32 = Int32.MaxValue, listingRepo string? = nil) {
         let legacy = List[SavedRun]()
         var scanned int32
+
         for root in roots {
             if !Directory.Exists(root) {
                 continue
             }
+
             try {
                 LocalPaths.DirectoryPath(root)
                 for directory in Directory.EnumerateDirectories(root) {
@@ -104,19 +109,24 @@ internal class SavedRuns {
                         Truncated = true
                         break
                     }
+
                     scanned++
                     var reason = "Unsafe saved run path."
+
                     try {
                         RunStorage.ControlPaths(directory)
                         reason = "Missing, invalid or oversized run metadata."
                         let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
+
                         reason = "Invalid repository or excessive saved metadata."
                         RepositoryIdentity.Repo(J.Text(value, "repo"))
+
                         for key in[]string{"id", "repo", "donor", "model", "state"} {
                             if J.Text(value, key).Length > 256 {
                                 throw Exception("Saved contribution metadata is too long")
                             }
                         }
+
                         if J.Number(value, "version") != 2 || J.Number(value, "issue") < 1 || J.Text(
                             value,
                             "state"
@@ -124,13 +134,16 @@ internal class SavedRuns {
                             reason = "Unsupported version or incomplete saved contribution."
                             throw Exception("Unsupported or incomplete saved contribution")
                         }
+
                         let row = SavedRun(directory, value, root == RunStorage.Root())
                         Rows.Add(row)
+
                         if row.Number == 0 {
                             legacy.Add(row)
                         }
                     } catch (error Exception) {
                         Skipped++
+
                         if SkippedEntries.Count < 128 {
                             SkippedEntries.Add(map[string, Object?]{"run": directory, "reason": reason})
                         } else {
@@ -140,6 +153,7 @@ internal class SavedRuns {
                 }
             } catch (error Exception) {
                 Skipped++
+
                 if SkippedEntries.Count < 128 {
                     SkippedEntries.Add(map[string, Object?]{"run": root, "reason": "Unsafe or unreadable run storage."})
                 } else {
@@ -147,8 +161,10 @@ internal class SavedRuns {
                 }
             }
         }
+
         for row in legacy {
             var number int32 = 1
+
             for other in legacy {
                 if other.Matches(row.Text("repo"), row.Issue) &&
                     (
@@ -158,8 +174,10 @@ internal class SavedRuns {
                     number++
                 }
             }
+
             row.Number = number
         }
+
         Rows.Sort(
             (a, b) -> !a.Matches(b.Text("repo"), b.Issue) ?
             StringComparer.OrdinalIgnoreCase.Compare(
@@ -169,6 +187,7 @@ internal class SavedRuns {
                 .Number
                 .CompareTo(b.Number): String.CompareOrdinal(a.Location, b.Location)
         )
+
         if listingRepo != nil {
             Rows.Sort(
                 (a, b) -> {
@@ -187,16 +206,19 @@ internal class SavedRuns {
                 return true
             }
         }
+
         return false
     }
 
     internal func For(repo string, issue int32) List[SavedRun] {
         let rows = List[SavedRun]()
+
         for row in Rows {
             if row.Matches(repo, issue) {
                 rows.Add(row)
             }
         }
+
         return rows
     }
 }

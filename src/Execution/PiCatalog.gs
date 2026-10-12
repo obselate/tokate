@@ -13,9 +13,12 @@ internal class PiCatalog {
                 Path.Combine("/tmp", "tokate-pi-catalog-" + Guid.NewGuid().ToString("N")),
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             )
+
             try {
                 let script = Path.Combine(storage.FullName, "catalog.mjs")
+
                 File.WriteAllText(script, ApplicationInfo.Resource("pi-catalog.mjs"))
+
                 let result = Commands.Run(
                     node,
                     []string{script},
@@ -28,6 +31,7 @@ internal class PiCatalog {
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     throw Exception("Endpoint metadata unavailable")
                 }
+
                 return Identity(RequestData.Parse(result.Output, 1024 * 1024), model)
             } catch (error Exception) {
                 throw CliFailure("endpoint_unavailable", PublicOutput.Message("endpoint_unavailable"))
@@ -43,34 +47,45 @@ internal class PiCatalog {
                 list.GetArrayLength() > 4096 {
                 throw Exception("Invalid model list")
             }
+
             let kind = J.Get(catalog, "object")
             if kind.ValueKind != JsonValueKind.Undefined && J.Text(catalog, "object") != "list" {
                 throw Exception("Invalid model list type")
             }
+
             let seen = HashSet[string](StringComparer.Ordinal)
             var selected JsonElement
+
             for entry in list.EnumerateArray() {
                 let id = RequestData.ModelIdentifier(J.Text(entry, "id"))
+
                 if id != id.Trim() || !seen.Add(id) {
                     throw Exception("Invalid or duplicate model id")
                 }
+
                 if id == model {
                     selected = entry
                 }
             }
+
             if model == "" {
                 return catalog
             }
+
             if selected.ValueKind != JsonValueKind.Object {
                 throw Exception("Selected model not advertised")
             }
+
             let result = map[string, Object?]{"advertised_model": model}
+
             for name in[]string{"runtime_version", "digest", "quantization", "context_window", "supports_tools"} {
                 let field = name == "context_window" ? Context(selected): J.Get(selected, name)
+
                 if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
                     result[name] = "unknown"
                     continue
                 }
+
                 var context int32
                 let valid = name == "context_window" ?
                 field.ValueKind == JsonValueKind.Number && field.TryGetInt32(out context) && context > 0:
@@ -82,31 +97,39 @@ internal class PiCatalog {
                         "^[A-Za-z0-9][A-Za-z0-9._:+-]{0,199}\\z"
                     )
                 )
+
                 if !valid {
                     throw Exception("Invalid model identity")
                 }
+
                 result[name] = field
             }
+
             return J.Parse(J.Write(result))
         }
 
         private func Context(model JsonElement) JsonElement {
             var result JsonElement
             var context int32
+
             for name in[]string{"context_window", "context_length"} {
                 let field = J.Get(model, name)
+
                 if field.ValueKind == JsonValueKind.Undefined || field.ValueKind == JsonValueKind.Null {
                     continue
                 }
+
                 var value int32
                 if field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out value) ||
                     value <= 0 ||
                     (result.ValueKind != JsonValueKind.Undefined && context != value) {
                     throw Exception("Invalid model identity")
                 }
+
                 result = field
                 context = value
             }
+
             return result
         }
     }
