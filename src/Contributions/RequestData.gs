@@ -142,9 +142,9 @@ internal class RequestData {
             return value.GetRawText()
         }
 
-        internal func Token(value string) string {
+        internal func Token(value string, message string = "Invalid tool identifier") string {
             if !Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
-                throw Exception("Invalid tool identifier")
+                throw Exception(message)
             }
             return value
         }
@@ -156,10 +156,19 @@ internal class RequestData {
             if value.ValueKind != JsonValueKind.Array || items.Count < 1 || items.Count > 16 {
                 throw Exception("Declare 1 to 16 tools, including every tool used")
             }
-            for tool in items {
+            for index in 0 ... items.Count {
+                let tool = items[index]
                 Keys(tool, "harness,provider,model,effort,usage,coding_seconds")
                 for name in[]string{"harness", "provider", "effort"} {
-                    PublicSummary.Identifier(Token(J.Text(tool, name)))
+                    PublicSummary.Identifier(
+                        Token(
+                            J.Text(tool, name),
+                            "Tools row " + (index + 1).ToString() +
+                                " needs " +
+                                name +
+                                " (letters, digits, dot, dash or underscore)"
+                        )
+                    )
                 }
                 ModelIdentifier(J.Text(tool, "model"))
                 let number = J.Get(tool, "coding_seconds")
