@@ -134,7 +134,7 @@ for cancelled in (False, True):
         expect(fd, b"3 selected")
         os.write(fd, b"\r")
         expect(fd, b"Review project setup")
-        os.write(fd, b"1\r")
+        os.write(fd, b"\r")
         finish(pid, fd, 0)
         with open(os.path.join(path, ".github", "tokate.json")) as file:
             policy = json.load(file)
