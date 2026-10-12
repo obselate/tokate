@@ -9,6 +9,7 @@ import System.Text.RegularExpressions
 internal class CoordinationState {
     internal var Sha string = ""
     internal let Fields Dictionary[string, Object?] = Dictionary[string, Object?]()
+
     internal func Value() JsonElement -> J.Parse(J.Write(Fields))
 
     internal func Write(repo string, issue int32, expected string, expires int64 = 0) {
@@ -26,6 +27,7 @@ internal class CoordinationState {
             },
             expires: expires
         )
+
         let commit = GitHub.Api(
             "repos/" + repo + "/git/commits",
             GitHub.AutomationCommit(
@@ -35,7 +37,9 @@ internal class CoordinationState {
             ),
             expires: expires
         )
+
         let next = J.Text(commit, "sha")
+
         if Sha == "" {
             GitHub.Api(
                 "repos/" + repo + "/git/refs",
@@ -63,27 +67,34 @@ internal class CoordinationState {
                             httpStatus: error.HttpStatus
                         )
                     }
+
                     if error.HttpStatus < 500 || error.HttpStatus > 599 {
                         throw error
                     }
+
                     ApiTransport.Settle()
                     let current = Load(repo, issue)
+
                     if current.Sha == next {
                         break
                     }
+
                     if current.Sha != expected {
                         throw error
                     }
                 }
             }
         }
+
         Sha = next
     }
 
     internal func Check(repo string, issue int32, donor string, actor JsonElement) JsonElement {
         let record = CheckApproval(repo, issue)
         let approval = J.Get(record, "approval")
+
         AccessState.Check(repo, issue, approval, actor)
+
         return record
     }
 
@@ -92,16 +103,20 @@ internal class CoordinationState {
         let approval = J.Get(state, "approval")
         let task = GitHub.Issue(repo, issue)
         AccessState.Task(approval)
+
         if J.Bool(state, "revoked") || !GitHub.HasLabel(task) || J.Text(approval, "issue_hash") != GitHub.Fingerprint(
             task
         ) {
             throw CliFailure("stale_approval", "Approval revoked or task changed")
         }
+
         let configuration = ApprovalBase.Check(repo, approval, quiet)
         let mode = configuration.Item1.Eligibility
+
         if J.Text(approval, "eligibility") != mode {
             throw CliFailure("stale_approval", "Task eligibility declaration differs from current policy")
         }
+
         return J.Parse(
             J.Write(
                 map[string, Object?]{
@@ -126,31 +141,38 @@ internal class CoordinationState {
             if !J.Get(value, key).TryGetInt64(out result) {
                 throw Exception("Invalid coordination timestamp")
             }
+
             return result
         }
 
         internal func Load(repo string, issue int32, missing bool = false) CoordinationState {
             let result = CoordinationState()
             let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + Ref(issue), missing: missing)
+
             if reference.ValueKind == JsonValueKind.Undefined {
                 return result
             }
+
             return At(repo, issue, J.Text(J.Get(reference, "object"), "sha"))
         }
 
         internal func At(repo string, issue int32, sha string) CoordinationState {
             let result = CoordinationState()
             result.Sha = RepositoryIdentity.CommitSha(sha)
+
             let value = RequestData.Parse(GitHub.FileAt(repo, "state.json", result.Sha), 1024 * 1024)
             let stateVersion = J.Number(value, "version")
             let stateRepo = J.Text(value, "repo")
             let stateIssue = J.Number(value, "issue")
+
             if stateVersion != 2 || !RepositoryIdentity.SameRepo(stateRepo, repo) || stateIssue != issue {
                 throw Exception("Invalid version-2 coordination state")
             }
+
             for field in value.EnumerateObject() {
                 result.Fields[field.Name] = field.Value.Clone()
             }
+
             return result
         }
 
@@ -162,12 +184,14 @@ internal class CoordinationState {
             let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             let active = reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 Unix(reservation, "expires") > now
+
             if active || contribution.ValueKind == JsonValueKind.Object {
                 var warning = active ? "Re-approval ends the active reservation's authority.": ""
                 if contribution.ValueKind == JsonValueKind.Object {
                     let pr = repo + "#" + J.Number(J.Get(contribution, "outcome"), "pr").ToString()
                     warning += (active ? " ": "") + "Re-approval ends the authority of published PR " + pr + "."
                 }
+
                 if !yes {
                     if PublicOutput.Enabled || Console.IsInputRedirected {
                         throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
@@ -185,8 +209,10 @@ internal class CoordinationState {
                     Terminal.Message(warning, error: true)
                 }
             }
+
             let approved = J.Parse(J.Write(approval))
             let expected = state.Sha == "" ? J.Text(approved, "base"): state.Sha
+
             state.Fields["version"] = 2
             state.Fields["repo"] = repo
             state.Fields["issue"] = issue
@@ -198,9 +224,11 @@ internal class CoordinationState {
             state.Fields["reservation"] = nil
             state.Fields["contribution"] = nil
             state.Fields["amendments"] = []Object{}
+
             if !state.Fields.ContainsKey("outcomes") {
                 state.Fields["outcomes"] = []Object{}
             }
+
             state.Write(repo, issue, expected)
         }
 
