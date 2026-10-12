@@ -1335,6 +1335,14 @@ internal class CliDiscovery {
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
             Check.Contains(
+                Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
+                "Use at most 24h: --max-time"
+            )
+            Check.Contains(
+                Call(binary, []string{"work", "owner/project#1", "--time", "2d"}, temp, 1).Error,
+                "Use at most 24h: --time"
+            )
+            Check.Contains(
                 Call(binary, []string{"verify-pr"}, temp, 1).Error,
                 "Unknown command: verify-pr. Use tokate verify."
             )

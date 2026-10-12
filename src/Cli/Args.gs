@@ -105,7 +105,7 @@ internal class Args {
             throw Exception("Invalid positive number: " + Cli.Label(key))
         }
         if (key == "seconds" || key == "timeout") && number > 86400 {
-            throw Exception("Use at most 24h: " + Cli.Label(key))
+            throw Exception("Use at most 24h: " + Cli.Label(key == "seconds" && Command == "init" ? "max-time": key))
         }
         return number
     }
