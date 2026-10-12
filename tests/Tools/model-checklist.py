@@ -173,8 +173,13 @@ try:
     expect(fd, b"> Set up my project")
     os.write(fd, b"\x1b[A")
     expect(fd, b"> Donate AI time")
+    resize(fd, 40, 24)
+    expect(fd, b"> Donate AI time")
     os.write(fd, b"?")
-    expect(fd, b"Choose the job you want to do.")
+    explained = expect(fd, b"fills in details it can find.")
+    assert b"Choose the job you want to do. Tokate\x1b[7;1H" in explained, explained
+    resize(fd, 80, 24)
+    expect(fd, b"> Donate AI time")
     os.write(fd, b"\r")
     transition = expect(fd, b"Project")
     assert b"Loading next step..." in transition, transition

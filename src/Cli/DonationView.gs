@@ -43,12 +43,18 @@ internal class DonationView {
                     Content.Add("")
                 }
                 while remaining != "" {
-                    let part = WizardScreen.Clip(remaining, Math.Max(1, width - 1))
+                    var part = WizardScreen.Clip(remaining, Math.Max(1, width - 1))
+                    if part.Length < remaining.Length && !Char.IsWhiteSpace(remaining[part.Length]) {
+                        let boundary = part.LastIndexOf(' ')
+                        if boundary > 0 {
+                            part = part.Substring(0, boundary)
+                        }
+                    }
                     if part == "" {
                         break
                     }
                     Content.Add(part)
-                    remaining = remaining.Substring(part.Length)
+                    remaining = remaining.Substring(part.Length).TrimStart()
                 }
             }
             if Scroll > 0 && ContentDirty {

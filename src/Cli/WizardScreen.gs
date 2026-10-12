@@ -147,12 +147,18 @@ internal class WizardScreen {
                     rows.Add("")
                 }
                 while remaining != "" {
-                    let line = Clip(remaining, width - 1)
+                    var line = Clip(remaining, width - 1)
+                    if line.Length < remaining.Length && !Char.IsWhiteSpace(remaining[line.Length]) {
+                        let boundary = line.LastIndexOf(' ')
+                        if boundary > 0 {
+                            line = line.Substring(0, boundary)
+                        }
+                    }
                     if line == "" {
                         break
                     }
                     rows.Add(Color("ink") + line)
-                    remaining = remaining.Substring(line.Length)
+                    remaining = remaining.Substring(line.Length).TrimStart()
                 }
             }
             rows.Add(Color("muted") + "h Home   q Quit   ? Explain")
