@@ -24,7 +24,13 @@ Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
 repository. Preserve existing checks and customization. Review the generated policy
 and pinned workflow, verify configuration, and commit it before approving tasks.
 Initialize access once, approve the issue, then trust the donor or grant that issue.
-Never grant access merely because someone requested it.
+Never grant access merely because someone requested it. In `manual` eligibility,
+trust has no effect. Grant each issue with `tokate access grant LOGIN N`.
+
+A change to the policy or template revokes existing approvals. Re-approve open tasks
+after the change is merged. After a coordinator pin change, confirm that Actions
+permits `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
+Otherwise every request stays pending.
 
 Before acceptance, inspect the diff and run `tokate verify PR` and `tokate checks PR`.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
@@ -50,6 +56,11 @@ Before inference, obtain consent for the task, harness/model and time allocation
 Profiles do not authorize budgets.
 Do not retry, switch models or start another run because output is quiet. Inspect
 `status 42-1` and use [recovery](docs/recovery.md) for failures or changes.
+If a request stays pending for more than 5 minutes, run
+`gh run list -R OWNER/REPO --workflow tokate-coordinator.yml --limit 3` and report
+the result to the owner. Never post the request again. Compare the `member` version
+in the repository's `.github/workflows/tokate-coordinator.yml` with
+`tokate --version`, and tell the owner when the repository's version is older.
 If executing an approved donor task, stay within its permissions. Do not change
 owner policy, start another run, publish or merge from inside that task.
 
