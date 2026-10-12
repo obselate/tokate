@@ -373,6 +373,15 @@ internal class CliDiscovery {
                 "no\n"
             )
             Check.That(declined.Code == 1, declined.Output + declined.Error)
+            Check.Contains(
+                declined.Output,
+                "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for .github/workflows/tokate-coordinator.yml"
+            )
+            Check.Contains(
+                declined.Output,
+                "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay read)"
+            )
+            Check.That(!declined.Output.Contains('{'), "Settings confirmation showed raw API bodies")
             Check.That(
                 !declined.Output.Contains("Models: unrestricted"),
                 "Setup asked policy questions before settings approval"
@@ -396,7 +405,8 @@ internal class CliDiscovery {
                 "Setup asked policy questions before checking GitHub settings"
             )
             Check.Contains(terminal.Output, "Maximum donor time (--max-time, e.g. 1h) [1h]")
-            Check.Contains(terminal.Output, "Reservation time (--reservation-time, e.g. 30m)")
+            Check.Contains(terminal.Output, "Target branch (--base-branch) [main]")
+            Check.Contains(terminal.Output, "Reservation time (--reservation-time, e.g. 30m) [24h]")
             flow.Reload()
             let eventPolicy = Check.Map(
                 "name",

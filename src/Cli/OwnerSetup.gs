@@ -448,7 +448,10 @@ internal class OwnerSetup {
                 }
                 let changes = List[string]()
                 if !events {
-                    changes.Add("Create Actions policy: " + J.Write(eventPolicy))
+                    changes.Add(
+                        "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for " +
+                            Path.GetRelativePath(root, workflow)
+                    )
                 }
                 if !pullRequests {
                     if J.Text(permissions, "default_workflow_permissions") != "read" && J.Text(
@@ -458,9 +461,8 @@ internal class OwnerSetup {
                         throw Exception("Cannot preserve default_workflow_permissions from the GitHub Actions settings")
                     }
                     changes.Add(
-                        "Enable Allow GitHub Actions to create and approve pull requests: " + J.Write(
-                            workflowPermissions
-                        )
+                        "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay " +
+                            J.Text(permissions, "default_workflow_permissions") + ")"
                     )
                 }
                 let answer = WizardScreen.Read(
@@ -551,6 +553,12 @@ internal class OwnerSetup {
                 var fallback = present.ValueKind == JsonValueKind.Undefined ? "": present.ToString()
                 if key == "seconds" {
                     fallback = J.Number(value, "max_seconds").ToString()
+                }
+                if interactive && fallback == "" && key == "base-branch" {
+                    fallback = J.Text(info, "default_branch")
+                }
+                if interactive && fallback == "" && key == "reservation-seconds" {
+                    fallback = "86400"
                 }
                 let answer = SetupAnswer(
                     args,
