@@ -498,6 +498,16 @@ internal class EligibilityChecks {
         }
 
         private func Presentation(binary string) {
+            using let empty = CoordinationFixture(binary)
+            empty.Initialize(approve: false)
+            Check.That(
+                Access(empty, "init").Output.Trim() == "Initialized donor access for owner/project.",
+                "Access initialization did not explain the change"
+            )
+            Check.Contains(
+                empty.Flow.Call([]string{"access", "list", "owner/project"}).Output,
+                "No donor access or pending requests."
+            )
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             Setup(test, "trusted")
@@ -517,8 +527,20 @@ internal class EligibilityChecks {
             let listArgs = []string{"access", "list", "owner/project", "--json"}
             let pending = Check.Envelope(test.Flow.Call(listArgs, owner: true), "access", "ok")
             Check.That(pending["data"]?["pending"]?.AsArray().Count == 1, "Pending request was hidden")
+            let pendingText = test.Flow.Call([]string{"access", "list", "owner/project"}).Output
+            Check.Contains(pendingText, "Pending request: donor #1 (trust)")
+            Check.That(!pendingText.Contains("access_sha"), "Human access list exposed raw JSON")
             Claim(test, 1)
-            Access(test, "trust")
+            Check.That(
+                Access(test, "trust").Output.Trim() == "Trusted donor for future approved issues.",
+                "Access trust did not explain the change"
+            )
+            Check.Contains(test.Flow.Call([]string{"access", "list", "owner/project"}).Output, "Trusted donor: donor")
+            Check.That(
+                Access(test, "check", issue: "1", owner: false).Output.Trim() ==
+                "You are eligible for approved issue #1.",
+                "Access check exposed raw JSON"
+            )
             let trusted = Check.Envelope(test.Flow.Call(listArgs, owner: true), "access", "ok")
             Check.That(
                 trusted["data"]?["pending"]?.AsArray().Count == 0 && Check.Text(
@@ -535,7 +557,15 @@ internal class EligibilityChecks {
                 "Revocation presentation retained trust"
             )
             test.Flow.Call([]string{"access", "request", "owner/project#1"})
-            Access(test, "grant", issue: "1")
+            Check.That(
+                Access(test, "grant", issue: "1").Output.Trim() == "Granted donor access to issue #1.",
+                "Access grant did not explain the change"
+            )
+            Access(test, "deny", donor: "other")
+            let accessText = test.Flow.Call([]string{"access", "list", "owner/project"}).Output
+            Check.Contains(accessText, "Issue grant: donor #1")
+            Check.Contains(accessText, "Denied donor: other")
+            Check.That(!accessText.Contains("access_sha"), "Human access list exposed raw JSON")
             File.Delete(Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"))
             let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
