@@ -16,6 +16,7 @@ internal class CliOption(name string, value string, description string, choices 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files; no inference"
+        case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
@@ -339,10 +340,10 @@ internal class Cli {
             ),
             CliCommand(
                 "approve",
-                "base-branch",
+                "base-branch,yes",
                 "repo,issue",
                 "Approve an issue for donors with a GitHub record and label; no donor assignment.",
-                "ISSUE [--base-branch BRANCH]",
+                "ISSUE [--base-branch BRANCH] [--yes]",
                 "approve 42",
                 effects: "local_read github_read github_write",
                 target: "issue",
