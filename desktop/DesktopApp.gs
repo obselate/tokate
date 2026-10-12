@@ -67,5 +67,6 @@ class DesktopApp {
             Root.Refresh()
         }
         Welcome.Refresh("")
+        go HarnessDoctor.Unready()
     }
 }

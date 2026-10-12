@@ -150,7 +150,7 @@ class DonationService {
 
     /// Moves to limits for `issue` and loads the donor's saved profiles and Codex's models.
     func Choose(issue Issue) {
-        Set(Current with{Issue = issue.NumberText, IssueTitle = issue.Title, Step = DonationStep.Limits})
+        Set(Current with{Issue = issue.NumberText, IssueTitle = issue.Title, Step = DonationStep.Limits, Unready = HarnessDoctor.Known})
         LoadProfiles(() -> StartWithDefault())
         go CheckHarnesses()
     }
