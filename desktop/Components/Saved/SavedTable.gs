@@ -11,6 +11,7 @@ data struct SavedTable {
     var Total int32
     var Reading bool
     var Short bool
+    var Narrow bool
     var Disabled bool
     var Loader Func[string, Blob]?
     var OnOpen Action[SavedRun]?
@@ -27,7 +28,14 @@ data struct SavedTable {
             let item = Rows[index]
             if item.Status() != "Merged" {
                 rows.Add(
-                    SavedRow{Item: item, Index: FirstIndex + index, Disabled: Disabled, Last: index == last, OnOpen: OnOpen}.Build()
+                    SavedRow{
+                        Item: item,
+                        Index: FirstIndex + index,
+                        Disabled: Disabled,
+                        Last: index == last,
+                        Narrow: Narrow,
+                        OnOpen: OnOpen,
+                    }.Build()
                 )
             }
         }

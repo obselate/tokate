@@ -5,10 +5,12 @@ import Goo.Widgets.Icons
 import System
 
 /// Named steps in order. The steps before `Current` are done and the step at `Current` shows `State`.
+/// `Narrow` names only the current step.
 data struct Progression {
     var Names []string
     var Current int32
     var State Tone
+    var Narrow bool
 
     func Build() Blob {
         let p = AppTheme.Current
@@ -26,16 +28,11 @@ data struct Progression {
             let now = index == Current
             let ink = index < Current ? p.Ok: now ? AppTheme.Look(State).Edge: p.Muted
             let icon = index < Current ? "check_circle": !now ? "radio_button_unchecked": State == Tone.Fail ? "error": "radio_button_checked"
-            row.Children.Add(
-                Row{
-                    Gap: 6,
-                    NoWrap: true,
-                    Children: []Blob{
-                        MaterialIcons.Create(icon, 18, ink),
-                        Label{Content: Names[index], Size: AppTheme.SmallSize, Ink: now ? p.Ink: ink}.Build(),
-                    },
-                }.Build()
-            )
+            let step = Row{Gap: 6, NoWrap: true, Children: []Blob{MaterialIcons.Create(icon, 18, ink)}}.Build()
+            if now || !Narrow {
+                step.Children.Add(Label{Content: Names[index], Size: AppTheme.SmallSize, Ink: now ? p.Ink: ink}.Build())
+            }
+            row.Children.Add(step)
         }
         return row
     }

@@ -38,19 +38,24 @@ class ProjectView {
                     Children: []Blob{
                         Heading{Content: owner.Repository, Size: AppTheme.DisplaySize}.Build(),
                         Spacer{}.Build(),
-                        (page.Button with{Label = "Change project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Close()}).Build(),
-                        (page.Button with{
-                            Label = "Refresh project",
-                            Kind = ButtonKind.Icon,
-                            Icon = "refresh",
-                            OnClick = () -> {
-                                if state.Tab == OwnerTab.Access {
-                                    owner.LoadAccess()
-                                } else {
-                                    owner.Refresh()
-                                }
+                        Row{
+                            NoWrap: true,
+                            Children: []Blob{
+                                (page.Button with{Label = "Change project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Close()}).Build(),
+                                (page.Button with{
+                                    Label = "Refresh project",
+                                    Kind = ButtonKind.Icon,
+                                    Icon = "refresh",
+                                    OnClick = () -> {
+                                        if state.Tab == OwnerTab.Access {
+                                            owner.LoadAccess()
+                                        } else {
+                                            owner.Refresh()
+                                        }
+                                    },
+                                }).Build(),
                             },
-                        }).Build(),
+                        }.Build(),
                     },
                 }.Build()
             )
@@ -60,17 +65,22 @@ class ProjectView {
                     Children: []Blob{
                         Heading{Content: "My project", Size: AppTheme.DisplaySize}.Build(),
                         Spacer{}.Build(),
-                        (page.Button with{
-                            Label = "Check owner prerequisites",
-                            Kind = ButtonKind.Quiet,
-                            OnClick = () -> owner.CheckPrerequisites(),
-                        }).Build(),
-                        (page.Button with{
-                            Label = "Refresh projects",
-                            Kind = ButtonKind.Icon,
-                            Icon = "refresh",
-                            OnClick = () -> owner.LoadProjects(),
-                        }).Build(),
+                        Row{
+                            NoWrap: true,
+                            Children: []Blob{
+                                (page.Button with{
+                                    Label = "Check owner prerequisites",
+                                    Kind = ButtonKind.Quiet,
+                                    OnClick = () -> owner.CheckPrerequisites(),
+                                }).Build(),
+                                (page.Button with{
+                                    Label = "Refresh projects",
+                                    Kind = ButtonKind.Icon,
+                                    Icon = "refresh",
+                                    OnClick = () -> owner.LoadProjects(),
+                                }).Build(),
+                            },
+                        }.Build(),
                     },
                 }.Build()
             )

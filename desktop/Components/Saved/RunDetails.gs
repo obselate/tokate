@@ -12,6 +12,8 @@ data struct RunDetails {
     var Actions []RunAction
     var Button CommandButton
     var Compact bool
+    /// A narrow panel names only the current step.
+    var Narrow bool
     var Form Blob?
     /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
     var Note Feedback
@@ -28,16 +30,18 @@ data struct RunDetails {
         let look = AppTheme.Look(tone)
         let guide = RunGuide.For(status, run.Pr > 0)
         let children = List[Blob]{
-            Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone}.Build(),
+            Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone, Narrow: Narrow}.Build(),
             Rule{}.Build(),
             Row{
+                NoWrap: true,
+                Align: AlignItems.FlexStart,
                 Children: []Blob{
                     tone == Tone.Wait ? WaitMark.Mount("run-wait", WaitMarkInput{Icon: look.Icon, Size: 26, Ink: look.Edge}): MaterialIcons.Create(
                         look.Icon == "" ? "arrow_circle_right": look.Icon,
                         26,
                         look.Edge
                     ),
-                    Heading{Content: guide.Heading}.Build(),
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Heading{Content: guide.Heading}.Build()},
                 },
             }.Build(),
         }

@@ -82,19 +82,21 @@ class SavedRunView {
                 Caption: item.Title == "" ? "": run.Identity,
                 Links: links.ToArray(),
                 Trailing: StatusBadge{Value: item.Status(), Tone: Statuses.ToneOf(item.Status())}.Build(),
+                Stacked: page.NarrowContent,
             }.Build(),
             RunDetails{
                 Item: state.Chosen,
                 Actions: state.Actions,
                 Button: page.Button,
                 Compact: page.CompactPanels,
+                Narrow: page.NarrowContent,
                 Form: form,
                 Note: state.Note,
                 Waiting: state.Waiting,
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
             }.Build(),
-            RunFacts{Item: state.Chosen, Compact: page.CompactPanels, Stacked: page.NarrowContent}.Build(),
+            RunFacts{Item: state.Chosen, Compact: page.CompactPanels, Stacked: page.Metrics.ContentWidth < 740}.Build(),
         }
     }
 }

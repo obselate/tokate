@@ -13,6 +13,8 @@ data struct SavedRow {
     var Disabled bool
     /// The last row has no line below it.
     var Last bool
+    /// A narrow row shows the status below the text.
+    var Narrow bool
     var OnOpen Action[SavedRun]?
 
     func Build() Blob {
@@ -51,9 +53,13 @@ data struct SavedRow {
                 Size: AppTheme.SmallSize,
                 Muted: true,
                 Ink: Item.Error != "" ? p.Fail: nil,
+                MaxLines: 1,
             }.Build()
-            summary.TextMaxLines = 1
             copy.Children.Add(summary)
+        }
+        let badge = StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build()
+        if Narrow {
+            copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: 4}, badge})
         }
         return Interaction.Keyboard(
             Button{
@@ -73,7 +79,7 @@ data struct SavedRow {
                 Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: "Saved " + identity, Description: Item.Error},
                 OnClick: () -> choose?.Invoke(item),
                 copy,
-                StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build(),
+                Narrow ? Container{}: badge,
                 MaterialIcons.Create("chevron_right", 20, Item.Openable ? p.Muted: Color.Transparent),
             }
         )
