@@ -373,9 +373,13 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "no\n"
+                "?\n\n"
             )
             Check.That(declined.Code == 1, declined.Output + declined.Error)
+            Check.Contains(declined.Output, "1  Apply")
+            Check.Contains(declined.Output, "2  Cancel")
+            Check.Contains(declined.Output, "Choice [2]")
+            Check.Contains(declined.Output, "Choose Apply only if you want Tokate to make these changes.")
             Check.Contains(
                 declined.Output,
                 "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for .github/workflows/tokate-coordinator.yml"
@@ -400,7 +404,7 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "yes\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n1\n"
+                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n1\n"
             )
             Check.Success(terminal)
             Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
@@ -412,9 +416,10 @@ internal class CliDiscovery {
             Check.Contains(terminal.Output, "Required checks are the GitHub CI check names that must pass on the PR.")
             Check.Contains(terminal.Output, "The names are CI job names.")
             Check.That(
-                terminal.Output.IndexOf("Apply these GitHub settings?", StringComparison.Ordinal) < terminal
-                    .Output
-                    .IndexOf("Who can contribute?", StringComparison.Ordinal),
+                terminal.Output.IndexOf("GitHub Actions settings", StringComparison.Ordinal) < terminal.Output.IndexOf(
+                    "Who can contribute?",
+                    StringComparison.Ordinal
+                ),
                 "Setup asked policy questions before checking GitHub settings"
             )
             Check.Contains(terminal.Output, "Maximum donor time (--max-time) [1h]")

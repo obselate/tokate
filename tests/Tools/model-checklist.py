@@ -132,6 +132,12 @@ for cancelled in (False, True):
         expect(fd, b"Model name")
         os.write(fd, b"remote-model\nabsent\n")
         expect(fd, b"3 selected")
+        resize(fd, 100, 24)
+        expect(fd, b"3 selected")
+        os.write(fd, b"?")
+        explained = expect(fd, b"Select the model and effort pairs")
+        assert b"Search: ?" not in explained, explained
+        assert b"h Home   q Quit   ? Explain" in explained, explained
         os.write(fd, b"\r")
         expect(fd, b"Review project setup")
         resize(fd, 80, 24)
@@ -188,7 +194,7 @@ try:
     expect(fd, b"> Donate AI time")
     os.write(fd, b"?")
     explained = expect(fd, b"fills in details it can find.")
-    assert b"Choose the job you want to do. Tokate\x1b[7;1H" in explained, explained
+    assert b"Choose whether to donate time, set up a" in explained, explained
     resize(fd, 80, 24)
     expect(fd, b"> Donate AI time")
     os.write(fd, b"\r")

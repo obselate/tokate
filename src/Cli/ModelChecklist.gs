@@ -167,7 +167,9 @@ internal class ModelChecklist {
             if answer == "exit" {
                 throw Exception("Setup cancelled")
             }
-            if answer == "add" {
+            if answer == "?" {
+                Terminal.Message(Help, error: true)
+            } else if answer == "add" {
                 Custom()
             } else if int32.TryParse(answer, out index) && index > 0 && index <= Choices.Count {
                 Choices[index - 1].Selected = !Choices[index - 1].Selected
@@ -244,8 +246,17 @@ internal class ModelChecklist {
                     rows.Add("Enlarge terminal; Esc cancels")
                     cursorColumn = 1
                 } else {
-                    if Single && Title != "" {
-                        let content = WizardScreen.Lines(Title, Body + note, width, height)
+                    if (Single && Title != "") || note != "" {
+                        let content = WizardScreen.Lines(
+                            Title == "" ? "Your coding tool": Title,
+                            (
+                                Single ? (Title == "" ? "Choose one profile | availability unknown": Body):
+                                count.ToString() + " selected | availability unknown"
+                            ) +
+                                note,
+                            width,
+                            height
+                        )
                         let page = Math.Max(1, height - 7)
                         scroll = Math.Clamp(scroll, 0, Math.Max(0, content.Count - page))
                         rows.AddRange(content.GetRange(scroll, Math.Min(page, content.Count - scroll)))
@@ -257,6 +268,7 @@ internal class ModelChecklist {
                         rows.Add(
                             (Single ? "Choose one profile": count.ToString() + " selected") + " | availability unknown"
                         )
+                        rows.Add("h Home   q Quit   ? Explain")
                     }
                     searchRow = rows.Count + 1
                     rows.Add("Search: " + Search.Substring(start))
@@ -332,17 +344,16 @@ internal class ModelChecklist {
                 if small {
                     continue
                 }
-                if Single && Title != "" && !control && Search == "" {
+                if !control && key.KeyChar == '?' {
+                    note = "\n\n" + (Help == "" ? "Choose the next action. Nothing starts without confirmation.": Help)
+                    continue
+                }
+                if !control && Search == "" {
                     if key.KeyChar == 'q' {
                         throw OperationCanceledException("Cancelled")
                     }
                     if key.KeyChar == 'h' {
                         throw WizardHome()
-                    }
-                    if key.KeyChar == '?' {
-                        note = "\n\n" +
-                            (Help == "" ? "Choose the next action. Nothing starts without confirmation.": Help)
-                        continue
                     }
                 }
                 if key.Key == ConsoleKey.Enter {
@@ -359,9 +370,9 @@ internal class ModelChecklist {
                 }
                 if control && key.Key == ConsoleKey.L {
                     Invalidate()
-                } else if Single && Title != "" && key.Key == ConsoleKey.PageUp {
+                } else if key.Key == ConsoleKey.PageUp {
                     scroll = Math.Max(0, scroll - Math.Max(1, height - 7))
-                } else if Single && Title != "" && key.Key == ConsoleKey.PageDown {
+                } else if key.Key == ConsoleKey.PageDown {
                     scroll += Math.Max(1, height - 7)
                 } else if key.Key == ConsoleKey.UpArrow {
                     Focus = Math.Max(0, Focus - 1)
@@ -426,6 +437,8 @@ internal class ModelChecklist {
 
     internal func Run() string {
         if !Single {
+            Title = "Allowed models"
+            Help = "Select the model and effort pairs donors may use. Select only pairs supported by tools you expect donors to have."
             Discover()
         }
         if !WizardScreen.Available() {

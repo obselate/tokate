@@ -21,7 +21,7 @@ internal class GuidedWork {
                     note,
                     "Project",
                     inferred,
-                    "A repository lists approved work. An issue link selects that task directly. You can correct the suggested repository."
+                    "Choose the repository with approved work, or enter an issue link to select one task. Example: owner/repo#42."
                 )
                 if value == "" {
                     throw OperationCanceledException("Cancelled")
@@ -70,7 +70,7 @@ internal class GuidedWork {
                 "Choose an issue",
                 repo + "\nApproved tasks. Current access and availability are checked before a claim.",
                 choices.ToArray(),
-                "Choose an issue. For work outside this bounded list, return home and enter its issue link."
+                "Choose an approved task to work on. The list only shows approved tasks. Use an issue link for another task."
             )
             args.Values["--issue"] = numbers[choice - 1]
         }
@@ -111,7 +111,10 @@ internal class GuidedWork {
             }
             if labels.Count > 0 {
                 labels.Add("Set up another coding tool")
-                let selected = ModelChecklist.Pick(labels.ToArray())
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a saved tool profile to use its settings. Choose \"Set up another coding tool\" to select a different tool."
+                )
                 if selected < names.Count {
                     let value = DonorDefaults.Read(names[selected])
                     for field in value.EnumerateObject() {
@@ -149,7 +152,8 @@ internal class GuidedWork {
             let tool = preferred >= 0 ? preferred + 1: WizardScreen.Choose(
                 "Your coding tool",
                 "Choose one permitted tool. Availability is checked before starting.",
-                tools.ToArray()
+                tools.ToArray(),
+                "Choose a tool you have configured and are allowed to use. Choose Pi for your local model server. Choose a subscription tool to use its account."
             )
             args.Values["--harness"] = routes[tool - 1]
             DonorDefaults.NormalizePair(args)
@@ -162,12 +166,14 @@ internal class GuidedWork {
                     args.Values["--model"] = WizardScreen.Read(
                         "Claude Code model",
                         "Choose the exact model identifier.",
-                        "Model ID"
+                        "Model ID",
+                        help: "Choose the exact model configured in Claude Code. Example: claude-sonnet-5-5."
                     )
                     args.Values["--effort"] = WizardScreen.Read(
                         "Reasoning effort",
                         "Choose a supported effort level.",
-                        "Effort"
+                        "Effort",
+                        help: "Choose an effort supported by your model. Use the lowest level that gives you enough reasoning time."
                     )
                 } else {
                     for model in J.Get(policy.Value, "models").EnumerateObject() {
@@ -183,7 +189,10 @@ internal class GuidedWork {
                     if labels.Count == 0 {
                         throw Exception("The owner policy permits no supported Claude model and effort")
                     }
-                    let selected = ModelChecklist.Pick(labels.ToArray())
+                    let selected = ModelChecklist.Pick(
+                        labels.ToArray(),
+                        help: "Choose a model and effort allowed by the project. Use the lowest effort that is enough for the task."
+                    )
                     args.Values["--model"] = models[selected]
                     args.Values["--effort"] = efforts[selected]
                 }
@@ -196,7 +205,7 @@ internal class GuidedWork {
                     "Use your existing model server or local tunnel.",
                     "Endpoint URL",
                     args.Get("endpoint"),
-                    "No-auth loopback Chat Completions URL, including /v1. Tokate does not start a server."
+                    "Enter the URL of your existing local model server. Example: http://127.0.0.1:1234/v1. Tokate does not start the server."
                 )
                 PiHarness.Runtime(args)
                 let models = List[string]()
@@ -214,13 +223,15 @@ internal class GuidedWork {
                     selected = WizardScreen.Choose(
                         "Local model",
                         "Choose a model advertised by your server and configured in Pi.",
-                        labels.ToArray()
+                        labels.ToArray(),
+                        "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
                     )
                 }
                 args.Values["--model"] = selected <= models.Count ? models[selected - 1]: WizardScreen.Read(
                     "Local model",
                     "Choose the exact model configured in Pi and advertised by your server.",
-                    "Model ID"
+                    "Model ID",
+                    help: "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
                 )
                 let settings = PiBoundary.ModelSettings(
                     args.Need("pi-root"),
@@ -242,7 +253,8 @@ internal class GuidedWork {
                     WizardScreen.Choose(
                         "Reasoning effort",
                         "Choose a level supported by Pi and permitted by the project.",
-                        efforts.ToArray()
+                        efforts.ToArray(),
+                        "Choose an effort supported by Pi and allowed by the project. Use the lowest level that is enough for the task."
                     ) - 1
                 ]
             } else if args.Need("harness") == "omp" {
@@ -267,7 +279,8 @@ internal class GuidedWork {
                         choice = WizardScreen.Choose(
                             "OMP model",
                             "Choose a model from your OMP catalog.",
-                            labels.ToArray()
+                            labels.ToArray(),
+                            "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
                         )
                         labels.Clear()
                     }
@@ -276,7 +289,7 @@ internal class GuidedWork {
                         "Choose the exact model as OMP lists it.",
                         "provider/model",
                         "",
-                        "Run omp models to see the selectors your OMP setup provides."
+                        "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
                     )
                     let split = selector.IndexOf('/')
                     if split < 1 {
@@ -316,7 +329,10 @@ internal class GuidedWork {
                         "OMP lists no model and effort that the owner policy permits. Check omp models and your OMP sign-in."
                     )
                 }
-                let selected = ModelChecklist.Pick(labels.ToArray())
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a model and effort listed by OMP and allowed by the project. Use the lowest effort that is enough for the task."
+                )
                 args.Values["--provider"] = providers[selected]
                 args.Values["--model"] = models[selected]
                 args.Values["--effort"] = efforts[selected]
@@ -336,7 +352,10 @@ internal class GuidedWork {
                 if labels.Count == 0 {
                     throw Exception("No permitted model and effort are advertised by the installed Codex")
                 }
-                let selected = ModelChecklist.Pick(labels.ToArray())
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a model and effort supported by your Codex setup and allowed by the project. Use the lowest effort that is enough for the task."
+                )
                 args.Values["--model"] = models[selected]
                 args.Values["--effort"] = efforts[selected]
             }
@@ -368,7 +387,7 @@ internal class GuidedWork {
                         " for coding and verification combined. Choose coding minutes.",
                     allowUnlimited ? "Coding minutes or unlimited": "Coding minutes",
                     args.Get("unlimited") == "true" ? "unlimited": "30",
-                    "This is a client time limit, not a token, billing or server-resource cap."
+                    "Choose how many minutes Tokate may spend on coding. Use the default unless you need a different limit. The owner sets the maximum."
                 )
                 let unlimited = allowUnlimited && answer.Trim().Equals("unlimited", StringComparison.OrdinalIgnoreCase)
                 var coding int32
@@ -377,7 +396,8 @@ internal class GuidedWork {
                     "Verification time",
                     "Reserve time for the owner's independent checks after coding.",
                     "Verification minutes",
-                    "30"
+                    "30",
+                    "Reserve time for the owner's checks after coding. Example: 30 minutes."
                 )
                 if int32.TryParse(verification, out reserve) &&
                     reserve > 0 &&
@@ -405,7 +425,8 @@ internal class GuidedWork {
                 WizardScreen.Read(
                     "Time limit",
                     "Use positive whole minutes. The combined owner limit is " + limit.ToString() + " seconds.",
-                    "Enter to try again"
+                    "Enter to try again",
+                    help: "Enter positive whole minutes for coding and verification. The total must be within the owner's limit."
                 )
             }
         }
@@ -494,7 +515,7 @@ internal class GuidedWork {
                     "Review donation",
                     body,
                     options,
-                    "Starting rechecks authority, prepares your fork and runs the selected tool. Reserving spends no inference. You can return home without posting anything."
+                    "Start to let Tokate prepare work and run your selected tool. Reserve saves the task without running the tool. Returning home posts nothing."
                 )
                 if action == 1 || (args.Command == "work" && action == 3) {
                     if action == 3 {
@@ -507,7 +528,8 @@ internal class GuidedWork {
                     let change = WizardScreen.Choose(
                         "Change donation",
                         "Only change what you need.",
-                        []string{"Coding tool and model", "Time limit", "Back to review"}
+                        []string{"Coding tool and model", "Time limit", "Back to review"},
+                        "Change the coding tool and model, or change the time limit. Choose back to review the donation again."
                     )
                     if change == 1 {
                         Profile(args, policy)

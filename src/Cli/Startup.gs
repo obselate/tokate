@@ -364,6 +364,7 @@ internal class Startup {
                     "Choose your default harness",
                     "Choose a discovered harness or keep the current choice.",
                     labels.ToArray(),
+                    "Choose the coding tool to use by default, or keep the current choice.",
                     selected: labels.Count
                 )
                 if index <= installed.Count {

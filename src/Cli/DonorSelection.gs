@@ -210,7 +210,10 @@ internal class DonorSelection {
                 let eligible = List[JsonElement](choices.Values)
                 var selected int32
                 try {
-                    selected = ModelChecklist.Pick(List[string](choices.Keys).ToArray())
+                    selected = ModelChecklist.Pick(
+                        List[string](choices.Keys).ToArray(),
+                        help: "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
+                    )
                 } catch (error OperationCanceledException) {
                     throw Exception("Explicit donor choice was not supplied. No inference started.")
                 }
@@ -258,6 +261,7 @@ internal class DonorSelection {
                     "Confirm donation",
                     args.Command == "claim" ? "Post this claim without inference?": "Post this claim and start this donation when accepted?",
                     []string{"Post", "Cancel"},
+                    "Post the reservation request without running the tool, or cancel. A donation starts only after the owner accepts it.",
                     selected: 2
                 ) != 1 {
                     throw Exception("Donation was not confirmed. No claim or inference was started.")
@@ -288,6 +292,7 @@ internal class DonorSelection {
                     " (" +
                     J.Text(selection, "availability") + ")?",
                 []string{"Use", "Cancel"},
+                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing.",
                 selected: 2
             ) != 1 {
                 throw Exception("Inference was not confirmed. No inference started.")

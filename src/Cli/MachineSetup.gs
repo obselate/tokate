@@ -35,7 +35,13 @@ internal class MachineSetup {
                 Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
                 return false
             }
-            return WizardScreen.Choose("Install requirements", message, []string{"Install", "Cancel"}, selected: 2) == 1
+            return WizardScreen.Choose(
+                "Install requirements",
+                message,
+                []string{"Install", "Cancel"},
+                "Choose Install to add the listed requirements. Choose Cancel to keep the computer unchanged.",
+                selected: 2
+            ) == 1
         }
 
         private func PackageManager() string {
@@ -272,12 +278,17 @@ internal class MachineSetup {
                     "Set up " + name,
                     "Use an existing installation or install the coding tool.",
                     []string{"Use an existing path", "Install " + name, "Cancel"},
+                    "Use an existing installation if you have one. Otherwise install the tool, or cancel setup.",
                     selected: 3
                 )
             }
             if choice == 1 {
-                Console.Error.Write("Executable path: ")
-                let path = Console.ReadLine() ?? ""
+                let path = WizardScreen.Read(
+                    "Existing executable path",
+                    "",
+                    "Executable path",
+                    help: "Enter the full path to the existing executable. Example: /usr/local/bin/codex."
+                )
                 if path == "" {
                     return false
                 }

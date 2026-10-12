@@ -77,7 +77,8 @@ internal class Interactive {
                     task + "\nState  " + J.Text(summary, "state") + "\nModel  " + J.Text(summary, "model") +
                         "\n\n" +
                         next,
-                    labels.ToArray()
+                    labels.ToArray(),
+                    "Choose the next action for this saved contribution. Work actions can run your selected tool. Status only reads saved evidence."
                 )
                 if selected > commands.Count {
                     return
@@ -99,7 +100,8 @@ internal class Interactive {
                             "\nBudget  " +
                             RuntimeBudget.Description(Data.From(summary)) +
                             "\n\nUses your selected coding tool and allowance. Authority is rechecked before starting.",
-                        []string{"Start donation", "Back"}
+                        []string{"Start donation", "Back"},
+                        "Start to run the selected tool within this reservation's budget. Choose back to leave the reservation unchanged."
                     ) != 1 {
                         continue
                     }
@@ -112,7 +114,8 @@ internal class Interactive {
                                 "Verification time",
                                 "Runs owner checks without inference.",
                                 "Minutes",
-                                "30"
+                                "30",
+                                "Choose how many minutes to run the owner's checks. Example: 30."
                             )
                         ) * 60
                     ).ToString()
@@ -140,7 +143,8 @@ internal class Interactive {
             let choice = WizardScreen.Choose(
                 "Reservation",
                 task + "\nState  " + J.Text(state, "status"),
-                labels.ToArray()
+                labels.ToArray(),
+                "Choose an available action for this reservation. A pending request can be checked. Otherwise the listed action changes the reservation."
             )
             return choice > actions.Count ? []string{}: []string{
                 actions[choice - 1].GetString() ?? "",
@@ -164,7 +168,8 @@ internal class Interactive {
                 WizardScreen.Read(
                     "Saved contributions",
                     "No readable saved contributions were found.\n" + note,
-                    "Enter to return"
+                    "Enter to return",
+                    help: "No readable saved contributions are available here. Press Enter to return home."
                 )
                 return
             }
@@ -177,7 +182,12 @@ internal class Interactive {
                         .ToString() + (J.Text(row, "storage") == "previous" ? " (previous storage)": "")
                 )
             }
-            let selected = WizardScreen.Choose("Saved contributions", note, labels.ToArray())
+            let selected = WizardScreen.Choose(
+                "Saved contributions",
+                note,
+                labels.ToArray(),
+                "Choose a saved contribution to inspect or continue. The list is stored on this computer."
+            )
             Continue(J.Text(rows[selected - 1], "run"))
         }
 
@@ -211,7 +221,8 @@ internal class Interactive {
                 WizardScreen.Read(
                     "Project setup",
                     "Review and commit the configuration before approving work. Every contribution still needs owner review.",
-                    "Enter to return"
+                    "Enter to return",
+                    help: "Review and commit the project configuration before approving work. Press Enter to return home."
                 )
             }
         }
@@ -231,7 +242,7 @@ internal class Interactive {
                             "Continue existing work  Find a saved contribution",
                             "Write and approve an issue"
                         },
-                        "Choose the job you want to do. Tokate fills in details it can find."
+                        "Choose whether to donate time, set up a project, or continue saved work. Tokate fills in details it can find."
                     )
                     if action == 3 {
                         Saved()
@@ -249,7 +260,12 @@ internal class Interactive {
                         true
                     )
                     try {
-                        WizardScreen.Read("Action needs attention", error.Message, "Enter to return home")
+                        WizardScreen.Read(
+                            "Action needs attention",
+                            error.Message,
+                            "Enter to return home",
+                            help: "Read the message above, then press Enter to return to the welcome screen."
+                        )
                     } catch (cancel OperationCanceledException) {
                         return 0
                     } catch (home WizardHome) { }
