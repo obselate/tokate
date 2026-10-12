@@ -78,6 +78,12 @@ internal partial class NativeFlow : NativeFixture {
     }
 
     internal func StructuredContract() {
+        let path = Path.Combine(Upstream, ".github/tokate.json")
+        let display = Check.Json(File.ReadAllText(path))
+        display["allowed_tools"]?.AsArray().Add(Check.Map("harness", "pi", "provider", "local-chat-completions"))
+        display["verification"]?.AsArray().Add(Check.Json("[\"/bin/echo\",\"literal  spaces\"]"))
+        File.WriteAllText(path, display.ToJsonString())
+        Commit("Policy display fixture")
         let approval = Call([]string{"approve", "owner/project#1", "--json"}, owner: true)
         Check.Envelope(approval, "approve", "ok")
         let policy = Call([]string{"policy", "owner/project", "--json"})
@@ -88,6 +94,11 @@ internal partial class NativeFlow : NativeFixture {
             legacy["schema_version"] == nil && Check.Text(legacy["version"]) == "2",
             "Legacy piped policy changed"
         )
+        for flag in[]string{"--plain", "--ascii"} {
+            let human = Call([]string{"policy", "owner/project", flag}).Output
+            Check.Contains(human, "Allowed tools:\n  codex / openai\n  pi / local-chat-completions\n")
+            Check.Contains(human, "Verification:\n  test -f result.txt\n  /bin/echo 'literal  spaces'\n")
+        }
         let claim = Check.Envelope(Acquire(ClaimArgs(json: true)), "claim", "ok")
         let run = Check.Text(claim["data"]?["run"])
         Check.That(Path.IsPathFullyQualified(run), "Claim omitted executable run path")
