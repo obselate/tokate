@@ -188,6 +188,11 @@ internal class WorkspacePreparation {
             Terminal.Step("Approved source " + run.Text("base") + " for target " + run.Text("base_branch"))
             if run.Text("source") == "external" {
                 Terminal.Step("External coding checkout: " + checkout + "; independent verification uses DIR/checkout")
+                Terminal.Step(
+                    "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
+                        "' push https://github.com/" +
+                        run.Text("head_repo") + ".git HEAD:refs/heads/" + run.Text("branch")
+                )
             }
         }
 

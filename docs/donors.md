@@ -146,6 +146,8 @@ the command fails, writes nothing and lists attempts. Name another attempt as `4
 only when you need to select one explicitly. You do not need to write request JSON.
 After coordinator publication, repeat `submit 42` to save the PR locally.
 
+Before `tokate external RUN --commit SHA`, run `git -C CODING push https://github.com/HEAD_REPO.git SHA:refs/heads/BRANCH` with the coding checkout, fork and branch from the external claim output.
+
 `--time` caps coding plus verification time, not tokens or server billing.
 The harness, its tools and owner verification always have network access, which
 cloud and local model servers both need. Native harness settings control its retries and context handling
