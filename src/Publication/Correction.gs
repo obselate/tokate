@@ -118,6 +118,13 @@ internal class Correction {
         private func Activate(directory string, run Data, correction Data) {
             run.Fields["commit"] = correction.Text("commit")
             run.Fields["verification"] = J.Get(correction.Element(), "verification")
+            let summary = J.Get(correction.Element(), "public_summary")
+            if summary.ValueKind == JsonValueKind.Undefined {
+                run.Fields.Remove("public_summary")
+            } else {
+                run.Fields["public_summary"] = summary
+            }
+            run.Fields.Remove("summary_patch_sha256")
             run.Fields["correction"] = Provenance(correction)
             run.Fields["state"] = "generated"
             run.Fields.Remove("error")
