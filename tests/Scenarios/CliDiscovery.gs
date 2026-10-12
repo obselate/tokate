@@ -1234,6 +1234,10 @@ internal class CliDiscovery {
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
+            Check.Contains(
+                Call(binary, []string{"verify-pr"}, temp, 1).Error,
+                "Unknown command: verify-pr. Use tokate verify."
+            )
 
             for argv in[][]string{
                 []string{"nonsense", "--help"},
