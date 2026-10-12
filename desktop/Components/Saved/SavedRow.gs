@@ -11,6 +11,10 @@ data struct SavedRow {
     var Item SavedRun
     var Index int32
     var Disabled bool
+    /// The last row has no line below it.
+    var Last bool
+    /// A narrow row shows the status below the text.
+    var Narrow bool
     var OnOpen Action[SavedRun]?
 
     func Build() Blob {
@@ -29,7 +33,7 @@ data struct SavedRow {
                 facts.Add("PR #" + run.Pr.ToString())
             }
             if run.Model != "" {
-                facts.Add(run.Model + " / " + run.Effort)
+                facts.Add(ModelChoice.Pair(run.Model, run.Effort))
             }
         }
         let age = Item.Age(DateTime.UtcNow)
@@ -49,9 +53,13 @@ data struct SavedRow {
                 Size: AppTheme.SmallSize,
                 Muted: true,
                 Ink: Item.Error != "" ? p.Fail: nil,
+                MaxLines: 1,
             }.Build()
-            summary.TextMaxLines = 1
             copy.Children.Add(summary)
+        }
+        let badge = StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build()
+        if Narrow {
+            copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: 4}, badge})
         }
         return Interaction.Keyboard(
             Button{
@@ -61,7 +69,7 @@ data struct SavedRow {
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
                 Gap: 12,
-                BorderWidth: Edges{Bottom: 1},
+                BorderWidth: Edges{Bottom: Last ? 0: 1},
                 BorderColor: p.Line,
                 BackgroundColor: Color.Transparent,
                 Hover: Style{BackgroundColor: p.Paper},
@@ -71,7 +79,7 @@ data struct SavedRow {
                 Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: "Saved " + identity, Description: Item.Error},
                 OnClick: () -> choose?.Invoke(item),
                 copy,
-                StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build(),
+                Narrow ? Container{}: badge,
                 MaterialIcons.Create("chevron_right", 20, Item.Openable ? p.Muted: Color.Transparent),
             }
         )

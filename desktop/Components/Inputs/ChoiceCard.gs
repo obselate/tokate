@@ -37,7 +37,7 @@ data struct ChoiceCard {
             Button{
                 FlexGrow: 1,
                 FlexBasis: 0,
-                MinWidth: Compact ? 150: 190,
+                MinWidth: Compact ? 150: 220,
                 MinHeight: Compact ? 0: 82,
                 Padding: Compact ? 12: 20,
                 Gap: 10,

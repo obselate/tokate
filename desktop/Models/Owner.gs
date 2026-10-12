@@ -237,6 +237,9 @@ class Eligibility {
         let All []string = []string{"trusted", "open", "manual"}
 
         func Label(mode string) string -> mode == "trusted" ? "Trusted donors": mode == "open" ? "Everyone": "Per issue"
+
+        func Detail(mode string) string -> mode == "trusted" ? "Donors that you trust.": mode == "open" ?
+        "All donors not denied.": "Donors with an issue grant."
     }
 }
 

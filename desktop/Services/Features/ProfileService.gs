@@ -28,6 +28,7 @@ class ProfileService {
     private func SetDraft(draft DonationDraft) -> Set(Current with{Draft = draft})
 
     func Enter() {
+        Current = Current with{Unready = HarnessDoctor.Known}
         Load("")
         go CheckHarnesses()
     }

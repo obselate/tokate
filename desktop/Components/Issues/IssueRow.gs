@@ -10,6 +10,8 @@ data struct IssueRow {
     var Issue Issue
     var Disabled bool
     var ShowApproval bool
+    /// The last row has no line below it.
+    var Last bool
     var OnChoose Action?
 
     func Build() Blob {
@@ -23,7 +25,7 @@ data struct IssueRow {
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
             Gap: 12,
-            BorderWidth: Edges{Bottom: 1},
+            BorderWidth: Edges{Bottom: Last ? 0: 1},
             BorderColor: p.Line,
             BackgroundColor: Color.Transparent,
             Hover: Style{BackgroundColor: p.Paper},

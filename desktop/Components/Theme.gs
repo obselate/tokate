@@ -104,7 +104,7 @@ class AppTheme {
 
         func Look(tone Tone) ToneLook -> switch tone {
             case Tone.Wait: ToneLook{
-                Fill: Color.Transparent,
+                Fill: Current.Surface,
                 Ink: Current.Muted,
                 Line: Current.Line,
                 Edge: Current.Muted,

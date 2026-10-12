@@ -27,10 +27,6 @@ class ProfilesView {
                     (page.Button with{Label = "New profile", Icon = "add", OnClick = () -> profiles.New(), Disabled = state.Open}).Build(),
                 },
             }.Build(),
-            Label{
-                Content: "A profile saves a harness, model and reasoning effort on this computer. Select it in the limits of a donation, or set it as the default to start each donation with it. The owner of each repository decides which models are allowed.",
-                Muted: true,
-            }.Build(),
         }
         if notice.Message != "" {
             body.Add(Callout{Message: notice.Message, Tone: notice.Tone}.Build())
@@ -54,7 +50,16 @@ class ProfilesView {
                 }.Build()
             )
         } else if state.Loaded && !state.Open {
-            body.Add(EmptyMessage{Content: "No saved profiles. Select \"New profile\" to save one.", Icon: "tune"}.Build())
+            body.Add(
+                Panel{
+                    Children: []Blob{
+                        EmptyMessage{
+                            Content: "No saved profiles. A profile saves a harness, a model and a reasoning effort. Select \"New profile\" to save one.",
+                            Icon: "bookmark_add",
+                        }.Build(),
+                    },
+                }.Build()
+            )
         }
         return Stack{Gap: 20, Children: body.ToArray()}.Build()
     }
@@ -65,7 +70,11 @@ class ProfilesView {
             Compact: page.CompactPanels,
             Name: "Profile settings",
             Children: []Blob{
-                Heading{Content: state.Editing != "" ? "Change " + state.Editing: "New profile"}.Build(),
+                IconHeading{
+                    Icon: state.Editing != "" ? "edit": "bookmark_add",
+                    Content: state.Editing != "" ? "Change " + state.Editing: "New profile",
+                    Detail: "A profile saves a harness, a model and a reasoning effort on this computer.",
+                }.Build(),
                 InputField{
                     Label: "Profile name",
                     Controlled: true,
@@ -75,13 +84,19 @@ class ProfilesView {
                     Width: 230,
                     Disabled: page.Busy || state.Editing != "",
                 }.Build(),
-                HarnessPicker{
-                    Selected: draft.Harness,
-                    Policy: Policy.Empty,
-                    Unready: state.Unready,
-                    Logo: id -> art.Logo(id).Render(),
-                    Disabled: page.Busy,
-                    OnChoose: id -> profiles.ChooseHarness(id),
+                Stack{
+                    Gap: 6,
+                    Children: []Blob{
+                        Label{Content: "Harness", Size: AppTheme.SmallSize, Muted: true}.Build(),
+                        HarnessPicker{
+                            Selected: draft.Harness,
+                            Policy: Policy.Empty,
+                            Unready: state.Unready,
+                            Logo: id -> art.Logo(id).Render(),
+                            Disabled: page.Busy,
+                            OnChoose: id -> profiles.ChooseHarness(id),
+                        }.Build(),
+                    },
                 }.Build(),
                 ModelPicker{
                     Harness: draft.Harness,

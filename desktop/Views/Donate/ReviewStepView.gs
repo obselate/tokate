@@ -20,6 +20,7 @@ class ReviewStepView {
                 Title: state.IssueTitle,
                 Account: state.Account,
                 Draft: state.Draft,
+                Models: state.Catalog(),
                 Compact: page.CompactPanels,
             }.Build(),
             Row{

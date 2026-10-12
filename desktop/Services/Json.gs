@@ -129,6 +129,17 @@ class Json {
             }
         )
 
+        /// The appearance file of the app.
+        func Appearance(settings ThemeSettings) string -> Write(
+            writer -> {
+                writer.WriteStartObject()
+                writer.WriteBoolean("night", settings.Night)
+                writer.WriteBoolean("oil_paint", settings.OilPaint)
+                writer.WriteBoolean("motion", settings.Motion)
+                writer.WriteEndObject()
+            }
+        )
+
         private func WriteStrings(writer Utf8JsonWriter, values IEnumerable[string]) {
             writer.WriteStartArray()
             for value in values {

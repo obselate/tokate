@@ -15,35 +15,42 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
             let selected = check
             tags.Add((input.Button with{Label = check, Icon = "close", OnClick = () -> owner.RemoveCheck(selected)}).Build())
         }
-        return Stack{
-            Gap: 18,
-            Children: []Blob{
-                Heading{Content: "Required CI checks"}.Build(),
-                Row{Children: tags.ToArray()}.Build(),
-                Row{
-                    Children: []Blob{
-                        InputField{
-                            Label: "Check name",
-                            Value: name,
-                            OnChange: value -> {
-                                name = value
-                            },
-                            Placeholder: "build",
-                            Width: 360,
-                            Disabled: input.Busy,
-                        }.Build(),
-                        (input.Button with{
-                            Label = "Add check",
-                            OnClick = () -> {
-                                owner.AddCheck(name)
-                                name = ""
-                            },
-                            Disabled = String.IsNullOrWhiteSpace(name),
-                        }).Build(),
-                    },
-                }.Build(),
-            },
-        }.Build()
+        let rows = List[Blob]{
+            IconHeading{
+                Icon: "verified",
+                Content: "Required CI checks",
+                Detail: "The CI checks that must pass on a pull request.",
+            }.Build(),
+        }
+        if tags.Count > 0 {
+            rows.Add(Row{Children: tags.ToArray()}.Build())
+        }
+        rows.Add(
+            Row{
+                Align: AlignItems.FlexEnd,
+                Children: []Blob{
+                    InputField{
+                        Label: "Check name",
+                        Value: name,
+                        OnChange: value -> {
+                            name = value
+                        },
+                        Placeholder: "build",
+                        Width: 360,
+                        Disabled: input.Busy,
+                    }.Build(),
+                    (input.Button with{
+                        Label = "Add check",
+                        OnClick = () -> {
+                            owner.AddCheck(name)
+                            name = ""
+                        },
+                        Disabled = String.IsNullOrWhiteSpace(name),
+                    }).Build(),
+                },
+            }.Build()
+        )
+        return Stack{Gap: 18, Children: rows.ToArray()}.Build()
     }
 
     shared {

@@ -3,7 +3,8 @@ package TokateDesktop
 import Goo
 import System
 
-/// A page summary with previous and next icon buttons derived from `Button`. Narrow pagers stack.
+/// A page summary with previous and next icon buttons derived from `Button`. One page shows only the
+/// summary. Narrow pagers stack.
 data struct Pager {
     var Button CommandButton
     var Page int32
@@ -38,16 +39,21 @@ data struct Pager {
             Justify: JustifyContent.FlexEnd,
         }.Build()
         buttons.FlexGrow = Narrow ? 0: 1
-        return Container{
+        let pager = Container{
             FlexDirection: Narrow ? FlexDirection.Column: FlexDirection.Row,
             AlignItems: Narrow ? AlignItems.Stretch: AlignItems.Center,
+            FlexShrink: 0,
+            MinHeight: 44,
             Gap: 12,
             Label{
-                Content: "Page " + Page.ToString() + " of " + LastPage.ToString() + "  ·  " + Summary,
+                Content: LastPage > 1 ? "Page " + Page.ToString() + " of " + LastPage.ToString() + "  ·  " + Summary: Summary,
                 Size: AppTheme.SmallSize,
                 Muted: true,
             }.Build(),
-            buttons,
         }
+        if LastPage > 1 {
+            pager.Children.Add(buttons)
+        }
+        return pager
     }
 }

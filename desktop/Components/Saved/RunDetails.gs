@@ -12,6 +12,8 @@ data struct RunDetails {
     var Actions []RunAction
     var Button CommandButton
     var Compact bool
+    /// A narrow panel names only the current step.
+    var Narrow bool
     var Form Blob?
     /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
     var Note Feedback
@@ -28,23 +30,20 @@ data struct RunDetails {
         let look = AppTheme.Look(tone)
         let guide = RunGuide.For(status, run.Pr > 0)
         let children = List[Blob]{
-            Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone}.Build(),
+            Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone, Narrow: Narrow}.Build(),
             Rule{}.Build(),
             Row{
+                NoWrap: true,
+                Align: AlignItems.FlexStart,
                 Children: []Blob{
-                    MaterialIcons.Create(look.Icon == "" ? "arrow_circle_right": look.Icon, 26, look.Edge),
-                    Heading{Content: guide.Heading}.Build(),
+                    tone == Tone.Wait ? WaitMark.Mount("run-wait", WaitMarkInput{Icon: look.Icon, Size: 26, Ink: look.Edge}): MaterialIcons.Create(
+                        look.Icon == "" ? "arrow_circle_right": look.Icon,
+                        26,
+                        look.Edge
+                    ),
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Heading{Content: guide.Heading}.Build()},
                 },
             }.Build(),
-        }
-        if guide.Text != "" {
-            children.Add(Label{Content: guide.Text}.Build())
-        }
-        if run.ErrorMessage != "" {
-            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
-        }
-        if Note.Message != "" {
-            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
         }
         let shown = List[RunAction]()
         for action in Actions {
@@ -53,6 +52,19 @@ data struct RunDetails {
         if run.Pr > 0 {
             shown.Add(RunAction.Amend)
             shown.Add(RunAction.Reconcile)
+        }
+        var text = guide.Text
+        if guide.Main != nil && !shown.Contains(guide.Main!!) {
+            text = run.External ? "This contribution uses external work. Continue it with the Tokate command line.": "No action is available now. Refresh the status to see a change."
+        }
+        if text != "" {
+            children.Add(Label{Content: text}.Build())
+        }
+        if run.ErrorMessage != "" {
+            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
+        }
+        if Note.Message != "" {
+            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
         }
         var lead = guide.Main != nil ? shown.IndexOf(guide.Main!!): -1
         for index in 0 ... shown.Count {

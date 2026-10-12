@@ -36,7 +36,8 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             cards.Add(
                 ChoiceCard{
                     Title: option.Name,
-                    Detail: id != "omp" || allowed.Count == 0 ? "": allowed.Count == 1 ? "1 provider": allowed.Count.ToString() + " providers",
+                    Detail: id == "codex" ? "OpenAI": id == "claude" ? "Anthropic": id == "pi" ? "Local endpoint": allowed.Count == 0 ?
+                    "Choose providers": allowed.Count == 1 ? "1 provider": allowed.Count.ToString() + " providers",
                     Icon: "terminal",
                     Art: input.Logo(id),
                     Selected: selected,
@@ -45,7 +46,10 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                 }.Build()
             )
         }
-        let children = List[Blob]{Heading{Content: "Harnesses"}.Build(), Row{Children: cards.ToArray()}.Build()}
+        let children = List[Blob]{
+            IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "The coding tools that a donor can use."}.Build(),
+            Row{Children: cards.ToArray()}.Build(),
+        }
         if allowed.Count > 0 || state.OmpOpen {
             children.Add(Rule{}.Build())
             children.Add(Providers(input, state.OmpProviders(), allowed))

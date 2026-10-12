@@ -22,9 +22,7 @@ data struct ProjectRow {
             Heading{Content: repository, Size: AppTheme.ItemSize, MaxLines: 1}.Build(),
         }
         if Project.Description != "" {
-            let description = Label{Content: Project.Description, Size: AppTheme.SmallSize, Muted: true}.Build()
-            description.TextMaxLines = 1
-            copy.Children.Add(description)
+            copy.Children.Add(Label{Content: Project.Description, Size: AppTheme.SmallSize, Muted: true, MaxLines: 1}.Build())
         }
         return Interaction.Keyboard(
             Button{

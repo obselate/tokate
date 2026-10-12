@@ -4,8 +4,8 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The harness of a donation. A harness that the owner does not allow cannot be selected. A harness that
-/// is not set up on this computer does not show, unless a saved profile selected it.
+/// The harness of a donation. A harness that the owner does not allow, or that is not set up on this
+/// computer, does not show, unless a saved profile selected it.
 data struct HarnessPicker {
     var Selected string
     var Policy Policy
@@ -20,7 +20,7 @@ data struct HarnessPicker {
         for option in HarnessOption.All {
             let id = option.Id
             let allowed = Policy.AllowsHarness(id)
-            if Array.IndexOf(Unready ?? []string{}, id) >= 0 && Selected != id {
+            if (!allowed || Array.IndexOf(Unready ?? []string{}, id) >= 0) && Selected != id {
                 continue
             }
             cards.Add(
@@ -35,6 +35,9 @@ data struct HarnessPicker {
                     Disabled: Disabled || !allowed,
                 }.Build()
             )
+        }
+        if cards.Count == 0 {
+            return Callout{Message: "No harness that this repository allows is set up on this computer.", Tone: Tone.Wait}.Build()
         }
         return Row{Children: cards.ToArray()}.Build()
     }

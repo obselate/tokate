@@ -14,7 +14,8 @@ enum ButtonKind {
     Icon
 }
 
-/// A button that starts a command. While its command runs it becomes the cancel control.
+/// A button that starts a command. While its command runs it becomes the cancel control. A tab or segment
+/// keeps its label then: a segment above the pulse line, a tab with a pulse of the label.
 ///
 /// Session fields (`Busy`, `Running`, `ActiveAction`, `Stopping`, `Pulse`, `ActivityTitle`, `OnCancel`,
 /// `OnActivate`) are shared by every command button on a page, so build one template and derive buttons
@@ -82,7 +83,7 @@ data struct CommandButton {
                 FontFamily: AppTheme.BodyFont,
                 FontSize: size,
                 FontWeight: 400,
-                Opacity: loading ? 0: 1,
+                Opacity: !loading ? 1: Kind == ButtonKind.Tab && AppTheme.Motion ? Pulse: choice ? 1: 0,
             },
             Disabled: unavailable,
             BackgroundColor: rest,
@@ -91,7 +92,7 @@ data struct CommandButton {
             ActiveBackgroundColor: Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Segment ? p.Paper: p.Accent,
             DisabledBackgroundColor: filled ? p.Surface: rest,
             DisabledTextColor: !choice ? p.Muted: Disabled ? AppTheme.Mix(p.Muted, p.Paper, 0.5): ink,
-            BorderColor: filled ? p.Ink: framed ? p.Line: Color.Transparent,
+            BorderColor: filled && !unavailable ? p.Ink: framed || filled ? p.Line: Color.Transparent,
             FocusBorderColor: p.Accent,
             ShowFocusHighlight: AppTheme.FocusVisible,
             FontFamily: AppTheme.BodyFont,
@@ -154,22 +155,24 @@ data struct CommandButton {
             }
             if iconOnly {
                 notice.Children.Add(MaterialIcons.Create("close", 22, ink))
-            } else {
+            } else if !choice {
                 notice.Children.Add(Text{Content: Stopping ? "Stopping": "Cancel", FontFamily: AppTheme.BodyFont, FontSize: size})
             }
             button.Children.Add(notice)
-            button.Children.Add(
-                Container{
-                    Position: PositionType.Absolute,
-                    Left: 10,
-                    Right: 10,
-                    Bottom: 3,
-                    Height: 2,
-                    BorderRadius: 1,
-                    BackgroundColor: filled ? p.Paper: p.Accent,
-                    Opacity: AppTheme.Motion ? Pulse: 1,
-                }
-            )
+            if Kind != ButtonKind.Tab {
+                button.Children.Add(
+                    Container{
+                        Position: PositionType.Absolute,
+                        Left: 10,
+                        Right: 10,
+                        Bottom: 3,
+                        Height: 2,
+                        BorderRadius: 1,
+                        BackgroundColor: filled ? p.Paper: p.Accent,
+                        Opacity: AppTheme.Motion ? Pulse: 1,
+                    }
+                )
+            }
         }
         return Interaction.Keyboard(button)
     }

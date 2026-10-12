@@ -53,10 +53,12 @@ class ContributionsTab {
                         }).Build(),
                     },
                     Trailing: StatusBadge{Value: status, Tone: Statuses.ToneOf(status)}.Build(),
+                    Stacked: page.NarrowContent,
                 }.Build(),
                 OwnerIssueCard{
                     Issue: issue,
                     Work: work,
+                    Reading: work == nil && page.Busy,
                     Reviews: state.Reviews,
                     CanWrite: state.Project.CanWrite,
                     SupportsApproval: state.Policy.Version >= 2,
