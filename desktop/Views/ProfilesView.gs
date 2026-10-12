@@ -28,7 +28,7 @@ class ProfilesView {
                 },
             }.Build(),
             Label{
-                Content: "A profile saves a harness, model and reasoning effort on this computer. Select it in the limits of a donation. The owner of each repository decides which models are allowed.",
+                Content: "A profile saves a harness, model and reasoning effort on this computer. Select it in the limits of a donation, or set it as the default to start each donation with it. The owner of each repository decides which models are allowed.",
                 Muted: true,
             }.Build(),
         }
@@ -47,6 +47,8 @@ class ProfilesView {
                     Profiles: state.Profiles,
                     Logo: id -> art.Logo(id).Render(),
                     Button: page.Button,
+                    OnDefault: profile -> profiles.UseAsDefault(profile),
+                    OnClearDefault: () -> profiles.ClearDefault(),
                     OnEdit: profile -> profiles.Edit(profile),
                     OnRemove: profile -> profiles.Remove(profile),
                 }.Build()

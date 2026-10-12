@@ -4,16 +4,20 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The saved profiles: the logo of the harness, the name and the model of each, with its actions.
+/// The saved profiles: the logo of the harness, the name and the model of each, with its actions. The
+/// default profile has a badge.
 data struct ProfileList {
     var Profiles []DonorProfile
     var Logo Func[string, Blob]?
     var Button CommandButton
+    var OnDefault Action[DonorProfile]?
+    var OnClearDefault Action?
     var OnEdit Action[DonorProfile]?
     var OnRemove Action[DonorProfile]?
 
     func Build() Blob {
         let edit = OnEdit
+        let choose = OnDefault
         let remove = OnRemove
         let rows = List[Blob]()
         for profile in Profiles {
@@ -35,6 +39,19 @@ data struct ProfileList {
                     Label{Content: Summary(item), Size: AppTheme.SmallSize, Muted: true}.Build(),
                 }
             )
+            if item.Default {
+                row.Add(StatusBadge{Value: "Default", Tone: Tone.Done}.Build())
+                row.Add((Button with{Label = "Clear default", Kind = ButtonKind.Quiet, OnClick = OnClearDefault}).Build())
+            } else {
+                row.Add(
+                    (Button with{
+                        Label = "Set as default",
+                        Name = "Set " + item.Name + " as default",
+                        Kind = ButtonKind.Quiet,
+                        OnClick = () -> choose?.Invoke(item),
+                    }).Build()
+                )
+            }
             row.Add((Button with{Label = "Change", Name = "Change profile " + item.Name, OnClick = () -> edit?.Invoke(item)}).Build())
             row.Add(
                 (Button with{

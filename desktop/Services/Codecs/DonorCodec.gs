@@ -6,14 +6,25 @@ import System.Text.Json
 
 class DonorCodec {
     shared {
+        /// The saved profiles. Tokate stores the default as a copy without a name, so a profile with the same
+        /// harness, provider, model and effort is the default.
         func Profiles(data JsonElement) []DonorProfile {
             let profiles = Json.Get(data, "profiles")
             let result = List[DonorProfile]()
             if !Json.IsObject(profiles) {
                 return result.ToArray()
             }
+            let chosen = Selection(Json.Get(data, "default"))
             for item in profiles.EnumerateObject() {
-                result.Add(Selection(item.Value) with{Name = item.Name})
+                let profile = Selection(item.Value)
+                result.Add(
+                    profile with{
+                        Name = item.Name,
+                        Default = chosen.Harness != "" && profile.Harness == chosen.Harness && profile.Provider == chosen.Provider &&
+                            profile.Model == chosen.Model &&
+                            profile.Effort == chosen.Effort,
+                    }
+                )
             }
             return result.ToArray()
         }

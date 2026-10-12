@@ -27,7 +27,7 @@ data struct HarnessPicker {
                 ChoiceCard{
                     Title: option.Name,
                     Detail: allowed ? "": "Not allowed",
-                    Icon: HarnessIcons.For(id),
+                    Icon: "terminal",
                     Art: Logo?.Invoke(id),
                     Compact: true,
                     Selected: Selected == id,

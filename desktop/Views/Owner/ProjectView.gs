@@ -12,12 +12,12 @@ class ProjectView {
     private let access AccessTab
     private let setup SetupTab
 
-    init(owner OwnerService, feedback FeedbackService) {
+    init(owner OwnerService, feedback FeedbackService, art ArtworkService) {
         this.owner = owner
         this.feedback = feedback
         contributions = ContributionsTab(owner)
         access = AccessTab(owner)
-        setup = SetupTab(owner)
+        setup = SetupTab(owner, art)
     }
 
     /// Identifies the project list, the open project and each issue, so each starts at the top.

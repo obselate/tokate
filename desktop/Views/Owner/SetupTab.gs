@@ -7,8 +7,10 @@ import System.Collections.Generic
 /// Project setup in three steps: checks, permissions, then review and apply.
 class SetupTab {
     private let owner OwnerService
+    private let art ArtworkService
 
-    init(owner OwnerService) {
+    init(owner OwnerService, art ArtworkService) {
+        this.art = art
         this.owner = owner
     }
 
@@ -87,6 +89,7 @@ class SetupTab {
                 }.Build(),
                 ToolsPicker{
                     Allowed: setup.EffectiveTools(policy),
+                    Logo: id -> art.Logo(id).Render(),
                     Disabled: page.Busy,
                     Compact: page.CompactPanels,
                     OnToggle: id -> owner.ToggleTool(id),

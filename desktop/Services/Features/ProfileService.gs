@@ -104,7 +104,8 @@ class ProfileService {
 
     func SetEndpoint(endpoint string) -> SetDraft(Current.Draft with{Endpoint = endpoint})
 
-    /// Saves the form. A saved profile with the same name is replaced.
+    /// Saves the form. A saved profile with the same name is replaced. Tokate keeps a copy of the default,
+    /// so a changed default profile is made the default again.
     func Save() {
         let problem = Current.Problem()
         if problem != "" {
@@ -112,31 +113,65 @@ class ProfileService {
             return
         }
         let name = Current.Name.Trim()
+        let chosen = Array.Exists(Current.Profiles, profile -> profile.Name == name && profile.Default)
+        let saved = "Tokate saved the profile " + name + "."
         commands.Cli(
             TokateCommands.DefaultsSet(name, Current.Draft),
             (outcome CommandOutcome) -> {
-                if !commands.Failed(outcome) {
-                    Set(Current with{Open = false})
-                    Load("Tokate saved the profile " + name + ".")
+                if commands.Failed(outcome) {
+                    return
+                }
+                Set(Current with{Open = false})
+                if chosen {
+                    Run(TokateCommands.DefaultsUse(name), saved)
+                } else {
+                    Load(saved)
                 }
             }
         )
     }
 
+    /// Runs a command that changes the profiles, then reads them again and shows `message`.
+    private func Run(arguments []string, message string) {
+        commands.Cli(
+            arguments,
+            (outcome CommandOutcome) -> {
+                if !commands.Failed(outcome) {
+                    Load(message)
+                }
+            }
+        )
+    }
+
+    func UseAsDefault(profile DonorProfile) -> Run(
+        TokateCommands.DefaultsUse(profile.Name),
+        profile.Name + " is the default profile. A new donation starts with it."
+    )
+
+    func ClearDefault() -> Run(TokateCommands.DefaultsClear(), "No profile is the default.")
+
+    /// Removes a profile. Tokate keeps a copy of the default, so the default goes with its profile.
     func Remove(profile DonorProfile) {
+        let removed = "Tokate removed the profile " + profile.Name + "."
         dialogs.Ask(
             Confirmation{
                 Title: "Remove profile " + profile.Name,
-                Text: "Tokate removes the saved profile. Saved work and reservations do not change.",
+                Text: "Tokate removes the saved profile. Saved work and reservations do not change." +
+                    (profile.Default ? " This profile is the default, so no profile is the default after that.": ""),
                 ConfirmLabel: "Remove",
                 Heading: "",
             },
             () -> commands.Cli(
                 TokateCommands.DefaultsRemove(profile.Name),
                 (outcome CommandOutcome) -> {
-                    if !commands.Failed(outcome) {
-                        Set(Current with{Open = Current.Open && Current.Editing != profile.Name})
-                        Load("Tokate removed the profile " + profile.Name + ".")
+                    if commands.Failed(outcome) {
+                        return
+                    }
+                    Set(Current with{Open = Current.Open && Current.Editing != profile.Name})
+                    if profile.Default {
+                        Run(TokateCommands.DefaultsClear(), removed)
+                    } else {
+                        Load(removed)
                     }
                 }
             )

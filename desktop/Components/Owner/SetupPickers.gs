@@ -34,9 +34,10 @@ data struct EligibilityPicker {
     }
 }
 
-/// Which coding harnesses donors may use. At least one stays selected.
+/// Which harnesses donors may use. At least one stays selected.
 data struct ToolsPicker {
     var Allowed []string
+    var Logo Func[string, Blob]?
     var Disabled bool
     var Compact bool
     var OnToggle Action[string]?
@@ -50,7 +51,8 @@ data struct ToolsPicker {
                 ChoiceCard{
                     Title: option.Name,
                     Detail: "",
-                    Icon: HarnessIcons.For(id),
+                    Icon: "terminal",
+                    Art: Logo?.Invoke(id),
                     Selected: Array.IndexOf(Allowed, id) >= 0,
                     OnChoose: () -> toggle?.Invoke(id),
                     Disabled: Disabled,
@@ -59,7 +61,7 @@ data struct ToolsPicker {
         }
         return Panel{
             Compact: Compact,
-            Children: []Blob{Heading{Content: "Coding tools"}.Build(), Row{Children: cards.ToArray()}.Build()},
+            Children: []Blob{Heading{Content: "Harnesses"}.Build(), Row{Children: cards.ToArray()}.Build()},
         }.Build()
     }
 }

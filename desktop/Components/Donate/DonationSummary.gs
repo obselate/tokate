@@ -32,7 +32,7 @@ data struct DonationSummary {
                         },
                     }.Build(),
                     DetailRow{Caption: "Account", Value: Account}.Build(),
-                    DetailRow{Caption: "Coding tool", Value: Draft.Harness}.Build(),
+                    DetailRow{Caption: "Harness", Value: Draft.Harness}.Build(),
                     DetailRow{Caption: "Model", Value: Draft.Model + " / " + Draft.Effort}.Build(),
                 },
             }.Build(),

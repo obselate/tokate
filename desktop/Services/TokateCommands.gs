@@ -59,6 +59,12 @@ class TokateCommands {
 
         func DefaultsRemove(name string) []string -> []string{"defaults", "remove", name}
 
+        /// Makes the profile `name` the default.
+        func DefaultsUse(name string) []string -> []string{"defaults", "use", name}
+
+        /// Removes the default. The profiles stay.
+        func DefaultsClear() []string -> []string{"defaults", "remove"}
+
         func Policy(repo string) []string -> []string{"policy", repo}
 
         func Status(run string) []string -> []string{"status", "--run", run}

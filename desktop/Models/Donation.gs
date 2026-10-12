@@ -61,6 +61,8 @@ data struct DonorProfile {
     var Model string
     var Effort string
     var Endpoint string
+    /// Whether Tokate uses this profile when a command names none.
+    var Default bool
 }
 
 /// A model that a harness offers, with the reasoning efforts that it supports.

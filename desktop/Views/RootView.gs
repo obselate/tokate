@@ -25,7 +25,7 @@ class RootView : Cell {
         app.Theme.Bind(Animate(0.0))
         loadingPulse = Animate(1.0)
         donate = DonateView(app.Donation, app.Feedback, app.Art, next -> Navigate(next), path -> OpenSaved(path))
-        project = ProjectView(app.Owner, app.Feedback)
+        project = ProjectView(app.Owner, app.Feedback, app.Art)
         saved = SavedView(app.Saved, app.Feedback)
         welcome = WelcomeView(app, next -> Navigate(next), path -> OpenSaved(path))
         appearance = AppearanceView(app)

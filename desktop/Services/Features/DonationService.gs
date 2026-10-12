@@ -17,6 +17,7 @@ class DonationService {
     private var lines chan[string]?
     private var approvalTimer IDisposable?
     private var approvalCheck CliClient?
+    private var defaulted bool
     let Issues IssueSearchService
     var Current DonationState = DonationState.Initial
 
@@ -150,8 +151,19 @@ class DonationService {
     /// Moves to limits for `issue` and loads the donor's saved profiles and Codex's models.
     func Choose(issue Issue) {
         Set(Current with{Issue = issue.NumberText, IssueTitle = issue.Title, Step = DonationStep.Limits})
-        LoadProfiles(() -> LoadModels())
+        LoadProfiles(() -> StartWithDefault())
         go CheckHarnesses()
+    }
+
+    /// Selects the default profile once, when the owner allows its harness and the donor selected no profile.
+    private func StartWithDefault() {
+        for profile in Current.Profiles {
+            if profile.Default && !defaulted && Current.Draft.Profile == "" && Current.Policy.AllowsHarness(profile.Harness) {
+                defaulted = true
+                SetDraft(Current.Draft.UsingProfile(profile))
+            }
+        }
+        LoadModels()
     }
 
     private func LoadProfiles(then Action? = nil) {
@@ -205,7 +217,7 @@ class DonationService {
     /// Reads the saved profiles again when the donor returns to the limits.
     func Enter() {
         if Current.Step == DonationStep.Limits {
-            LoadProfiles()
+            LoadProfiles(() -> StartWithDefault())
         }
     }
 

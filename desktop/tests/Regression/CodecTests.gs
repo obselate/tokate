@@ -72,6 +72,12 @@ func CodecTests() {
     Regression.Check(profiles.Length == 2 && profiles[1].Name == "local", "profiles")
     Regression.Equal(profiles[1].Endpoint, "http://127.0.0.1:8080/v1", "profile endpoint")
     Regression.Check(DonorCodec.Profiles(JsonElement{}).Length == 0, "missing profiles")
+    let chosen = DonorCodec.Profiles(
+        Json.Parse(
+            "{\"default\":{\"harness\":\"omp\",\"provider\":\"openrouter\",\"model\":\"a/b\",\"effort\":\"low\"},\"profiles\":{\"fast\":{\"harness\":\"omp\",\"provider\":\"openrouter\",\"model\":\"a/b\",\"effort\":\"low\"},\"slow\":{\"harness\":\"omp\",\"provider\":\"openrouter\",\"model\":\"a/b\",\"effort\":\"high\"}}}"
+        )
+    )
+    Regression.Check(chosen[0].Default && !chosen[1].Default, "the profile that matches the default")
 
     let models = DonorCodec.CodexModels(Regression.Fixture("codex-models.json"))
     Regression.Check(models.Length == 2 && models[1].Hidden && models[0].Efforts.Length == 3, "codex models")
