@@ -337,13 +337,97 @@ internal class CliDiscovery {
             let command = "'" + binary + "' init owner/project --path '" + interactiveRoot + "' --plain"
             let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
             env["GH_TOKEN"] = "fixture-owner"
+            for missing in[]string{"events", "pull-requests", "both"} {
+                flow.Reload()
+                flow.State["actions_policies"] = missing == "pull-requests" ? nil:
+                Check.Map("total_count", 0, "policies", JsonArray())
+                flow.State["workflow_permissions"] = Check.Map(
+                    "default_workflow_permissions",
+                    "read",
+                    "can_approve_pull_request_reviews",
+                    missing == "events"
+                )
+                flow.State["api_calls"] = JsonArray()
+                flow.Save()
+                let blocked = flow.Call([]string{"init", "--path", interactiveRoot, "--non-interactive"}, 1, true)
+                Check.Contains(blocked.Error, "Missing GitHub settings")
+                if missing != "pull-requests" {
+                    Check.Contains(blocked.Error, "Actions event policy")
+                }
+                if missing != "events" {
+                    Check.Contains(blocked.Error, "Allow GitHub Actions to create and approve pull requests")
+                }
+                Check.That(
+                    !Directory.Exists(Path.Combine(interactiveRoot, ".github")),
+                    "Missing settings wrote setup files"
+                )
+                flow.Reload()
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(call["method"]) == "GET", "Noninteractive setup changed GitHub settings")
+                }
+            }
+            let declined = TestProcess.Run(
+                "/usr/bin/script",
+                []string{"-q", "-e", "-c", command, "/dev/null"},
+                env,
+                "no\n"
+            )
+            Check.That(declined.Code == 1, declined.Output + declined.Error)
+            Check.That(
+                !declined.Output.Contains("Models: unrestricted"),
+                "Setup asked policy questions before settings approval"
+            )
+            flow.Reload()
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(Check.Text(call["method"]) == "GET", "Declined setup changed GitHub settings")
+            }
+            Check.That(!Directory.Exists(Path.Combine(interactiveRoot, ".github")), "Declined setup wrote files")
             let terminal = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "whitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n\n\n/usr/bin/true\n\nverify, build\n\ny\n"
+                "yes\nwhitelist\nadd\nmodel-a\nhigh xhigh\n\n\n\nmain\n2h\n30m\n/usr/bin/true\n\nverify, build\n\ny\n"
             )
             Check.Success(terminal)
+            Check.That(
+                terminal.Output.IndexOf("Apply these GitHub settings?", StringComparison.Ordinal) < terminal
+                    .Output
+                    .IndexOf("Models: unrestricted", StringComparison.Ordinal),
+                "Setup asked policy questions before checking GitHub settings"
+            )
+            Check.Contains(terminal.Output, "Maximum donor time (--max-time, e.g. 1h) [1h]")
+            Check.Contains(terminal.Output, "Reservation time (--reservation-time, e.g. 30m)")
+            flow.Reload()
+            let eventPolicy = Check.Map(
+                "name",
+                "Tokate coordinator events",
+                "enforcement",
+                "active",
+                "conditions",
+                Check.Map(
+                    "workflow_path",
+                    Check.Map(
+                        "include",
+                        Check.Json("[\".github/workflows/tokate-coordinator.yml\"]"),
+                        "exclude",
+                        JsonArray()
+                    )
+                ),
+                "rules",
+                Check.Json(
+                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+                )
+            )
+            Check.That(
+                flow.State["actions_policy"]?.ToJsonString() == eventPolicy.ToJsonString(),
+                "Setup created the wrong Actions event policy"
+            )
+            Check.That(
+                Check.Text(flow.State["workflow_permissions"]?["default_workflow_permissions"]) == "read" && Check.Text(
+                    flow.State["workflow_permissions"]?["can_approve_pull_request_reviews"]
+                ) == "true",
+                "Setup did not enable PR creation while preserving workflow permissions"
+            )
             Check.That(
                 terminal.Output.Split("Models: unrestricted or whitelist").Length == 2,
                 "Setup asked for model mode more than once"
@@ -353,6 +437,10 @@ internal class CliDiscovery {
                 "Interactive confirmation did not apply setup"
             )
             let selected = Check.Json(File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
+            Check.That(
+                Check.Text(selected["max_seconds"]) == "7200" && Check.Text(selected["reservation_seconds"]) == "1800",
+                "Interactive setup did not accept times with units"
+            )
             Check.That(
                 selected["models"]?["model-a"]?.ToJsonString() == "[\"high\",\"xhigh\"]" &&
                     selected["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]" &&
@@ -392,7 +480,7 @@ internal class CliDiscovery {
                 []string{},
                 flow.Temp,
                 80,
-                "2\nowner/project\n1\n1\n/usr/bin/true\n\nverify\n2\n2\n10\n1\nq\n"
+                "2\nowner/project\n1\n1\n/usr/bin/true\n\nverify\n2\n2\n10m\n1\nq\n"
             )
             flow.Temp.Env["GH_TOKEN"] = previousToken
             Check.Success(guided)
