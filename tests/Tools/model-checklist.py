@@ -183,6 +183,7 @@ try:
     os.write(fd, b"\r")
     transition = expect(fd, b"Project")
     assert b"Loading next step..." in transition, transition
+    assert b"\x1b[H\x1b[2JLoading next step...\x1b[K\r\n" in transition, "Wizard progress did not clear the menu and end its line"
     assert b"\x1b[?1049l" not in transition and b"\x1b[?1049h" not in transition, "Wizard disappeared between steps"
     os.write(fd, b"https://github.com/owner/project/issues/0\r")
     expect(fd, b"Invalid positive number")

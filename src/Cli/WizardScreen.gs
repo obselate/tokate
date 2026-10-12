@@ -38,11 +38,11 @@ internal class WizardScreen {
                 return false
             }
             Console.Error.Write(
-                "\r" +
-                    Color("paper") +
+                Color("paper") +
+                    "\x1b[H\x1b[2J" +
                     Color("muted") +
                     Clip(Terminal.Clean(text).Replace('\n', ' '), Math.Max(1, Console.WindowWidth - 1)) +
-                    "\x1b[K"
+                    "\x1b[K\n"
             )
             return true
         }
