@@ -874,19 +874,19 @@ internal partial class CoordinationFlow : CoordinationFixture {
             []string{"approve", "owner/project#1", "--base-branch", "main"},
             Flow.Temp,
             80,
-            "n\n"
+            "\n"
         )
         Check.That(declined.Code == 1, declined.Output + declined.Error)
         Check.Contains(declined.Output, "published PR owner/project#10")
-        Check.Contains(declined.Output, "Continue? [y/N]")
+        Check.Contains(declined.Output, "Re-approve")
         Check.That(State().ToJsonString() == published, "Declined approval changed published authority")
         Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
         let confirmed = TestTerminal.Pty(
             Flow.Binary,
-            []string{"approve", "owner/project#1", "--base-branch", "main"},
+            []string{"approve", "owner/project#1", "--base-branch", "main", "--yes"},
             Flow.Temp,
             80,
-            "y\n"
+            ""
         )
         Check.Success(confirmed)
         Check.Contains(confirmed.Output, "published PR owner/project#10")
