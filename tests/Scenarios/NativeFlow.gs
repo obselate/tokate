@@ -241,6 +241,10 @@ internal partial class NativeFlow : NativeFixture {
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
+        Check.That(
+            Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
+            "Cross-account PR must disable maintainer modification"
+        )
         CommitIdentity(
             Path.Combine(Bin, "fork"),
             Check.Text(State["pulls"]?[0]?["head"]?["sha"]),

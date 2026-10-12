@@ -1132,6 +1132,20 @@ internal partial class Fixture {
             let branch = headParts[1]
             let headRepo = headLogin + "/project"
             let headFolder = State["repository_folders"]?[headRepo]
+            let headPush = State["repository_info"]?[headRepo]?["permissions"]?["push"] ??
+                (headLogin == "owner" ? State["repo_permissions"]?["push"]: State["fork_push"]) ??
+                JsonValue.Create(String.Equals(actor, headLogin, StringComparison.OrdinalIgnoreCase))
+            if Check.Text(body["maintainer_can_modify"]) == "true" && Check.Text(headPush) != "true" {
+                return Response(
+                    422,
+                    Check.Map(
+                        "message",
+                        "Validation Failed",
+                        "errors",
+                        JsonArray(Check.Map("resource", "PullRequest", "field", "fork_collab", "code", "custom"))
+                    )
+                )
+            }
             let number = Check.Text(State["multiple_pulls"]) == "true" ? 9 + count: 10
             body["number"] = JsonValue.Create(number)
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())
