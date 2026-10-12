@@ -36,8 +36,8 @@ internal class Submission {
             }
             Commands.Git(checkout, "diff", "--exit-code")
             ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Text("base"))
-            let patch = Commands.Git(checkout, "diff", "--cached", "--binary", run.Text("base"))
-            if patch + "\n" != File.ReadAllText(Path.Combine(directory, "changes.patch")) {
+            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")})
+            if patch != File.ReadAllText(Path.Combine(directory, "changes.patch")) {
                 throw CliFailure("invalid_state", "Verified patch changed")
             }
             PublicSummary.Bind(run, patch)
@@ -117,7 +117,7 @@ internal class Submission {
                 budget: budget
             )
             PublicSummary.Bind(run, patch)
-            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch + "\n")
+            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
             run.Fields["partial_source_state"] = run.Text("state")
             run.Fields["incomplete"] = true
             run.Fields["state"] = "incomplete_generated"

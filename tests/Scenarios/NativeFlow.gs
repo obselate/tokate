@@ -218,6 +218,22 @@ internal partial class NativeFlow : NativeFixture {
         Approve()
         let run = Claim()
         Call([]string{"work", "--run", run})
+        let checkout = Path.Combine(run, "checkout")
+        let replay = Path.Combine(Temp.Root, "candidate-replay")
+        let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+        Git("clone", "--no-local", checkout, replay)
+        Git("-C", replay, "checkout", "--detach", Check.Text(saved["base"]))
+        Git("-C", replay, "apply", "--index", Path.Combine(run, "candidate.patch"))
+        Check.That(
+            Git("-C", replay, "write-tree") == Git("-C", checkout, "write-tree"),
+            "Candidate patch changed the tree"
+        )
+        Check.That(
+            File.ReadAllText(Path.Combine(run, "candidate.patch")) == File.ReadAllText(
+                Path.Combine(run, "changes.patch")
+            ),
+            "Verified patch differs from candidate"
+        )
         Publish(run)
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
