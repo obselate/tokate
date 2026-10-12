@@ -2,8 +2,8 @@ package TokateDesktop
 
 import Goo
 
-/// A panel for table rows in the remaining height of the page. It is as high as its rows and scrolls when
-/// they do not fit, unless the window is short. `Fill` makes it take all the height, for a loader or a
+/// A panel for table rows. It is as high as its rows and scrolls when they do not fit in the remaining
+/// height of the page, unless the window is short. `Fill` makes it take all the height, for a loader or a
 /// placeholder.
 data struct ListPanel {
     var Children []Blob
@@ -18,12 +18,6 @@ data struct ListPanel {
         panel.FlexShrink = Short ? 0: 1
         panel.MinHeight = 0
         panel.OverflowY = Short ? Overflow.Visible: Overflow.Scroll
-        return Container{
-            FlexGrow: Short ? 0: 1,
-            FlexShrink: Short ? 0: 1,
-            FlexBasis: Short ? Length.Auto: Length(0),
-            MinHeight: 0,
-            panel,
-        }
+        return Container{FlexGrow: Fill && !Short ? 1: 0, FlexShrink: Short ? 0: 1, MinHeight: 0, panel}
     }
 }

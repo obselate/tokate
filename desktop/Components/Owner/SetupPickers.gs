@@ -4,11 +4,12 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// Who may claim approved issues.
+/// Who may claim approved issues. `Stacked` gives each choice its own line.
 data struct EligibilityPicker {
     var Selected string
     var Disabled bool
     var Compact bool
+    var Stacked bool
     var OnChoose Action[string]?
 
     func Build() Blob {
@@ -16,16 +17,15 @@ data struct EligibilityPicker {
         let cards = List[Blob]()
         for mode in Eligibility.All {
             let value = mode
-            cards.Add(
-                ChoiceCard{
-                    Title: Eligibility.Label(mode),
-                    Detail: Eligibility.Detail(mode),
-                    Icon: mode == "open" ? "public": "verified_user",
-                    Selected: Selected == mode,
-                    OnChoose: () -> choose?.Invoke(value),
-                    Disabled: Disabled,
-                }.Build()
-            )
+            let card = ChoiceCard{
+                Title: Eligibility.Label(mode),
+                Detail: Eligibility.Detail(mode),
+                Icon: mode == "open" ? "public": "verified_user",
+                Selected: Selected == mode,
+                OnChoose: () -> choose?.Invoke(value),
+                Disabled: Disabled,
+            }.Build()
+            cards.Add(Stacked ? Container{FlexDirection: FlexDirection.Row, Width: Percent(100), card}: card)
         }
         return Panel{
             Compact: Compact,

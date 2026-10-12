@@ -82,6 +82,7 @@ class SetupTab {
                     Selected: setup.EffectiveEligibility(policy),
                     Disabled: page.Busy,
                     Compact: page.CompactPanels,
+                    Stacked: page.Metrics.ContentWidth < 790,
                     OnChoose: mode -> owner.SetEligibility(mode),
                 }.Build(),
                 HarnessEditor.Mount(
