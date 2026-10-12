@@ -208,18 +208,14 @@ internal class DonorSelection {
                 }
                 Terminal.Message(reason + " Choose an eligible pair (availability unknown):", "yellow", true)
                 let eligible = List[JsonElement](choices.Values)
-                var index int32 = 1
-                for label in choices.Keys {
-                    Terminal.Message(index.ToString() + ") " + label, error: true)
-                    index++
-                }
-                Console.Error.Write("Choice number (no default; blank cancels): ")
                 var selected int32
-                if !int32.TryParse(Console.ReadLine(), out selected) || selected < 1 || selected > eligible.Count {
+                try {
+                    selected = ModelChecklist.Pick(List[string](choices.Keys).ToArray())
+                } catch (error OperationCanceledException) {
                     throw Exception("Explicit donor choice was not supplied. No inference started.")
                 }
-                model = J.Text(eligible[selected - 1], "model")
-                effort = J.Text(eligible[selected - 1], "effort")
+                model = J.Text(eligible[selected], "model")
+                effort = J.Text(eligible[selected], "effort")
                 source = "interactive donor choice"
                 availability = "unknown"
             }
@@ -258,10 +254,12 @@ internal class DonorSelection {
                 )
                 Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
                 Terminal.Row("Availability", J.Text(selection, "availability"))
-                Console.Error.Write(
-                    args.Command == "claim" ? "Post this claim without inference? [y/N] ": "Post this claim and start this donation when accepted? [y/N] "
-                )
-                if !String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase) {
+                if WizardScreen.Choose(
+                    "Confirm donation",
+                    args.Command == "claim" ? "Post this claim without inference?": "Post this claim and start this donation when accepted?",
+                    []string{"Post", "Cancel"},
+                    selected: 2
+                ) != 1 {
                     throw Exception("Donation was not confirmed. No claim or inference was started.")
                 }
                 if args.Command == "work" {
@@ -282,14 +280,16 @@ internal class DonorSelection {
                     "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
                 )
             }
-            Console.Error.Write(
+            if WizardScreen.Choose(
+                "Confirm inference",
                 "Use your allowance with " + J.Text(selection, "harness") + "/" + J.Text(selection, "provider") +
                     ": " +
                     pair +
                     " (" +
-                    J.Text(selection, "availability") + ")? [y/N] "
-            )
-            if !String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase) {
+                    J.Text(selection, "availability") + ")?",
+                []string{"Use", "Cancel"},
+                selected: 2
+            ) != 1 {
                 throw Exception("Inference was not confirmed. No inference started.")
             }
             args.Values["--yes"] = "true"

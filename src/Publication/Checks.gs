@@ -263,6 +263,7 @@ internal class Checks {
                     }
                     var failed bool
                     var pending bool
+                    var missing bool
                     var inspection bool
                     for row in J.Items(rows) {
                         inspection = inspection || J.Text(row, "state") == "ACTION_REQUIRED"
@@ -289,6 +290,7 @@ internal class Checks {
                         conflicting = success && !passed
                         failed = failed || nameFailed
                         pending = pending || !found || !passed
+                        missing = missing || !found
                         if required.Count < 64 {
                             required.Add(
                                 map[string, Object?]{
@@ -313,6 +315,23 @@ internal class Checks {
                         facts["required_owner_actions"] = []string{
                             approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
                             Review
+                        }
+                    }
+                    if missing && !approval {
+                        let workflows = J.Get(
+                            GitHub.Api(
+                                "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + run.Text("commit") +
+                                    "&per_page=1"
+                            ),
+                            "workflow_runs"
+                        )
+                        if workflows.ValueKind != JsonValueKind.Array {
+                            throw Exception("Cannot read workflow runs for this head")
+                        }
+                        if workflows.GetArrayLength() == 0 {
+                            facts[
+                                "ci_hint"
+                            ] = "GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI."
                         }
                     }
                     gates["checks"] = map[string, Object?]{"status": status, "evidence": "complete"}

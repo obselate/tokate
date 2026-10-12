@@ -76,7 +76,10 @@ func Main(args[]string) int32 {
             } catch (error Exception) { }
         }
         PublicOutput.Truncated = PublicOutput.Truncated || code == "output_too_large"
-        Terminal.Message("tokate: " + (PublicOutput.Enabled ? message: error.Message), "red", true)
+        let recovery = validated && PublicOutput.Command == "coordinate" ?
+        " To recover a failed GitHub mutation, the owner reruns the failed Tokate workflow run in GitHub Actions, then the donor runs the same command again.": ""
+        message += recovery
+        Terminal.Message("tokate: " + (PublicOutput.Enabled ? message: error.Message + recovery), "red", true)
         if !validated && !PublicOutput.Enabled {
             Terminal.Message(Cli.ErrorUsage(args), error: true)
         }

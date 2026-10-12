@@ -52,6 +52,30 @@ internal class OmpChecks {
                         "OMP wizard claimed subscription billing"
                     )
                     Check.That(!cancelled.Output.Contains("/ high"), "Wizard offered an effort the policy forbids")
+                    let unrestricted = Check.Json(policy.ToJsonString())
+                    unrestricted["model_policy"] = JsonValue.Create("unrestricted")
+                    unrestricted.AsObject().Remove("models")
+                    Check.SaveJson(policyPath, unrestricted)
+                    flow.Commit("Unrestricted OMP picker fixture")
+                    flow.Approve()
+                    for modelChoice in[]string{"1\n", "2\nopenrouter/" + OmpTool.Model + "\n"} {
+                        let guided = TestTerminal.Pty(
+                            binary,
+                            []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
+                            flow.Temp,
+                            100,
+                            "1\n" + modelChoice + "2\nq\n"
+                        )
+                        Check.That(guided.Code == 1, guided.Output + guided.Error)
+                        Check.Contains(guided.Output, "Enter another model ID")
+                        Check.Contains(guided.Output, "Review donation")
+                        Check.Contains(guided.Output, OmpTool.Model + " / low")
+                        flow.NoInference()
+                        flow.NoPr()
+                    }
+                    Check.SaveJson(policyPath, policy)
+                    flow.Commit("Restore OMP picker fixture policy")
+                    flow.Approve()
                     flow.Call(
                         []string{
                             "defaults",

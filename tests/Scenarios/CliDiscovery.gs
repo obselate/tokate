@@ -668,7 +668,7 @@ internal class CliDiscovery {
                 []string{},
                 flow.Temp,
                 80,
-                "2\nowner/project\n1\n1\n2\n/usr/bin/true\n\nverify\n2\n2\n10m\n1\nq\n"
+                "\x1b[B\nowner/project\n\n\n\x1b[B\n/usr/bin/true\n\nverify\n\x1b[B\n\x1b[B\n10m\n\nq\n"
             )
             flow.Temp.Env["GH_TOKEN"] = previousToken
             Check.Success(guided)

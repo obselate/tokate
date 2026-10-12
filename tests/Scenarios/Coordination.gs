@@ -1013,10 +1013,41 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = ClaimRequest()
         let path = Event(request)
         Flow.Mode("interrupted_state_write")
-        Coordinate(path, 1)
+        Flow.ResetTraffic()
+        let failure = Coordinate(path, 1)
+        Check.Contains(failure.Error, "One conditional ref retry was made")
+        Check.Contains(failure.Error, "owner reruns the failed Tokate workflow run")
+        Check.Contains(failure.Error, "donor runs the same command again")
+        Flow.Reload()
+        var attempts int32
+        for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            if Check.Text(call["method"]) == "PATCH" {
+                attempts++
+            }
+        }
+        Check.That(attempts == 2, "Failed ref update did not stop after one retry")
         Check.That(State()["state"]?["reservation"] == nil, "Interrupted write acquired a claim")
         Flow.Mode("")
+        Flow.Faults("repos/owner/project/git/refs/heads/tokate/contributions/1", Check.Json("[{\"status\":500}]"))
         Coordinate(path)
+        Flow.Reload()
+        attempts = 0
+        var inspected bool
+        for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            if Check.Text(call["method"]) == "GET" && Check.Text(call["path"]) ==
+            "repos/owner/project/git/ref/heads/tokate/contributions/1" && attempts == 1 {
+                inspected = true
+            }
+            if Check.Text(call["method"]) == "PATCH" {
+                attempts++
+                Check.That(attempts == 1 || inspected, "Ref retry did not re-read current state")
+            }
+        }
+        Check.That(attempts == 2, "Transient ref failure did not retry once")
+        Check.That(
+            Check.Text(State()["state"]?["reservation"]?["reservation"]) == Check.Text(request["uuid"]),
+            "Transient ref retry did not acquire the exact claim"
+        )
         let revision = Check.Text(State()["sha"])
         Coordinate(path)
         Check.That(Check.Text(State()["sha"]) == revision, "Interrupted-write replay repeated its effect")

@@ -340,7 +340,7 @@ with Server(('127.0.0.1', 0), Handler) as server:
             if case == 'truncated-tool':
                 server.errors = [error for error in server.errors if 'Broken pipe' not in error]
             assert not server.errors, server.errors
-            assert server.catalog_calls == (3 if case in ['profile', 'reasoning'] else 2), 'Metadata selection/launch checks were omitted or retried'
+            assert server.catalog_calls == (4 if case == 'reasoning' else 3 if case == 'profile' else 2), 'Metadata selection/launch checks were omitted or retried'
             if case in length_cases:
                 evidence = json.loads((root / 'result.json').read_text())
                 assert evidence['state'] == 'failed', 'Incomplete inference fabricated completion'
