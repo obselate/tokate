@@ -256,6 +256,12 @@ internal class CorrectionChecks {
                 "verification_failed"
             )
             Check.That(
+                Check.Text(
+                    rejected["error"]?["message"]
+                ) == "Owner verification failed for the explicit correction; all results are preserved",
+                "JSON correction lost the owner verification reason"
+            )
+            Check.That(
                 Check.Text(rejected["data"]?["run_state"]?["correction"]?["state"]) == "failed",
                 "JSON correction lost failed attempt"
             )
@@ -458,7 +464,18 @@ internal class CorrectionChecks {
             let commit = Correct(flow, run)
             RecoverAndSubmit(flow, run, commit, 1, seconds: "86400")
             RecoverAndSubmit(flow, run, commit, 1, seconds: "0")
-            RecoverAndSubmit(flow, run, String('0', 40), 1)
+            let rejected = Check.Envelope(
+                RecoverAndSubmit(flow, run, String('0', 40), 1, json: true),
+                "recover",
+                "error",
+                "invalid_state"
+            )
+            Check.That(
+                Check.Text(
+                    rejected["error"]?["message"]
+                ) == "Correction requires a clean checkout at the declared exact commit",
+                "JSON correction lost the exact checkout reason"
+            )
             let current = File.ReadAllText(Path.Combine(run, "correction.json"))
             flow.Reload()
             let issue = flow.State["issue"] ?? throw Exception("Missing issue")
