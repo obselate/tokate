@@ -160,7 +160,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Publication did not bind current SHA"
         )
         Coordinate(Event(request))
-        let checkout = Path.Combine(run, "checkout")
+        let checkout = Path.Combine(run, "coding")
+        Flow.Git("-C", checkout, "fetch", Path.Combine(run, "checkout"), "HEAD")
+        Flow.Git("-C", checkout, "checkout", "--detach", "FETCH_HEAD")
         File.AppendAllText(Path.Combine(checkout, "result.txt"), "Reviewed amendment\n")
         Flow.Git("-C", checkout, "add", "result.txt")
         Flow.DonorGit(checkout, "commit", "-m", "Reviewed amendment")
