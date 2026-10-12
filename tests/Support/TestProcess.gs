@@ -5,6 +5,7 @@ import System
 import System.Collections.Generic
 import System.Diagnostics
 import System.IO
+import System.Net.Sockets
 import System.Text
 
 internal class TestProcess {
@@ -115,7 +116,21 @@ internal class TestProcess {
         }
 
         internal func Read(reader StreamReader, result Chan[string]) {
-            result <- reader.ReadToEnd()
+            let text = StringBuilder()
+            while true {
+                try {
+                    let value = reader.Read()
+                    if value < 0 {
+                        break
+                    }
+                    text.Append(Convert.ToChar(value))
+                } catch (error IOException) {
+                    if (error.InnerException as SocketException)?.SocketErrorCode != SocketError.Interrupted {
+                        rethrow
+                    }
+                }
+            }
+            result <- text.ToString()
         }
 
         internal func StartInfo(
