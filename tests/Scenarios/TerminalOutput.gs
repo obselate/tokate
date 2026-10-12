@@ -241,6 +241,14 @@ internal class TerminalOutput {
                     )
                 }
                 if mode == "interactive-rich" {
+                    Check.Contains(
+                        Regex.Replace(
+                            result.Output.Substring(result.Output.IndexOf("Review issue")),
+                            "\\x1b\\[[0-9;]*m",
+                            ""
+                        ),
+                        "\x1b[H\x1b[2JLoading next step...\x1b[K\r\n"
+                    )
                     let closed = result.Output.IndexOf("\x1b[?1049l")
                     Check.That(
                         closed >= 0 && closed < result.Output.IndexOf(url),
