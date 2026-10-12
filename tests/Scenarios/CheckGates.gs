@@ -13,7 +13,8 @@ internal class CheckGates {
             saved bool = false,
             human bool = false,
             timeout bool = false,
-            seconds string = "1"
+            seconds string = "1",
+            verbose bool = false
         ) Result {
             let flow = test.Coordination.Flow
             flow.Reload()
@@ -24,6 +25,9 @@ internal class CheckGates {
             List[string]{"checks", "owner/project#10"}
             if !human {
                 args.Add("--json")
+            }
+            if verbose {
+                args.Add("--verbose")
             }
             if timeout {
                 args.AddRange([]string{"--watch", "--timeout", seconds + "s"})
@@ -118,9 +122,25 @@ internal class CheckGates {
             File.WriteAllText(localRunPath, localRun.ToJsonString())
             let saved = Data(Read(test, saved: true))
             Check.That(saved.ToJsonString() == result.ToJsonString(), "Saved and direct results differ")
-            let human = Read(test, saved: true, human: true)
+            let human = Read(test, saved: true, human: true, timeout: true)
             Check.Contains(human.Output, "Checks passed")
-            Check.Contains(human.Output, "required_owner_actions")
+            Check.That(
+                human.Output.Trim() == "Machine gates passed\nChecks passed: " + Check.Text(result["pr_url"]) +
+                    "\nOwner review: read the diff, then merge.",
+                "Default checks printed detailed evidence or lost owner review"
+            )
+            let verbose = Read(test, saved: true, human: true, verbose: true)
+            for text in[]string{"required_owner_actions", "receipt_hash", "policy_hash", "approval", "gates"} {
+                Check.Contains(verbose.Output, text)
+            }
+            Check.That(
+                !verbose.Output.Contains("owner_inspection_required"),
+                "Contradictory owner inspection field printed"
+            )
+            Check.That(
+                Data(Read(test, verbose: true)).ToJsonString() == result.ToJsonString(),
+                "Verbose changed JSON check evidence"
+            )
             let local = Check.Json(File.ReadAllText(Path.Combine(test.Run, "checks.json")))
             Check.That(local["result"]?.ToJsonString() == result.ToJsonString(), "Human and JSON gates differ")
             flow.Reload()
@@ -183,7 +203,7 @@ internal class CheckGates {
                 if state == "missing" {
                     let hint = "GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI."
                     Check.That(Check.Text(result["ci_hint"]) == hint, "Missing CI start hint")
-                    Check.Contains(Read(test, 8, human: true).Output, hint)
+                    Check.Contains(Read(test, 8, human: true, verbose: true).Output, hint)
                     let head = Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"])
                     var queried bool
                     for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -278,7 +298,7 @@ internal class CheckGates {
             Check.Contains(actions, "Inspect the PR diff, then approve")
             Check.Contains(actions, "in GitHub")
             Check.That(approval["ci_hint"] == nil, "CI start hint shown while workflow approval is pending")
-            Check.Contains(Read(test, 8, human: true).Output, "Workflow runs await owner approval")
+            Check.Contains(Read(test, 8, human: true, verbose: true).Output, "Workflow runs await owner approval")
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 let path = Check.Text(call["path"])
                 if path.Contains("/actions/runs?") {

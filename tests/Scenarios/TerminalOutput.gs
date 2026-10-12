@@ -42,7 +42,12 @@ internal class TerminalOutput {
                         flow.Temp.Env["TERM"] = "xterm-256color"
                         flow.Temp.Env["COLORTERM"] = "truecolor"
                         flow.Temp.Env["COLORFGBG"] = background == "light" ? "0;15": "15;0"
-                        let result = TestTerminal.Pty(binary, []string{"checks", "--run", run}, flow.Temp, width)
+                        let result = TestTerminal.Pty(
+                            binary,
+                            []string{"checks", "--run", run, "--verbose"},
+                            flow.Temp,
+                            width
+                        )
                         Check.That(
                             result.Code == (state == "pass" ? 0: (state == "pending" ? 8: 1)),
                             result.Output + result.Error
@@ -60,7 +65,12 @@ internal class TerminalOutput {
                     }
                 }
             }
-            let plain = TestTerminal.Pty(binary, []string{"checks", "--run", run, "--plain"}, flow.Temp, 40)
+            let plain = TestTerminal.Pty(
+                binary,
+                []string{"checks", "--run", run, "--plain", "--verbose"},
+                flow.Temp,
+                40
+            )
             Check.That(plain.Code == 1, plain.Output + plain.Error)
             Plain(plain.Output)
             Check.Contains(plain.Output, "Checks failed")
