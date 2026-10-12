@@ -22,6 +22,8 @@ internal class CliOption(name string, value string, description string, choices 
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
+        case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
+        case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
         case "time" when(
             command == "work" || command == "claim"
         ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
@@ -475,8 +477,8 @@ internal class Cli {
                 "run,commit,time,tools,sync,summary,resume",
                 "run",
                 "Verify and publish a same-donor review correction; no inference.",
-                "RUN\n       tokate amend RUN --commit SHA --time TIME [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "amend 42 --commit SHA --time 5m",
+                "RUN\n       tokate amend RUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
+                "amend 42 --time 5m",
                 effects: "local_read local_write github_read github_write",
                 target: "run",
                 group: "more"
@@ -484,10 +486,10 @@ internal class Cli {
             CliCommand(
                 "external",
                 "run,commit,summary,time,tools",
-                "run,commit",
+                "run",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
-                "RUN --commit SHA [--summary FILE]\n       tokate external RUN --commit NEW --time TIME --tools FILE",
-                "external 42 --commit SHA",
+                "RUN [--commit SHA] [--summary FILE]\n       tokate external RUN --time TIME --tools FILE [--commit NEW]",
+                "external 42",
                 effects: "local_read local_write github_read",
                 target: "run",
                 group: "more"

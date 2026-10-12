@@ -206,6 +206,9 @@ internal class ExternalContribution {
                 throw Exception("--time and --tools require a failed external verification")
             }
             let record = ContributionAuthority.Recheck(run)
+            if args.Get("commit") == "" {
+                args.Values["--commit"] = Commands.Git(Path.Combine(directory, "coding"), "rev-parse", "HEAD")
+            }
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
             ContributionHandoff.Candidate(J.Get(run.Element(), "handoff"), run.Text("head_repo"), commit)
             let summary = PublicSummary.FileSummary(args.Get("summary"), commit)

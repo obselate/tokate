@@ -851,7 +851,14 @@ internal class PreparationChecks {
             File.WriteAllText(Path.Combine(coding, "private-work.txt"), "external coding in progress")
             Resume(test.Flow, run, 1)
             let commit = test.Candidate(claim)
-            test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
+            test.Flow.Git("-C", coding, "fetch", Path.Combine(test.Flow.Bin, "fork"), commit)
+            test.Flow.Git("-C", coding, "checkout", "--detach", commit)
+            let verified = Check.Envelope(
+                test.Flow.Call([]string{"external", "--run", run, "--json"}),
+                "external",
+                "ok"
+            )
+            Check.That(Check.Text(verified["data"]?["commit"]) == commit, "External JSON lost the resolved commit")
             Check.That(
                 File.ReadAllText(Path.Combine(coding, "private-work.txt")) == "external coding in progress",
                 "Verification touched external coding work"
