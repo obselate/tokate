@@ -390,7 +390,7 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 flow.Temp.Env,
-                "\n"
+                "\nq\n"
             )
             Check.That(refused.Code == 1, "Blank input accepted the first eligible pair")
             Check.Contains(refused.Output, "No inference started")
@@ -411,7 +411,7 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
                 flow.Temp.Env,
-                "1\nn\n"
+                "1\n\n"
             )
             Check.That(declined.Code == 1, "Declined confirmation launched work")
             Check.Contains(declined.Output, "Inference was not confirmed")
@@ -422,7 +422,7 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
                 flow.Temp.Env,
-                "1\ny\n"
+                "1\n1\n"
             )
             Check.That(confirmed.Code == 8, "Confirmed claim did not wait for owner coordination")
             Check.Contains(confirmed.Output, "Claim pending")
@@ -554,7 +554,7 @@ internal class DonorSelectionChecks {
                     "/usr/bin/script",
                     []string{"-q", "-e", "-c", command, "/dev/null"},
                     flow.Temp.Env,
-                    "\n"
+                    "\nq\n"
                 )
                 Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
                 flow.NoInference()
