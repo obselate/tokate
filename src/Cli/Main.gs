@@ -47,6 +47,10 @@ func Main(args[]string) int32 {
                 options.Command == "checks" ? "verification_failed": "command_failed"
             )
         }
+    } catch (error WizardHome) {
+        DonationView.Close()
+        WizardScreen.Close()
+        return Interactive.Run()
     } catch (error Exception) {
         DonationView.Close()
         WizardScreen.Close()
