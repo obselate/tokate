@@ -33,7 +33,7 @@ data struct ProfileList {
                 Container{
                     FlexGrow: 1,
                     FlexBasis: 0,
-                    MinWidth: 200,
+                    MinWidth: 320,
                     Gap: 2,
                     Heading{Content: item.Name, Size: AppTheme.ItemSize}.Build(),
                     Label{Content: Summary(item), Size: AppTheme.SmallSize, Muted: true}.Build(),
