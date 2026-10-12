@@ -115,7 +115,7 @@ internal class OwnerSetup {
             fields["allowed_tools"] = tools
         }
 
-        private func Guide(args Args, fields map[string, Object?]) {
+        private func Guide(args Args, fields map[string, Object?], root string) {
             let repo = args.Need("repo")
             let initial = J.Parse(J.Write(fields))
             if args.Get("eligibility") == "" && J.Text(initial, "approval_scope") == "task" {
@@ -152,14 +152,62 @@ internal class OwnerSetup {
             while true {
                 if !fields.ContainsKey("verification") || edit == "verification" {
                     let commands = List[Object]()
+                    let explanation = "A verification command is a shell command that runs the project's tests, which Tokate runs on donor work before it opens a PR."
+                    var suggestion = ""
+                    if File.Exists(Path.Combine(root, "pyproject.toml")) || File.Exists(
+                        Path.Combine(root, "setup.py")
+                    ) ||
+                        Directory
+                        .GetFiles(
+                        root,
+                        "test_*.py",
+                        EnumerationOptions{RecurseSubdirectories: true, AttributesToSkip: FileAttributes.ReparsePoint}
+                    )
+                        .Length > 0 {
+                        suggestion = "python3 -m unittest"
+                    } else {
+                        let manifest = Path.Combine(root, "package.json")
+                        if File.Exists(manifest) {
+                            try {
+                                if J.Text(J.Get(J.Parse(File.ReadAllText(manifest)), "scripts"), "test").Trim() != "" {
+                                    suggestion = "npm test"
+                                }
+                            } catch (error JsonException) { }
+                        }
+                        if suggestion == "" && File.Exists(Path.Combine(root, "Cargo.toml")) {
+                            suggestion = "cargo test"
+                        }
+                        if suggestion == "" && File.Exists(Path.Combine(root, "go.mod")) {
+                            suggestion = "go test ./..."
+                        }
+                        let makefile = Path.Combine(root, "Makefile")
+                        if suggestion == "" && File.Exists(makefile) && Regex.IsMatch(
+                            File.ReadAllText(makefile),
+                            "^test\\s*:(?!=)",
+                            RegexOptions.Multiline
+                        ) {
+                            suggestion = "make test"
+                        }
+                    }
+                    if suggestion != "" && WizardScreen.Choose(
+                        "Verification commands",
+                        explanation,
+                        []string{"Suggested: " + suggestion, "Enter a command"}
+                    ) == 1 {
+                        commands.Add([]string{"/bin/sh", "-c", suggestion})
+                    }
                     while true {
                         let command = WizardScreen.Read(
                             "Verification commands",
-                            "Enter one shell command at a time. Enter finishes the list.",
+                            explanation +
+                                "\nExamples: python3 -m unittest, npm test, cargo test, go test ./..., make test.\nEnter one shell command at a time. Enter finishes the list after at least one command.",
                             "Shell command"
                         )
                         if command == "" {
-                            break
+                            if commands.Count > 0 {
+                                break
+                            }
+                            continue
                         }
                         commands.Add([]string{"/bin/sh", "-c", command})
                     }
@@ -172,16 +220,40 @@ internal class OwnerSetup {
                             names.Add(item.GetString() ?? "")
                         }
                     }
-                    let answer = WizardScreen.Read(
-                        "Required GitHub checks",
-                        "Enter the check names required before merge, separated by commas.",
-                        "Check names",
-                        String.Join(", ", names)
+                    let explanation = "Required checks are the GitHub CI check names that must pass on the PR."
+                    let options = List[string]()
+                    let runs = GitHub.Api(
+                        "repos/" + repo + "/commits/" + Uri.EscapeDataString(
+                            J.Text(J.Parse(J.Write(fields)), "target_branch")
+                        ) +
+                            "/check-runs?per_page=100&page=1"
                     )
+                    for run in J.Items(J.Get(runs, "check_runs")) {
+                        let name = J.Text(run, "name")
+                        if name.Trim() != "" && !options.Contains(name) {
+                            options.Add(name)
+                        }
+                    }
+                    let fallback = String.Join(", ", names)
                     names.Clear()
-                    for name in answer.Split(',') {
-                        if name.Trim() != "" {
-                            names.Add(name.Trim())
+                    if options.Count > 0 {
+                        options.Add("Enter names")
+                        let choice = WizardScreen.Choose("Required GitHub checks", explanation, options.ToArray())
+                        if choice < options.Count {
+                            names.Add(options[choice - 1])
+                        }
+                    }
+                    while names.Count == 0 {
+                        let answer = WizardScreen.Read(
+                            "Required GitHub checks",
+                            explanation + "\nThe names are CI job names. Enter them separated by commas.",
+                            "Check names",
+                            fallback
+                        )
+                        for name in answer.Split(',') {
+                            if name.Trim() != "" {
+                                names.Add(name.Trim())
+                            }
                         }
                     }
                     fields["required_checks"] = names
@@ -525,7 +597,7 @@ internal class OwnerSetup {
                 }
             }
             if foreground {
-                Guide(args, fields)
+                Guide(args, fields, root)
                 fields["model_policy"] = args.Need("model-policy")
             }
             let selected = args.Get("model-policy", existing?.ModelPolicy ?? "")
