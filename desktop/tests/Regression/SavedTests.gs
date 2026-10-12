@@ -58,6 +58,14 @@ func SavedTests() {
     Regression.Check(dialogs.Current?.Text == "owner/repo #7\n\n" + RunActions.DialogDetail(RunAction.Amend), "amendment dialog text")
     dialogs.Dismiss()
     Regression.Check(!activity.Busy, "dismissing runs nothing")
+    Regression.Equal(
+        AmendmentFailures.Explain(
+            "candidate_changed",
+            "git failed: diff --git a/__pycache__/greet.pyc b/__pycache__/greet.pyc\nindex fcd6e84..d8c8c12 100644\ndiff --git a/out/a b.txt b/out/a b.txt\n"
+        ),
+        "The verification commands changed files that the commit tracks: __pycache__/greet.pyc, out/a b.txt. Remove generated files from the commit, then publish again.",
+        "a changed candidate names the files that verification changed"
+    )
 
     saved.Select(SavedRun.Pending("/runs/b") with{Run = run})
     Regression.Check(

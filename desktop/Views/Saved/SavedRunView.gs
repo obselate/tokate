@@ -12,7 +12,10 @@ class SavedRunView {
         this.saved = saved
     }
 
-    func Build(page PageContext) []Blob {
+    /// True when the amendment form is open, which then holds the message about the latest action.
+    prop HoldsNotice bool -> saved.Current.Amendment.Open
+
+    func Build(page PageContext, notice Feedback) []Blob {
         let state = saved.Current
         let run = state.Run
         let amendment = state.Amendment
@@ -24,6 +27,7 @@ class SavedRunView {
             Stacked: page.NarrowContent,
             Button: page.Button,
             Disabled: page.Busy,
+            Notice: notice,
             OnVerification: value -> saved.SetVerification(value),
             OnSummary: value -> saved.SetSummary(value),
             OnEdited: value -> saved.SetEdited(value),
@@ -85,6 +89,8 @@ class SavedRunView {
                 Button: page.Button,
                 Compact: page.CompactPanels,
                 Form: form,
+                Note: state.Note,
+                Waiting: state.Waiting,
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
             }.Build(),

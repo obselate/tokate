@@ -83,6 +83,17 @@ class RunStore {
             }
         }
 
+        /// Why the amendment of `commit` failed, when Tokate saved that after `since`. Otherwise "".
+        func AmendmentFailure(run string, commit string, since DateTime) string {
+            let record = Path.Combine(run, "amendments", commit, "run.json")
+            try {
+                return File.Exists(record) && File.GetLastWriteTimeUtc(record) >= since ?
+                RunCodec.AmendmentFailure(Json.ParseFile(record)): ""
+            } catch (error Exception) {
+                return ""
+            }
+        }
+
         func SummaryFile(directory string) string -> Path.Combine(directory, "summary.json")
 
         func ToolsFile(directory string) string -> Path.Combine(directory, "tools.json")

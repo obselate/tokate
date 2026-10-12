@@ -57,6 +57,12 @@ class RunCodec {
             }
         }
 
+        /// The head commit of the contribution in the coordination state, or "" before publication.
+        func ContributionHead(state JsonElement) string -> Json.Text(Json.Get(state, "contribution"), "head")
+
+        func AmendmentFailure(record JsonElement) string -> Json.Text(record, "state") == "failed" ?
+        AmendmentFailures.Explain(Json.Text(record, "failure_reason"), Json.Text(record, "error")): ""
+
         func ClaimId(runFile JsonElement) string {
             let request = Json.Text(Json.Get(runFile, "claim_request"), "uuid")
             if !Guid.TryParse(request, out var uuid) {

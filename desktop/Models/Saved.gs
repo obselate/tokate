@@ -154,7 +154,31 @@ class RunActions {
         }
 
         func NeedsBudget(action RunAction) bool -> action == RunAction.Recover || action == RunAction.Amend
+
+        /// True when the command only sends a request, and the same command saves the result later.
+        func Requests(action RunAction) bool -> action == RunAction.Submit || action == RunAction.Amend
+
+        func Requested(action RunAction) string -> action == RunAction.Amend ?
+        "Tokate sent the amendment. The coordinator adds it to the pull request. This page updates when that is done.":
+        "Tokate sent the request. The coordinator opens the draft pull request. This page updates when that is done."
+
+        func Recorded(action RunAction) string -> action == RunAction.Amend ? "The pull request has the amendment.": ""
     }
+}
+
+/// A request that the coordinator must record before its action is complete. `Head` is the commit that
+/// the contribution then has. `Arguments` repeat the command, which then saves the result. `Files` is
+/// the private directory of the amendment files, or "".
+data struct CoordinatorRequest {
+    var Action RunAction
+    var Path string
+    var Repo string
+    var Issue int32
+    var Head string
+    var Arguments []string
+    var Seconds int32
+    var Files string
+    var Since DateTime
 }
 
 /// What a status means for the donor: the step the contribution is at, who acts next and the main action.
@@ -310,6 +334,28 @@ data struct PublicSummary {
     }
 }
 
+class AmendmentFailures {
+    shared {
+        /// Words for the donor about a failed amendment, from the reason and error text that Tokate saved.
+        /// "" when the saved record says no more than the command did.
+        func Explain(reason string, error string) string {
+            if reason != "candidate_changed" {
+                return ""
+            }
+            let files = List[string]()
+            for line in error.Split('\n') {
+                let at = line.LastIndexOf(" b/")
+                if line.Contains("diff --git a/") && at > 0 {
+                    files.Add(line.Substring(at + 3))
+                }
+            }
+            return "The verification commands changed files that the commit tracks" +
+                (files.Count > 0 ? ": " + String.Join(", ", files): "") +
+                ". Remove generated files from the commit, then publish again."
+        }
+    }
+}
+
 /// Who made the correction that an amendment publishes.
 enum EditedBy {
     Hand,
@@ -368,6 +414,9 @@ data struct SavedWorkState {
     var Run Run
     var Actions []RunAction
     var Amendment AmendmentDraft
+    /// True while the coordinator has a request of the selected run. `Note` tells the donor about it.
+    var Waiting bool
+    var Note Feedback
 
     prop Browsing bool -> Loaded && !Selected && !Importing
 
@@ -383,6 +432,7 @@ data struct SavedWorkState {
             Run: Run.Empty,
             Actions: []RunAction{},
             Amendment: AmendmentDraft.Initial,
+            Note: Feedback{Message: "", Report: ""},
         }
     }
 }

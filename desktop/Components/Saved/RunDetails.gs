@@ -13,6 +13,9 @@ data struct RunDetails {
     var Button CommandButton
     var Compact bool
     var Form Blob?
+    /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
+    var Note Feedback
+    var Waiting bool
     var OnAction Action[RunAction]?
     var OnToggleAmendment Action?
 
@@ -39,6 +42,9 @@ data struct RunDetails {
         }
         if run.ErrorMessage != "" {
             children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
+        }
+        if Note.Message != "" {
+            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
         }
         let shown = List[RunAction]()
         for action in Actions {
@@ -73,6 +79,7 @@ data struct RunDetails {
                         }
                     },
                     Primary = lead >= 0 && index == 0,
+                    Disabled = Waiting,
                 }).Build()
             )
         }

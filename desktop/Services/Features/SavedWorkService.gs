@@ -18,6 +18,10 @@ class SavedWorkService {
     private var readers []RunReader = []RunReader{}
     /// Increases whenever reading stops, so results from an earlier page or discovery are ignored.
     private var revision int32
+    /// The request that the coordinator has, which is checked every five seconds.
+    private var request CoordinatorRequest?
+    private var requestTimer IDisposable?
+    private var requestCheck CliClient?
     /// Continues a reserved run as a donation.
     var OnWork Action[Run, string]?
     var Current SavedWorkState = SavedWorkState.Initial
@@ -230,6 +234,7 @@ class SavedWorkService {
             return
         }
         StopUpdates()
+        let same = request?.Path == item.Path
         Set(
             Current with{
                 Selected = true,
@@ -238,6 +243,8 @@ class SavedWorkService {
                 RunPath = item.Path,
                 Actions = RunActions.From(item.Actions, run.State),
                 Amendment = Current.Amendment with{Open = false},
+                Waiting = same,
+                Note = same || item.Path == Current.RunPath ? Current.Note: Feedback{Message: "", Report: ""},
             }
         )
         Read([]SavedRun{item})
@@ -308,14 +315,39 @@ class SavedWorkService {
                     Heading: "",
                 },
                 () -> {
+                    StopWaiting("")
                     let files = summary == "" ? "": RunStore.WriteAmendment(summary, tools)
+                    let arguments = TokateCommands.RunAction(action, path, amendment, run.Commit, files)
+                    let since = DateTime.UtcNow
                     let started = commands.Cli(
-                        TokateCommands.RunAction(action, path, amendment, run.Commit, files),
+                        arguments,
                         (outcome CommandOutcome) -> {
-                            Discard(files)
-                            if outcome.Failure == "" && !commands.Failed(outcome) {
-                                LoadRun()
+                            if outcome.Failure != "" || commands.Failed(outcome) {
+                                Discard(files)
+                                let reason = action == RunAction.Amend ? RunStore.AmendmentFailure(path, amendment.Commit, since): ""
+                                if reason != "" {
+                                    feedback.Show(reason, Tone.Fail)
+                                }
+                                return
                             }
+                            if RunActions.Requests(action) {
+                                Await(
+                                    CoordinatorRequest{
+                                        Action: action,
+                                        Path: path,
+                                        Repo: run.Repo,
+                                        Issue: run.Issue,
+                                        Head: action == RunAction.Amend ? amendment.Commit: run.Commit,
+                                        Arguments: arguments,
+                                        Seconds: seconds,
+                                        Files: files,
+                                        Since: since,
+                                    }
+                                )
+                            } else {
+                                Discard(files)
+                            }
+                            LoadRun()
                         },
                         seconds: seconds,
                         completeOnError: true
@@ -333,6 +365,78 @@ class SavedWorkService {
     private func Discard(files string) {
         if files != "" {
             RunStore.Remove(files)
+        }
+    }
+
+    // Coordinator request
+
+    /// Waits for the coordinator to record `sent`, then repeats its command, which saves the result.
+    private func Await(sent CoordinatorRequest) {
+        request = sent
+        Set(Current with{Waiting = true, Note = Feedback{Message: RunActions.Requested(sent.Action), Report: "", Tone: Tone.Wait}})
+        requestTimer = window.Every(5000, () -> CheckRequest())
+    }
+
+    /// Stops the wait and shows `message`. The request stays with the coordinator.
+    private func StopWaiting(message string, tone Tone = Tone.Need) {
+        requestTimer?.Dispose()
+        requestTimer = nil
+        requestCheck = nil
+        if let sent = request {
+            Discard(sent.Files)
+        }
+        request = nil
+        Set(Current with{Waiting = false, Note = Feedback{Message: message, Report: "", Tone: tone}})
+    }
+
+    private func CheckRequest() {
+        guard let sent = request else {
+            return
+        }
+        if !Current.Selected || Current.RunPath != sent.Path {
+            StopWaiting("")
+        } else if (DateTime.UtcNow - sent.Since).TotalMinutes > 10 {
+            StopWaiting("The coordinator did not answer in 10 minutes. Do the action again later.")
+        } else if !activity.Busy && requestCheck == nil {
+            let client = CliClient()
+            requestCheck = client
+            go ReadRequest(client, sent)
+        }
+    }
+
+    private func ReadRequest(client CliClient, sent CoordinatorRequest) {
+        let reply = client.Run[string](TokateCommands.Coordination(sent.Repo, sent.Issue.ToString()), RunCodec.ContributionHead)
+        let recorded = reply.Outcome.Succeeded && reply.Value == sent.Head
+        window.Post(() -> RequestChecked(client, recorded))
+    }
+
+    private func RequestChecked(client CliClient, recorded bool) {
+        if requestCheck != client {
+            return
+        }
+        requestCheck = nil
+        guard let sent = request else {
+            return
+        }
+        if !recorded || activity.Busy {
+            return
+        }
+        requestTimer?.Dispose()
+        requestTimer = nil
+        let started = commands.Cli(
+            sent.Arguments,
+            (outcome CommandOutcome) -> {
+                let failed = outcome.Failure != "" || commands.Failed(outcome)
+                StopWaiting(failed ? "": RunActions.Recorded(sent.Action), Tone.Done)
+                if !failed {
+                    LoadRun()
+                }
+            },
+            seconds: sent.Seconds,
+            completeOnError: true
+        )
+        if !started {
+            requestTimer = window.Every(5000, () -> CheckRequest())
         }
     }
 

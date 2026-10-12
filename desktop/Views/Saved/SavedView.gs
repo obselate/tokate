@@ -22,9 +22,11 @@ class SavedView {
 
     func Build(page PageContext) Blob {
         let state = saved.Current
+        let notice = feedback.Current
+        let inForm = state.Selected && details.HoldsNotice
         let body = List[Blob]()
         if state.Selected {
-            body.AddRange(details.Build(page))
+            body.AddRange(details.Build(page, notice))
         } else {
             body.Add(
                 Row{
@@ -42,8 +44,7 @@ class SavedView {
                 }.Build()
             )
         }
-        let notice = feedback.Current
-        if notice.Message != "" {
+        if notice.Message != "" && !inForm {
             body.Insert(1, Callout{Message: notice.Message, Tone: notice.Tone}.Build())
         }
         if notice.Report != "" {
