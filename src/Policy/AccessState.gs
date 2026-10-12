@@ -593,6 +593,11 @@ internal class AccessState {
                         default: "Initialized donor access for " + repo + "."
                     }
                 )
+                if operation == "init" {
+                    Terminal.Message(
+                        "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+                    )
+                }
             }
         }
     }
