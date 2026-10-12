@@ -53,7 +53,12 @@ internal class AmendmentFlow {
             text string = "Reviewed correction\n",
             file string = "result.txt"
         ) string {
-            let checkout = Path.Combine(run, "checkout")
+            let external = Check.Text(Saved(run)["source"]) == "external"
+            let checkout = Path.Combine(run, external ? "coding": "checkout")
+            if external {
+                flow.Git("-C", checkout, "fetch", Path.Combine(run, "checkout"), "HEAD")
+                flow.Git("-C", checkout, "checkout", "--detach", "FETCH_HEAD")
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(checkout, file)) ?? checkout)
             File.WriteAllText(Path.Combine(checkout, file), text)
             flow.Git("-C", checkout, "add", "-A")
@@ -554,6 +559,14 @@ internal class AmendmentFlow {
             let contribution = Check.Text(flow.State()["state"]?["contribution"])
             Review(flow.Flow)
             let commit = Edit(flow.Flow, run)
+            if !native {
+                Check.That(
+                    flow.Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == Check.Text(
+                        Check.Json(original)["commit"]
+                    ),
+                    "External amendment was copied into the verification checkout before amend"
+                )
+            }
             if modelPolicy != "" {
                 File.WriteAllText(
                     flow.Tools,
@@ -572,6 +585,10 @@ internal class AmendmentFlow {
                 "ok"
             )
             Check.That(Check.Text(amended["data"]?["commit"]) == commit, "Amendment JSON lost the resolved commit")
+            Check.That(
+                flow.Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == commit,
+                "Amend did not import the exact candidate into the verification checkout"
+            )
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             Check.That(Check.Text(request["action"]) == "amend", "Wrong amendment request")
@@ -810,7 +827,7 @@ internal class AmendmentFlow {
                 } else if failure == "remote" {
                     flow.Flow.Git(
                         "-C",
-                        Path.Combine(run, "checkout"),
+                        Path.Combine(run, "coding"),
                         "push",
                         Path.Combine(flow.Flow.Bin, "fork"),
                         "HEAD:refs/heads/" + Check.Text(Saved(run)["branch"])

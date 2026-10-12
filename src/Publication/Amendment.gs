@@ -329,9 +329,12 @@ internal class Amendment {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+            let coding = run.Text("source") == "external" && args.Get("sync") == "" &&
+                (!run.Fields.ContainsKey("reconciliation") && !run.Fields.ContainsKey("synchronizations"))
+            let source = Path.Combine(directory, coding ? "coding": "checkout")
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
             if !continuing && args.Get("commit") == "" {
-                args.Values["--commit"] = Commands.Git(Path.Combine(directory, "checkout"), "rev-parse", "HEAD")
+                args.Values["--commit"] = Commands.Git(source, "rev-parse", "HEAD")
             }
             if continuing {
                 for key in[]string{"seconds", "tools", "summary", "sync", "resume"} {
@@ -440,6 +443,20 @@ internal class Amendment {
                     run.Text("commit"),
                     contribution: J.Get(J.Get(authority, "state"), "contribution")
                 )
+                if source != checkout {
+                    Snapshot(source, run, commit, run.Text("commit"), record, history)
+                    Commands.Git(
+                        checkout,
+                        "fetch",
+                        "--quiet",
+                        "--no-tags",
+                        "--no-recurse-submodules",
+                        "--",
+                        source,
+                        commit
+                    )
+                    Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)
+                }
                 let snapshot = Snapshot(checkout, run, commit, run.Text("commit"), record, history)
                 let archive = Archive(directory, run)
                 Directory.CreateDirectory(location)
