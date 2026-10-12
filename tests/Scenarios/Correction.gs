@@ -900,6 +900,7 @@ internal class CorrectionChecks {
                 }
                 let run = ManagedRun(flow, originalMode)
                 Prepared(flow.Flow, run)
+                Check.That(Read(run)["public_summary"] != nil, "Original managed summary is missing")
                 let originalTools = Check.Text(Read(run)["tools"])
                 let commit = Correct(flow.Flow, run)
                 File.WriteAllText(
@@ -909,6 +910,14 @@ internal class CorrectionChecks {
                 )
                 Recover(flow.Flow, run, commit, tools: flow.Tools)
                 Once(flow.Flow)
+                Check.That(
+                    Read(run)["public_summary"] == nil,
+                    "Recovery without a summary retained the original summary"
+                )
+                Check.That(
+                    Read(run)["summary_patch_sha256"] == nil,
+                    "Recovery retained the original summary patch binding"
+                )
                 Check.That(Read(run)["publication_uuid"] == nil, "Recovery posted a v2 publication")
                 Check.That(Check.Text(Read(run)["tools"]) == originalTools, "Correction replaced original source/tools")
                 let results = Check.Text(Read(run, "correction.json")["verification"])
