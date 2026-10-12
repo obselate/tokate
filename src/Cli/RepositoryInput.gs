@@ -11,21 +11,27 @@ internal class RepositoryInput {
     shared {
         internal func Repo(value string) string {
             var normalized = value
+
             if value.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) {
                 let uri = Uri(value)
+
                 if uri.Query != "" || uri.Fragment != "" {
                     throw Exception("Use a GitHub repository URL without query or fragment")
                 }
+
                 normalized = uri.AbsolutePath.Trim('/')
+
                 if normalized.EndsWith(".git") {
                     normalized = normalized.Substring(0, normalized.Length - 4)
                 }
             }
+
             return RepositoryIdentity.Repo(normalized)
         }
 
         internal func Local(cwd string = "") string {
             var result CommandResult
+
             try {
                 result = Commands.Run(
                     "git",
@@ -36,9 +42,11 @@ internal class RepositoryInput {
             } catch (error Win32Exception) {
                 throw Exception("Local Git is unavailable; name OWNER/REPO or OWNER/REPO#42")
             }
+
             if result.Code != 0 {
                 throw Exception("Cannot determine a local repository; name OWNER/REPO or OWNER/REPO#42")
             }
+
             var repo string = ""
             for line in result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries) {
                 let fields = line.Split([]char{' ', '\t'}, StringSplitOptions.RemoveEmptyEntries)
@@ -48,18 +56,24 @@ internal class RepositoryInput {
                     "^(?:https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)([A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*?)(?:\\.git)?/?$",
                     RegexOptions.IgnoreCase
                 )
+
                 if !match.Success {
                     continue
                 }
+
                 let candidate = RepositoryIdentity.Repo(match.Groups[1].Value)
+
                 if repo != "" && !String.Equals(repo, candidate, StringComparison.OrdinalIgnoreCase) {
                     throw Exception("Ambiguous local remotes; name OWNER/REPO or OWNER/REPO#42")
                 }
+
                 repo = candidate
             }
+
             if repo == "" {
                 throw Exception("No GitHub remote found; name OWNER/REPO or OWNER/REPO#42")
             }
+
             return repo
         }
     }

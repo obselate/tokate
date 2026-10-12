@@ -8,25 +8,31 @@ internal class Completion {
     shared {
         internal func Words(command string = "") string {
             let text = StringBuilder()
+
             if command == "" {
                 for item in Cli.Commands {
                     text.Append(item.Name + " ")
                 }
+
                 text.Append("--help -h")
             } else {
                 let selected = Cli.Find(command)
+
                 for option in Cli.Options {
                     if selected.Has(option.Name) {
                         text.Append("--" + option.Name + " ")
                     }
                 }
+
                 text.Append("-h")
             }
+
             return text.ToString()
         }
 
         internal func Script(shell string) string {
             let text = StringBuilder()
+
             if shell == "bash" {
                 text.AppendLine("_tokate() {")
                 text.AppendLine(
@@ -40,10 +46,12 @@ internal class Completion {
                 )
                 text.AppendLine("  case $$cmd in")
                 text.AppendLine("    help) COMPREPLY=( $$(compgen -W '" + Words() + "' -- \"$$cur\") ); return ;;")
+
                 for command in Cli.Commands {
                     if command.Name == "help" {
                         continue
                     }
+
                     text.AppendLine(
                         "    " +
                             command.Name +
@@ -58,6 +66,7 @@ internal class Completion {
                             "' ;;"
                     )
                 }
+
                 text.AppendLine("    *) return ;;\n  esac")
                 text.AppendLine(
                     "  if [[ $$cur == --*=* ]]; then prefix=$${cur%%=*}=; prev=$${cur%%=*}; cur=$${cur#*=}; fi"
@@ -67,6 +76,7 @@ internal class Completion {
                 )
                 text.AppendLine("  if [[ $$cur == = && $$prev == --* ]]; then cur=''; fi")
                 text.AppendLine("  case $$prev in")
+
                 for option in Cli.Options {
                     if option.Value == "DIR" || option.Value == "FILE" {
                         text.AppendLine(
@@ -86,12 +96,15 @@ internal class Completion {
                         )
                     }
                 }
+
                 let values = StringBuilder()
+
                 for option in Cli.Options {
                     if option.Value != "" {
                         values.Append((values.Length == 0 ? "": "|") + "--" + option.Name)
                     }
                 }
+
                 text.AppendLine("    " + values.ToString() + ") return ;;")
                 text.AppendLine("    *) COMPREPLY=( $$(compgen -W \"$$opts\" -- \"$$cur\") ) ;;\n  esac")
                 text.AppendLine(
@@ -107,18 +120,23 @@ internal class Completion {
                         " ;;\n    args)\n      case $$line[1] in"
                 )
                 text.AppendLine("        help) _values 'command' " + Words() + " ;;")
+
                 for command in Cli.Commands {
                     if command.Name == "help" {
                         continue
                     }
+
                     text.Append("        " + command.Name + ") _arguments '-h[Show help]'")
+
                     if Cli.Words(command.Name) != "" {
                         text.Append(" '1:word:(" + Cli.Words(command.Name) + ")'")
                     }
+
                     for option in Cli.Options {
                         if !command.Has(option.Name) {
                             continue
                         }
+
                         let action = option.Choices != "" ? "(" + option.Choices + ")":
                         (option.Value == "DIR" ? "_directories": "")
                         text.Append(
@@ -129,17 +147,21 @@ internal class Completion {
                                 "'"
                         )
                     }
+
                     text.AppendLine(" ;;")
                 }
+
                 text.AppendLine(
                     "      esac ;;\n  esac\n}\nif [[ $$funcstack[1] == _tokate ]]; then _tokate \"$$@\"; else compdef _tokate tokate; fi"
                 )
             } else if shell == "fish" {
                 text.AppendLine("complete -c tokate -f")
+
                 for command in Cli.Commands {
                     if command.Name == "--version" {
                         continue
                     }
+
                     text.AppendLine(
                         "complete -c tokate -n '__fish_use_subcommand' -a '" +
                             command.Name +
@@ -150,9 +172,11 @@ internal class Completion {
                             .Replace("'", "\\'") +
                             "'"
                     )
+
                     if command.Name == "help" {
                         text.AppendLine("complete -c tokate -n '__fish_seen_subcommand_from help' -a '" + Words() + "'")
                     }
+
                     if Cli.Words(command.Name) != "" {
                         text.AppendLine(
                             "complete -c tokate -n '__fish_seen_subcommand_from " + command.Name + "' -a '" + Cli.Words(
@@ -162,18 +186,24 @@ internal class Completion {
                         )
                     }
                 }
+
                 for option in Cli.Options {
                     let groups = Dictionary[string, List[string]]()
+
                     for command in Cli.Commands {
                         if command.Name == "--version" || !command.Has(option.Name) {
                             continue
                         }
+
                         let description = option.Describe(command.Name)
+
                         if !groups.ContainsKey(description) {
                             groups[description] = List[string]()
                         }
+
                         groups[description].Add(command.Name)
                     }
+
                     for group in groups {
                         text.Append(
                             "complete -c tokate -n '__fish_seen_subcommand_from " + String.Join(" ", group.Value) +
@@ -188,19 +218,23 @@ internal class Completion {
                                 .Replace("'", "\\'") +
                                 "'"
                         )
+
                         if option.Choices != "" {
                             text.Append(" -a '" + option.Choices + "'")
                         } else if option.Value == "DIR" {
                             text.Append(" -a '(__fish_complete_directories)' ")
                         }
+
                         text.AppendLine()
                     }
                 }
+
                 text.AppendLine("complete -c tokate -n '__fish_use_subcommand' -l help -s h -d 'Show help'")
                 text.AppendLine("complete -c tokate -n '__fish_use_subcommand' -l version -d 'Print installed version'")
             } else {
                 throw Exception("Required shell: bash, zsh or fish")
             }
+
             return text.ToString()
         }
     }
