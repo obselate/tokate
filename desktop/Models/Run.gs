@@ -45,6 +45,10 @@ data struct Run {
     var Commit string
     /// The directory of the saved checkout.
     var Checkout string
+    /// The commit of an amendment that waits for the coordinator, or "".
+    var Amending string
+    /// The command that Tokate gives to finish that amendment.
+    var Finish []string
 
     prop Kind RunState -> Run.Parse(State)
 
@@ -109,6 +113,8 @@ data struct Run {
             DonorId: "",
             Commit: "",
             Checkout: "",
+            Amending: "",
+            Finish: []string{},
         }
     }
 }

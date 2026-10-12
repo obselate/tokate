@@ -8,6 +8,7 @@ class RunCodec {
         func Run(data JsonElement, path string = "") Run {
             let tools = Json.Items(data, "tools")
             let found = Json.Text(data, "run")
+            let amendment = Json.Get(data, "amendment")
             return Run{
                 Path: found != "" ? found: path,
                 Repo: Json.Text(data, "repo"),
@@ -28,6 +29,8 @@ class RunCodec {
                 DonorId: Json.Text(data, "donor_id"),
                 Commit: Json.Text(data, "commit"),
                 Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
+                Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"): "",
+                Finish: Json.Strings(Json.Get(data, "next"), "command"),
             }
         }
 

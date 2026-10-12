@@ -248,6 +248,29 @@ class SavedWorkService {
             }
         )
         Read([]SavedRun{item})
+        if request == nil && run.Amending != "" {
+            go Resume(run, item.Path)
+        }
+    }
+
+    /// Continues the wait for an amendment that Tokate saved as requested, for example before the app closed.
+    private func Resume(run Run, path string) {
+        var found CoordinatorRequest? = nil
+        try {
+            found = RunStore.FinishAmendment(run, path)
+        } catch (error Exception) {
+        }
+        window.Post(
+            () -> {
+                if let sent = found {
+                    if request == nil && Current.Selected && Current.RunPath == path {
+                        Await(sent)
+                    } else {
+                        Discard(sent.Files)
+                    }
+                }
+            }
+        )
     }
 
     func Back() -> LoadPage(Current.Page)

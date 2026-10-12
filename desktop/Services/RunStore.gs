@@ -94,6 +94,38 @@ class RunStore {
             }
         }
 
+        /// The request that finishes the amendment of `run` that waits for the coordinator. It repeats the
+        /// command that Tokate gives. Tokate compares the summary and the tool declarations of that command
+        /// with the saved amendment, so new files with the saved values replace the first files.
+        func FinishAmendment(run Run, path string) CoordinatorRequest {
+            let record = Json.ParseFile(Path.Combine(path, "amendments", run.Amending, "run.json"))
+            let tools = Json.Get(record, "tools")
+            let files = WriteAmendment(Json.Summary(run.Amending, RunCodec.Summary(record)), Json.Items(tools).Length > 0 ? Json.Raw(tools): "")
+            let arguments = List[string]()
+            var seconds = 600
+            for i in 1 ... run.Finish.Length {
+                let option = run.Finish[i - 1]
+                let value = run.Finish[i]
+                if option == "--time" {
+                    seconds = Int32.Parse(value.TrimEnd('s')) + 120
+                }
+                if value != "--json" {
+                    arguments.Add(option == "--summary" ? SummaryFile(files): option == "--tools" ? ToolsFile(files): value)
+                }
+            }
+            return CoordinatorRequest{
+                Action: RunAction.Amend,
+                Path: path,
+                Repo: run.Repo,
+                Issue: run.Issue,
+                Head: run.Amending,
+                Arguments: arguments.ToArray(),
+                Seconds: seconds,
+                Files: files,
+                Since: DateTime.UtcNow,
+            }
+        }
+
         func SummaryFile(directory string) string -> Path.Combine(directory, "summary.json")
 
         func ToolsFile(directory string) string -> Path.Combine(directory, "tools.json")
