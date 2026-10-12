@@ -10,7 +10,7 @@ internal class Amendment {
     shared {
         internal func Tools(policy Policy, tools JsonElement) {
             if tools.ValueKind != JsonValueKind.Array {
-                throw Exception("Amendment tools must be an array; [] declares manual editing")
+                throw CliFailure("invalid_state", "Amendment tools must be an array; [] declares manual editing")
             }
             if J.Count(tools) == 0 {
                 return
@@ -27,7 +27,7 @@ internal class Amendment {
                 policy.Value,
                 "max_seconds"
             ) {
-                throw Exception("Invalid amendment receipt or verification budget")
+                throw CliFailure("invalid_state", "Invalid amendment receipt or verification budget")
             }
             RepositoryIdentity.CommitSha(J.Text(value, "previous"))
             let summary = J.Get(value, "summary")
@@ -80,22 +80,22 @@ internal class Amendment {
             let failure = "Existing PR changed, closed or merged; saved amendment retained"
             if J.Number(pull, "number") != number || J.Text(pull, "state") != "open" || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) {
-                throw Exception(failure)
+                throw CliFailure("stale_approval", failure)
             }
             if !J.Text(pull, "body").Contains(marker) || J.Text(head, "ref") != run.Text("branch") ||
                 !RepositoryIdentity.SameRepo(headRepo, run.Text("head_repo")) {
-                throw Exception(failure)
+                throw CliFailure("stale_approval", failure)
             }
             let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
             if J.Text(base, "ref") != run.Text("base_branch") {
-                throw Exception(failure)
+                throw CliFailure("stale_approval", failure)
             }
             if baseRepo != "" && !RepositoryIdentity.SameRepo(baseRepo, run.Text("repo")) {
-                throw Exception(failure)
+                throw CliFailure("stale_approval", failure)
             }
             let headSha = J.Text(head, "sha")
             if headSha != previous && headSha != candidate {
-                throw Exception(failure)
+                throw CliFailure("stale_approval", failure)
             }
             return pull
         }
@@ -106,7 +106,7 @@ internal class Amendment {
                 throw CliFailure("authentication_required", "Use the same donor account and numeric identity")
             }
             if run.Number("version") != 2 {
-                throw Exception("Amend requires a current contribution")
+                throw CliFailure("invalid_state", "Amend requires a current contribution")
             }
             RepositoryAccess.ValidateRun(run)
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
@@ -175,12 +175,12 @@ internal class Amendment {
                 }
                 let syncFailure = "Amendment synchronization differs from coordination authority"
                 if J.Text(current, "sync") != amendment.Text("sync") {
-                    throw Exception(syncFailure)
+                    throw CliFailure("stale_approval", syncFailure)
                 }
                 let currentHistory = RequestData.Canonical(Synchronization.History(current))
                 let savedHistory = RequestData.Canonical(Synchronization.History(saved))
                 if currentHistory != savedHistory {
-                    throw Exception(syncFailure)
+                    throw CliFailure("stale_approval", syncFailure)
                 }
                 let publicationRevision = J.Text(value, "publication_revision")
                 let commit = GitHub.Api(
@@ -190,10 +190,10 @@ internal class Amendment {
                 )
                 let parents = J.Items(J.Get(commit, "parents"))
                 if parents.Count != 1 || J.Text(parents[0], "sha") != amendment.Text("expected") {
-                    throw Exception("Amendment state is not the exact saved coordination transition")
+                    throw CliFailure("stale_approval", "Amendment state is not the exact saved coordination transition")
                 }
             } else if CoordinationState.Head(value) != (amendment?.Text("previous") ?? run.Text("commit")) {
-                throw Exception("Current published head differs from saved contribution")
+                throw CliFailure("stale_approval", "Current published head differs from saved contribution")
             }
             let remoteHead = Remote(
                 run,
@@ -259,7 +259,7 @@ internal class Amendment {
                 "--untracked-files=all",
                 "--ignore-submodules=none"
             ) != "" {
-                throw Exception("Amend requires a clean checkout at the declared exact commit")
+                throw CliFailure("invalid_state", "Amend requires a clean checkout at the declared exact commit")
             }
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), commit)
             Commands.Git(checkout, "merge-base", "--is-ancestor", previous, commit)
@@ -268,14 +268,16 @@ internal class Amendment {
                 "rev-parse",
                 previous + "^{tree}"
             ) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "The commit has no file changes compared with the published commit. Edit and commit the saved checkout first."
                 )
             }
             Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", run.Text("base"), commit)
             for name in[]string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"} {
                 if File.Exists(Path.Combine(checkout, ".git", name)) {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "Unresolved or ambiguous conflict operation; preserve evidence and commit an owner-reviewed resolution"
                     )
                 }
@@ -301,7 +303,7 @@ internal class Amendment {
             LocalPaths.DirectoryPath(directory)
             let archive = Path.Combine(directory, "original-evidence")
             if FileInfo(archive).LinkTarget != nil {
-                throw Exception("Original evidence archive must not be a link")
+                throw CliFailure("invalid_state", "Original evidence archive must not be a link")
             }
             if Directory.Exists(archive) {
                 OriginalEvidence.Amended(directory, run)
@@ -350,7 +352,7 @@ internal class Amendment {
                     amendment.Number("seconds") != seconds || RequestData.Canonical(
                     J.Get(amendment.Element(), "tools")
                 ) != RequestData.Canonical(tools) {
-                    throw Exception("Saved amendment budget or editing provenance changed")
+                    throw CliFailure("invalid_state", "Saved amendment budget or editing provenance changed")
                 }
             } else {
                 let authority = Authority(run, nil, args.Get("resume") == "true")
@@ -358,7 +360,7 @@ internal class Amendment {
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 Tools(policy, tools)
                 if seconds > J.Number(policy.Value, "max_seconds") {
-                    throw Exception("Amendment verification budget exceeds owner policy")
+                    throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
                 }
                 let number = J.Number(J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"), "pr")
                 let pull = Pull(run, number, run.Text("commit"), "")
@@ -467,7 +469,7 @@ internal class Amendment {
                         record,
                         Synchronization.History(amendment.Element())
                     ) != snapshot {
-                        throw Exception("Verification changed the exact amendment candidate")
+                        throw CliFailure("invalid_state", "Verification changed the exact amendment candidate")
                     }
                     amendment.Fields["verification"] = results
                     amendment.Fields["elapsed_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
@@ -518,7 +520,7 @@ internal class Amendment {
             let reference = GitHub.Api("repos/" + run.Text("head_repo") + "/git/ref/heads/" + run.Text("branch"))
             let head = J.Text(J.Get(reference, "object"), "sha")
             if head != previous && head != candidate {
-                throw Exception("Remote PR branch changed; saved amendment retained")
+                throw CliFailure("stale_approval", "Remote PR branch changed; saved amendment retained")
             }
             return head
         }
@@ -529,7 +531,7 @@ internal class Amendment {
             let policy = Policy(J.Write(J.Get(record, "policy")))
             Tools(policy, J.Get(amendment.Element(), "tools"))
             if amendment.Number("seconds") < 1 || amendment.Number("seconds") > J.Number(policy.Value, "max_seconds") {
-                throw Exception("Amendment budget exceeds current owner policy")
+                throw CliFailure("stale_approval", "Amendment budget exceeds current owner policy")
             }
             Verification.Results(amendment, record)
             let checkout = Verification.Validate(Path.Combine(directory, "checkout"))
@@ -543,21 +545,21 @@ internal class Amendment {
             )
             let patchPath = Path.Combine(location, "candidate.patch")
             if Data.Hash(snapshot) != amendment.Text("snapshot") || snapshot != File.ReadAllText(patchPath) {
-                throw Exception("Verified amendment candidate changed")
+                throw CliFailure("invalid_state", "Verified amendment candidate changed")
             }
             let pull = Pull(run, amendment.Number("pr"), amendment.Text("previous"), amendment.Text("commit"))
             let remote = Remote(run, amendment.Text("previous"), amendment.Text("commit"))
             if J.Text(J.Get(pull, "head"), "sha") != remote {
-                throw Exception("Remote branch and PR head disagree")
+                throw CliFailure("stale_approval", "Remote branch and PR head disagree")
             }
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
             let previousReceipt = PrBody.Receipt(amendment.Text("previous_body"))
             if amendment.Text("state") == "verified" {
                 if remote != amendment.Text("previous") || J.Text(receipt, "head") != amendment.Text("previous") {
-                    throw Exception("Remote changed before amendment publication intent")
+                    throw CliFailure("stale_approval", "Remote changed before amendment publication intent")
                 }
                 if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) {
-                    throw Exception("Previous receipt changed after amendment acceptance")
+                    throw CliFailure("stale_approval", "Previous receipt changed after amendment acceptance")
                 }
                 let intent = map[string, Object?]{
                     "previous": amendment.Text("previous"),
@@ -620,11 +622,14 @@ internal class Amendment {
             let previousOwned = PrBody.Owned(amendment.Text("previous_body"))
             let owned = PrBody.Owned(J.Text(pull, "body"))
             if owned != previousOwned && owned != PrBody.Owned(amendment.Text("body")) {
-                throw Exception("PR owned regions differ from saved previous or candidate state")
+                throw CliFailure("stale_approval", "PR owned regions differ from saved previous or candidate state")
             }
             if remote == amendment.Text("previous") {
                 if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) || owned != previousOwned {
-                    throw Exception("Invalid physical state: candidate receipt on the previous remote head")
+                    throw CliFailure(
+                        "stale_approval",
+                        "Invalid physical state: candidate receipt on the previous remote head"
+                    )
                 }
                 Authority(run, amendment)
                 Pull(run, amendment.Number("pr"), amendment.Text("previous"), "")
@@ -637,7 +642,7 @@ internal class Amendment {
                     record,
                     Synchronization.History(amendment.Element())
                 ) != snapshot {
-                    throw Exception("Amendment checkout changed before push")
+                    throw CliFailure("invalid_state", "Amendment checkout changed before push")
                 }
                 AccessState.Check(
                     run.Text("repo"),

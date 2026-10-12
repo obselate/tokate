@@ -887,6 +887,20 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let savedPath = Path.Combine(run, "run.json")
         let saved = File.ReadAllText(savedPath)
         using let baseline = FixtureSnapshot(Flow.Temp.Root)
+        File.AppendAllText(Path.Combine(checkout, "result.txt"), "Dirty checkout\n")
+        let rejected = Check.Envelope(
+            Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+            "submit",
+            "error",
+            "invalid_state"
+        )
+        Check.That(
+            Check.Text(rejected["error"]?["message"]) == "Verified checkout changed",
+            "JSON submission lost the exact checkout reason"
+        )
+        Check.That(!File.Exists(Path.Combine(run, "request.json")), "Dirty checkout obtained publication authority")
+        Check.That(File.ReadAllText(savedPath) == saved, "Dirty checkout rejection rewrote verification record")
+        baseline.Restore()
         Flow.Git("-C", checkout, "checkout", "--detach", Check.Text(Check.Json(saved)["base"]))
         File.WriteAllText(Path.Combine(checkout, "result.txt"), "External mixed-tool contribution\n")
         File.AppendAllText(Path.Combine(checkout, ".github/tokate-pr.md"), "\nhidden protected change\n")

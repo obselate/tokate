@@ -42,7 +42,7 @@ internal class Correction {
                 checkout,
                 []string{"status", "--porcelain=v1", "--untracked-files=all"}
             ) != "" {
-                throw Exception("Correction requires a clean checkout at the declared exact commit")
+                throw CliFailure("invalid_state", "Correction requires a clean checkout at the declared exact commit")
             }
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), commit)
             Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", run.Text("base"), commit, "--")
@@ -57,17 +57,23 @@ internal class Correction {
             if Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != correction.Text("tree") || Data.Hash(
                 patch
             ) != correction.Text("patch_sha256") || patch != File.ReadAllText(patchPath) {
-                throw Exception("Corrected head, tree or complete patch changed")
+                throw CliFailure("invalid_state", "Corrected head, tree or complete patch changed")
             }
         }
 
         internal func Completed(directory string, run Data) Dictionary[string, Object?] {
             if run.Number("version") != 2 || run.Text("source") != "tokate" {
-                throw Exception("Correction requires a current managed contribution; external work uses external --run")
+                throw CliFailure(
+                    "invalid_state",
+                    "Correction requires a current managed contribution; external work uses external --run"
+                )
             }
             let state = run.Text("state")
             if run.Number("pr") != 0 || state == "published" {
-                throw Exception("Contribution already published; correction recovery is only before first publication")
+                throw CliFailure(
+                    "invalid_state",
+                    "Contribution already published; correction recovery is only before first publication"
+                )
             }
             let reason = run.Text("failure_reason")
             if (state != "failed" && state != "generated") ||
@@ -75,7 +81,10 @@ internal class Correction {
                 reason == "inference_interrupted" ||
                 run.Flag("output_truncated") || run.Text("error").StartsWith("Codex failed.") ||
                 (run.Fields.ContainsKey("inference_exit_code") && run.Number("inference_exit_code") != 0) {
-                throw Exception("incomplete_turn: correction requires a completed successful inference turn")
+                throw CliFailure(
+                    "invalid_state",
+                    "incomplete_turn: correction requires a completed successful inference turn"
+                )
             }
             try {
                 return CodexEvidence.CompletedUsage(
@@ -91,7 +100,7 @@ internal class Correction {
             let record = ContributionAuthority.Recheck(run)
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
             if J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object {
-                throw Exception("Contribution already published")
+                throw CliFailure("invalid_state", "Contribution already published")
             }
             let archive = Path.Combine(directory, "original-evidence")
             if requireArchive || Directory.Exists(archive) {
@@ -140,7 +149,7 @@ internal class Correction {
             LocalPaths.DirectoryPath(directory)
             let final = Path.Combine(directory, "original-evidence")
             if FileInfo(final).LinkTarget != nil {
-                throw Exception("Original evidence archive must not be a link")
+                throw CliFailure("invalid_state", "Original evidence archive must not be a link")
             }
             if Directory.Exists(final) {
                 OriginalEvidence.Load(directory)
@@ -268,7 +277,10 @@ internal class Correction {
             let record = Authority(directory, run, requireArchive: args.Get("prepare") != "true")
             if args.Get("prepare") == "true" {
                 if Publication.Pulls(run).Count != 0 {
-                    throw Exception("Contribution already has a physical PR; inspect publication instead")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Contribution already has a physical PR; inspect publication instead"
+                    )
                 }
                 CorrectionPublication.Remote(run, nil, true)
                 Archive(directory, run, record)
@@ -280,7 +292,7 @@ internal class Correction {
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
             let seconds = args.Number("seconds")
             if seconds > J.Number(J.Get(record, "policy"), "max_seconds") {
-                throw Exception("Correction verification budget exceeds original owner limit")
+                throw CliFailure("stale_approval", "Correction verification budget exceeds original owner limit")
             }
             let tools = Tools(args.Get("tools"), J.Get(record, "policy"))
             let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
@@ -292,10 +304,11 @@ internal class Correction {
                         "seconds"
                     ) != seconds ||
                         RequestData.Canonical(J.Get(saved.Element(), "tools")) != RequestData.Canonical(tools) {
-                        throw Exception("Saved correction budget or provenance changed")
+                        throw CliFailure("invalid_state", "Saved correction budget or provenance changed")
                     }
                     if saved.Text("state") != "verified" {
-                        throw Exception(
+                        throw CliFailure(
+                            "verification_failed",
                             "Correction verification failed or was interrupted; a new corrected commit is an explicit new attempt"
                         )
                     }
@@ -309,7 +322,8 @@ internal class Correction {
                     return
                 }
                 if J.Get(saved.Element(), "publication").ValueKind == JsonValueKind.Object {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "Interrupted publication intent already binds another candidate; inspect it before any new correction"
                     )
                 }
@@ -331,7 +345,7 @@ internal class Correction {
             Save(directory, correction)
             try {
                 if Publication.Pulls(run).Count != 0 {
-                    throw Exception("Contribution already has a physical PR")
+                    throw CliFailure("invalid_state", "Contribution already has a physical PR")
                 }
                 CorrectionPublication.Remote(run, correction, true)
                 let checkout = Path.Combine(directory, "checkout")
@@ -404,7 +418,8 @@ internal class Correction {
                 throw CliFailure(
                     code,
                     PublicOutput.Enabled ? PublicOutput.Message(code):
-                    correction.Text("failure_reason") + " (" + correction.Text("failure_stage") + "): " + error.Message
+                    correction.Text("failure_reason") + " (" + correction.Text("failure_stage") + "): " + error.Message,
+                    summary: error is CliFailure safe ? safe.Summary: PublicOutput.Message(code)
                 )
             }
             Terminal.Message("Exact corrected commit passed every original owner check. Use submit --run " + directory)

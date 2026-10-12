@@ -473,7 +473,18 @@ internal class AmendmentFlow {
                         "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
                     )
                 } else if failure == "budget" {
-                    flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "3601s"}, 1)
+                    let rejected = Check.Envelope(
+                        flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "3601s", "--json"}, 1),
+                        "amend",
+                        "error",
+                        "stale_approval"
+                    )
+                    Check.That(
+                        Check.Text(
+                            rejected["error"]?["message"]
+                        ) == "Amendment verification budget exceeds owner policy",
+                        "JSON amendment lost the owner budget reason"
+                    )
                     continue
                 } else if failure == "closed" || failure == "merged" {
                     flow.Reload()
@@ -498,7 +509,16 @@ internal class AmendmentFlow {
                     )
                     continue
                 }
-                let rejected = Amend(flow, run, commit, 1, tools)
+                let rejected = Amend(flow, run, commit, 1, tools, json: failure == "dirty")
+                if failure == "dirty" {
+                    let value = Check.Envelope(rejected, "amend", "error", "invalid_state")
+                    Check.That(
+                        Check.Text(
+                            value["error"]?["message"]
+                        ) == "Amend requires a clean checkout at the declared exact commit",
+                        "JSON amendment lost the exact checkout reason"
+                    )
+                }
                 if failure == "unchanged" || failure == "empty-commit" {
                     Check.Contains(
                         rejected.Error,

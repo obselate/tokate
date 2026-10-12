@@ -19,7 +19,7 @@ internal class Submission {
             if run.Text("source") != "tokate" || run.Text("state") != (
                 incomplete ? "incomplete_generated": "generated"
             ) {
-                throw Exception("Expected successfully verified Tokate execution")
+                throw CliFailure("invalid_state", "Expected successfully verified Tokate execution")
             }
             let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
             let head = Commands.Git(checkout, "rev-parse", "HEAD")
@@ -32,17 +32,17 @@ internal class Submission {
                 "HEAD"
             ) == start
             if head != start && !recovered {
-                throw Exception("Verified base changed")
+                throw CliFailure("invalid_state", "Verified base changed")
             }
             Commands.Git(checkout, "diff", "--exit-code")
             ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Text("base"))
             let patch = Commands.Git(checkout, "diff", "--cached", "--binary", run.Text("base"))
             if patch + "\n" != File.ReadAllText(Path.Combine(directory, "changes.patch")) {
-                throw Exception("Verified patch changed")
+                throw CliFailure("invalid_state", "Verified patch changed")
             }
             PublicSummary.Bind(run, patch)
             if incomplete && J.Get(run.Element(), "public_summary").ValueKind == JsonValueKind.Undefined {
-                throw Exception("Incomplete draft summary no longer matches the saved patch")
+                throw CliFailure("invalid_state", "Incomplete draft summary no longer matches the saved patch")
             }
             if !recovered {
                 Commands.Git(
@@ -96,13 +96,14 @@ internal class Submission {
                     run.Text("omp_version") == ""
             ) ||
                 run.Text("commit") != "" || run.Number("pr") != 0 {
-                throw Exception("Incomplete publication requires stopped, unpublished managed work")
+                throw CliFailure("invalid_state", "Incomplete publication requires stopped, unpublished managed work")
             }
             let record = ContributionAuthority.Recheck(run)
             let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
             PublicSummary.Capture(directory, checkout, run)
             if J.Get(run.Element(), "public_summary").ValueKind == JsonValueKind.Undefined {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Write a short tokate-public-summary.json in the saved checkout before publishing incomplete work"
                 )
             }
@@ -132,7 +133,7 @@ internal class Submission {
                     "repos/" + repo + "/issues/" + issue.ToString() + "/comments?per_page=100&page=" + page.ToString()
                 )
                 if response.ValueKind != JsonValueKind.Array {
-                    throw Exception("Cannot inspect complete request comment evidence")
+                    throw CliFailure("invalid_state", "Cannot inspect complete request comment evidence")
                 }
                 for row in response.EnumerateArray() {
                     if J.Get(J.Get(row, "user"), "id").ToString() != actor.ToString() {
@@ -155,31 +156,31 @@ internal class Submission {
                     let canonical = GitHub.Api("repos/" + repo + "/issues/comments/" + id.ToString())
                     let failure = "Request UUID has changed actor, contents, repository or issue evidence"
                     if RepositoryIdentity.PositiveId(J.Get(canonical, "id")) != id {
-                        throw Exception(failure)
+                        throw CliFailure("stale_approval", failure)
                     }
                     let author = J.Get(J.Get(canonical, "user"), "id")
                     if RepositoryIdentity.PositiveId(author) != RepositoryIdentity.PositiveId(actor) {
-                        throw Exception(failure)
+                        throw CliFailure("stale_approval", failure)
                     }
                     if !RepositoryIdentity.IsIssueUrl(J.Text(canonical, "issue_url"), repo, issue) {
-                        throw Exception(failure)
+                        throw CliFailure("stale_approval", failure)
                     }
                     if J.Text(canonical, "body") != body {
-                        throw Exception(failure)
+                        throw CliFailure("stale_approval", failure)
                     }
                     if RequestData.Canonical(candidate) != RequestData.Canonical(request) {
-                        throw Exception(failure)
+                        throw CliFailure("stale_approval", failure)
                     }
                     count++
                 }
                 if response.GetArrayLength() < 100 {
                     if count > 1 {
-                        throw Exception("Ambiguous duplicate request comments")
+                        throw CliFailure("invalid_state", "Ambiguous duplicate request comments")
                     }
                     return count == 1
                 }
             }
-            throw Exception("Request comment inspection exceeded its bounded history; no write made")
+            throw CliFailure("invalid_state", "Request comment inspection exceeded its bounded history; no write made")
         }
 
         internal func Request(args Args) {
@@ -199,7 +200,7 @@ internal class Submission {
             let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(requestRepo))
             let repo = RepositoryIdentity.Repo(J.Text(info, "full_name"))
             if !String.Equals(repo, requestRepo, StringComparison.OrdinalIgnoreCase) {
-                throw Exception("Canonical request repository differs from command")
+                throw CliFailure("stale_approval", "Canonical request repository differs from command")
             }
             RepositoryIdentity.PositiveId(J.Get(info, "id"))
             let viewer = GitHub.Api("user")
@@ -215,20 +216,20 @@ internal class Submission {
             }
             let binding = RequestData.Binding(actor, value)
             if FileInfo(journal).LinkTarget != nil {
-                throw Exception("Request posting journal must not be a symbolic link")
+                throw CliFailure("invalid_state", "Request posting journal must not be a symbolic link")
             }
             if File.Exists(journal) {
                 let saved = RequestData.FileData(journal, 16384)
                 let failure = "Saved request UUID binding changed; use a new file and UUID for new work"
                 if !RepositoryIdentity.SameRepo(J.Text(saved, "repo"), repo) || J.Number(saved, "issue") != issue {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
                 let savedActor = J.Get(saved, "actor").ToString()
                 if savedActor != actor.ToString() || J.Text(saved, "binding") != binding {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
                 if RequestData.Canonical(J.Get(saved, "request")) != RequestData.Canonical(value) {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
             }
             let state = CoordinationState.Load(repo, issue)
@@ -245,7 +246,8 @@ internal class Submission {
                 return
             }
             if File.Exists(journal) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "interrupted_publication: saved request has no unique physical comment; refusing blind retry"
                 )
             }
@@ -253,7 +255,7 @@ internal class Submission {
                 value,
                 "approval"
             ) {
-                throw Exception("Stale state or approval; no request posted")
+                throw CliFailure("stale_approval", "Stale state or approval; no request posted")
             }
             if J.Text(value, "action") != "release" {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
@@ -306,14 +308,14 @@ internal class Submission {
                 )
                 let failure = "Comment write response lacks exact request evidence"
                 if !RepositoryIdentity.IsIssueUrl(J.Text(posted, "issue_url"), repo, issue) {
-                    throw Exception(failure)
+                    throw CliFailure("invalid_state", failure)
                 }
                 let author = J.Get(J.Get(posted, "user"), "id")
                 if RepositoryIdentity.PositiveId(author) != RepositoryIdentity.PositiveId(actor) || J.Text(
                     posted,
                     "body"
                 ) != RequestData.Comment(request) {
-                    throw Exception(failure)
+                    throw CliFailure("invalid_state", failure)
                 }
                 RepositoryIdentity.PositiveId(J.Get(posted, "id"))
             } catch (error Exception) {
@@ -414,11 +416,11 @@ internal class Submission {
                 let saved = RequestData.FileData(path, 8192)
                 let expected = PublicationRequest(run)
                 if RequestData.Canonical(saved) != RequestData.Canonical(expected) {
-                    throw Exception("Saved publication UUID binding changed")
+                    throw CliFailure("stale_approval", "Saved publication UUID binding changed")
                 }
                 let viewer = GitHub.Api("user")
                 if J.Get(viewer, "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
-                    throw Exception("Saved publication belongs to another authenticated actor")
+                    throw CliFailure("stale_approval", "Saved publication belongs to another authenticated actor")
                 }
                 let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
                 let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), saved)
@@ -459,7 +461,7 @@ internal class Submission {
             let record = ContributionAuthority.Recheck(run)
             if run.Text("state") != (RequestData.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
                 run.Text("commit") == "" {
-                throw Exception("Only an independently verified exact commit can be submitted")
+                throw CliFailure("invalid_state", "Only an independently verified exact commit can be submitted")
             }
             if !RequestData.Incomplete(run.Element()) {
                 Verification.Results(run, record)
@@ -470,7 +472,7 @@ internal class Submission {
                 "status",
                 "--porcelain"
             ) != "" {
-                throw Exception("Verified checkout changed")
+                throw CliFailure("invalid_state", "Verified checkout changed")
             }
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), run.Text("commit"))
             Commands.Git(checkout, "diff", "--check", run.Text("base"), run.Text("commit"))
