@@ -189,7 +189,7 @@ internal class Coordinator {
                             "head": donor + ":" + J.Text(metadata, "branch"),
                             "base": J.Text(J.Get(record, "approval"), "base_branch"),
                             "draft": true,
-                            "maintainer_can_modify": true
+                            "maintainer_can_modify": false
                         },
                         expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
                     )
