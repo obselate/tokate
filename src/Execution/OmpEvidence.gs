@@ -78,8 +78,6 @@ internal class OmpEvidence {
             }
         }
 
-        // The last assistant error OMP reported, such as rejected credentials or exhausted credits.
-        // Providers can echo key fragments, so token-like text is removed.
         internal func Failure(output string) string {
             var reason = ""
             for line in output.Split('\n') {
