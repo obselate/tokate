@@ -73,8 +73,11 @@ internal class ContributionStatusChecks {
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
-            Check.Contains(Check.Text(Row(eligible)["next"]?["action"]), "owner reruns the failed workflow run")
-            Check.Contains(Check.Text(Row(eligible)["next"]?["action"]), "donor runs the same command again")
+            Check.Contains(
+                Check.Text(Row(eligible)["next"]?["action"]),
+                "owner must update the coordinator, then re-process the request"
+            )
+            Check.Contains(Check.Text(Row(eligible)["next"]?["action"]), "donor runs the same saved command again")
             Check.That(Row(eligible)["next"]?["command"]?.AsArray().Count == 0, "Status invented a request file")
             let owner = Row(Read(test, owner: true))
             Check.That(

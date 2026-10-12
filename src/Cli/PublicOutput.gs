@@ -220,7 +220,7 @@ internal class PublicOutput {
             if run.Text("state") == "claim_pending" {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
-                    "action": "If the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again.",
+                    "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
                     "command": []string{
                         "tokate",
                         run.Text("source") == "tokate" ? "work": "prepare",

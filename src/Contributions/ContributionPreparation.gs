@@ -478,7 +478,8 @@ internal class ContributionPreparation {
                         directory +
                         "; resume explicitly with " +
                         (run.Text("source") == "tokate" ? "work --run DIR or ": "") +
-                        "prepare --run DIR. If the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again."
+                        "prepare --run DIR. If the Tokate workflow failed: " +
+                        ApiTransport.MutationRecovery
                 )
             } finally {
                 ApiTransport.EndDeadline()

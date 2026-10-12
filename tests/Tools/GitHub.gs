@@ -191,7 +191,7 @@ internal partial class Fixture {
                     }
                     return Response(
                         status,
-                        Check.Map("message", Check.Text(fault["message"])),
+                        fault["body"] ?? Check.Map("message", Check.Text(fault["message"])),
                         Check.Text(fault["headers"])
                     )
                 }

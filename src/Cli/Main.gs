@@ -97,7 +97,7 @@ func Main(args[]string) int32 {
 
         PublicOutput.Truncated = PublicOutput.Truncated || code == "output_too_large"
         let recovery = validated && PublicOutput.Command == "coordinate" ?
-        " To recover a failed GitHub mutation, the owner reruns the failed Tokate workflow run in GitHub Actions, then the donor runs the same command again.": ""
+        " To recover a failed GitHub mutation: " + ApiTransport.MutationRecovery: ""
         message += recovery
         Terminal.Message("tokate: " + (PublicOutput.Enabled ? message: error.Message + recovery), "red", true)
 
