@@ -265,6 +265,25 @@ internal partial class Fixture {
         let folder = State["repository_folders"]?[repo] is JsonNode selected ? Check.Text(selected):
         repo == "owner/project" ? "upstream": "fork"
         let tail = String.Join("/", parts, 3, parts.Length - 3)
+        if tail == "actions/permissions/workflow" {
+            if method == "PUT" {
+                State["workflow_permissions"] = body.DeepClone()
+                return Response(204)
+            }
+            return Answer(
+                State["workflow_permissions"] ?? Check.Map(
+                    "default_workflow_permissions",
+                    "read",
+                    "can_approve_pull_request_reviews",
+                    true
+                )
+            )
+        }
+        if tail == "actions/policies" && method == "POST" {
+            State["actions_policy"] = body.DeepClone()
+            State["actions_policies"] = Check.Map("total_count", 1, "policies", Check.Json("[{\"id\":1}]"))
+            return Response(201, body)
+        }
         if tail.StartsWith("actions/policies?") {
             return Answer(
                 State["actions_policies"] ?? Check.Map("total_count", 1, "policies", Check.Json("[{\"id\":1}]"))
@@ -576,6 +595,10 @@ internal partial class Fixture {
                 )
             }
             return Answer(State["check_runs"] ?? Check.Map("total_count", runs.Count, "check_runs", runs))
+        }
+        if tail.StartsWith("actions/runs?") {
+            let runs = State["workflow_runs"]?.AsArray() ?? JsonArray()
+            return Answer(Check.Map("total_count", runs.Count, "workflow_runs", CommentPage(runs)))
         }
         if tail.StartsWith("commits/") && tail.Contains("/status?") {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))

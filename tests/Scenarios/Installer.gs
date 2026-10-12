@@ -23,8 +23,8 @@ internal class Installer {
             )
             File.SetUnixFileMode(omp, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             temp.Env["TOKATE_TEST_OMP_DIR"] = Path.Combine(temp.Env["HOME"], ".omp/agent")
-            let homes = []string{".agents", ".claude", ".pi/agent", ".omp/agent", ".hermes"}
-            let harnesses = []string{"codex", "claude", "pi", "omp", "hermes"}
+            let homes = []string{".agents", ".claude", ".pi/agent", ".omp/agent"}
+            let harnesses = []string{"codex", "claude", "pi", "omp"}
             for i in 0 ... harnesses.Length {
                 let args = []string{script, harnesses[i]}
                 Check.Success(TestProcess.Run("/bin/sh", args, temp.Env))
@@ -43,7 +43,7 @@ internal class Installer {
                 File.WriteAllText(source, original)
             }
             let custom = Path.Combine(temp.Root, "custom skills")
-            let customArgs = []string{script, "hermes", custom}
+            let customArgs = []string{script, "codex", custom}
             Check.Success(TestProcess.Run("/bin/sh", customArgs, temp.Env))
             let target = Path.Combine(custom, "tokate/SKILL.md")
             File.Delete(target)
@@ -98,7 +98,7 @@ internal class Installer {
                 "Installer accepted an unknown harness"
             )
             Console.WriteLine(
-                "PASS shared skill installation, updates, custom paths and preservation for five harnesses"
+                "PASS shared skill installation, updates, custom paths and preservation for four harnesses"
             )
         }
 

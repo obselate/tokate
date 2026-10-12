@@ -9,7 +9,11 @@ import System.Text.RegularExpressions
 
 internal class CoordinatorSetup {
     shared {
-        internal func EventPolicy(repo string, workflow string = ".github/workflows/tokate-coordinator.yml") {
+        internal func EventPolicy(
+            repo string,
+            workflow string = ".github/workflows/tokate-coordinator.yml",
+            required bool = true
+        ) bool {
             let policies = GitHub.Api("repos/" + repo + "/actions/policies?has_parents=true&per_page=100")
             let rows = J.Get(policies, "policies")
             if rows.ValueKind != JsonValueKind.Array || J.Number(policies, "total_count") != rows.GetArrayLength() ||
@@ -81,14 +85,17 @@ internal class CoordinatorSetup {
                     configured = true
                 }
             }
-            if !configured {
+            if !configured && required {
                 throw Exception(
                     "Explicit Actions event policy required before admission setup. Allow issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
                 )
             }
-            Terminal.Message(
-                "Actions event policy permits Tokate events. Review actor rules so external PR events can run admission."
-            )
+            if configured {
+                Terminal.Message(
+                    "Actions event policy permits Tokate events. Review actor rules so external PR events can run admission."
+                )
+            }
+            return configured
         }
 
         private func Applies(condition JsonElement, workflow string) bool {

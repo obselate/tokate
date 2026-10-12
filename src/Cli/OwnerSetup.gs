@@ -70,6 +70,13 @@ internal class OwnerSetup {
             if !interactive {
                 return fallback
             }
+            if key == "seconds" || key == "reservation-seconds" {
+                let seconds = fallback == "" ? 0: Int32.Parse(fallback)
+                let time = seconds == 0 ? "": seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
+                seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
+                let answer = Answer(prompt, time)
+                return answer == "" ? "": Cli.Seconds(answer, key == "seconds" ? "max-time": "reservation-time")
+            }
             if key == "models" || key == "verification" {
                 if fallback != "" {
                     let keep = Answer(
@@ -146,7 +153,7 @@ internal class OwnerSetup {
                 }
                 Terminal.Message("Current allowed tools: " + String.Join(", ", current), error: true)
                 requested = Answer(
-                    "Managed tools: codex,claude,pi keeps external and OMP permissions; use harness/provider pairs to replace all; Enter keeps current"
+                    "Allowed tools (--allowed-tools): codex,claude,pi keeps external and OMP permissions; use harness/provider pairs to replace all; Enter keeps current"
                 )
             }
             if requested == "" {
@@ -287,14 +294,19 @@ internal class OwnerSetup {
                         fields["verification"] = RequestData.Parse(SetupAnswer(args, "verification", "", "", true))
                     }
                     if change == 2 {
+                        let seconds = J.Number(value, "max_seconds")
                         fields["max_seconds"] = int32.Parse(
-                            WizardScreen.Read(
-                                "Project time limit",
-                                "Total minutes for coding and verification.",
-                                "Minutes",
-                                (J.Number(value, "max_seconds") / 60).ToString()
+                            Cli.Seconds(
+                                WizardScreen.Read(
+                                    "Project time limit",
+                                    "Total time for coding and verification, such as 1h or 30m.",
+                                    "Maximum donor time (--max-time)",
+                                    seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
+                                    seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
+                                ),
+                                "max-time"
                             )
-                        ) * 60
+                        )
                     }
                     if change == 3 {
                         fields["required_checks"] = RequestData.Parse(
@@ -391,6 +403,88 @@ internal class OwnerSetup {
                         "; push or discard the local policy before running init"
                 )
             }
+            RepositoryAccess.RequireOwner(repo)
+            let foreground = !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
+                !Console.IsInputRedirected
+            let permissionsPath = "repos/" + repo + "/actions/permissions/workflow"
+            let permissions = GitHub.Api(permissionsPath)
+            let events = CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow), required: false)
+            let pullRequests = J.Bool(permissions, "can_approve_pull_request_reviews")
+            if !events || !pullRequests {
+                let settings = List[string]()
+                if !events {
+                    settings.Add("Actions event policy allowing issue_comment, pull_request_target and workflow_call")
+                }
+                if !pullRequests {
+                    settings.Add("Allow GitHub Actions to create and approve pull requests")
+                }
+                if !foreground {
+                    throw Exception(
+                        "Missing GitHub settings: " + String.Join(", ", settings) +
+                            ". Run interactive init to confirm the changes."
+                    )
+                }
+                let eventPolicy = map[string, Object?]{
+                    "name": "Tokate coordinator events",
+                    "enforcement": "active",
+                    "conditions": map[string, Object?]{
+                        "workflow_path": map[string, Object?]{
+                            "include": []string{Path.GetRelativePath(root, workflow)},
+                            "exclude": []string{}
+                        }
+                    },
+                    "rules": []Object{
+                        map[string, Object?]{
+                            "type": "restrict_action_events",
+                            "parameters": map[string, Object?]{
+                                "allowed_events": []string{"issue_comment", "pull_request_target", "workflow_call"}
+                            }
+                        }
+                    }
+                }
+                let workflowPermissions = map[string, Object?]{
+                    "default_workflow_permissions": J.Text(permissions, "default_workflow_permissions"),
+                    "can_approve_pull_request_reviews": true
+                }
+                let changes = List[string]()
+                if !events {
+                    changes.Add(
+                        "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for " +
+                            Path.GetRelativePath(root, workflow)
+                    )
+                }
+                if !pullRequests {
+                    if J.Text(permissions, "default_workflow_permissions") != "read" && J.Text(
+                        permissions,
+                        "default_workflow_permissions"
+                    ) != "write" {
+                        throw Exception("Cannot preserve default_workflow_permissions from the GitHub Actions settings")
+                    }
+                    changes.Add(
+                        "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay " +
+                            J.Text(permissions, "default_workflow_permissions") + ")"
+                    )
+                }
+                let answer = WizardScreen.Read(
+                    "GitHub Actions settings",
+                    String.Join("\n\n", changes),
+                    "Apply these GitHub settings? (yes/no)",
+                    "no"
+                )
+                if !String.Equals(answer, "yes", StringComparison.OrdinalIgnoreCase) && !String.Equals(
+                    answer,
+                    "y",
+                    StringComparison.OrdinalIgnoreCase
+                ) {
+                    throw OperationCanceledException("GitHub settings were not changed")
+                }
+                if !events {
+                    GitHub.Api("repos/" + repo + "/actions/policies", eventPolicy, method: "POST")
+                }
+                if !pullRequests {
+                    GitHub.Api(permissionsPath, workflowPermissions, method: "PUT")
+                }
+            }
             var existing Policy? = nil
             let fields = map[string, Object?]{}
             if upstream != "" {
@@ -405,8 +499,6 @@ internal class OwnerSetup {
                 fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
                 fields["max_seconds"] = 3600
             }
-            let foreground = !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
-                !Console.IsInputRedirected
             if foreground && args.Guided {
                 Guide(args, fields)
             }
@@ -414,7 +506,7 @@ internal class OwnerSetup {
             let mode = SetupAnswer(
                 args,
                 "model-policy",
-                "Models: unrestricted or whitelist (explicit choice required)",
+                "Models: unrestricted or whitelist (--model-policy, explicit choice required)",
                 existing?.ModelPolicy ?? "",
                 interactive
             )
@@ -462,13 +554,23 @@ internal class OwnerSetup {
                 if key == "seconds" {
                     fallback = J.Number(value, "max_seconds").ToString()
                 }
+                if interactive && fallback == "" && key == "base-branch" {
+                    fallback = J.Text(info, "default_branch")
+                }
+                if interactive && fallback == "" && key == "reservation-seconds" {
+                    fallback = "86400"
+                }
                 let answer = SetupAnswer(
                     args,
                     key,
-                    key +
-                        (
-                        key == "verification" ? " JSON argv arrays": key == "required-checks" ? " JSON check names": ""
-                    ),
+                    switch key {
+                        case "eligibility": "Who can contribute (--eligibility: trusted, open or manual)"
+                        case "base-branch": "Target branch (--base-branch)"
+                        case "seconds": "Maximum donor time (--max-time, e.g. 1h)"
+                        case "reservation-seconds": "Reservation time (--reservation-time, e.g. 30m)"
+                        case "pr-text": "Pull request text (--pr-text)"
+                        default: key
+                    },
                     fallback,
                     interactive
                 )
@@ -488,9 +590,7 @@ internal class OwnerSetup {
             let text = before != "" && RequestData.Canonical(J.Parse(before)) == RequestData.Canonical(
                 policy.Value
             ) ? before: Pretty(policy.Value)
-            RepositoryAccess.RequireOwner(repo)
             let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
-            CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow))
             let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
             WizardScreen.Close()
             SetupPath(root, ".github/tokate.json")

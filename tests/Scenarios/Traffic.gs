@@ -532,7 +532,7 @@ internal class CommandTrafficChecks {
             flow.ResetTraffic()
             let failed = flow.Call([]string{"checks", "--run", run, "--json"}, 1, traffic: true)
             Check.Envelope(failed, "checks", "error", "verification_failed")
-            Budgets(flow, failed, 43, 0, 0, 27)
+            Budgets(flow, failed, 44, 0, 0, 27)
         }
 
         private func WatchTraffic(binary string) {
@@ -540,10 +540,10 @@ internal class CommandTrafficChecks {
             let run = Published(flow)
             flow.ResetTraffic()
             let pending = flow.Call([]string{"checks", "--run", run}, 8, traffic: true)
-            Budgets(flow, pending, 43, 0, 0, 27)
+            Budgets(flow, pending, 44, 0, 0, 27)
             flow.ResetTraffic()
             let direct = flow.Call([]string{"checks", "owner/project#10"}, 8, traffic: true)
-            Budgets(flow, direct, 43, 0, 0, 27)
+            Budgets(flow, direct, 44, 0, 0, 27)
             let path = Path.Combine(run, "checks.json")
             flow.Reload()
             flow.State["check_state_path"] = JsonValue.Create(path)
@@ -552,7 +552,7 @@ internal class CommandTrafficChecks {
             flow.Save()
             flow.ResetTraffic()
             let result = Watch(flow, run, "10", 0)
-            Budgets(flow, result, 130, 0, 0, 112)
+            Budgets(flow, result, 133, 0, 0, 114)
             Check.That(result.Output.Split("Checks pending").Length == 2, "Unchanged polls repeated output")
             flow.Reload()
             let observations = flow.State["check_state_times"]
@@ -566,7 +566,7 @@ internal class CommandTrafficChecks {
             flow.State["check_polls"] = JsonValue.Create(0)
             flow.Save()
             flow.ResetTraffic()
-            Budgets(flow, Watch(flow, run, "10", 0, true), 130, 0, 0, 112)
+            Budgets(flow, Watch(flow, run, "10", 0, true), 133, 0, 0, 114)
         }
 
         private func WatchChanges(binary string) {
@@ -586,7 +586,7 @@ internal class CommandTrafficChecks {
                         result.Error,
                         kind == "head" ? "current exact-commit coordination authority": "Approval revoked or task changed"
                     )
-                    Budgets(flow, result, kind == "head" ? 35: 27, 0, 0, kind == "head" ? 17: 9)
+                    Budgets(flow, result, kind == "head" ? 36: 28, 0, 0, kind == "head" ? 17: 9)
                 }
             }
             baseline.Restore()

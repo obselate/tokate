@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-    echo 'Usage: sh plugins/install.sh codex|claude|pi|omp|hermes [SKILLS_DIRECTORY]' >&2
+    echo 'Usage: sh plugins/install.sh codex|claude|pi|omp [SKILLS_DIRECTORY]' >&2
     exit 1
 fi
 case "$1" in
@@ -18,7 +18,6 @@ case "$1" in
             esac
         fi
         ;;
-    hermes) root="${HERMES_HOME:-$HOME/.hermes}/skills" ;;
     *) echo 'Unknown harness.' >&2; exit 1 ;;
 esac
 root=${2:-$root}

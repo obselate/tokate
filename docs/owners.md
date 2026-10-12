@@ -5,44 +5,45 @@ harness or AI subscription is not required. Use public GitHub repositories.
 
 ## Set up once
 
-```sh
-gh auth login
-tokate doctor owner --auth
-tokate init OWNER/REPO
-```
-
-Run setup inside a checkout of your repository, or pass `--path` to one. Setup
-starts from the policy on your default branch on GitHub, so existing settings carry
-over without repeating options. Choose model restrictions, project verification
-commands, required CI checks and time limits. Setup writes the files directly;
-review the diff, then commit and push the policy and workflow to the default
-branch before approving work. Keep fork CI read-only, without secrets, and require
-its checks in branch protection.
-
-Setup uses a matching stable release. It creates `.github/tokate.json` and a small,
-immutable shared-workflow entry. Existing configuration is preserved. Allow its
-`issue_comment`, `pull_request_target` and `workflow_call` events in GitHub Actions
-policies, including external actors. Enable "Allow GitHub Actions to create and
-approve pull requests" in Actions settings. The coordinator does not execute donor code.
-It can close PRs without current owner authorization. Review that behavior before
-enabling the workflow.
-
-New setup uses Trusted access. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
-at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`. Omission preserves
-existing tools; new noninteractive setup defaults to Codex.
-OMP is allowed per provider with exact pairs, such as
-`--allowed-tools codex/openai,omp/openrouter`. Exact pairs replace the whole list,
-which is also how to remove OMP: the `codex,claude,pi` shorthand keeps existing OMP pairs.
-OMP runs with the donor's configuration and no additional isolation.
-
-The model checklist searches as you type. Space selects, Enter accepts, and F2
-adds a model absent from local discovery. Suggestions are not selected for you.
-A local model needs its exact ID and supported reasoning levels. Use `absent` only
-for models without reasoning. Availability remains unknown.
-Use `tokate init --help` for scripted setup and policy options. Optional root
-`DECREE.md` contains task instructions captured at approval. It cannot expand
-permissions or donor budgets. Use `protected_paths` to protect verification tooling
-and other authority files beyond Tokate's built-in protections.
+1. Run `gh auth login`, then `tokate doctor owner --auth`.
+2. Run `tokate init OWNER/REPO` inside your repository checkout, or pass `--path`
+   to one. Setup starts from the policy on your default branch on GitHub.
+3. Review the GitHub Actions settings before answering project questions. If the
+   event policy is missing, setup offers to create the active "Tokate coordinator
+   events" policy for the coordinator workflow, allowing `issue_comment`,
+   `pull_request_target` and `workflow_call`. If PR creation is disabled, setup
+   offers to enable "Allow GitHub Actions to create and approve pull requests"
+   while keeping the default workflow permissions. Confirm the displayed changes
+   to apply them. With `--non-interactive`, missing settings cause failure before
+   any writes. Existing blocking event or actor policies require owner review in
+   Settings > Actions > Policies, including access for external actors.
+4. Choose contributor access, model restrictions, verification commands, required
+   CI checks and time limits. New setup uses Trusted access. Time prompts use
+   `--max-time` and `--reservation-time` units, such as `1h` or `30m`, and show
+   defaults in those units. The model checklist searches as you type. Space
+   selects, Enter accepts, and F2 adds a model absent from local discovery.
+   Suggestions are not selected for you. A local model needs its exact ID and
+   supported reasoning levels. Use `absent` only for models without reasoning.
+   Availability remains unknown.
+5. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
+   at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`.
+   Omission preserves existing tools. New noninteractive setup defaults to Codex.
+   OMP requires exact provider pairs, such as
+   `--allowed-tools codex/openai,omp/openrouter`. Exact pairs replace the whole
+   list. The `codex,claude,pi` shorthand keeps existing OMP pairs. OMP runs with
+   the donor's configuration and no additional isolation.
+6. Review the generated diff. Setup uses a matching stable release and writes
+   `.github/tokate.json` and a small, immutable shared-workflow entry directly.
+   Existing configuration is preserved. The coordinator does not execute donor
+   code. It can close PRs without current owner authorization. Review that
+   behavior before enabling the workflow.
+7. Commit and push the policy and workflow to the default branch before approving
+   work. Keep fork CI read-only, without secrets, and require its checks in branch
+   protection. Use `tokate init --help` for scripted setup and policy options.
+   Optional root `DECREE.md` contains task instructions captured at approval.
+   It cannot expand permissions or donor budgets. Use `protected_paths` to protect
+   verification tooling and other authority files beyond Tokate's built-in
+   protections.
 
 ## Approve an issue and donor
 

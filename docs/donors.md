@@ -10,7 +10,7 @@ gh auth login
 ```
 
 For in-harness guidance, run `sh plugins/install.sh codex` from the release archive
-(or choose `claude`, `pi`, `omp` or `hermes`), then restart the harness and invoke its Tokate skill.
+(or choose `claude`, `pi` or `omp`), then restart the harness and invoke its Tokate skill.
 
 Choose an approved, available issue. If access is required, request it and wait
 for the owner to grant it:

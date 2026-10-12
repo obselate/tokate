@@ -425,7 +425,36 @@ internal class AccessState {
                 "history": history
             }
             if !PublicOutput.Enabled {
-                Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor access and owner review")
+                if args.Get("operation") == "history" {
+                    Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor access and owner review")
+                } else {
+                    Terminal.Heading("Donor access")
+                    for member in trusted {
+                        Terminal.Row("Trusted donor", J.Text(member, "donor"))
+                    }
+                    for member in members {
+                        let login = J.Text(member, "donor")
+                        for issue in J.Items(J.Get(member, "issues")) {
+                            Terminal.Row("Issue grant", login + " #" + issue.ToString())
+                        }
+                        if J.Bool(member, "denied") {
+                            Terminal.Row("Denied donor", login)
+                        }
+                    }
+                    for request in pending {
+                        Terminal.Row(
+                            "Pending request",
+                            J.Text(request, "donor") + " #" + J.Number(request, "issue").ToString() + " (" + J.Text(
+                                request,
+                                "scope"
+                            ) +
+                                ")"
+                        )
+                    }
+                    if members.Count == 0 && pending.Count == 0 {
+                        Terminal.Message("No donor access or pending requests.", "default")
+                    }
+                }
             }
         }
 
@@ -453,7 +482,7 @@ internal class AccessState {
                 let state = CoordinationState.Load(repo, issue)
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), J.Get(viewer, "id"))
                 if !PublicOutput.Enabled {
-                    Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor eligibility")
+                    Terminal.Message("You are eligible for approved issue #" + issue.ToString() + ".")
                 }
                 return
             }
@@ -552,7 +581,18 @@ internal class AccessState {
                 "access_sha": access.Sha
             }
             if !PublicOutput.Enabled {
-                Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Owner access updated")
+                let donor = args.Get("donor")
+                Terminal.Message(
+                    switch operation {
+                        case "trust": "Trusted " + donor + " for future approved issues."
+                        case "untrust": "Removed trust for " + donor + " on future approved issues."
+                        case "grant": "Granted " + donor + " access to issue #" + args.Get("issue") + "."
+                        case "remove": "Removed " + donor + " access to issue #" + args.Get("issue") + "."
+                        case "deny": "Denied " + donor + " access to approved issues."
+                        case "restore": "Removed the access denial for " + donor + "."
+                        default: "Initialized donor access for " + repo + "."
+                    }
+                )
             }
         }
     }
