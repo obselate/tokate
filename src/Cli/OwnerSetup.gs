@@ -719,6 +719,7 @@ internal class OwnerSetup {
                         "GitHub branch protection",
                         "Require checks on " + branch + ": " + names + ". No other protection changes.",
                         []string{"Apply", "Skip"},
+                        "Apply requires only the listed checks on the target branch. Skip changes nothing, and you can add them later in GitHub Settings > Branches.",
                         selected: 2
                     ) == 1 {
                         if protection.ValueKind == JsonValueKind.Undefined {

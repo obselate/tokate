@@ -137,11 +137,23 @@ internal class TerminalOutput {
                 []string{"approve", "owner/project"},
                 flow.Temp,
                 80,
-                "Canceled title\nCanceled description\n\n2\n"
+                "?\nCanceled title\n?\nCanceled description\n\n?\n2\n"
             )
             Check.Success(canceledIssue)
             Check.Contains(canceledIssue.Output, "Create and approve")
             Check.Contains(canceledIssue.Output, "Cancel")
+            Check.Contains(
+                canceledIssue.Output.Substring(0, canceledIssue.Output.IndexOf("tokate / Describe the issue")),
+                "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+            )
+            Check.Contains(
+                canceledIssue.Output.Substring(canceledIssue.Output.IndexOf("tokate / Describe the issue")),
+                "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+            )
+            Check.Contains(
+                canceledIssue.Output,
+                "Create and approve opens the issue and approves it for donors. Cancel creates nothing."
+            )
             flow.Reload()
             Check.That((flow.State["api_calls"]?.AsArray().Count ?? 0) == 0, "Canceled issue creation called GitHub")
             for args in[]([]string){

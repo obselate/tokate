@@ -404,7 +404,7 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n1\n"
+                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n?\n1\n"
             )
             Check.Success(terminal)
             Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
@@ -431,6 +431,10 @@ internal class CliDiscovery {
             flow.Reload()
             Check.Contains(terminal.Output, "GitHub branch protection")
             Check.Contains(terminal.Output, "Require checks on release: verify, build. No other protection changes.")
+            Check.Contains(
+                terminal.Output,
+                "Apply requires only the listed checks on the target branch. Skip changes nothing, and you can add them later in GitHub Settings > Branches."
+            )
             Check.That(
                 flow.State["branch_protection"]?.ToJsonString() ==
                 "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\",\"build\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
