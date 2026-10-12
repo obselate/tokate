@@ -15,12 +15,16 @@ internal class Contribution {
             usage Dictionary[string, Object?],
             timer Stopwatch,
             seconds int32,
-            reserve int32 = 0
+            reserve int32 = 0,
+            elapsed int32 = 0
         ) {
             run.Fields["failure_stage"] = "candidate_validation"
             run.Fields["failure_reason"] = "candidate_invalid"
-            let coding = RuntimeBudget(timer, seconds - reserve)
-            var total = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds)
+            if !run.Flag("unlimited") && seconds - reserve <= elapsed {
+                throw Exception("Runtime allowance exhausted")
+            }
+            let coding = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds - reserve - elapsed)
+            var total = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds - elapsed)
             var checkout string
             var candidate string
             {
@@ -30,7 +34,14 @@ internal class Contribution {
                 if coding.Git(checkout, "status", "--porcelain") == "" {
                     throw Exception("No changes returned. No PR will be opened.")
                 }
-                PublicSummary.Capture(directory, checkout, run)
+                run.Fields["failure_reason"] = "public_summary_invalid"
+                try {
+                    PublicSummary.Capture(directory, checkout, run)
+                } catch (error Exception) {
+                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+                    throw error
+                }
+                run.Fields["failure_reason"] = "candidate_invalid"
                 candidate = Snapshot(checkout, run, coding)
                 PublicSummary.Bind(run, candidate)
                 run.Save(directory)
@@ -107,7 +118,7 @@ internal class Contribution {
             }
             File.WriteAllText(Path.Combine(directory, "changes.patch"), patch + "\n")
             run.Fields["usage"] = usage
-            run.Fields["elapsed_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
+            run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
             run.Fields["state"] = "generated"
             run.Fields.Remove("failure_reason")
             run.Fields.Remove("failure_stage")
