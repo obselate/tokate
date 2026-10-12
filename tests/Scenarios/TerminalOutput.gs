@@ -185,12 +185,16 @@ internal class TerminalOutput {
                         (mode == "wizard" ? "4\nowner/project\n": "") +
                             title +
                             "\nFirst line.\nSecond line.\n\n" +
-                            (mode == "interactive-rich" ? "\n\n": "1\n\n") +
+                            (mode == "interactive-rich" ? "\n": "1\n") +
+                            "?\nbad..branch\n\n" +
                             (mode == "wizard" ? "\nq\n": "")
                     )
                     Check.Contains(result.Output, "Title: " + title)
                     Check.Contains(result.Output, "Description:")
                     Check.Contains(result.Output, "Create and approve")
+                    Check.Contains(result.Output, "tokate / Target branch")
+                    Check.Contains(result.Output, "Enter a Git branch name, or press Enter to keep the default.")
+                    Check.Contains(result.Output, "Expected a Git branch name")
                 }
                 Check.Success(result)
                 flow.Reload()
@@ -212,6 +216,20 @@ internal class TerminalOutput {
                 Check.That(Check.Text(state["state"]?["issue"]) == number, "Creation did not record approval")
                 let url = "https://github.com/owner/project/issues/" + number
                 Check.Contains(result.Output, url)
+                if mode != "body-file" {
+                    let output = Regex
+                        .Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
+                        .Replace("\r\n", " ")
+                        .Replace('\n', ' ')
+                    Check.Contains(
+                        output,
+                        "Approved " + url + ". Donors start with: tokate work owner/project#" + number
+                    )
+                    Check.That(
+                        Check.Text(state["state"]?["approval"]?["base_branch"]) == "main",
+                        "Approval did not keep the default target branch"
+                    )
+                }
                 if mode == "interactive-rich" {
                     let closed = result.Output.IndexOf("\x1b[?1049l")
                     Check.That(

@@ -107,7 +107,13 @@ internal class OwnerApproval {
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
                 map[string, Object?]{"labels": []string{"tokate:approved"}}
             )
-            Terminal.Message("Approval recorded. Request a contribution reservation to begin work.")
+            Terminal.Message(
+                "Approved https://github.com/" + repo + "/issues/" + number.ToString() +
+                    ". Donors start with: tokate work " +
+                    repo +
+                    "#" +
+                    number.ToString()
+            )
             if firstApproval {
                 Terminal.Message(
                     "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."

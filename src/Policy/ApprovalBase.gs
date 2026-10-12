@@ -16,10 +16,22 @@ internal class ApprovalBase {
                 !Console.IsInputRedirected &&
                 !Console
                 .IsOutputRedirected {
-                Console.Write("Target branch [" + Terminal.Clean(fallback) + "]: ")
-                let answer = Console.ReadLine() ?? throw Exception("Target branch selection cancelled")
-                if answer != "" {
-                    return RepositoryIdentity.Branch(answer)
+                var note = ""
+                while true {
+                    let answer = WizardScreen.Read(
+                        "Target branch",
+                        "Choose the branch that receives contributions." + note,
+                        "Target branch",
+                        fallback,
+                        "Enter a Git branch name, or press Enter to keep the default."
+                    )
+                    try {
+                        let branch = RepositoryIdentity.Branch(answer)
+                        WizardScreen.Close()
+                        return branch
+                    } catch (error Exception) {
+                        note = "\n\n" + error.Message
+                    }
                 }
             }
             return RepositoryIdentity.Branch(fallback)
