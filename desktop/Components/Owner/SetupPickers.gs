@@ -34,38 +34,6 @@ data struct EligibilityPicker {
     }
 }
 
-/// Which harnesses donors may use. At least one stays selected.
-data struct ToolsPicker {
-    var Allowed []string
-    var Logo Func[string, Blob]?
-    var Disabled bool
-    var Compact bool
-    var OnToggle Action[string]?
-
-    func Build() Blob {
-        let toggle = OnToggle
-        let cards = List[Blob]()
-        for option in HarnessOption.All {
-            let id = option.Id
-            cards.Add(
-                ChoiceCard{
-                    Title: option.Name,
-                    Detail: "",
-                    Icon: "terminal",
-                    Art: Logo?.Invoke(id),
-                    Selected: Array.IndexOf(Allowed, id) >= 0,
-                    OnChoose: () -> toggle?.Invoke(id),
-                    Disabled: Disabled,
-                }.Build()
-            )
-        }
-        return Panel{
-            Compact: Compact,
-            Children: []Blob{Heading{Content: "Harnesses"}.Build(), Row{Children: cards.ToArray()}.Build()},
-        }.Build()
-    }
-}
-
 /// All supported models, or only the selected ones.
 data struct ModelPolicyPicker {
     var Policy string

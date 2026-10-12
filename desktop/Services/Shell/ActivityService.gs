@@ -90,6 +90,9 @@ class ActivityService {
         return ticket
     }
 
+    /// Runs `action` on the UI thread. For workers that run apart from the visible commands.
+    func Post(action Action) -> window.Dispatcher.TryPost(action)
+
     /// Reports a finished command from its worker. `finish` runs on the UI thread with `result`.
     func Complete[R](ticket ActivityTicket, result R, finish Action[R]) {
         window.Dispatcher.TryPost(() -> Finish(ticket, result, finish))

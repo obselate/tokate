@@ -44,10 +44,23 @@ func OwnerTests() {
     Regression.Check(owner.Current.Setup.Models.Length == 1, "model removed")
 
     owner.ToggleTool("codex")
-    Regression.Equal(owner.Current.Setup.Tools, "codex", "the last tool stays allowed")
+    Regression.Equal(owner.Current.Setup.Tools, "codex/openai", "the last tool stays allowed")
     owner.ToggleTool("pi")
     owner.ToggleTool("codex")
-    Regression.Equal(owner.Current.Setup.Tools, "pi", "tools toggle")
+    Regression.Equal(owner.Current.Setup.Tools, "pi/local-chat-completions", "tools toggle")
+    owner.ToggleTool("omp")
+    Regression.Check(owner.Current.OmpOpen && owner.Current.Setup.Tools == "pi/local-chat-completions", "OMP opens its providers")
+    owner.ToggleProvider("open router")
+    owner.ToggleProvider(" openrouter ")
+    owner.ToggleProvider("gufo")
+    Regression.Equal(
+        owner.Current.Setup.Tools,
+        "pi/local-chat-completions,omp/openrouter,omp/gufo",
+        "OMP providers are pairs"
+    )
+    owner.ToggleProvider("gufo")
+    owner.ToggleTool("omp")
+    Regression.Equal(owner.Current.Setup.Tools, "pi/local-chat-completions", "OMP removes its providers")
 
     owner.Current = owner.Current with{Written = "files"}
     owner.SetStep(2)

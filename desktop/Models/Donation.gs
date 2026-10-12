@@ -34,13 +34,24 @@ class DonationSteps {
 data struct HarnessOption {
     var Id string
     var Name string
+    /// The one provider of the harness, or "" for OMP, which has many.
+    var Provider string
 
     shared {
         let All []HarnessOption = []HarnessOption{
-            HarnessOption{Id: "codex", Name: "Codex"},
-            HarnessOption{Id: "claude", Name: "Claude"},
-            HarnessOption{Id: "omp", Name: "OMP"},
-            HarnessOption{Id: "pi", Name: "Pi / local"},
+            HarnessOption{Id: "codex", Name: "Codex", Provider: "openai"},
+            HarnessOption{Id: "claude", Name: "Claude", Provider: "anthropic"},
+            HarnessOption{Id: "omp", Name: "OMP", Provider: ""},
+            HarnessOption{Id: "pi", Name: "Pi / local", Provider: "local-chat-completions"},
+        }
+
+        func ProviderOf(id string) string {
+            for option in All {
+                if option.Id == id {
+                    return option.Provider
+                }
+            }
+            return ""
         }
 
         func NameOf(id string) string {

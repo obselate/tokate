@@ -74,12 +74,12 @@ func CommandTests() {
         ModelPolicy = "whitelist",
         Models = []ModelAllowance{ModelAllowance{Model: "gpt", Efforts: []string{"high"}}},
         Minutes = "30",
-        Tools = "codex,pi",
+        Tools = "codex/openai,omp/openrouter",
         Eligibility = "open",
     }
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", setup)),
-        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --model-policy whitelist --max-time 30m --models {\"gpt\":[\"high\"]} --allowed-tools codex,pi --eligibility open",
+        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --model-policy whitelist --max-time 30m --models {\"gpt\":[\"high\"]} --allowed-tools codex/openai,omp/openrouter --eligibility open",
         "init arguments"
     )
     Regression.Equal(

@@ -133,6 +133,7 @@ func WorkspaceFlow() {
             .Replace("FIXTURE", fixture)
     )
     Script(bin, "codex", "printf '%s' '{\"models\":[]}'\n")
+    Script(bin, "omp", "printf '%s' '{\"models\":[]}'\n")
     Environment.SetEnvironmentVariable("PATH", bin + ":" + previousPath)
     Environment.SetEnvironmentVariable("XDG_STATE_HOME", fixture)
     try {
@@ -312,7 +313,10 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "Permissions")
         Choose(host, window, adapter, "Selected models")
         Edit(window, host, adapter, "Model ID", "local-model")
-        Edit(window, host, adapter, "Efforts", "high,ultra")
+        for effort in []string{"Not set", "High", "Ultra"} {
+            Activate(window, adapter, effort, AccessibilityRole.Checkbox)
+            Settle(host)
+        }
         Choose(host, window, adapter, "Add model")
         Edit(window, host, adapter, "Model ID", "discarded-model")
         Choose(host, window, adapter, "Add model")

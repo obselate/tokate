@@ -158,6 +158,23 @@ class CommandRunner {
         activity.Complete(ticket, client.Run[T](arguments, decode, seconds), finish)
     }
 
+    /// Reads the model catalogs of Codex and OMP on a worker, apart from the visible commands. A catalog
+    /// that cannot be read is empty, and nothing is reported.
+    func Catalogs(finish Action[[]ModelChoice, []ModelChoice]) {
+        go ReadCatalogs(finish)
+    }
+
+    private func ReadCatalogs(finish Action[[]ModelChoice, []ModelChoice]) {
+        let codex = List[ModelChoice]()
+        for model in CodexCatalog().Load(15).Value ?? []ModelChoice{} {
+            if !model.Hidden {
+                codex.Add(model)
+            }
+        }
+        let omp = OmpCatalog().Load(60).Value ?? []ModelChoice{}
+        activity.Post(() -> finish(codex.ToArray(), omp))
+    }
+
     private func RunOmp(catalog OmpCatalog, seconds int32, ticket ActivityTicket, finish Action[Reply[[]ModelChoice]]) {
         activity.Complete(ticket, catalog.Load(seconds), finish)
     }

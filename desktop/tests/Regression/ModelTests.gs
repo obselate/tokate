@@ -154,7 +154,7 @@ func ModelTests() {
     let setup = SetupDraft.From(Policy.Empty)
     Regression.Equal(setup.ModelPolicy, "unrestricted", "missing policy starts unrestricted")
     Regression.Equal(setup.EffectiveEligibility(Policy.Empty), "trusted", "default eligibility")
-    Regression.Check(setup.EffectiveTools(Policy.Empty)[0] == "codex", "default tool")
+    Regression.Check(setup.EffectiveTools(Policy.Empty)[0] == "codex/openai", "default tool")
     Regression.Throws(
         () -> (setup with{Minutes = "0"}).MinutesSeconds(),
         "Enter 1 to 1440 minutes per donation.",

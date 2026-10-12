@@ -9,6 +9,7 @@ data struct SetupEditorInput {
     var Setup SetupDraft
     var Busy bool
     var Button CommandButton
+    var Popup PopupInput
 }
 
 /// The project's verification commands, each run through `/bin/sh -c`. Holds the command being typed.

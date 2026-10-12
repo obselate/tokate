@@ -1,6 +1,7 @@
 package TokateDesktop
 
 import System
+import System.Text.RegularExpressions
 import System.Collections.Generic
 import System.IO
 
@@ -12,6 +13,7 @@ class OwnerService {
     private let dialogs DialogService
     private let changed Action
     let Issues IssueSearchService
+    private var catalogs bool
     var Current OwnerState = OwnerState.Initial
 
     init(
@@ -141,6 +143,9 @@ class OwnerService {
         Set(Current with{Tab = tab})
         if tab == OwnerTab.Access {
             LoadAccess()
+        }
+        if tab == OwnerTab.Setup {
+            LoadCatalogs()
         }
     }
 
@@ -296,17 +301,50 @@ class OwnerService {
 
     func SetEligibility(mode string) -> EditSetup(Current.Setup with{Eligibility = mode})
 
-    /// Adds or removes a coding tool. At least one tool stays allowed.
+    /// Allows or removes a harness with one provider. OMP opens its provider list, or removes all its
+    /// providers. At least one pair stays allowed.
     func ToggleTool(id string) {
-        let allowed = List[string](Current.Setup.EffectiveTools(Current.Policy))
-        if allowed.Contains(id) {
-            if allowed.Count > 1 {
-                allowed.Remove(id)
+        let pairs = List[string](Current.Setup.EffectiveTools(Current.Policy))
+        if id == "omp" {
+            let providers = pairs.FindAll(pair -> pair.StartsWith("omp/"))
+            if providers.Count == 0 {
+                Set(Current with{OmpOpen = !Current.OmpOpen})
+            } else if providers.Count < pairs.Count {
+                pairs.RemoveAll(pair -> pair.StartsWith("omp/"))
+                Edit(Current with{OmpOpen = false, Setup = Current.Setup with{Tools = String.Join(",", pairs)}})
             }
-        } else {
-            allowed.Add(id)
+            return
         }
-        EditSetup(Current.Setup with{Tools = String.Join(",", allowed)})
+        TogglePair(id + "/" + HarnessOption.ProviderOf(id))
+    }
+
+    /// Allows or removes an OMP provider.
+    func ToggleProvider(provider string) {
+        let name = provider.Trim()
+        if !Regex.IsMatch(name, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
+            feedback.Show("Enter the provider name that OMP uses, for example openrouter.", Tone.Fail)
+            return
+        }
+        TogglePair("omp/" + name)
+    }
+
+    private func TogglePair(pair string) {
+        let pairs = List[string](Current.Setup.EffectiveTools(Current.Policy))
+        if !pairs.Remove(pair) {
+            pairs.Add(pair)
+        } else if pairs.Count == 0 {
+            pairs.Add(pair)
+        }
+        EditSetup(Current.Setup with{Tools = String.Join(",", pairs)})
+    }
+
+    /// Reads the model catalogs of this computer for the setup pickers, once.
+    private func LoadCatalogs() {
+        if catalogs {
+            return
+        }
+        catalogs = true
+        commands.Catalogs((codex, omp) -> Set(Current with{Codex = codex, Omp = omp}))
     }
 
     func SetModelPolicy(policy string) -> EditSetup(Current.Setup with{ModelPolicy = policy})

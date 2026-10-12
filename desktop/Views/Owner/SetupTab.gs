@@ -23,7 +23,7 @@ class SetupTab {
             top?.Invoke()
         }
         let body = List[Blob]()
-        let editor = SetupEditorInput{Owner: owner, Setup: setup, Busy: page.Busy, Button: page.Button}
+        let editor = SetupEditorInput{Owner: owner, Setup: setup, Busy: page.Busy, Button: page.Button, Popup: page.Popup}
         if step == 0 {
             body.Add(Checks(page, editor))
         } else if step == 1 {
@@ -87,13 +87,15 @@ class SetupTab {
                     Compact: page.CompactPanels,
                     OnChoose: mode -> owner.SetEligibility(mode),
                 }.Build(),
-                ToolsPicker{
-                    Allowed: setup.EffectiveTools(policy),
-                    Logo: id -> art.Logo(id).Render(),
-                    Disabled: page.Busy,
-                    Compact: page.CompactPanels,
-                    OnToggle: id -> owner.ToggleTool(id),
-                }.Build(),
+                HarnessEditor.Mount(
+                    HarnessEditorInput{
+                        Owner: owner,
+                        Logo: id -> art.Logo(id).Render(),
+                        Busy: page.Busy,
+                        Compact: page.CompactPanels,
+                        Button: page.Button,
+                    }
+                ),
                 Panel{Compact: page.CompactPanels, Children: models.ToArray()}.Build(),
                 LimitsEditor{
                     Minutes: setup.Minutes,

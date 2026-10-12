@@ -88,6 +88,7 @@ data struct SetupDraft {
     var Models []ModelAllowance
     var ModelsJson string
     var ModelPolicy string
+    /// The allowed pairs that replace those of the policy, joined with commas, or "" for no change.
     var Tools string
     var Eligibility string
     var Minutes string
@@ -101,15 +102,17 @@ data struct SetupDraft {
 
     func EffectiveModelPolicy(policy Policy) string -> ModelPolicy == "" ? policy.ModelPolicy: ModelPolicy
 
+    /// The allowed harness and provider pairs, each as "harness/provider". A pair that this app does not
+    /// know stays in the list.
     func EffectiveTools(policy Policy) []string {
         let allowed = List[string]()
         if Tools != "" {
             allowed.AddRange(Tools.Split(','))
         } else {
-            allowed.AddRange(policy.AllowedTools)
+            allowed.AddRange(policy.ToolProviders)
         }
         if allowed.Count == 0 {
-            allowed.Add("codex")
+            allowed.Add("codex/openai")
         }
         return allowed.ToArray()
     }
@@ -157,10 +160,33 @@ data struct OwnerState {
     var Access AccessList
     var Selected Issue?
     var Setup SetupDraft
+    /// The model catalogs of Codex and OMP on this computer, for the setup pickers.
+    var Codex []ModelChoice
+    var Omp []ModelChoice
+    /// Whether the list of OMP providers shows before a provider is allowed.
+    var OmpOpen bool
     /// What the CLI reported when setup was last written.
     var Written string
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
+
+    /// The OMP providers to offer: those of the policy, of the setup, and of the catalog on this computer.
+    func OmpProviders() []string {
+        let result = List[string]()
+        let pairs = List[string](Policy.ToolProviders)
+        pairs.AddRange(Setup.EffectiveTools(Policy))
+        for pair in pairs {
+            if pair.StartsWith("omp/") && !result.Contains(pair.Substring(4)) {
+                result.Add(pair.Substring(4))
+            }
+        }
+        for provider in ModelChoice.Providers(Omp) {
+            if !result.Contains(provider) {
+                result.Add(provider)
+            }
+        }
+        return result.ToArray()
+    }
 
     func ReviewFor(pr string) DraftReview {
         for item in Reviews {
@@ -191,6 +217,8 @@ data struct OwnerState {
             Reviews: []DraftReview{},
             Access: AccessList.Empty,
             Setup: SetupDraft.From(Policy.Empty) with{ModelPolicy = ""},
+            Codex: []ModelChoice{},
+            Omp: []ModelChoice{},
             Written: "",
         }
     }

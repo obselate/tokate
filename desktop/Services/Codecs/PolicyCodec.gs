@@ -21,8 +21,10 @@ class PolicyCodec {
             let tools = List[string]()
             let providers = List[string]()
             for tool in Json.Items(value, "allowed_tools") {
-                tools.Add(Json.Text(tool, "harness"))
-                providers.Add(Json.Text(tool, "harness") + "/" + Json.Text(tool, "provider"))
+                let harness = Json.Text(tool, "harness")
+                let provider = Json.Text(tool, "provider")
+                tools.Add(harness)
+                providers.Add(harness + "/" + (provider != "" ? provider: HarnessOption.ProviderOf(harness)))
             }
             return Policy{
                 Loaded: Json.IsObject(value),
