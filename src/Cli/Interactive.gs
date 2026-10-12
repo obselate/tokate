@@ -13,18 +13,23 @@ internal class Interactive {
         private func Execute(options Args) int32 {
             PublicOutput.Reset(options.Command)
             Cli.Validate(options)
+
             if options.Get("run") != "" {
                 PublicOutput.RunDirectory = options.Need("run")
             }
+
             var result int32
+
             try {
                 result = Dispatch(options)
             } finally {
                 DonationView.Close()
                 WizardScreen.Close()
             }
+
             PublicOutput.Next(options, result == 0 ? "": "command_failed")
             Terminal.RunOutcome(result, "")
+
             return result
         }
 
@@ -33,16 +38,21 @@ internal class Interactive {
                 ApprovalBase.Advisories.Clear()
                 PublicOutput.Reset("status")
                 PublicOutput.RunDirectory = directory
+
                 let summary = J.Parse(J.Write(PublicOutput.RunSummary(directory)))
                 let task = J.Text(summary, "repo") + " #" + J.Number(summary, "issue").ToString()
                 let options = Args([]string{"status", "--run", directory})
+
                 PublicOutput.Next(options, "")
+
                 let commands = List[string]()
                 let labels = List[string]()
+
                 if J.Text(summary, "state") == "claim_pending" {
                     commands.Add("prepare")
                     labels.Add("Check reservation and prepare work")
                 }
+
                 for action in PublicOutput.Actions {
                     let command = action[1]
                     let label = switch command {
@@ -56,22 +66,29 @@ internal class Interactive {
                         case "recover": "Prepare an explicit correction"
                         default: ""
                     }
+
                     if label != "" {
                         commands.Add(command)
                         labels.Add(label)
                     }
                 }
+
                 commands.Add("status")
                 labels.Add("Inspect saved status and evidence")
+
                 var identity Guid
+
                 if Guid.TryParseExact(J.Text(summary, "id"), "D", out identity) {
                     commands.Add("reservation")
                     labels.Add("Manage reservation")
                 }
+
                 labels.Add("Back to home")
+
                 let next = commands.Count == 1 ?
                 "No local work can start from this state. Inspect status for the next required action.":
                 "Choose the next action. Nothing starts automatically."
+
                 let selected = WizardScreen.Choose(
                     "Continue contribution",
                     task + "\nState  " + J.Text(summary, "state") + "\nModel  " + J.Text(summary, "model") +
@@ -80,19 +97,24 @@ internal class Interactive {
                     labels.ToArray(),
                     "Choose the next action for this saved contribution. Work actions can run your selected tool. Status only reads saved evidence."
                 )
+
                 if selected > commands.Count {
                     return
                 }
+
                 let command = commands[selected - 1]
                 let argv = command == "reservation" ? Reservation(directory, task): []string{
                     command,
                     "--run",
                     directory
                 }
+
                 if argv.Length == 0 {
                     continue
                 }
+
                 let args = Args(argv)
+
                 if command == "work" {
                     if WizardScreen.Choose(
                         "Start reserved donation",
@@ -105,8 +127,10 @@ internal class Interactive {
                     ) != 1 {
                         continue
                     }
+
                     args.Values["--yes"] = "true"
                 }
+
                 if command == "recover" {
                     args.Values["--seconds"] = (
                         int32.Parse(
@@ -120,8 +144,10 @@ internal class Interactive {
                         ) * 60
                     ).ToString()
                 }
+
                 Execute(args)
                 Console.Error.Write("Enter returns to this contribution: ")
+
                 if Console.ReadLine() == nil {
                     throw OperationCanceledException("Cancelled")
                 }
@@ -132,6 +158,7 @@ internal class Interactive {
             let state = ReservationRequest.Inspect(directory)
             let actions = J.Items(J.Get(state, "actions"))
             let labels = List[string]()
+
             for action in actions {
                 let name = action.GetString() ?? ""
                 labels.Add(
@@ -139,13 +166,16 @@ internal class Interactive {
                         .ToUpperInvariant() + name.Substring(1) + " reservation"
                 )
             }
+
             labels.Add("Back")
+
             let choice = WizardScreen.Choose(
                 "Reservation",
                 task + "\nState  " + J.Text(state, "status"),
                 labels.ToArray(),
                 "Choose an available action for this reservation. A pending request can be checked. Otherwise the listed action changes the reservation."
             )
+
             return choice > actions.Count ? []string{}: []string{
                 actions[choice - 1].GetString() ?? "",
                 "--run",
@@ -161,9 +191,11 @@ internal class Interactive {
                 note += "\nUnreadable entries skipped: " + J.Number(saved, "skipped").ToString() +
                     " (unsupported, invalid or unsafe metadata). Inspect entries with tokate runs --json."
             }
+
             if J.Bool(saved, "truncated") {
                 note += "\nShowing the first 128 inspected entries."
             }
+
             if rows.Count == 0 {
                 WizardScreen.Read(
                     "Saved contributions",
@@ -171,9 +203,12 @@ internal class Interactive {
                     "Enter to return",
                     help: "No readable saved contributions are available here. Press Enter to return home."
                 )
+
                 return
             }
+
             let labels = List[string]()
+
             for row in rows {
                 labels.Add(
                     J.Text(row, "repo") + " #" + J.Number(row, "issue").ToString() + " | " + J.Text(row, "model") +
@@ -182,6 +217,7 @@ internal class Interactive {
                         .ToString() + (J.Text(row, "storage") == "previous" ? " (previous storage)": "")
                 )
             }
+
             let selected = WizardScreen.Choose(
                 "Saved contributions",
                 note,
@@ -193,17 +229,23 @@ internal class Interactive {
 
         private func Start(command string) {
             ApprovalBase.Advisories.Clear()
+
             let options = Args([]string{command})
+
             options.Guided = true
+
             if command == "init" || command == "approve" {
                 GuidedWork.Repository(options)
+
                 if command == "approve" {
                     options.Values.Remove("--issue")
                 }
             }
+
             Cli.Validate(options, guided: true)
             GuidedWork.Fill(options)
             Execute(options)
+
             if command == "approve" {
                 if options.Get("issue") != "" {
                     WizardScreen.Read(
@@ -212,9 +254,12 @@ internal class Interactive {
                         "Enter to return"
                     )
                 }
+
                 return
             }
+
             let directory = PublicOutput.RunDirectory
+
             if directory != "" {
                 Continue(directory)
             } else {
@@ -231,6 +276,7 @@ internal class Interactive {
             if !OperatingSystem.IsLinux() {
                 throw Exception("This release supports Linux")
             }
+
             while true {
                 try {
                     let action = WizardScreen.Choose(
@@ -244,6 +290,7 @@ internal class Interactive {
                         },
                         "Choose whether to donate time, set up a project, or continue saved work. Tokate fills in details it can find."
                     )
+
                     if action == 3 {
                         Saved()
                     } else {
@@ -259,6 +306,7 @@ internal class Interactive {
                         "red",
                         true
                     )
+
                     try {
                         WizardScreen.Read(
                             "Action needs attention",

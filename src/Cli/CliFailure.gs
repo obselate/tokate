@@ -8,6 +8,7 @@ internal class CliFailure : Exception {
     internal let Summary string
     internal let AttemptInvalidated bool
     internal let HttpStatus int32
+
     internal init(
         code string,
         message string,
