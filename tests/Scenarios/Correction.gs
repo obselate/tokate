@@ -225,8 +225,8 @@ internal class CorrectionChecks {
                     "--find-renames=100%",
                     Check.Text(Read(run)["base"]),
                     commit
-                ) == File
-                    .ReadAllText(patch).Trim(),
+                ) +
+                    "\n" == File.ReadAllText(patch),
                 "Corrected binary evidence depends on rename configuration"
             )
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
@@ -324,7 +324,7 @@ internal class CorrectionChecks {
             let commit = Commit(flow, run)
             Check.That(flow.Git("-C", checkout, "rev-parse", "HEAD^{tree}") == tree, "Commit changed original work")
             Check.That(
-                flow.Git("-C", checkout, "diff", "--binary", Check.Text(Read(run)["base"]), commit) == original,
+                flow.Git("-C", checkout, "diff", "--binary", Check.Text(Read(run)["base"]), commit) + "\n" == original,
                 "Commit changed the original candidate patch"
             )
             RecoverAndSubmit(flow, run, commit)
