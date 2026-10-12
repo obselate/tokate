@@ -334,7 +334,9 @@ internal class Amendment {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
-            let source = Path.Combine(directory, run.Text("source") == "external" ? "coding": "checkout")
+            let coding = run.Text("source") == "external" && args.Get("sync") == "" &&
+                (!run.Fields.ContainsKey("reconciliation") && !run.Fields.ContainsKey("synchronizations"))
+            let source = Path.Combine(directory, coding ? "coding": "checkout")
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
             if !continuing && args.Get("commit") == "" {
                 args.Values["--commit"] = Commands.Git(source, "rev-parse", "HEAD")
