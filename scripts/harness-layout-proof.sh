@@ -56,7 +56,7 @@ pi_version=$(run "$proof/native-pi" "$proof/native-pi/bin/pi" --version)
 run "$proof/npm" NPM_CONFIG_PREFIX="$proof/npm/prefix" npm install --global "@openai/codex@$codex_version" "@earendil-works/pi-coding-agent@$pi_version"
 probe "$proof/npm" codex "$proof/npm/prefix/bin" NPM_CONFIG_PREFIX="$proof/npm/prefix"
 probe "$proof/npm" pi "$proof/npm/prefix/bin" NPM_CONFIG_PREFIX="$proof/npm/prefix"
-curl -qfsSL --proto '=https' https://api.github.com/repos/oven-sh/bun/releases/latest -o "$proof/bun.json"
+gh api repos/oven-sh/bun/releases/latest > "$proof/bun.json"
 python3 - "$proof/bun.json" "$proof" <<'PY'
 import hashlib
 import json
