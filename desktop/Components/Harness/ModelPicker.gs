@@ -31,7 +31,7 @@ data struct ModelPicker {
                 providers.Add(Option(provider, provider))
             }
             fields.Add(
-                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, 150): Field(
+                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, 150, "Choose"): Field(
                     "Provider",
                     Provider,
                     OnProvider,
@@ -47,13 +47,13 @@ data struct ModelPicker {
             for model in Models {
                 models.Add(Option(model.Slug, model.DisplayName))
             }
-            fields.Add(Choice("Model", Model, models.ToArray(), OnModel, Harness == "omp" ? 270: 230))
+            fields.Add(Choice("Model", Model, models.ToArray(), OnModel, Harness == "omp" ? 270: 230, "Choose a model"))
         }
         let efforts = List[ComboBoxOption]()
         for effort in Efforts {
             efforts.Add(Option(effort, ModelChoice.EffortLabel(effort)))
         }
-        fields.Add(Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, 170))
+        fields.Add(Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, 170, "Choose"))
         let children = List[Blob]{Row{Align: AlignItems.FlexEnd, Children: fields.ToArray()}.Build()}
         if Harness == "pi" {
             children.Add(Field("Local endpoint", Endpoint, OnEndpoint, "http://127.0.0.1:8080/v1", 0))
@@ -80,10 +80,17 @@ data struct ModelPicker {
         Content: Label{Content: name}.Build(),
     }
 
-    private func Choice(caption string, value string, options []ComboBoxOption, change Action[string]?, width float64) Blob ->
-    Dropdown{
+    private func Choice(
+        caption string,
+        value string,
+        options []ComboBoxOption,
+        change Action[string]?,
+        width float64,
+        placeholder string
+    ) Blob -> Dropdown{
         Caption: caption,
         Value: value,
+        Placeholder: placeholder,
         Options: options,
         OnChange: change,
         Width: width,
