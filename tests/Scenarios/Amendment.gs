@@ -615,6 +615,7 @@ internal class AmendmentFlow {
             for failure in[]string{
                 "expired",
                 "superseded",
+                "missing-reservation",
                 "remote",
                 "revoked-after-push",
                 "stale-state",
@@ -628,8 +629,13 @@ internal class AmendmentFlow {
                 let commit = Edit(flow.Flow, run)
                 if failure == "expired" {
                     flow.Expire()
-                } else if failure == "superseded" {
+                } else if failure == "superseded" || failure == "missing-reservation" {
                     flow.Flow.Approve()
+                    if failure == "missing-reservation" {
+                        let state = flow.State()["state"] ?? throw Exception("Missing state")
+                        state.AsObject().Remove("reservation")
+                        flow.RewriteState(state)
+                    }
                 } else if failure == "remote" {
                     flow.Flow.Git(
                         "-C",
@@ -666,6 +672,13 @@ internal class AmendmentFlow {
                     }
                     flow.Coordinate(flow.Event(request), 1)
                     Amend(flow.Flow, run, commit, 1)
+                } else if failure == "superseded" || failure == "missing-reservation" {
+                    let rejected = Amend(flow.Flow, run, commit, 1, json: true)
+                    let result = Check.Envelope(rejected, "amend", "error", "stale_approval")
+                    Check.Contains(
+                        Check.Text(result["error"]?["message"]),
+                        "The reservation is gone. Return to the owner before amending."
+                    )
                 } else {
                     Amend(flow.Flow, run, commit, 1)
                 }
