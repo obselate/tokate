@@ -301,7 +301,7 @@ internal class CommandTrafficChecks {
                 if !accepted {
                     Check.Contains(
                         result.Error,
-                        fault == "string-actor" ? "requires an element of type 'Number'": "Request UUID has changed actor, contents, repository or issue evidence"
+                        fault == "string-actor" ? "Expected a positive numeric GitHub identity": "Request UUID has changed actor, contents, repository or issue evidence"
                     )
                 }
                 flow.Flow.NoInference()

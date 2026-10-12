@@ -112,9 +112,6 @@ internal class Amendment {
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
-            if reservation.ValueKind == JsonValueKind.Null || reservation.ValueKind == JsonValueKind.Undefined {
-                throw CliFailure("stale_approval", "The reservation is gone. Return to the owner before amending.")
-            }
             state.Reservation(J.Get(viewer, "id"))
             let record = state.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
             let original = J.Get(value, "contribution")

@@ -8,7 +8,7 @@ internal class RepositoryIdentity {
     shared {
         internal func PositiveId(value JsonElement) int64 {
             var id int64
-            if !value.TryGetInt64(out id) || id < 1 {
+            if value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out id) || id < 1 {
                 throw Exception("Expected a positive numeric GitHub identity")
             }
             return id
