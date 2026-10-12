@@ -334,7 +334,10 @@ internal class Amendment {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
-            let continuing = args.Get("commit") == ""
+            let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
+            if !continuing && args.Get("commit") == "" {
+                args.Values["--commit"] = Commands.Git(Path.Combine(directory, "checkout"), "rev-parse", "HEAD")
+            }
             if continuing {
                 for key in[]string{"seconds", "tools", "summary", "sync", "resume"} {
                     if args.Get(key) != "" {
@@ -362,10 +365,7 @@ internal class Amendment {
                     }
                 }
                 if args.Get("commit") == "" {
-                    throw CliFailure(
-                        "invalid_state",
-                        "No saved amendment request. Start a new amendment with --commit and --time."
-                    )
+                    throw CliFailure("invalid_state", "No saved amendment request. Start a new amendment with --time.")
                 }
             }
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))

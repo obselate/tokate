@@ -19,9 +19,13 @@ internal class AmendmentFlow {
             tools string = "",
             owner bool = false,
             summary bool = true,
-            json bool = false
+            json bool = false,
+            head bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", commit, "--time", "30s"}
+            let args = List[string]{"amend", "--run", run, "--time", "30s"}
+            if !head {
+                args.AddRange([]string{"--commit", commit})
+            }
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -554,7 +558,12 @@ internal class AmendmentFlow {
                 Amend(flow.Flow, run, commit, mode == "lost_request_response" ? 0: 1, tools, summary: true)
                 flow.Flow.Mode("")
             }
-            Amend(flow.Flow, run, commit, tools: tools, summary: true)
+            let amended = Check.Envelope(
+                Amend(flow.Flow, run, commit, tools: tools, summary: true, json: true, head: mode == "" && !native),
+                "amend",
+                "ok"
+            )
+            Check.That(Check.Text(amended["data"]?["commit"]) == commit, "Amendment JSON lost the resolved commit")
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             Check.That(Check.Text(request["action"]) == "amend", "Wrong amendment request")

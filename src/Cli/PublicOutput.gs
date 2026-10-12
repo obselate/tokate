@@ -424,6 +424,10 @@ internal class PublicOutput {
                     } else if ResultData == nil {
                         ResultData = summary
                     }
+                    if options != nil && (Command == "amend" || Command == "external") && options.Get("commit") != "" &&
+                        ResultData is Dictionary[string, Object?]fields {
+                        fields["commit"] = options.Get("commit")
+                    }
                     if options != nil && Command == "amend" && ResultData is Dictionary[string, Object?]fields {
                         let location = Path.Combine(RunDirectory, "amendments", options.Get("commit"))
                         if File.Exists(Path.Combine(location, "run.json")) {
