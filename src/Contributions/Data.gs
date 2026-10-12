@@ -9,6 +9,7 @@ import System.Text.Json
 
 internal class Data(fields Dictionary[string, Object?]? = nil) {
     internal let Fields Dictionary[string, Object?] = fields ?? Dictionary[string, Object?]()
+
     internal func Text(key string) string -> J.Text(Field(key), key)
 
     internal func Number(key string) int32 -> J.Number(Field(key), key)
@@ -31,6 +32,7 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
         File.WriteAllText(path + ".tmp", J.Write(Fields) + "\n")
         File.Move(path + ".tmp", path, true)
     }
+
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
@@ -41,9 +43,11 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
 
         internal func From(value JsonElement) Data {
             let result = Data()
+
             for field in value.EnumerateObject() {
                 result.Fields[field.Name] = field.Value.Clone()
             }
+
             return result
         }
 
