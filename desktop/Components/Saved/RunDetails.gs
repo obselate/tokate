@@ -1,0 +1,106 @@
+package TokateDesktop
+
+import Goo
+import Goo.Widgets.Icons
+import System
+import System.Collections.Generic
+
+/// A selected saved run: the step it is at, who acts next, any failure and the actions it allows. The
+/// action that the status calls for is first and primary.
+data struct RunDetails {
+    var Item SavedRun
+    var Actions []RunAction
+    var Button CommandButton
+    var Compact bool
+    /// A narrow panel names only the current step.
+    var Narrow bool
+    var Form Blob?
+    /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
+    var Note Feedback
+    var Waiting bool
+    var OnAction Action[RunAction]?
+    var OnToggleAmendment Action?
+
+    func Build() Blob {
+        let act = OnAction
+        let amend = OnToggleAmendment
+        let run = Item.Run ?? Run.Empty
+        let status = Item.Status()
+        let tone = Statuses.ToneOf(status)
+        let look = AppTheme.Look(tone)
+        let guide = RunGuide.For(status, run.Pr > 0)
+        let children = List[Blob]{
+            Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone, Narrow: Narrow}.Build(),
+            Rule{}.Build(),
+            Row{
+                NoWrap: true,
+                Align: AlignItems.FlexStart,
+                Children: []Blob{
+                    tone == Tone.Wait ? WaitMark.Mount("run-wait", WaitMarkInput{Icon: look.Icon, Size: 26, Ink: look.Edge}): MaterialIcons.Create(
+                        look.Icon == "" ? "arrow_circle_right": look.Icon,
+                        26,
+                        look.Edge
+                    ),
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Heading{Content: guide.Heading}.Build()},
+                },
+            }.Build(),
+        }
+        let shown = List[RunAction]()
+        for action in Actions {
+            shown.Add(action)
+        }
+        if run.Pr > 0 {
+            shown.Add(RunAction.Amend)
+            shown.Add(RunAction.Reconcile)
+        }
+        var text = guide.Text
+        if guide.Main != nil && !shown.Contains(guide.Main!!) {
+            text = run.External ? "This contribution uses external work. Continue it with the Tokate command line.": "No action is available now. Refresh the status to see a change."
+        }
+        if text != "" {
+            children.Add(Label{Content: text}.Build())
+        }
+        if run.ErrorMessage != "" {
+            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
+        }
+        if Note.Message != "" {
+            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
+        }
+        var lead = guide.Main != nil ? shown.IndexOf(guide.Main!!): -1
+        for index in 0 ... shown.Count {
+            if lead < 0 && RunActions.Primary(shown[index]) {
+                lead = index
+            }
+        }
+        if lead > 0 {
+            let first = shown[lead]
+            shown.RemoveAt(lead)
+            shown.Insert(0, first)
+        }
+        let buttons = List[Blob]()
+        for index in 0 ... shown.Count {
+            let selected = shown[index]
+            buttons.Add(
+                (Button with{
+                    Label = RunActions.ButtonLabel(selected),
+                    OnClick = () -> {
+                        if selected == RunAction.Amend {
+                            amend?.Invoke()
+                        } else {
+                            act?.Invoke(selected)
+                        }
+                    },
+                    Primary = lead >= 0 && index == 0,
+                    Disabled = Waiting,
+                }).Build()
+            )
+        }
+        if buttons.Count > 0 {
+            children.Add(Row{Children: buttons.ToArray()}.Build())
+        }
+        if let form = Form {
+            children.Add(form)
+        }
+        return Panel{Compact: Compact, Children: children.ToArray()}.Build()
+    }
+}

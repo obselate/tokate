@@ -1,0 +1,1 @@
+{"access_sha":"abc123","pending":[{"donor":"alice","issue":42}],"members":[{"donor":"bob","trusted":true,"denied":false},{"donor":"eve","trusted":false,"denied":true}]}

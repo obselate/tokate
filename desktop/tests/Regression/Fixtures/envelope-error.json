@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"approve","status":"error","exit_code":1,"data":null,"error":{"code":"stale_approval","message":"The approval is stale."},"next_actions":[["tokate","help"]],"truncated":true}
