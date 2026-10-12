@@ -507,10 +507,10 @@ internal class Cli {
             ),
             CliCommand(
                 "authorize-sync",
-                "commit,upstream",
+                "commit,upstream,sync",
                 "repo,pr,commit,upstream",
                 "Owner: grant an exact candidate synchronization; no candidate inspection or acceptance.",
-                "PR --commit SHA --upstream SHA",
+                "PR --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]",
                 "authorize-sync 10 --commit C --upstream U",
                 effects: "local_read github_read github_write",
                 target: "pr",

@@ -91,14 +91,23 @@ internal class SynchronizationChecks {
             candidate string,
             upstream string,
             code int32 = 0,
-            owner bool = true
+            owner bool = true,
+            pending string = ""
         ) string {
             flow.ResetTraffic()
-            let result = flow.Call(
-                []string{"authorize-sync", "owner/project#10", "--commit", candidate, "--upstream", upstream, "--json"},
-                code,
-                owner: owner
-            )
+            let args = List[string]{
+                "authorize-sync",
+                "owner/project#10",
+                "--commit",
+                candidate,
+                "--upstream",
+                upstream,
+                "--json"
+            }
+            if pending != "" {
+                args.AddRange([]string{"--sync", pending})
+            }
+            let result = flow.Call(args.ToArray(), code, owner: owner)
             flow.Reload()
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 Check.That(!Check.Text(call["path"]).Contains(candidate), "Grant inspected private candidate")
@@ -728,7 +737,7 @@ internal class SynchronizationChecks {
                 flow.Git("-C", flow.Upstream, "checkout", "release/review")
             }
             let conflict = mode == "conflict" || mode == "protected"
-            let upstream = Upstream(flow, conflict: conflict || mode == "interruption")
+            var upstream = Upstream(flow, conflict: conflict || mode == "interruption")
             var start = h
             if mode == "edits" || conflict || mode == "interruption" {
                 PublishedContribution.Write(
@@ -958,11 +967,24 @@ internal class SynchronizationChecks {
                     "Candidate was not local and unverified"
                 )
             }
-            let candidate = Check.Text(Saved(run)["reconciliation"]?["candidate"])
+            var candidate = Check.Text(Saved(run)["reconciliation"]?["candidate"])
             flow.Git("-C", checkout, "merge-base", "--is-ancestor", start, candidate)
             flow.Git("-C", checkout, "merge-base", "--is-ancestor", upstream, candidate)
             flow.Call([]string{"reconcile", "--run", run, "--resume"})
-            if mode == "moving-target" {
+            var pending = ""
+            if mode == "moving-target-pushed" || mode == "moving-target-coordinated" {
+                pending = Grant(flow, candidate, upstream)
+                Amend(flow, run, candidate, pending)
+                flow.Reload()
+                Check.That(
+                    Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"]) == candidate,
+                    "Amend did not push candidate"
+                )
+                if mode == "moving-target-coordinated" {
+                    coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
+                }
+            }
+            if mode == "moving-target" || mode == "moving-target-pushed" || mode == "moving-target-coordinated" {
                 PublishedContribution.Write(flow.Upstream, "movement.txt", "target changed\n")
                 flow.Commit("Move target")
             } else if mode == "moving-head" {
@@ -983,7 +1005,62 @@ internal class SynchronizationChecks {
                     flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate,
                     "Changed authority lost candidate"
                 )
-                return
+                if mode != "moving-target" && mode != "moving-target-pushed" && mode != "moving-target-coordinated" {
+                    flow.Call([]string{"reconcile", "--run", run}, 1)
+                    return
+                }
+                if pending != "" {
+                    let failed = Amend(flow, run, candidate, pending, 1)
+                    Check.Contains(failed.Output + failed.Error, "Synchronization target moved")
+                    if mode == "moving-target-pushed" {
+                        flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                        Grant(flow, candidate, flow.Git("-C", flow.Upstream, "rev-parse", "HEAD"), 1)
+                    }
+                }
+                let retained = Saved(run)["reconciliation"]?.ToJsonString()
+                let amendment = mode == "moving-target-pushed" ? File.ReadAllText(
+                    Path.Combine(run, "amendments", candidate, "run.json")
+                ): ""
+                flow.ResetTraffic()
+                let beforePushes = Check.Text(flow.State["git_pushes"])
+                let reconciled = Check.Json(flow.Call([]string{"reconcile", "--run", run, "--json"}).Output)
+                flow.Reload()
+                Check.That(
+                    Check.Text(flow.State["exec_count"]) == inference && Check.Text(
+                        flow.State["git_pushes"]
+                    ) == beforePushes,
+                    "Recovery launched inference or pushed"
+                )
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(call["method"]) == "GET", "Recovery wrote remote authority")
+                }
+                if mode == "moving-target-pushed" {
+                    Check.That(
+                        File.ReadAllText(Path.Combine(run, "amendments", candidate, "run.json")) == amendment,
+                        "Recovery changed old amendment evidence"
+                    )
+                    Check.That(
+                        Check.Text(reconciled["next_actions"]?[0]?[8]) == pending,
+                        "Missing old grant in owner action"
+                    )
+                }
+                if mode == "moving-target-coordinated" {
+                    Check.That(Check.Text(Saved(run)["commit"]) == candidate, "Reconcile lost coordinated head")
+                    pending = ""
+                }
+                let next = Saved(run)["reconciliation"]
+                Check.That(next?["superseded"]?.ToJsonString() == retained, "Reconciliation lost old intent")
+                let previous = candidate
+                candidate = Check.Text(next?["candidate"])
+                upstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
+                Check.That(
+                    candidate != previous && Check.Text(next?["upstream"]) == upstream,
+                    "Target was not reconciled"
+                )
+                flow.Git("-C", checkout, "merge-base", "--is-ancestor", previous, candidate)
+                flow.Git("-C", checkout, "merge-base", "--is-ancestor", upstream, candidate)
+                flow.Call([]string{"reconcile", "--run", run}, 1)
+                flow.Call([]string{"reconcile", "--run", run, "--resume"})
             }
             if mode == "edits" {
                 Check.That(
@@ -997,7 +1074,7 @@ internal class SynchronizationChecks {
                     )
                 }
             }
-            let grant = Grant(flow, candidate, upstream)
+            let grant = Grant(flow, candidate, upstream, pending: pending)
             Amend(flow, run, candidate, grant)
             flow.Reload()
             coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
@@ -1092,6 +1169,8 @@ internal class SynchronizationChecks {
                         "reconcile-merged",
                         "reconcile-donor",
                         "reconcile-moving-target",
+                        "reconcile-moving-target-pushed",
+                        "reconcile-moving-target-coordinated",
                         "reconcile-moving-head",
                         "reconcile-moving-approval",
                         "reconcile-conflict",

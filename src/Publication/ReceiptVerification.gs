@@ -13,7 +13,14 @@ internal class ReceiptVerification {
             paths
         )
 
-        internal func Verify(repo string, number int32, pull JsonElement, ready bool = true, paths bool = true) Data {
+        internal func Verify(
+            repo string,
+            number int32,
+            pull JsonElement,
+            ready bool = true,
+            paths bool = true,
+            pending string = ""
+        ) Data {
             let body = J.Text(pull, "body")
             let receipt = RequestData.Parse(
                 PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"),
@@ -22,7 +29,7 @@ internal class ReceiptVerification {
             if J.Number(receipt, "version") != 2 {
                 throw Exception("Unsupported receipt protocol")
             }
-            return VerifyCurrent(repo, number, pull, receipt, ready, paths)
+            return VerifyCurrent(repo, number, pull, receipt, ready, paths, pending)
         }
 
         internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string) {
@@ -45,7 +52,8 @@ internal class ReceiptVerification {
             pull JsonElement,
             receipt JsonElement,
             ready bool = true,
-            paths bool = true
+            paths bool = true,
+            pending string = ""
         ) Data {
             RequestData.Keys(
                 receipt,
@@ -138,10 +146,49 @@ internal class ReceiptVerification {
             if receiptApproval != approvalId || receiptReservation != reservationId {
                 throw CliFailure("stale_approval", failure)
             }
+            let policy = Policy(J.Write(J.Get(record, "policy")))
             let receiptHead = J.Text(receipt, "head")
             let physicalHead = J.Text(head, "sha")
-            if J.Number(outcome, "pr") != number || receiptHead != exactHead || physicalHead != exactHead {
+            if J.Number(outcome, "pr") != number || receiptHead != exactHead {
                 throw CliFailure("stale_approval", failure)
+            }
+            if physicalHead != exactHead {
+                let grant = pending == "" ? default(JsonElement): Synchronization.Load(repo, pending)
+                if J.Text(grant, "previous") != exactHead || J.Text(grant, "candidate") != physicalHead || J.Text(
+                    grant,
+                    "expected"
+                ) != state.Sha ||
+                    !RequestData.Same(J.Get(grant, "receipt"), receipt) || GitHub.Branch(repo, target) == J.Text(
+                    grant,
+                    "upstream"
+                ) {
+                    throw CliFailure("stale_approval", failure)
+                }
+                let history = Synchronization.Append(repo, Synchronization.History(receipt), pending)
+                Synchronization.Live(
+                    repo,
+                    number,
+                    record,
+                    approvalId,
+                    history,
+                    fork,
+                    branch,
+                    physicalHead,
+                    pending,
+                    state.Sha,
+                    exactHead,
+                    ready: false,
+                    contribution: contribution
+                )
+                Synchronization.Remote(
+                    repo,
+                    policy.Value,
+                    approval,
+                    J.Text(approval, "base"),
+                    history,
+                    fork,
+                    physicalHead
+                )
             }
             if J.Text(head, "ref") != branch || !RepositoryIdentity.SameRepo(J.Text(headRepo, "full_name"), fork) {
                 throw CliFailure("stale_approval", failure)
@@ -159,13 +206,12 @@ internal class ReceiptVerification {
                         map[string, Object?]{
                             "fork": J.Text(metadata, "fork"),
                             "branch": J.Text(metadata, "branch"),
-                            "head": exactHead
+                            "head": physicalHead
                         }
                     )
                 ),
                 J.Get(contribution, "actor")
             )
-            let policy = Policy(J.Write(J.Get(record, "policy")))
             policy.ValidateTools(J.Get(metadata, "tools"), J.Text(metadata, "source"))
             AttemptContinuation.Declaration(metadata)
             for key in[]string{"predecessor", "import_manifest_sha256"} {

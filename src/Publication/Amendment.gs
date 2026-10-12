@@ -101,7 +101,13 @@ internal class Amendment {
             return pull
         }
 
-        internal func Authority(run Data, amendment Data?, resume bool = false) JsonElement {
+        internal func Authority(
+            run Data,
+            amendment Data?,
+            resume bool = false,
+            published string = "",
+            ready bool = true
+        ) JsonElement {
             let viewer = GitHub.Api("user")
             if !RepositoryIdentity.SameDonor(viewer, run) {
                 throw CliFailure("authentication_required", "Use the same donor account and numeric identity")
@@ -193,9 +199,10 @@ internal class Amendment {
             } else if CoordinationState.Head(value) != (amendment?.Text("previous") ?? run.Text("commit")) {
                 throw CliFailure("stale_approval", "Current published head differs from saved contribution")
             }
+            let physical = amendment?.Text("published") ?? published
             let remoteHead = Remote(
                 run,
-                amendment?.Text("previous") ?? run.Text("commit"),
+                physical == "" ? (amendment?.Text("previous") ?? run.Text("commit")): physical,
                 amendment?.Text("commit") ?? ""
             )
             RepositoryAccess.ValidateFork(
@@ -211,7 +218,7 @@ internal class Amendment {
                 ),
                 J.Get(viewer, "id")
             )
-            SyncAuthority(run, amendment, record, original)
+            SyncAuthority(run, amendment, record, original, ready)
             return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
         }
 
@@ -219,9 +226,20 @@ internal class Amendment {
             run Data,
             amendment Data?,
             record JsonElement,
-            contribution JsonElement = default(JsonElement)
+            contribution JsonElement = default(JsonElement),
+            ready bool = true
         ) {
             if amendment != nil {
+                if amendment.Text("published") != "" {
+                    let grant = Synchronization.Load(run.Text("repo"), amendment.Text("sync"))
+                    let pending = J.Text(grant, "pending")
+                    if pending == "" || amendment.Text("published") != J.Text(
+                        Synchronization.Load(run.Text("repo"), pending),
+                        "candidate"
+                    ) {
+                        throw CliFailure("stale_approval", "Published head differs from saved synchronization grant")
+                    }
+                }
                 Synchronization.Live(
                     run.Text("repo"),
                     amendment.Number("pr"),
@@ -234,7 +252,8 @@ internal class Amendment {
                     amendment.Text("sync"),
                     amendment.Text("expected"),
                     amendment.Text("previous"),
-                    contribution: contribution
+                    contribution: contribution,
+                    ready: ready
                 )
             }
         }
@@ -413,7 +432,10 @@ internal class Amendment {
                 let sync = args.Get("sync") == "" ? "": RepositoryIdentity.CommitSha(args.Need("sync"))
                 let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(args.Need("tools"), 8192)
                 let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
-                let authority = Authority(run, nil, args.Get("resume") == "true")
+                let pending = sync == "" ? "": J.Text(Synchronization.Load(run.Text("repo"), sync), "pending")
+                let published = pending == "" ? run.Text("commit"):
+                J.Text(Synchronization.Load(run.Text("repo"), pending), "candidate")
+                let authority = Authority(run, nil, args.Get("resume") == "true", published)
                 let record = J.Get(authority, "record")
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 Tools(policy, tools)
@@ -421,9 +443,9 @@ internal class Amendment {
                     throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
                 }
                 let number = J.Number(J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"), "pr")
-                let pull = Pull(run, number, run.Text("commit"), "")
-                ReceiptVerification.Verify(run.Text("repo"), number, sync == "")
-                Remote(run, run.Text("commit"), "")
+                let pull = Pull(run, number, published, "")
+                ReceiptVerification.Verify(run.Text("repo"), number, pull, sync == "", pending: pending)
+                Remote(run, published, "")
                 let checkout = Verification.Validate(Path.Combine(directory, "checkout"))
                 let history = Synchronization.Append(
                     run.Text("repo"),
@@ -453,6 +475,9 @@ internal class Amendment {
                 amendment.Fields["id"] = Guid.NewGuid().ToString("D")
                 amendment.Fields["attempt"] = J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt")
                 amendment.Fields["previous"] = run.Text("commit")
+                if published != run.Text("commit") {
+                    amendment.Fields["published"] = published
+                }
                 amendment.Fields["commit"] = commit
                 amendment.Fields["seconds"] = seconds
                 if summary.ValueKind != JsonValueKind.Undefined {
@@ -613,15 +638,16 @@ internal class Amendment {
             if Data.Hash(snapshot) != amendment.Text("snapshot") || snapshot != File.ReadAllText(patchPath) {
                 throw CliFailure("invalid_state", "Verified amendment candidate changed")
             }
-            let pull = Pull(run, amendment.Number("pr"), amendment.Text("previous"), amendment.Text("commit"))
-            let remote = Remote(run, amendment.Text("previous"), amendment.Text("commit"))
+            let published = amendment.Text("published") == "" ? amendment.Text("previous"): amendment.Text("published")
+            let pull = Pull(run, amendment.Number("pr"), published, amendment.Text("commit"))
+            let remote = Remote(run, published, amendment.Text("commit"))
             if J.Text(J.Get(pull, "head"), "sha") != remote {
                 throw CliFailure("stale_approval", "Remote branch and PR head disagree")
             }
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
             let previousReceipt = PrBody.Receipt(amendment.Text("previous_body"))
             if amendment.Text("state") == "verified" {
-                if remote != amendment.Text("previous") || J.Text(receipt, "head") != amendment.Text("previous") {
+                if remote != published || J.Text(receipt, "head") != amendment.Text("previous") {
                     throw CliFailure("stale_approval", "Remote changed before amendment publication intent")
                 }
                 if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) {
@@ -690,7 +716,7 @@ internal class Amendment {
             if owned != previousOwned && owned != PrBody.Owned(amendment.Text("body")) {
                 throw CliFailure("stale_approval", "PR owned regions differ from saved previous or candidate state")
             }
-            if remote == amendment.Text("previous") {
+            if remote == published {
                 if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) || owned != previousOwned {
                     throw CliFailure(
                         "stale_approval",
@@ -698,8 +724,8 @@ internal class Amendment {
                     )
                 }
                 Authority(run, amendment)
-                Pull(run, amendment.Number("pr"), amendment.Text("previous"), "")
-                Remote(run, amendment.Text("previous"), "")
+                Pull(run, amendment.Number("pr"), published, "")
+                Remote(run, published, "")
                 if Snapshot(
                     checkout,
                     run,
@@ -782,7 +808,7 @@ internal class Amendment {
             return PublicSummary.Attach(fields, J.Get(amendment.Element(), "public_summary"))
         }
 
-        private func Complete(directory string, location string, run Data, amendment Data, pull JsonElement) {
+        internal func Complete(directory string, location string, run Data, amendment Data, pull JsonElement) {
             amendment.Fields["state"] = "published"
             amendment.Fields.Remove("error")
             amendment.Fields.Remove("failure_reason")

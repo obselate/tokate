@@ -94,7 +94,7 @@ internal class Synchronization {
             let value = RequestData.Parse(GitHub.FileAt(repo, "synchronization.json", grant), 1024 * 1024)
             RequestData.Keys(
                 value,
-                "version,id,repo,repository_id,issue,pr,approval_version,approval,base,target,upstream,previous,candidate,expected,fork,branch,receipt"
+                "version,id,repo,repository_id,issue,pr,approval_version,approval,base,target,upstream,previous,candidate,expected,fork,branch,receipt,pending"
             )
             var id Guid
             let approvalVersion = J.Number(value, "approval_version")
@@ -121,6 +121,9 @@ internal class Synchronization {
             RepositoryIdentity.CommitSha(J.Text(value, "candidate"))
             RepositoryIdentity.Repo(J.Text(value, "fork"))
             RepositoryIdentity.CommitSha(J.Text(value, "expected"))
+            if J.Text(value, "pending") != "" {
+                RepositoryIdentity.CommitSha(J.Text(value, "pending"))
+            }
             let info = GitHub.Api("repos/" + repo)
             Numeric(J.Get(info, "id"))
             let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + Ref(value))
@@ -259,6 +262,15 @@ internal class Synchronization {
                 Commands.Git(checkout, "merge-base", "--is-ancestor", base, upstream)
                 Commands.Git(checkout, "merge-base", "--is-ancestor", predecessor, previous)
                 Commands.Git(checkout, "merge-base", "--is-ancestor", previous, candidate)
+                if J.Text(value, "pending") != "" {
+                    Commands.Git(
+                        checkout,
+                        "merge-base",
+                        "--is-ancestor",
+                        J.Text(Load(repo, J.Text(value, "pending")), "candidate"),
+                        candidate
+                    )
+                }
                 Commands.Git(checkout, "merge-base", "--is-ancestor", upstream, candidate)
                 if baselineTree == nil {
                     baselineTree = GitHubPathEvidence.Tree(repo, base)
@@ -301,6 +313,9 @@ internal class Synchronization {
                 Ancestor(repo, base, repo, upstream)
                 Ancestor(repo, predecessor, fork, previous)
                 Ancestor(repo, previous, fork, candidate)
+                if J.Text(value, "pending") != "" {
+                    Ancestor(repo, J.Text(Load(repo, J.Text(value, "pending")), "candidate"), fork, candidate)
+                }
                 Ancestor(repo, upstream, fork, candidate)
                 if baselineTree == nil {
                     baselineTree = GitHubPathEvidence.Tree(repo, base)
@@ -332,20 +347,20 @@ internal class Synchronization {
         }
 
         private func Fresh(repo string, pr int32, value JsonElement, approval JsonElement) {
-            ReceiptVerification.Verify(repo, pr, false)
             let pull = GitHub.Api("repos/" + repo + "/pulls/" + pr.ToString())
+            ReceiptVerification.Verify(repo, pr, pull, false, pending: J.Text(value, "pending"))
             Open(pull)
             let head = J.Get(pull, "head")
-            if J.Text(head, "sha") != J.Text(value, "previous") || RequestData.Canonical(
-                PrBody.Receipt(J.Text(pull, "body"))
-            ) !=
+            let published = J.Text(value, "pending") == "" ? J.Text(value, "previous"):
+            J.Text(Load(repo, J.Text(value, "pending")), "candidate")
+            if J.Text(head, "sha") != published || RequestData.Canonical(PrBody.Receipt(J.Text(pull, "body"))) !=
             RequestData.Canonical(J.Get(value, "receipt")) {
                 throw Exception("Published head or receipt changed during synchronization authorization")
             }
             let reference = GitHub.Api("repos/" + J.Text(value, "fork") + "/git/ref/heads/" + J.Text(value, "branch"))
             let branchFailure = "Canonical published donor branch changed during grant creation"
             let remoteHead = J.Text(J.Get(reference, "object"), "sha")
-            if remoteHead != J.Text(value, "previous") || J.Text(head, "ref") != J.Text(value, "branch") {
+            if remoteHead != published || J.Text(head, "ref") != J.Text(value, "branch") {
                 throw Exception(branchFailure)
             }
             let headRepo = J.Text(J.Get(head, "repo"), "full_name")
@@ -365,10 +380,14 @@ internal class Synchronization {
             let pr = args.Number("pr")
             let candidate = RepositoryIdentity.CommitSha(args.Need("commit"))
             let upstream = RepositoryIdentity.CommitSha(args.Need("upstream"))
-            ReceiptVerification.Verify(repo, pr, false)
+            let pending = args.Get("sync")
             let pull = GitHub.Api("repos/" + repo + "/pulls/" + pr.ToString())
+            ReceiptVerification.Verify(repo, pr, pull, false, pending: pending)
             Open(pull)
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
+            if pending != "" && J.Text(J.Get(pull, "head"), "sha") == J.Text(receipt, "head") {
+                throw Exception("No pending pushed synchronization to replace")
+            }
             let issue = J.Number(receipt, "issue")
             let state = CoordinationState.Load(repo, issue)
             let coordination = state.Value()
@@ -378,7 +397,7 @@ internal class Synchronization {
             let expected = state.Sha
             let approval = J.Get(record, "approval")
             let target = J.Text(approval, "base_branch")
-            let previous = J.Text(J.Get(pull, "head"), "sha")
+            let previous = J.Text(receipt, "head")
             let fork = RepositoryIdentity.Repo(J.Text(J.Get(J.Get(pull, "head"), "repo"), "full_name"))
             Target(repo, approval, target, upstream)
             Ancestor(repo, J.Text(approval, "base"), fork, previous)
@@ -402,7 +421,8 @@ internal class Synchronization {
                         "expected": expected,
                         "fork": fork,
                         "branch": J.Text(J.Get(pull, "head"), "ref"),
-                        "receipt": receipt
+                        "receipt": receipt,
+                        "pending": pending
                     }
                 )
             )
