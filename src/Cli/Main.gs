@@ -265,6 +265,31 @@ func Dispatch(options Args) int32 {
         }
         case "submit" {
             Submission.Submit(options)
+            if !PublicOutput.Enabled {
+                let directory = Path.GetFullPath(options.Need("run"))
+                let run = Data.Load(directory)
+                if run.Number("pr") == 0 {
+                    let request = RequestData.FileData(Path.Combine(directory, "request.json"), 8192)
+                    ApiTransport.BeginDeadline(30)
+                    try {
+                        while true {
+                            ApiTransport.CheckDeadline()
+                            let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+                            if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+                                .ValueKind != JsonValueKind.Undefined {
+                                break
+                            }
+                            ApiTransport.PollWait()
+                        }
+                    } catch (error ApiDeadlineException) {
+                        Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
+                        return 0
+                    } finally {
+                        ApiTransport.EndDeadline()
+                    }
+                    Submission.Submit(options)
+                }
+            }
         }
         case "approve" {
             OwnerApproval.Approve(options)

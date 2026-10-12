@@ -1003,6 +1003,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(File.ReadAllText(savedPath) == saved, "Graft rejection rewrote verification record")
         Flow.NoPr()
         Flow.NoInference()
+        baseline.Restore()
+        let submitted = Flow.Acquire([]string{"submit", "--run", run})
+        Check.Contains(submitted.Output, "Draft PR: https://github.com/owner/project/pull/10")
+        let published = Check.Json(File.ReadAllText(savedPath))
+        Check.That(
+            Check.Text(published["state"]) == "published" && Check.Text(published["pr"]) == "10",
+            "Submit returned before adopting its coordinated publication"
+        )
+        Flow.Reload()
+        Check.That(Check.Text(Flow.State["request_count"]) == "1", "Waiting submit posted more than once")
     }
 
     internal func ExpiryAndRevocation() {
