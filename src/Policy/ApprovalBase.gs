@@ -12,7 +12,10 @@ internal class ApprovalBase {
             if args.Get("base-branch") != "" {
                 return RepositoryIdentity.Branch(args.Get("base-branch"))
             }
-            if !PublicOutput.Enabled && !Console.IsInputRedirected && !Console.IsOutputRedirected {
+            if !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
+                !Console.IsInputRedirected &&
+                !Console
+                .IsOutputRedirected {
                 Console.Write("Target branch [" + Terminal.Clean(fallback) + "]: ")
                 let answer = Console.ReadLine() ?? throw Exception("Target branch selection cancelled")
                 if answer != "" {
