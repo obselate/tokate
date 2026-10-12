@@ -257,7 +257,10 @@ func WorkspaceFlow() {
         Press(window, Key.Enter)
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #999: Issue 999", enabled: true)
         Require(IssueRowCount(adapter.Root) == 1, "Search retained stale rows")
-        Require(FindText(adapter.Root, "Page 1 of 1"), "Search did not reset pagination")
+        Require(
+            FindText(adapter.Root, "1 issue") && Find(adapter.Root, AccessibilityRole.Button, "Next page") == nil,
+            "Search did not reset pagination"
+        )
         Edit(window, host, adapter, "Search issues", "#42")
         Press(window, Key.Enter)
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #42: Issue 42", enabled: true)
@@ -372,6 +375,7 @@ func WorkspaceFlow() {
             Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "11",
             "Navigation discarded amendment settings"
         )
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Add change", enabled: true)
         Choose(host, window, adapter, "Add change")
         Edit(window, host, adapter, "Change 2", "Fix the table header.")
         let first = Find(adapter.Root, AccessibilityRole.TextInput, "Change 1") ?? throw Exception("Missing first change")

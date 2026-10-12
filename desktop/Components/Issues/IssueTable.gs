@@ -2,9 +2,10 @@ package TokateDesktop
 
 import Goo
 import System
+import System.Collections.Generic
 
-/// The current page of issues, the loading state of the first search, or a placeholder once a search finds
-/// nothing.
+/// The current page of issues, the loading state of a search without rows, or a placeholder once a search
+/// finds nothing.
 data struct IssueTable {
     var Listing IssueListing
     var Short bool
@@ -15,16 +16,24 @@ data struct IssueTable {
 
     func Build() Blob {
         let choose = OnChoose
-        let table = ListPanel{Short: Short}.Build()
+        let rows = List[Blob]()
         for issue in Listing.Rows {
             let selected = issue
-            table.Children.Add(IssueRow{Issue: issue, Disabled: Busy, ShowApproval: ShowApproval, OnChoose: () -> choose?.Invoke(selected)}.Build())
-        }
-        if Listing.Loaded && Listing.Rows.Length == 0 {
-            table.Children.Add(
-                Busy && Loader != nil ? Loader!!("Searching issues"): EmptyMessage{Content: "No matching issues", Icon: "search_off"}.Build()
+            rows.Add(
+                IssueRow{
+                    Issue: issue,
+                    Disabled: Busy,
+                    ShowApproval: ShowApproval,
+                    Last: rows.Count == Listing.Rows.Length - 1,
+                    OnChoose: () -> choose?.Invoke(selected),
+                }.Build()
             )
         }
-        return table
+        if rows.Count == 0 && Busy && Loader != nil {
+            rows.Add(Loader!!(Listing.Loaded ? "Searching issues": "Reading issues"))
+        } else if rows.Count == 0 && Listing.Loaded {
+            rows.Add(EmptyMessage{Content: "No matching issues", Icon: "search_off"}.Build())
+        }
+        return ListPanel{Short: Short, Fill: Listing.Rows.Length == 0, Children: rows.ToArray()}.Build()
     }
 }

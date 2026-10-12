@@ -11,6 +11,8 @@ data struct SavedRow {
     var Item SavedRun
     var Index int32
     var Disabled bool
+    /// The last row has no line below it.
+    var Last bool
     var OnOpen Action[SavedRun]?
 
     func Build() Blob {
@@ -29,7 +31,7 @@ data struct SavedRow {
                 facts.Add("PR #" + run.Pr.ToString())
             }
             if run.Model != "" {
-                facts.Add(run.Model + " / " + run.Effort)
+                facts.Add(ModelChoice.Pair(run.Model, run.Effort))
             }
         }
         let age = Item.Age(DateTime.UtcNow)
@@ -61,7 +63,7 @@ data struct SavedRow {
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
                 Gap: 12,
-                BorderWidth: Edges{Bottom: 1},
+                BorderWidth: Edges{Bottom: Last ? 0: 1},
                 BorderColor: p.Line,
                 BackgroundColor: Color.Transparent,
                 Hover: Style{BackgroundColor: p.Paper},
