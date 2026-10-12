@@ -127,7 +127,17 @@ Owners do not need a coding tool or an AI subscription. Keep fork CI read-only a
 
 Access requests grant no access. Explicit denial blocks every access mode.
 
-Issue, policy or PR-template changes need fresh approval. Do not open or merge PRs from `tokate/` state branches.
+Issue, policy or PR-template changes need fresh approval.
+
+Tokate keeps its records in `tokate/` branches of your repository. Keep them.
+
+| Branch | Holds |
+| --- | --- |
+| `tokate/access` | Donor trust, grants and denials |
+| `tokate/contributions/N` | Reservation and publication record for issue N |
+| `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch |
+
+Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record.
 
 ## Review and merge
 

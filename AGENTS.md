@@ -30,7 +30,9 @@ trust has no effect. Grant each issue with `tokate access grant LOGIN N`.
 A change to the policy or template revokes existing approvals. Re-approve open tasks
 after the change is merged. After a coordinator pin change, confirm that Actions
 permits `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
-Otherwise every request stays pending.
+Otherwise every request stays pending. Tokate keeps its records in `tokate/`
+branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
+open PRs from them. Deleting `tokate/access` removes all trust and grants.
 
 Before acceptance, inspect the diff and run `tokate verify PR` and `tokate checks PR`.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing

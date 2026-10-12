@@ -210,7 +210,7 @@ Approve a fork workflow only after diff review. For a stale PR, refresh `tokate 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
 | `Current donor access does not permit this task. The owner must restore access or grant the required membership.` | Donor: `tokate access request 42 --trust`. Owner: `tokate access trust DONOR` for all tasks, or `tokate access grant DONOR 42` for one issue. If the donor was denied: `tokate access restore DONOR`. |
-| `Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.` | Owner: `tokate access`. If it says access is absent: `tokate access init`, then `tokate access trust DONOR`. If GitHub is unreachable: wait, then run the donor command again. |
+| `Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.` | Owner: `tokate access`. If it says access is absent, the `tokate/access` branch was never created or was deleted, and all trust and grants are gone: `tokate access init`, then trust or grant each donor again. If GitHub is unreachable: wait, then run the donor command again. |
 
 An access request does not grant eligibility. The owner must trust or grant the donor.
 
