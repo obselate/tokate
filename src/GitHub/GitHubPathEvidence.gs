@@ -10,9 +10,11 @@ internal class GitHubPathEvidence {
             let commit = GitHub.Api(
                 "repos/" + RepositoryIdentity.Repo(repo) + "/git/commits/" + RepositoryIdentity.CommitSha(head)
             )
+
             if J.Text(commit, "sha") != head {
                 throw Exception("Mismatched protected commit evidence")
             }
+
             let sha = RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha"))
             let value = GitHub.Api("repos/" + repo + "/git/trees/" + sha + "?recursive=1")
             if J.Text(value, "sha") != sha || J.Get(value, "truncated").ValueKind != JsonValueKind.False || J.Get(
@@ -22,7 +24,9 @@ internal class GitHubPathEvidence {
                 .ValueKind != JsonValueKind.Array {
                 throw Exception("Missing, truncated or mismatched protected tree evidence")
             }
+
             let entries = Dictionary[string, string](StringComparer.Ordinal)
+
             for entry in J.Get(value, "tree").EnumerateArray() {
                 ProtectedPaths.AddTree(
                     entries,
@@ -32,7 +36,9 @@ internal class GitHubPathEvidence {
                     J.Text(entry, "sha")
                 )
             }
+
             ProtectedPaths.CompleteTree(entries)
+
             return entries
         }
 
@@ -54,9 +60,11 @@ internal class GitHubPathEvidence {
             RepositoryIdentity.Repo(fork)
             RepositoryIdentity.CommitSha(base)
             RepositoryIdentity.CommitSha(head)
+
             let comparison = GitHub.Api("repos/" + repo + "/compare/" + base + "..." + fork.Split('/')[0] + ":" + head)
             let files = J.Get(comparison, "files")
             let commits = J.Items(J.Get(comparison, "commits"))
+
             if J.Text(comparison, "status") != "ahead" || J.Get(comparison, "behind_by")
                 .ValueKind != JsonValueKind.Number ||
                 J.Number(comparison, "behind_by") != 0 || J.Text(J.Get(comparison, "base_commit"), "sha") != base ||
@@ -68,16 +76,21 @@ internal class GitHubPathEvidence {
                 files.GetArrayLength() == 0 || files.GetArrayLength() >= 300 {
                 throw Exception("Missing, truncated or mismatched approved-base-to-head diff evidence")
             }
+
             let filenames = HashSet[string](StringComparer.Ordinal)
             let endpoints = HashSet[string](StringComparer.Ordinal)
+
             for file in files.EnumerateArray() {
                 let path = J.Text(file, "filename")
                 ProtectedPaths.Relative(path)
+
                 if !filenames.Add(path) {
                     throw Exception("Duplicate GitHub file diff evidence")
                 }
+
                 endpoints.Add(path)
                 let status = J.Text(file, "status")
+
                 if status != "added" &&
                     status != "removed" &&
                     status != "modified" &&
@@ -86,6 +99,7 @@ internal class GitHubPathEvidence {
                     status != "copied" {
                     throw Exception("Missing GitHub file diff status")
                 }
+
                 let previous = J.Get(file, "previous_filename")
                 if status == "renamed" || previous.ValueKind != JsonValueKind.Undefined {
                     let name = J.Text(file, "previous_filename")
@@ -93,6 +107,7 @@ internal class GitHubPathEvidence {
                     endpoints.Add(name)
                 }
             }
+
             return endpoints
         }
     }

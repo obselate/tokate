@@ -27,10 +27,12 @@ internal class RepositoryIdentity {
         internal func IsIssueUrl(value string, repo string, number int32) bool {
             let prefix = "https://api.github.com/repos/"
             let suffix = "/issues/" + number.ToString()
+
             if value.Length <= prefix.Length + suffix.Length || !value.StartsWith(prefix, StringComparison.Ordinal) ||
                 !value.EndsWith(suffix, StringComparison.Ordinal) {
                 return false
             }
+
             let repository = value.Substring(prefix.Length, value.Length - prefix.Length - suffix.Length)
             return SameRepo(repository, repo)
         }
@@ -47,11 +49,13 @@ internal class RepositoryIdentity {
                 value.Contains("@{") || Regex.IsMatch(value, "[\\x00-\\x20\\x7f~^:?*\\\\\\[]") {
                 throw Exception("Expected a Git branch name")
             }
+
             for part in value.Split('/') {
                 if part == "" || part.StartsWith(".") || part.EndsWith(".lock") {
                     throw Exception("Expected a Git branch name")
                 }
             }
+
             return value
         }
 
