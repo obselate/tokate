@@ -652,7 +652,11 @@ func Main(args[]string) {
         Console.WriteLine("PASS: command descendants and timeout cleanup")
         return
     }
+    let state = Path.Combine(Path.GetTempPath(), "tokate-gui-state-" + Guid.NewGuid().ToString("N"))
+    Environment.SetEnvironmentVariable("XDG_STATE_HOME", state)
     TestDesktop()
+    Require(ThemeStore.Read().Night, "The theme choice was not saved")
+    Directory.Delete(state, true)
     WorkspaceFlow()
     TestCommandLifecycle()
     let literal = RunTool("/usr/bin/printf", []string{"%s", "{\"value\":\"$(literal); *\"}"})

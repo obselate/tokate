@@ -10,7 +10,7 @@ class ThemeService {
     private let window WindowService
     private let changed Action
     private var twilight Anim[float64]?
-    var Settings ThemeSettings = ThemeSettings.Initial
+    var Settings ThemeSettings = ThemeStore.Read()
 
     init(window WindowService, changed Action) {
         this.window = window
@@ -28,16 +28,21 @@ class ThemeService {
     func Toggle() {
         Settings = Settings with{Night = !Settings.Night}
         twilight?.To(Settings.Night ? 1.0: 0.0, Cubic.Tween(Animated ? 1.1: 0.0))
-        changed()
+        Save()
     }
 
     func SetOilPaint(value bool) {
         Settings = Settings with{OilPaint = value}
-        changed()
+        Save()
     }
 
     func SetMotion(value bool) {
         Settings = Settings with{Motion = value}
+        Save()
+    }
+
+    private func Save() {
+        ThemeStore.Write(Settings)
         changed()
     }
 

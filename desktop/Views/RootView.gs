@@ -22,7 +22,7 @@ class RootView : Cell {
 
     init(app DesktopApp) {
         this.app = app
-        app.Theme.Bind(Animate(0.0))
+        app.Theme.Bind(Animate(app.Theme.Settings.Night ? 1.0: 0.0))
         loadingPulse = Animate(1.0)
         donate = DonateView(app.Donation, app.Feedback, app.Art, next -> Navigate(next), path -> OpenSaved(path))
         project = ProjectView(app.Owner, app.Feedback, app.Art)
