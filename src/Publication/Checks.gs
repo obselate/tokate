@@ -9,6 +9,7 @@ internal class Checks {
     shared {
         private let BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
         private let Review string = "Review implementation scope, acceptance criteria, semantic compatibility and limitations; decide final acceptance and merge. Machine checks do not accept or complete the issue or remove draft status."
+        private let ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
         private let ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
 
         private func Identity(pull JsonElement) string {
@@ -131,6 +132,7 @@ internal class Checks {
                 }
                 let observed = List[Object]()
                 var stage = "lifecycle"
+                var approval bool
                 try {
                     ApiTransport.CheckDeadline()
                     let pullPath = "repos/" + run.Text("repo") + "/pulls/" + run.Number("pr").ToString()
@@ -226,6 +228,39 @@ internal class Checks {
                     }
                     stage = "checks"
                     let rows = CommitChecks.Read(run.Text("repo"), run.Text("commit"), observed)
+                    let awaiting = List[Object]()
+                    facts["workflow_runs_awaiting_approval"] = awaiting
+                    for page in 1 ... 11 {
+                        let response = GitHub.Api(
+                            "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + run.Text("commit") +
+                                "&status=action_required&per_page=100&page=" +
+                                page.ToString()
+                        )
+                        let workflows = J.Get(response, "workflow_runs")
+                        if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > 100 {
+                            throw Exception("Cannot read workflow runs awaiting approval")
+                        }
+                        for workflow in workflows.EnumerateArray() {
+                            if J.Text(workflow, "head_sha") != run.Text("commit") || J.Text(
+                                workflow,
+                                "conclusion"
+                            ) != "action_required" {
+                                continue
+                            }
+                            approval = true
+                            if awaiting.Count < 64 {
+                                awaiting.Add(J.Select(workflow, "id,name,head_sha,html_url,status,conclusion"))
+                            } else {
+                                PublicOutput.Truncated = true
+                            }
+                        }
+                        if workflows.GetArrayLength() < 100 {
+                            break
+                        }
+                        if page == 10 {
+                            throw Exception("Workflow approval inspection exceeded its bounded history")
+                        }
+                    }
                     var failed bool
                     var pending bool
                     var inspection bool
@@ -273,10 +308,10 @@ internal class Checks {
                     facts["checks_status"] = status
                     facts["required_checks"] = required
                     facts["required_check_count"] = names.Count
-                    facts["owner_inspection_required"] = inspection
-                    if inspection {
+                    facts["owner_inspection_required"] = inspection || approval
+                    if inspection || approval {
                         facts["required_owner_actions"] = []string{
-                            "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
+                            approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
                             Review
                         }
                     }
@@ -335,7 +370,8 @@ internal class Checks {
                     }
                     facts["machine_status"] = status
                     if reportFailure != "" {
-                        facts["required_owner_actions"] = []string{ReportAction, Review}
+                        facts["required_owner_actions"] = approval ? []string{ApprovalAction, ReportAction, Review}:
+                        []string{ReportAction, Review}
                     }
                     Show(run, observed, facts, directory, ref previous)
                     if failed {
@@ -395,6 +431,10 @@ internal class Checks {
                                 }
                                 break
                             }
+                        }
+                        if approval {
+                            facts["owner_inspection_required"] = true
+                            facts["required_owner_actions"] = []string{ApprovalAction, action, Review}
                         }
                     }
                     Show(run, observed, facts, directory, ref previous)

@@ -229,6 +229,48 @@ internal class CheckGates {
                 )
             }
             test.Restore()
+            flow.State["checks"] = JsonArray()
+            let head = Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"])
+            let waiting = Check.Map(
+                "id",
+                42,
+                "name",
+                "CI",
+                "head_sha",
+                head,
+                "status",
+                "completed",
+                "conclusion",
+                "action_required",
+                "html_url",
+                "https://example.test/approval"
+            )
+            let stale = waiting.DeepClone()
+            stale["head_sha"] = JsonValue.Create(String('a', 40))
+            let completed = waiting.DeepClone()
+            completed["conclusion"] = JsonValue.Create("success")
+            flow.State["workflow_runs"] = JsonArray(stale, completed, waiting)
+            flow.Save()
+            let approval = Data(Read(test, 8))
+            Gate(approval, "checks", "pending")
+            Check.That(
+                Check.Text(approval["required_checks"]?[0]?["status"]) == "missing" && Check.Text(
+                    approval["owner_inspection_required"]
+                ) == "true" &&
+                    JsonNode.DeepEquals(approval["workflow_runs_awaiting_approval"], JsonArray(waiting.DeepClone())),
+                "Missing jobs hid exact-head workflow approval evidence"
+            )
+            let actions = approval["required_owner_actions"]?.ToJsonString() ?? ""
+            Check.Contains(actions, "Inspect the PR diff, then approve")
+            Check.Contains(actions, "in GitHub")
+            Check.Contains(Read(test, 8, human: true).Output, "Workflow runs await owner approval")
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                let path = Check.Text(call["path"])
+                if path.Contains("/actions/runs?") {
+                    Check.Contains(path, "head_sha=" + head + "&status=action_required")
+                }
+            }
+            test.Restore()
             Passing(test)
             flow.State["statuses"] = Check.Json("[{\"context\":\"verify\",\"state\":\"pending\"}]")
             flow.Save()

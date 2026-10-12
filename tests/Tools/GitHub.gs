@@ -577,6 +577,10 @@ internal partial class Fixture {
             }
             return Answer(State["check_runs"] ?? Check.Map("total_count", runs.Count, "check_runs", runs))
         }
+        if tail.StartsWith("actions/runs?") {
+            let runs = State["workflow_runs"]?.AsArray() ?? JsonArray()
+            return Answer(Check.Map("total_count", runs.Count, "workflow_runs", CommentPage(runs)))
+        }
         if tail.StartsWith("commits/") && tail.Contains("/status?") {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))
         }
