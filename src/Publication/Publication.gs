@@ -21,6 +21,7 @@ internal class Publication {
 
         internal func Pulls(run Data) List[JsonElement] {
             let pulls = List[JsonElement]()
+
             for page in 1 ... 21 {
                 let response = GitHub.Api(
                     "repos/" + RepositoryIdentity.Repo(run.Text("repo")) +
@@ -29,15 +30,19 @@ internal class Publication {
                         "&per_page=100&page=" +
                         page.ToString()
                 )
+
                 if response.ValueKind != JsonValueKind.Array {
                     throw Exception("interrupted_publication: matching PR history is invalid; refusing publication")
                 }
+
                 let rows = J.Items(response)
                 pulls.AddRange(rows)
+
                 if rows.Count < 100 {
                     return pulls
                 }
             }
+
             throw Exception("interrupted_publication: matching PR history is incomplete; refusing publication")
         }
 
@@ -46,25 +51,33 @@ internal class Publication {
             let body = J.Text(pull, "body")
             let failure = "interrupted_publication: physical PR differs from exact saved run/head/receipt"
             let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+
             if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
                 throw Exception(failure)
             }
+
             let comparable = Dictionary[string, Object?]()
+
             for field in receipt.EnumerateObject() {
                 comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
             }
+
             if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
                 body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) {
                 throw Exception(failure)
             }
+
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
+
             if J.Text(head, "sha") != run.Text("commit") || J.Text(head, "ref") != run.Text("branch") ||
                 !RepositoryIdentity.SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
                 throw Exception(failure)
             }
+
             let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
             let mergedAt = J.Get(pull, "merged_at").ValueKind
+
             if J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
                 baseRepo,
                 run.Text("repo")
@@ -78,13 +91,17 @@ internal class Publication {
 
         internal func Find(run Data, expectedReceipt JsonElement) JsonElement {
             let pulls = Pulls(run)
+
             if pulls.Count > 1 {
                 throw Exception("interrupted_publication: ambiguous physical PRs; intent preserved")
             }
+
             if pulls.Count == 0 {
                 return JsonElement{}
             }
+
             Match(run, pulls[0], expectedReceipt)
+
             return pulls[0]
         }
 
@@ -92,7 +109,9 @@ internal class Publication {
             run.Fields["pr"] = J.Number(pull, "number")
             run.Fields["pr_url"] = J.Text(pull, "html_url")
             run.Fields["state"] = "published"
+
             run.Save(directory)
+
             Terminal.Message("Draft PR: " + run.Text("pr_url"))
         }
     }

@@ -33,13 +33,17 @@ internal class PrBody {
                 missing: true
             )
             var text = ApplicationInfo.Resource("tokate-pr.md")
+
             if custom.ValueKind != JsonValueKind.Undefined {
                 if J.Text(custom, "encoding") != "base64" {
                     throw Exception("Expected a small repository PR template")
                 }
+
                 text = Encoding.UTF8.GetString(Convert.FromBase64String(J.Text(custom, "content")))
+
                 ValidateTemplate(text)
             }
+
             return text + (J.Text(policy.Value, "pr_text") == "" ? "": "\n\n{{pr_text}}\n")
         }
 
@@ -53,6 +57,7 @@ internal class PrBody {
             if summary.ValueKind != JsonValueKind.Undefined {
                 PublicSummary.Validate(summary, J.Text(metadata, "head"))
             }
+
             return PublicSummary.Report(
                 summary,
                 RequestData.Incomplete(
@@ -67,16 +72,21 @@ internal class PrBody {
                 (J.Text(metadata, "source") == "tokate" ? "managed Tokate": "external") +
                 "; coding execution and usage are donor-reported to the coordinator." +
                 PublicSummary.Tools(J.Get(metadata, "tools"), "Original donor-reported tools")
+
             let correction = J.Get(metadata, "correction")
+
             if correction.ValueKind != JsonValueKind.Undefined {
                 report += "\n\n- Correction: separate " + J.Number(correction, "seconds").ToString() +
                     " second verification budget; original declarations cover only the original completed turn." +
                     PublicSummary.Tools(J.Get(correction, "tools"), "Donor-reported correction tools")
             }
+
             let prior = J.Get(metadata, "predecessor")
             let handoff = J.Get(metadata, "handoff")
+
             if handoff.ValueKind != JsonValueKind.Undefined {
                 ContributionHandoff.Declaration(handoff)
+
                 report += "\n\n- Supersedes #" + J.Number(handoff, "pr").ToString() + " from @" + J.Text(
                     handoff,
                     "donor"
@@ -85,6 +95,7 @@ internal class PrBody {
                     J.Text(handoff, "head") +
                     ". The repository owner may close the prior draft after reviewing this successor. Its discussion is preserved."
             }
+
             return report + (prior.ValueKind == JsonValueKind.Undefined ? "": "\n\n" + ContinuationReport(prior).Trim())
         }
 
@@ -111,9 +122,11 @@ internal class PrBody {
             let prefix = "<!-- tokate-receipt:"
             let start = Unique(body, prefix, ambiguity)
             let end = body.IndexOf(" -->", start, StringComparison.Ordinal)
+
             if end < 0 {
                 throw Exception(malformed)
             }
+
             return body.Substring(start + prefix.Length, end - start - prefix.Length)
         }
 
@@ -123,9 +136,11 @@ internal class PrBody {
             failure string = "Missing or ambiguous Tokate-owned report/receipt region"
         ) int32 {
             let start = body.IndexOf(value, StringComparison.Ordinal)
+
             if start < 0 || body.IndexOf(value, start + value.Length, StringComparison.Ordinal) >= 0 {
                 throw Exception(failure)
             }
+
             return start
         }
 
@@ -138,9 +153,11 @@ internal class PrBody {
             let suffix = "<!-- tokate-report:end -->"
             let start = Unique(body, prefix) + prefix.Length
             let end = Unique(body, suffix)
+
             if end < start {
                 throw Exception("Malformed Tokate report region")
             }
+
             return body.Substring(start, end - start).Trim()
         }
 
@@ -151,16 +168,20 @@ internal class PrBody {
             let suffix = "<!-- tokate-report:end -->"
             let start = Unique(body, prefix)
             let end = Unique(body, suffix)
+
             if end <= start {
                 throw Exception("Malformed Tokate report region")
             }
+
             let length = end + suffix.Length - start
             let updated = body.Remove(start, length).Insert(start, Report(report))
             let receiptStart = Unique(updated, "<!-- tokate-receipt:")
             let receiptEnd = updated.IndexOf(" -->", receiptStart, StringComparison.Ordinal)
+
             if receiptEnd < 0 {
                 throw Exception("Malformed Tokate receipt")
             }
+
             return updated.Remove(receiptStart, receiptEnd + 4 - receiptStart).Insert(
                 receiptStart,
                 "<!-- tokate-receipt:" + J.Write(receipt) + " -->"

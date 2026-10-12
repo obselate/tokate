@@ -38,16 +38,21 @@ internal class ContributionReceipt {
             )
             let correction = J.Get(J.Get(original, "metadata"), "correction")
             let handoff = J.Get(J.Get(original, "metadata"), "handoff")
+
             if handoff.ValueKind != JsonValueKind.Undefined {
                 fields["handoff"] = handoff
             }
+
             if J.Count(J.Get(state, "amendments")) == 0 && RequestData.Incomplete(J.Get(original, "metadata")) {
                 fields["incomplete"] = true
             }
+
             AttemptContinuation.Keep(fields, J.Get(original, "metadata"))
+
             if correction.ValueKind != JsonValueKind.Undefined {
                 fields["correction"] = correction
             }
+
             if J.Count(J.Get(state, "amendments")) > 0 {
                 let amended = map[string, Object?]{
                     "id": J.Text(current, "request"),
@@ -55,12 +60,16 @@ internal class ContributionReceipt {
                     "seconds": J.Number(current, "seconds"),
                     "tools": J.Get(current, "tools")
                 }
+
                 if J.Text(current, "sync") != "" {
                     amended["sync"] = J.Text(current, "sync")
                 }
+
                 fields["amendment"] = PublicSummary.Attach(amended, J.Get(current, "summary"))
             }
+
             Synchronization.Keep(fields, Synchronization.History(current))
+
             return J.Parse(J.Write(fields))
         }
     }

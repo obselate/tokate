@@ -20,6 +20,7 @@ internal class Checks {
             result["base_repo"] = J.Select(J.Get(J.Get(pull, "base"), "repo"), "id,full_name")
             result["author"] = J.Select(J.Get(pull, "user"), "id,login")
             result["body_hash"] = Data.Hash(J.Text(pull, "body"))
+
             return J.Write(result)
         }
 
@@ -27,6 +28,7 @@ internal class Checks {
             facts["observed_head_after"] = J.Text(J.Get(pull, "head"), "sha")
             facts["target_branch_after"] = J.Text(J.Get(pull, "base"), "ref")
             facts["pr_observation_after"] = J.Select(pull, "state,draft,merged,merged_at,closed_at")
+
             if J.Text(pull, "state") == "closed" || J.Bool(pull, "merged") || J.Get(pull, "merged_at")
                 .ValueKind == JsonValueKind.String {
                 facts["owner_review"] = "historical"
@@ -40,12 +42,15 @@ internal class Checks {
             for name in[]string{"receipt", "report", "checks", "dependencies", "lifecycle"} {
                 let gate = gates[name] as Dictionary[string, Object?] ?? throw Exception("Invalid check gate")
                 let status = gate["status"]?.ToString() ?? "unread"
+
                 if status == "passed" || status == "failed" || status == "pending" {
                     gate["observed_status"] = status
                     gate["status"] = "stale"
                 }
             }
+
             facts["checks_observed_status"] = facts["checks_status"]
+
             if facts["checks_status"]?.ToString() != "unread" {
                 facts["checks_status"] = "stale"
             }
@@ -60,6 +65,7 @@ internal class Checks {
             ref previous string
         ) {
             PublicOutput.Checks(run, J.Parse(J.Write(observed)), facts["checks_status"]?.ToString() ?? "unread", facts)
+
             let snapshot = J.Write(
                 map[string, Object?]{
                     "head": run.Text("commit"),
@@ -68,31 +74,38 @@ internal class Checks {
                     "result": PublicOutput.ResultData
                 }
             )
+
             if snapshot == previous {
                 return
             }
+
             if directory != "" {
                 let path = Path.Combine(directory, "checks.json")
                 if !File.Exists(path) || File.ReadAllText(path) != snapshot {
                     File.WriteAllText(path, snapshot)
                 }
             }
+
             previous = snapshot
             let status = facts["checks_status"]?.ToString() ?? "unread"
             let machine = facts["machine_status"]?.ToString() ?? "pending"
+
             Terminal.Message(
                 "Machine gates " + machine,
                 machine == "passed" ? "green": (machine == "failed" ? "red": "yellow")
             )
             Terminal.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
+
             if !PublicOutput.Enabled {
                 if facts["owner_review"]?.ToString() == "required" {
                     Terminal.Message("Owner review: read the diff, then merge.", "default")
                 }
+
                 if verbose {
                     Terminal.Checks(
                         J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks")
                     )
+
                     let evidence = Dictionary[string, Object?](facts)
                     evidence.Remove("owner_inspection_required")
                     Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
@@ -102,10 +115,12 @@ internal class Checks {
 
         internal func Run(args Args) int32 {
             ApiTransport.BeginDeadline(args.Number("timeout", "1200"))
+
             try {
                 return ChecksWithinDeadline(args)
             } catch (error ApiDeadlineException) {
                 Terminal.Message(error.Message, "yellow")
+
                 return 8
             } finally {
                 ApiTransport.EndDeadline()
@@ -115,21 +130,27 @@ internal class Checks {
         private func ChecksWithinDeadline(args Args) int32 {
             let directory = args.Get("run") == "" ? "": Path.GetFullPath(args.Need("run"))
             var run = directory == "" ? Data(): Data.Load(directory)
+
             if directory == "" {
                 run.Fields["repo"] = RepositoryIdentity.Repo(args.Need("repo"))
                 run.Fields["pr"] = args.Number("pr")
             }
+
             if run.Number("pr") == 0 {
                 throw Exception("No PR has been published for this run")
             }
+
             var previous string = ""
             var binding string = ""
             var identity string = ""
+
             while true {
                 let gates = map[string, Object?]{}
+
                 for name in[]string{"lifecycle", "receipt", "report", "checks", "dependencies", "freshness"} {
                     gates[name] = map[string, Object?]{"status": "unread"}
                 }
+
                 let facts = map[string, Object?]{
                     "gates": gates,
                     "machine_status": "pending",
@@ -143,10 +164,14 @@ internal class Checks {
                 let observed = List[Object]()
                 var stage = "lifecycle"
                 var approval bool
+
                 try {
                     ApiTransport.CheckDeadline()
+
                     let pullPath = "repos/" + run.Text("repo") + "/pulls/" + run.Number("pr").ToString()
+
                     let pull = GitHub.Api(pullPath)
+
                     facts["pr_observation"] = J.Select(pull, "state,draft,merged,merged_at,closed_at")
                     facts["observed_head"] = J.Text(J.Get(pull, "head"), "sha")
                     run.Fields["pr_url"] = J.Text(pull, "html_url")
@@ -169,9 +194,12 @@ internal class Checks {
                     gates["lifecycle"] = map[string, Object?]{
                         "status": isOpen ? "passed": (historical ? "historical": "unavailable")
                     }
+
                     if historical {
                         facts["machine_status"] = "historical"
+
                         PublicOutput.Checks(run, J.Parse("[]"), "unread", facts)
+
                         Terminal.Message(
                             "PR #" + run.Number("pr").ToString() +
                                 (
@@ -179,14 +207,17 @@ internal class Checks {
                                 " was merged.": " was closed without merge."
                             )
                         )
+
                         return 0
                     }
+
                     if !isOpen {
                         throw CliFailure(
                             "invalid_state",
                             "PR is not an open, unmerged contribution awaiting owner review"
                         )
                     }
+
                     if identity != "" && Identity(pull) != identity {
                         stage = "freshness"
                         throw CliFailure(
@@ -194,28 +225,37 @@ internal class Checks {
                             "PR head, target, receipt or lifecycle changed while reading checks"
                         )
                     }
+
                     stage = "freshness"
                     let branch = J.Text(J.Get(pull, "base"), "ref")
                     let currentTarget = GitHub.Branch(run.Text("repo"), branch)
                     facts["target_branch"] = branch
                     facts["target_revision"] = currentTarget
+
                     stage = "receipt"
+
                     let verified = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull)
+
                     if run.Text("commit") != "" && verified.Text("commit") != run.Text("commit") {
                         throw CliFailure("stale_approval", "Saved commit differs from PR receipt")
                     }
+
                     run = verified
                     let currentBinding = J.Write(J.Select(run.Element(), BindingFields))
                     facts["binding"] = J.Select(run.Element(), BindingFields)
                     gates["receipt"] = map[string, Object?]{"status": "passed"}
+
                     stage = "freshness"
+
                     if binding != "" && binding != currentBinding || J.Text(J.Get(pull, "head"), "sha") != run.Text(
                         "commit"
                     ) {
                         throw CliFailure("stale_approval", "PR authority changed while reading checks")
                     }
+
                     binding = currentBinding
                     identity = Identity(pull)
+
                     if run.Flag("incomplete") {
                         stage = "report"
                         facts["incomplete"] = true
@@ -224,6 +264,7 @@ internal class Checks {
                             "Incomplete draft needs continued work and independent verification before readiness"
                         )
                     }
+
                     stage = "freshness"
                     let history = J.Items(J.Get(run.Element(), "synchronizations"))
                     let verifiedTarget = history.Count == 0 ? run.Text("base"): J.Text(
@@ -231,8 +272,10 @@ internal class Checks {
                         "upstream"
                     )
                     facts["verified_target_revision"] = verifiedTarget
+
                     stage = "report"
                     var reportFailure string = ""
+
                     try {
                         PublicSummary.Current(
                             PrBody.ReportText(J.Text(pull, "body")),
@@ -240,6 +283,7 @@ internal class Checks {
                             run.Text("commit"),
                             run.Text("public_report")
                         )
+
                         gates["report"] = map[string, Object?]{"status": "passed", "evidence": "complete"}
                     } catch (error Exception) {
                         reportFailure = error.Message
@@ -248,20 +292,26 @@ internal class Checks {
                             "reason": "missing_or_altered_public_report"
                         }
                     }
+
                     stage = "checks"
+
                     let rows = CommitChecks.Read(run.Text("repo"), run.Text("commit"), observed)
                     let awaiting = List[Object]()
                     facts["workflow_runs_awaiting_approval"] = awaiting
+
                     for page in 1 ... 11 {
                         let response = GitHub.Api(
                             "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + run.Text("commit") +
                                 "&status=action_required&per_page=100&page=" +
                                 page.ToString()
                         )
+
                         let workflows = J.Get(response, "workflow_runs")
+
                         if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > 100 {
                             throw Exception("Cannot read workflow runs awaiting approval")
                         }
+
                         for workflow in workflows.EnumerateArray() {
                             if J.Text(workflow, "head_sha") != run.Text("commit") || J.Text(
                                 workflow,
@@ -269,35 +319,44 @@ internal class Checks {
                             ) != "action_required" {
                                 continue
                             }
+
                             approval = true
+
                             if awaiting.Count < 64 {
                                 awaiting.Add(J.Select(workflow, "id,name,head_sha,html_url,status,conclusion"))
                             } else {
                                 PublicOutput.Truncated = true
                             }
                         }
+
                         if workflows.GetArrayLength() < 100 {
                             break
                         }
+
                         if page == 10 {
                             throw Exception("Workflow approval inspection exceeded its bounded history")
                         }
                     }
+
                     var failed bool
                     var pending bool
                     var missing bool
                     var inspection bool
+
                     for row in J.Items(rows) {
                         inspection = inspection || J.Text(row, "state") == "ACTION_REQUIRED"
                     }
+
                     let required = List[Object]()
                     let names = J.Items(J.Get(J.Get(run.Element(), "policy"), "required_checks"))
+
                     for name in names {
                         var found bool
                         var passed bool = true
                         var conflicting bool
                         var success bool
                         var nameFailed bool
+
                         for row in J.Items(rows) {
                             if J.Text(row, "name") == name.GetString() {
                                 found = true
@@ -309,10 +368,12 @@ internal class Checks {
                                 ) == "cancel"
                             }
                         }
+
                         conflicting = success && !passed
                         failed = failed || nameFailed
                         pending = pending || !found || !passed
                         missing = missing || !found
+
                         if required.Count < 64 {
                             required.Add(
                                 map[string, Object?]{
@@ -328,17 +389,20 @@ internal class Checks {
                             PublicOutput.Truncated = true
                         }
                     }
+
                     let status = failed ? "failed": (pending ? "pending": "passed")
                     facts["checks_status"] = status
                     facts["required_checks"] = required
                     facts["required_check_count"] = names.Count
                     facts["owner_inspection_required"] = inspection || approval
+
                     if inspection || approval {
                         facts["required_owner_actions"] = []string{
                             approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
                             Review
                         }
                     }
+
                     if missing && !approval {
                         let workflows = J.Get(
                             GitHub.Api(
@@ -347,45 +411,64 @@ internal class Checks {
                             ),
                             "workflow_runs"
                         )
+
                         if workflows.ValueKind != JsonValueKind.Array {
                             throw Exception("Cannot read workflow runs for this head")
                         }
+
                         if workflows.GetArrayLength() == 0 {
                             facts[
                                 "ci_hint"
                             ] = "GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI."
                         }
                     }
+
                     gates["checks"] = map[string, Object?]{"status": status, "evidence": "complete"}
+
                     if !failed && !pending {
                         stage = "dependencies"
                         let dependencies = Dictionary[string, Object?]()
                         facts["dependency_evidence"] = dependencies
+
                         Overlaps.DependencyEvidence(run.Text("repo"), run.Number("issue"), dependencies)
+
                         let known = dependencies["dependencies_status"]?.ToString() == "complete"
                         let passed = known && dependencies["dependency_gate"]?.ToString() == "no_open_dependencies"
+
                         gates["dependencies"] = map[string, Object?]{
                             "status": passed ? "passed": (known ? "failed": "unavailable")
                         }
+
                         Overlaps.RequireDependencies(run.Text("repo"), run.Number("issue"), dependencies)
                     }
+
                     stage = "freshness"
+
                     let livePull = GitHub.Api(pullPath)
+
                     ObserveAfter(livePull, facts)
+
                     let live = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), livePull)
+
                     facts["binding_after"] = J.Select(live.Element(), BindingFields)
+
                     if J.Write(J.Select(live.Element(), BindingFields)) != binding {
                         throw CliFailure("stale_approval", "PR authority changed while reading checks")
                     }
+
                     let finalPull = GitHub.Api(pullPath)
+
                     ObserveAfter(finalPull, facts)
+
                     if Identity(livePull) != identity || Identity(finalPull) != identity {
                         throw CliFailure(
                             "stale_approval",
                             "PR head, target, receipt or lifecycle changed while reading checks"
                         )
                     }
+
                     let liveTarget = GitHub.Branch(run.Text("repo"), run.Text("base_branch"))
+
                     facts["target_revision_after"] = liveTarget
                     facts["target_moved"] = liveTarget != verifiedTarget
                     facts["mergeable"] = J.Get(finalPull, "mergeable")
@@ -398,29 +481,38 @@ internal class Checks {
                         "mergeable_state"
                     ) == "behind"
                     facts["reconciliation_required"] = reconcile
+
                     if reconcile {
                         facts[
                             "reconciliation_next"
                         ] = "GitHub reports a conflict or requires an up-to-date branch. Ask the current donor to reconcile and verify the resulting exact commit. Further coding requires a new explicit budget."
                     }
+
                     ApiTransport.CheckDeadline()
                     gates["freshness"] = map[string, Object?]{"status": "passed"}
+
                     if reportFailure != "" && !pending {
                         stage = "report"
                         throw CliFailure("invalid_state", reportFailure)
                     }
+
                     facts["machine_status"] = status
+
                     if reportFailure != "" {
                         facts["required_owner_actions"] = approval ? []string{ApprovalAction, ReportAction, Review}:
                         []string{ReportAction, Review}
                     }
+
                     Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
+
                     if failed {
                         return 1
                     }
+
                     if !pending {
                         return 0
                     }
+
                     if args.Get("watch") != "true" {
                         return 8
                     }
@@ -431,6 +523,7 @@ internal class Checks {
                             "result": J.Get(J.Parse(previous), "result")
                         }
                     }
+
                     let timedOut = error is ApiDeadlineException deadline
                     let unavailable = timedOut ||
                         error is CliFailure transport &&
@@ -440,20 +533,26 @@ internal class Checks {
                         stage == "freshness" &&
                         !unavailable
                     let gate = gates[stage] as Dictionary[string, Object?] ?? throw Exception("Invalid check gate")
+
                     if gate["status"]?.ToString() == "unread" || stage == "freshness" {
                         gate["status"] = stale ? "stale": (unavailable || stage == "checks" ? "unavailable": "failed")
                     }
+
                     gate["reason"] = timedOut ? "deadline": (
                         stale ? "changed_authority_or_identity": "evidence_blocked_or_unavailable"
                     )
+
                     if stage == "freshness" || stale {
                         Invalidate(gates, facts)
                     }
+
                     facts["machine_status"] = timedOut ? "pending": "failed"
+
                     if stage == "checks" {
                         facts["checks_status"] = stale ? "stale": "unavailable"
                         gate["evidence"] = stale ? "stale": (observed.Count > 0 ? "incomplete": "unavailable")
                     }
+
                     if facts["owner_review"]?.ToString() == "required" {
                         let action = stage == "dependencies" ? "Inspect native dependencies; every dependency must be closed as completed before machine success.": (
                             stage == "checks" ? "Inspect incomplete or unavailable exact-head CI evidence before acceptance.": (
@@ -461,7 +560,9 @@ internal class Checks {
                                 "Inspect current approval, receipt, protected paths, PR head, target and lifecycle evidence before acceptance."
                             )
                         )
+
                         facts["required_owner_actions"] = []string{action, Review}
+
                         for row in observed {
                             if J.Text(J.Parse(J.Write(row)), "state") == "ACTION_REQUIRED" {
                                 facts["owner_inspection_required"] = true
@@ -470,17 +571,22 @@ internal class Checks {
                                     action,
                                     Review
                                 }
+
                                 break
                             }
                         }
+
                         if approval {
                             facts["owner_inspection_required"] = true
                             facts["required_owner_actions"] = []string{ApprovalAction, action, Review}
                         }
                     }
+
                     Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
+
                     throw error
                 }
+
                 ApiTransport.PollWait()
             }
         }
