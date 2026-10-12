@@ -568,7 +568,7 @@ internal class CliDiscovery {
                 []string{},
                 flow.Temp,
                 80,
-                "2\nowner/project\n1\n1\n/usr/bin/true\n\nverify\n2\n2\n10m\n1\nq\n"
+                "\x1b[B\nowner/project\n\n\n/usr/bin/true\n\nverify\n\x1b[B\n\x1b[B\n10m\n\nq\n"
             )
             flow.Temp.Env["GH_TOKEN"] = previousToken
             Check.Success(guided)
@@ -1242,6 +1242,10 @@ internal class CliDiscovery {
                 Call(binary, []string{"work", "owner/project#1", "--time", "2d"}, temp, 1).Error,
                 "Use at most 24h: --time"
             )
+            Check.Contains(
+                Call(binary, []string{"verify-pr"}, temp, 1).Error,
+                "Unknown command: verify-pr. Use tokate verify."
+            )
 
             for argv in[][]string{
                 []string{"nonsense", "--help"},
@@ -1317,13 +1321,30 @@ internal class CliDiscovery {
                 if shell == "bash" {
                     let spaced = Path.Combine(temp.Root, "run with spaces")
                     Directory.CreateDirectory(spaced)
+                    let files = Path.Combine(temp.Root, "files with spaces")
+                    Directory.CreateDirectory(files)
+                    for name in[]string{"request.json", "summary with spaces.json", "output with spaces.yml"} {
+                        File.WriteAllText(Path.Combine(temp.Root, name), "")
+                    }
+                    File.WriteAllText(Path.Combine(files, "summary with spaces.json"), "")
                     command = "source '" +
                         path +
                         "'; COMP_WORDS=(tokate work --mo); COMP_CWORD=2; _tokate; printf '%s\\n' \"$${COMPREPLY[@]}\"; " +
                         "COMP_WORDS=(tokate work --effort=hi); _tokate; printf '%s\\n' \"$${COMPREPLY[@]}\"; " +
                         "COMP_WORDS=(tokate work '--runs=" +
                         temp.Root +
-                        "/run w'); _tokate; printf '%s\\n' \"$${COMPREPLY[@]}\""
+                        "/run w'); _tokate; printf '%s\\n' \"$${COMPREPLY[@]}\"; " +
+                        "expect_reply() { [[ $${#COMPREPLY[@]} == 1 && $${COMPREPLY[0]} == \"$$1\" ]] || exit 1; }; " +
+                        "file_completion() { local cmd=$$1 option=$$2 stem=$$3 expected=$$4; " +
+                        "COMP_WORDS=(tokate \"$$cmd\" \"$$option\" \"$$stem\"); COMP_CWORD=3; _tokate; expect_reply \"$$expected\"; " +
+                        "COMP_WORDS=(tokate \"$$cmd\" \"$$option=$$stem\"); COMP_CWORD=2; _tokate; expect_reply \"$$option=$$expected\"; " +
+                        "COMP_WORDS=(tokate \"$$cmd\" \"$$option\" = \"$$stem\"); COMP_CWORD=4; _tokate; expect_reply \"$$expected\"; }; " +
+                        "file_completion request --file req request.json; " +
+                        "file_completion external --summary sum 'summary with spaces.json'; " +
+                        "file_completion coordinator-setup --output out 'output with spaces.yml'; " +
+                        "file_completion external --summary 'files with spaces/sum' 'files with spaces/summary with spaces.json'; " +
+                        "COMP_WORDS=(tokate request --file missing-candidate); COMP_CWORD=3; _tokate; [[ $${#COMPREPLY[@]} == 0 ]] || exit 1; " +
+                        "COMP_WORDS=(tokate request --file =); _tokate; [[ \" $${COMPREPLY[*]} \" == *' request.json '* ]] || exit 1"
                     args = []string{"--noprofile", "--norc", "-c", command}
                 } else if shell == "zsh" {
                     command = "autoload -Uz compinit; compinit -D; source '" +
@@ -1337,7 +1358,7 @@ internal class CliDiscovery {
                         "'; complete -C 'tokate work --mo'; complete -C 'tokate work --effort=hi'; complete -C 'tokate work --claude-pro'"
                     args = []string{"--no-config", "-c", command}
                 }
-                let output = Check.Success(TestProcess.Run("/usr/bin/" + shell, args, temp.Env))
+                let output = Check.Success(TestProcess.Run("/usr/bin/" + shell, args, temp.Env, cwd: temp.Root))
                 Check.Contains(output, "--model")
                 Check.Contains(output, shell == "zsh" ? "--effort=": "--effort=high")
                 if shell == "fish" {

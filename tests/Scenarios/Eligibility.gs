@@ -500,14 +500,41 @@ internal class EligibilityChecks {
         private func Presentation(binary string) {
             using let empty = CoordinationFixture(binary)
             empty.Initialize(approve: false)
+            let notice = "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
             Check.That(
-                Access(empty, "init").Output.Trim() == "Initialized donor access for owner/project.",
+                Access(empty, "init").Output.Trim() == "Initialized donor access for owner/project.\n" + notice,
                 "Access initialization did not explain the change"
             )
             Check.Contains(
                 empty.Flow.Call([]string{"access", "list", "owner/project"}).Output,
                 "No donor access or pending requests."
             )
+            let first = empty.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            Check.That(
+                first
+                    .Output
+                    .Trim()
+                    .EndsWith("Approval recorded. Request a contribution reservation to begin work.\n" + notice),
+                "First repository approval did not explain state branches"
+            )
+            let repeatedApproval = empty.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            Check.That(!repeatedApproval.Output.Contains(notice), "Repeated approval repeated the state notice")
+            empty.Flow.Reload()
+            let secondIssue = empty.Flow.State["issue"] ?? throw Exception("Missing issue")
+            secondIssue["number"] = JsonValue.Create(2)
+            empty.Flow.Save()
+            let laterApproval = empty.Flow.Call([]string{"approve", "owner/project#2"}, owner: true)
+            Check.That(!laterApproval.Output.Contains(notice), "Later issue approval repeated the state notice")
+            using let structured = CoordinationFixture(binary)
+            structured.Initialize(approve: false)
+            for command in[][]string{
+                []string{"access", "init", "owner/project", "--json"},
+                []string{"approve", "owner/project#1", "--json"}
+            } {
+                let result = structured.Flow.Call(command, owner: true)
+                Check.Envelope(result, command[0], "ok")
+                Check.That(!(result.Output + result.Error).Contains(notice), "JSON output emitted the state notice")
+            }
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             Setup(test, "trusted")

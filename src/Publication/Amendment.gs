@@ -4,6 +4,7 @@ import System
 import System.Collections.Generic
 import System.Diagnostics
 import System.IO
+import System.Security.Cryptography
 import System.Text.Json
 
 internal class Amendment {
@@ -333,25 +334,85 @@ internal class Amendment {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+            let continuing = args.Get("commit") == ""
+            if continuing {
+                for key in[]string{"seconds", "tools", "summary", "sync", "resume"} {
+                    if args.Get(key) != "" {
+                        args.Need("commit")
+                    }
+                }
+                let amendments = Path.Combine(directory, "amendments")
+                if Directory.Exists(amendments) {
+                    for saved in Directory.EnumerateDirectories(amendments) {
+                        if !File.Exists(Path.Combine(saved, "run.json")) {
+                            continue
+                        }
+                        let value = Data.Load(saved)
+                        if value.Text("previous") != run.Text("commit") || J.Get(value.Element(), "request")
+                            .ValueKind != JsonValueKind.Object {
+                            continue
+                        }
+                        if args.Get("commit") != "" {
+                            throw CliFailure(
+                                "invalid_state",
+                                "Multiple saved amendment requests. Select one with --commit and --time."
+                            )
+                        }
+                        args.Values["--commit"] = value.Text("commit")
+                    }
+                }
+                if args.Get("commit") == "" {
+                    throw CliFailure(
+                        "invalid_state",
+                        "No saved amendment request. Start a new amendment with --commit and --time."
+                    )
+                }
+            }
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
-            let seconds = args.Number("seconds")
-            let sync = args.Get("sync") == "" ? "": RepositoryIdentity.CommitSha(args.Need("sync"))
-            let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(args.Need("tools"), 8192)
-            let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
             let location = Path.Combine(directory, "amendments", commit)
             var amendment Data
             if Directory.Exists(location) {
                 amendment = Data.Load(location)
                 OriginalEvidence.Amended(directory, run, amendment)
-                if !RequestData.Same(J.Get(amendment.Element(), "public_summary"), summary) || amendment.Text(
-                    "sync"
-                ) != sync ||
-                    amendment.Number("seconds") != seconds || RequestData.Canonical(
-                    J.Get(amendment.Element(), "tools")
-                ) != RequestData.Canonical(tools) {
-                    throw CliFailure("invalid_state", "Saved amendment budget or editing provenance changed")
+                if !continuing {
+                    for key in[]string{"seconds", "sync", "tools", "summary"} {
+                        try {
+                            let input = switch key {
+                                case "seconds": J.Parse(args.Number(key).ToString())
+                                case "sync": J.Parse(J.Write(args.Get(key)))
+                                case "tools": args.Get(key) == "" ? J.Parse("[]"): RequestData.FileData(
+                                    args.Need(key),
+                                    8192
+                                )
+                                default: PublicSummary.FileSummary(args.Get(key), commit)
+                            }
+                            let same = key == "sync" ? amendment.Text(key) == args.Get(key): RequestData.Same(
+                                J.Get(amendment.Element(), key == "summary" ? "public_summary": key),
+                                input
+                            )
+                            let hash = amendment.Text(key + "_sha256")
+                            if !same ||
+                                (
+                                hash != "" && args.Get(key) != "" && hash != Convert.ToHexString(
+                                    SHA256.HashData(File.ReadAllBytes(args.Need(key)))
+                                )
+                            ) {
+                                throw Exception("Changed amendment input")
+                            }
+                        } catch (error Exception) {
+                            throw CliFailure(
+                                "invalid_state",
+                                "Saved amendment " + Cli.Label(key) +
+                                    " input differs or cannot be read. Restore the original input to continue, or start a new amendment with a new --commit and --time."
+                            )
+                        }
+                    }
                 }
             } else {
+                let seconds = args.Number("seconds")
+                let sync = args.Get("sync") == "" ? "": RepositoryIdentity.CommitSha(args.Need("sync"))
+                let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(args.Need("tools"), 8192)
+                let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
                 let authority = Authority(run, nil, args.Get("resume") == "true")
                 let record = J.Get(authority, "record")
                 let policy = Policy(J.Write(J.Get(record, "policy")))
@@ -401,6 +462,9 @@ internal class Amendment {
                 for key in[]string{"tools", "summary"} {
                     if args.Get(key) != "" {
                         amendment.Fields[key + "_argument"] = Path.GetFullPath(args.Get(key))
+                        amendment.Fields[key + "_sha256"] = Convert.ToHexString(
+                            SHA256.HashData(File.ReadAllBytes(args.Need(key)))
+                        )
                     }
                 }
                 amendment.Fields["pr"] = number

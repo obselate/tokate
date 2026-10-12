@@ -792,6 +792,17 @@ internal partial class CoordinationFlow : CoordinationFixture {
 
     internal func ExternalPublication() {
         let claim = Claim()
+        let reserved = State().ToJsonString()
+        for json in[]bool{false, true} {
+            let args = List[string]{"approve", "owner/project#1"}
+            if json {
+                args.Add("--json")
+            }
+            let refused = Flow.Call(args.ToArray(), 1, owner: true)
+            Check.Contains(refused.Output + refused.Error, "active reservation")
+            Check.Contains(refused.Output + refused.Error, "--yes")
+            Check.That(State().ToJsonString() == reserved, "Unconfirmed approval changed the reservation")
+        }
         let run = Prepare()
         let commit = Candidate(claim)
         File.Delete(Path.Combine(Flow.Bin, "codex"))
@@ -834,6 +845,59 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
         Flow.Call([]string{"submit", "--run", run}, 1)
         Flow.NoInference()
+        let published = State().ToJsonString()
+        for json in[]bool{false, true} {
+            let args = List[string]{"approve", "owner/project#1"}
+            if json {
+                args.Add("--json")
+            }
+            let refused = Flow.Call(args.ToArray(), 1, owner: true)
+            Check.Contains(refused.Output + refused.Error, "published PR owner/project#10")
+            Check.Contains(refused.Output + refused.Error, "--yes")
+            Check.That(State().ToJsonString() == published, "Unconfirmed approval changed published authority")
+        }
+        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        Flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+        let machine = TestTerminal.Pty(
+            Flow.Binary,
+            []string{"approve", "owner/project#1", "--json"},
+            Flow.Temp,
+            80,
+            "y\n"
+        )
+        Check.That(machine.Code == 1, machine.Output + machine.Error)
+        Check.Contains(machine.Output, "published PR owner/project#10")
+        Check.That(State().ToJsonString() == published, "JSON approval accepted terminal confirmation")
+        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        let declined = TestTerminal.Pty(
+            Flow.Binary,
+            []string{"approve", "owner/project#1", "--base-branch", "main"},
+            Flow.Temp,
+            80,
+            "\n"
+        )
+        Check.That(declined.Code == 1, declined.Output + declined.Error)
+        Check.Contains(declined.Output, "published PR owner/project#10")
+        Check.Contains(declined.Output, "Re-approve")
+        Check.That(State().ToJsonString() == published, "Declined approval changed published authority")
+        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        let confirmed = TestTerminal.Pty(
+            Flow.Binary,
+            []string{"approve", "owner/project#1", "--base-branch", "main", "--yes"},
+            Flow.Temp,
+            80,
+            ""
+        )
+        Check.Success(confirmed)
+        Check.Contains(confirmed.Output, "published PR owner/project#10")
+        Check.That(State()["state"]?["contribution"] == nil, "Confirmed approval retained the old contribution")
+        Claim()
+        Flow.Call([]string{"approve", "owner/project#1", "--json", "--yes"}, owner: true)
+        let renewed = State()
+        Check.That(
+            renewed["state"]?["reservation"] == nil && renewed["state"]?["identity"] == nil,
+            "Explicit confirmation retained the old reservation authority"
+        )
     }
 
     internal func CanonicalExternal() {
@@ -1013,10 +1077,41 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = ClaimRequest()
         let path = Event(request)
         Flow.Mode("interrupted_state_write")
-        Coordinate(path, 1)
+        Flow.ResetTraffic()
+        let failure = Coordinate(path, 1)
+        Check.Contains(failure.Error, "One conditional ref retry was made")
+        Check.Contains(failure.Error, "owner reruns the failed Tokate workflow run")
+        Check.Contains(failure.Error, "donor runs the same command again")
+        Flow.Reload()
+        var attempts int32
+        for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            if Check.Text(call["method"]) == "PATCH" {
+                attempts++
+            }
+        }
+        Check.That(attempts == 2, "Failed ref update did not stop after one retry")
         Check.That(State()["state"]?["reservation"] == nil, "Interrupted write acquired a claim")
         Flow.Mode("")
+        Flow.Faults("repos/owner/project/git/refs/heads/tokate/contributions/1", Check.Json("[{\"status\":500}]"))
         Coordinate(path)
+        Flow.Reload()
+        attempts = 0
+        var inspected bool
+        for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            if Check.Text(call["method"]) == "GET" && Check.Text(call["path"]) ==
+            "repos/owner/project/git/ref/heads/tokate/contributions/1" && attempts == 1 {
+                inspected = true
+            }
+            if Check.Text(call["method"]) == "PATCH" {
+                attempts++
+                Check.That(attempts == 1 || inspected, "Ref retry did not re-read current state")
+            }
+        }
+        Check.That(attempts == 2, "Transient ref failure did not retry once")
+        Check.That(
+            Check.Text(State()["state"]?["reservation"]?["reservation"]) == Check.Text(request["uuid"]),
+            "Transient ref retry did not acquire the exact claim"
+        )
         let revision = Check.Text(State()["sha"])
         Coordinate(path)
         Check.That(Check.Text(State()["sha"]) == revision, "Interrupted-write replay repeated its effect")

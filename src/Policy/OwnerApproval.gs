@@ -18,6 +18,10 @@ internal class OwnerApproval {
             let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
             let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
             AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
+            let firstApproval = !PublicOutput.Enabled && GitHub.Api(
+                "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
+            )
+                .GetArrayLength() == 0
             let template = PrBody.Template(repo, authorityBase, policy)
             PrBody.ValidateTemplate(template)
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
@@ -54,13 +58,19 @@ internal class OwnerApproval {
                     "decree": decree,
                     "authority_branch": authority,
                     "nonce": Guid.NewGuid().ToString("N")
-                }
+                },
+                args.Get("yes") == "true"
             )
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
                 map[string, Object?]{"labels": []string{"tokate:approved"}}
             )
             Terminal.Message("Approval recorded. Request a contribution reservation to begin work.")
+            if firstApproval {
+                Terminal.Message(
+                    "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+                )
+            }
         }
 
         internal func Revoke(args Args) {

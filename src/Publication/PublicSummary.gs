@@ -21,7 +21,7 @@ internal class PublicSummary {
             RequestData.Parse(J.Write(value), limit)
             RequestData.Keys(value, "head,changes,verification,limitations")
             if head != "" && J.Text(value, "head") != head {
-                throw Exception("Public summary does not describe the current candidate")
+                throw Exception("Set head in the summary to " + head + ".")
             }
             if J.Get(value, "head").ValueKind != JsonValueKind.Undefined {
                 RepositoryIdentity.CommitSha(J.Text(value, "head"))

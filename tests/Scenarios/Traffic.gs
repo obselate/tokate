@@ -540,10 +540,10 @@ internal class CommandTrafficChecks {
             let run = Published(flow)
             flow.ResetTraffic()
             let pending = flow.Call([]string{"checks", "--run", run}, 8, traffic: true)
-            Budgets(flow, pending, 44, 0, 0, 27)
+            Budgets(flow, pending, 45, 0, 0, 27)
             flow.ResetTraffic()
             let direct = flow.Call([]string{"checks", "owner/project#10"}, 8, traffic: true)
-            Budgets(flow, direct, 44, 0, 0, 27)
+            Budgets(flow, direct, 45, 0, 0, 27)
             let path = Path.Combine(run, "checks.json")
             flow.Reload()
             flow.State["check_state_path"] = JsonValue.Create(path)
@@ -552,7 +552,7 @@ internal class CommandTrafficChecks {
             flow.Save()
             flow.ResetTraffic()
             let result = Watch(flow, run, "10", 0)
-            Budgets(flow, result, 133, 0, 0, 114)
+            Budgets(flow, result, 135, 0, 0, 115)
             Check.That(result.Output.Split("Checks pending").Length == 2, "Unchanged polls repeated output")
             flow.Reload()
             let observations = flow.State["check_state_times"]
@@ -566,7 +566,7 @@ internal class CommandTrafficChecks {
             flow.State["check_polls"] = JsonValue.Create(0)
             flow.Save()
             flow.ResetTraffic()
-            Budgets(flow, Watch(flow, run, "10", 0, true), 133, 0, 0, 114)
+            Budgets(flow, Watch(flow, run, "10", 0, true), 135, 0, 0, 115)
         }
 
         private func WatchChanges(binary string) {

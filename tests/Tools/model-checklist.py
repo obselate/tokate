@@ -134,7 +134,7 @@ for cancelled in (False, True):
         expect(fd, b"3 selected")
         os.write(fd, b"\r")
         expect(fd, b"Review project setup")
-        os.write(fd, b"1\r")
+        os.write(fd, b"\r")
         finish(pid, fd, 0)
         with open(os.path.join(path, ".github", "tokate.json")) as file:
             policy = json.load(file)
@@ -160,15 +160,22 @@ pid, fd = start(root, home=True)
 try:
     welcome = expect(fd, b"Give your inference a purpose.")
     assert b"Donate AI time" in welcome and b"Continue existing work" in welcome, welcome
+    assert b"> Donate AI time" in welcome and b"Arrows move; Enter selects" in welcome, welcome
     os.write(fd, b"x")
-    changed = expect(fd, b"Choice: x")
+    changed = expect(fd, b"Search: x")
     assert b"\x1b[2J" not in changed and b"\x1b[?25" not in changed, changed
     assert read(fd, 0.4) == b"", "Welcome kept redrawing while idle"
     resize(fd, 20, 5)
     expect(fd, b"Enlarge terminal")
     resize(fd, 80, 24)
-    expect(fd, b"Choice: x")
-    os.write(fd, b"\x151\r")
+    expect(fd, b"Search: x")
+    os.write(fd, b"\x15\x1b[B")
+    expect(fd, b"> Set up my project")
+    os.write(fd, b"\x1b[A")
+    expect(fd, b"> Donate AI time")
+    os.write(fd, b"?")
+    expect(fd, b"Choose the job you want to do.")
+    os.write(fd, b"\r")
     transition = expect(fd, b"Project")
     assert b"Loading next step..." in transition, transition
     assert b"\x1b[?1049l" not in transition and b"\x1b[?1049h" not in transition, "Wizard disappeared between steps"
@@ -176,7 +183,9 @@ try:
     expect(fd, b"Invalid positive number")
     os.write(fd, b"h\r")
     expect(fd, b"Donate AI time")
-    os.write(fd, b"q\r")
+    os.write(fd, b"h")
+    expect(fd, b"Donate AI time")
+    os.write(fd, b"q")
     finish(pid, fd, 0)
 finally:
     try:

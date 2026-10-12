@@ -37,6 +37,9 @@ internal class ModelChecklist {
     private var Redraw bool = true
     private var Single bool
     private var SelectedIndex int32 = -1
+    private var Title string = ""
+    private var Body string = ""
+    private var Help string = ""
 
     private func Add(model string, effort string, label string, suggested bool = false) {
         for choice in Choices {
@@ -135,9 +138,11 @@ internal class ModelChecklist {
     private func Plain() string {
         if Single {
             SelectedIndex = WizardScreen.Choose(
-                "Your coding tool",
-                "Choose one profile. Availability is unknown.",
-                Choices.ConvertAll(choice -> choice.Label).ToArray()
+                Title == "" ? "Your coding tool": Title,
+                Title == "" ? "Choose one profile. Availability is unknown.": Body,
+                Choices.ConvertAll(choice -> choice.Label).ToArray(),
+                Help,
+                SelectedIndex + 1
             ) - 1
             return ""
         }
@@ -207,6 +212,8 @@ internal class ModelChecklist {
             var previousCursor = ""
             var oldWidth int32
             var oldHeight int32
+            var note = ""
+            var scroll int32
             while true {
                 let width = Math.Max(1, Console.WindowWidth)
                 let height = Math.Max(1, Console.WindowHeight)
@@ -232,20 +239,32 @@ internal class ModelChecklist {
                     start = WizardScreen.Before(Search, start)
                 }
                 var cursorColumn = 9 + Cells(Search.Substring(start, Cursor - start))
+                var searchRow = 3
                 if small {
                     rows.Add("Enlarge terminal; Esc cancels")
                     cursorColumn = 1
                 } else {
-                    rows.Add(Single ? "tokate / Your coding tool": "tokate / Allowed models")
-                    rows.Add(
-                        (Single ? "Choose one profile": count.ToString() + " selected") + " | availability unknown"
-                    )
+                    if Single && Title != "" {
+                        let content = WizardScreen.Lines(Title, Body + note, width, height)
+                        let page = Math.Max(1, height - 7)
+                        scroll = Math.Clamp(scroll, 0, Math.Max(0, content.Count - page))
+                        rows.AddRange(content.GetRange(scroll, Math.Min(page, content.Count - scroll)))
+                        if content.Count > page {
+                            rows.Add("PgUp/PgDn scroll")
+                        }
+                    } else {
+                        rows.Add(Single ? "tokate / Your coding tool": "tokate / Allowed models")
+                        rows.Add(
+                            (Single ? "Choose one profile": count.ToString() + " selected") + " | availability unknown"
+                        )
+                    }
+                    searchRow = rows.Count + 1
                     rows.Add("Search: " + Search.Substring(start))
                     rows.Add(Single ? "Arrows move; Enter selects": "Arrows move; Space toggles; Enter accepts")
                     rows.Add(
                         Single ? "Esc Home; Ctrl+C Quit; Ctrl+L redraw": "F2 adds a model; Esc Home; Ctrl+L redraw"
                     )
-                    for index in Math.Max(0, Focus - Math.Max(0, (height - 7) / 2)) ... visible.Count {
+                    for index in Math.Max(0, Focus - Math.Max(0, (height - rows.Count - 2) / 2)) ... visible.Count {
                         let choice = visible[index]
                         var remaining = (index == Focus ? "> ": "  ") +
                             (Single ? "": choice.Selected ? "[x] ": "[ ] ") +
@@ -288,7 +307,7 @@ internal class ModelChecklist {
                         rows[index] = line
                     }
                 }
-                let location = "\x1b[" + (small ? "1": "3") + ";" + cursorColumn.ToString() + "H"
+                let location = "\x1b[" + (small ? "1": searchRow.ToString()) + ";" + cursorColumn.ToString() + "H"
                 if update.Length > 0 || location != previousCursor {
                     update.Append(location)
                     Console.Error.Write(update.ToString())
@@ -313,6 +332,19 @@ internal class ModelChecklist {
                 if small {
                     continue
                 }
+                if Single && Title != "" && !control && Search == "" {
+                    if key.KeyChar == 'q' {
+                        throw OperationCanceledException("Cancelled")
+                    }
+                    if key.KeyChar == 'h' {
+                        throw WizardHome()
+                    }
+                    if key.KeyChar == '?' {
+                        note = "\n\n" +
+                            (Help == "" ? "Choose the next action. Nothing starts without confirmation.": Help)
+                        continue
+                    }
+                }
                 if key.Key == ConsoleKey.Enter {
                     if Single {
                         if visible.Count == 0 {
@@ -327,6 +359,10 @@ internal class ModelChecklist {
                 }
                 if control && key.Key == ConsoleKey.L {
                     Invalidate()
+                } else if Single && Title != "" && key.Key == ConsoleKey.PageUp {
+                    scroll = Math.Max(0, scroll - Math.Max(1, height - 7))
+                } else if Single && Title != "" && key.Key == ConsoleKey.PageDown {
+                    scroll += Math.Max(1, height - 7)
                 } else if key.Key == ConsoleKey.UpArrow {
                     Focus = Math.Max(0, Focus - 1)
                 } else if key.Key == ConsoleKey.DownArrow {
@@ -365,8 +401,21 @@ internal class ModelChecklist {
     }
 
     shared {
-        internal func Pick(labels[]string) int32 {
-            let picker = ModelChecklist{Single: true}
+        internal func Pick(
+            labels[]string,
+            title string = "",
+            body string = "",
+            help string = "",
+            selected int32 = 0
+        ) int32 {
+            let picker = ModelChecklist{
+                Single: true,
+                Title: title,
+                Body: body,
+                Help: help,
+                Focus: Math.Max(0, selected - 1),
+                SelectedIndex: selected - 1
+            }
             for i in 0 ... labels.Length {
                 picker.Choices.Add(ModelChoice(i.ToString(), "", labels[i]))
             }
@@ -379,10 +428,7 @@ internal class ModelChecklist {
         if !Single {
             Discover()
         }
-        if Terminal.Plain || Environment.GetEnvironmentVariable("TERM") == "dumb" ||
-            Console.IsInputRedirected ||
-            Console.IsErrorRedirected ||
-            Console.IsOutputRedirected {
+        if !WizardScreen.Available() {
             return Plain()
         }
         while Screen() {

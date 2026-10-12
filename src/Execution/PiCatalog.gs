@@ -58,6 +58,9 @@ internal class PiCatalog {
                     selected = entry
                 }
             }
+            if model == "" {
+                return catalog
+            }
             if selected.ValueKind != JsonValueKind.Object {
                 throw Exception("Selected model not advertised")
             }

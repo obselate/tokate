@@ -35,8 +35,7 @@ internal class MachineSetup {
                 Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
                 return false
             }
-            Console.Error.Write("Install these requirements? [y/N] ")
-            return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
+            return WizardScreen.Choose("Install requirements", message, []string{"Install", "Cancel"}, selected: 2) == 1
         }
 
         private func PackageManager() string {
@@ -260,7 +259,7 @@ internal class MachineSetup {
             if name == "pi" {
                 Terminal.Message("For an SDK installation, use --pi-root DIR --node FILE.", error: true)
             }
-            var choice = "2"
+            var choice = 2
             if !(options.Command == "doctor" && options.Get("yes") == "true") {
                 if !DonorSelection.Interactive(options) {
                     Terminal.Message(
@@ -269,10 +268,14 @@ internal class MachineSetup {
                     )
                     return false
                 }
-                Console.Error.Write("1) Use an existing path\n2) Install " + name + "\n3) Cancel\nChoice [3]: ")
-                choice = Console.ReadLine() ?? ""
+                choice = WizardScreen.Choose(
+                    "Set up " + name,
+                    "Use an existing installation or install the coding tool.",
+                    []string{"Use an existing path", "Install " + name, "Cancel"},
+                    selected: 3
+                )
             }
-            if choice == "1" {
+            if choice == 1 {
                 Console.Error.Write("Executable path: ")
                 let path = Console.ReadLine() ?? ""
                 if path == "" {
@@ -282,7 +285,7 @@ internal class MachineSetup {
                 Terminal.Message("Using --harness-path " + options.Need("harness-path"), error: true)
                 return true
             }
-            if choice != "2" {
+            if choice != 2 {
                 return false
             }
             if LocalPaths.Find("curl") == "" && !TryFix(options, List[ToolCheck]{ToolCheck{Name: "curl"}}) {

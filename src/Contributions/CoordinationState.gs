@@ -43,12 +43,39 @@ internal class CoordinationState {
                 expires: expires
             )
         } else {
-            GitHub.Api(
-                "repos/" + repo + "/git/refs/heads/" + Ref(issue),
-                map[string, Object?]{"sha": next, "force": false},
-                "PATCH",
-                expires: expires
-            )
+            for attempt in 0 ... 2 {
+                try {
+                    GitHub.Api(
+                        "repos/" + repo + "/git/refs/heads/" + Ref(issue),
+                        map[string, Object?]{"sha": next, "force": false},
+                        "PATCH",
+                        expires: expires
+                    )
+                    break
+                } catch (error CliFailure) {
+                    if attempt > 0 {
+                        throw CliFailure(
+                            error.Code,
+                            error.Message.Replace(
+                                "No automatic retry was made.",
+                                "One conditional ref retry was made after re-reading current state."
+                            ),
+                            httpStatus: error.HttpStatus
+                        )
+                    }
+                    if error.HttpStatus < 500 || error.HttpStatus > 599 {
+                        throw error
+                    }
+                    ApiTransport.Settle()
+                    let current = Load(repo, issue)
+                    if current.Sha == next {
+                        break
+                    }
+                    if current.Sha != expected {
+                        throw error
+                    }
+                }
+            }
         }
         Sha = next
     }
@@ -127,8 +154,37 @@ internal class CoordinationState {
             return result
         }
 
-        internal func Approve(repo string, issue int32, approval Object) {
+        internal func Approve(repo string, issue int32, approval Object, yes bool) {
             let state = Load(repo, issue, true)
+            let value = state.Value()
+            let reservation = J.Get(value, "reservation")
+            let contribution = J.Get(value, "contribution")
+            let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+            let active = reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+                Unix(reservation, "expires") > now
+            if active || contribution.ValueKind == JsonValueKind.Object {
+                var warning = active ? "Re-approval ends the active reservation's authority.": ""
+                if contribution.ValueKind == JsonValueKind.Object {
+                    let pr = repo + "#" + J.Number(J.Get(contribution, "outcome"), "pr").ToString()
+                    warning += (active ? " ": "") + "Re-approval ends the authority of published PR " + pr + "."
+                }
+                if !yes {
+                    if PublicOutput.Enabled || Console.IsInputRedirected {
+                        throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
+                    }
+                    if WizardScreen.Choose(
+                        "Replace approval",
+                        warning,
+                        []string{"Re-approve", "Cancel"},
+                        "Re-approving replaces the issue's approval. The existing donor must return to you before continuing.",
+                        2
+                    ) != 1 {
+                        throw CliFailure("confirmation_required", "Re-approval was not confirmed. Approval unchanged.")
+                    }
+                } else {
+                    Terminal.Message(warning, error: true)
+                }
+            }
             let approved = J.Parse(J.Write(approval))
             let expected = state.Sha == "" ? J.Text(approved, "base"): state.Sha
             state.Fields["version"] = 2

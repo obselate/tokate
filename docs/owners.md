@@ -55,6 +55,8 @@ tokate approve 42
 tokate access trust DONOR
 ```
 
+Tokate keeps its state in `tokate/` branches; do not open or merge pull requests from them.
+
 In a checkout, `42` names issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
 
 See the [positional arguments guide](arguments.md) for references and command forms.

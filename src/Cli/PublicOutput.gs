@@ -184,6 +184,19 @@ internal class PublicOutput {
                 result["verification_reserve"] = run.Number("verification_reserve")
             }
             result["run"] = directory
+            if run.Text("state") == "claim_pending" {
+                result["next"] = map[string, Object?]{
+                    "role": "donor",
+                    "action": "If the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again.",
+                    "command": []string{
+                        "tokate",
+                        run.Text("source") == "tokate" ? "work": "prepare",
+                        "--run",
+                        directory,
+                        "--json"
+                    }
+                }
+            }
             if ContributionHandoff.Has(run) {
                 result["handoff"] = J.Get(value, "handoff")
             }

@@ -179,6 +179,24 @@ internal class PiChecks {
                 PrivateCatalog(result.Output + result.Error, catalog.Endpoint)
             }
             catalog.Metadata = ""
+            flow.Approve()
+            flow.Temp.Env["TERM"] = "dumb"
+            flow.Temp.Env["NO_COLOR"] = "1"
+            for modelChoice in[]string{"1\n", "2\nfixture-model\n"} {
+                let guided = TestTerminal.Pty(
+                    binary,
+                    []string{"work", "owner/project#1", "--time", "60s", "--plain"},
+                    flow.Temp,
+                    100,
+                    "1\n" + catalog.Endpoint + "\n" + modelChoice + "1\nq\n"
+                )
+                Check.That(guided.Code == 1, guided.Output + guided.Error)
+                Check.Contains(guided.Output, "Enter another model ID")
+                Check.Contains(guided.Output, "Review donation")
+                Check.Contains(guided.Output, "fixture-model / absent")
+                flow.NoInference()
+                flow.NoPr()
+            }
             flow.NoInference()
             Console.WriteLine("PASS Pi endpoint context aliases and invalid metadata without inference")
             File.Delete(Path.Combine(flow.Bin, "pi"))
@@ -448,7 +466,7 @@ internal class PiChecks {
                     []string{"work", "owner/project"},
                     flow.Flow.Temp,
                     80,
-                    "1\n1\n1\n1\n" + endpoint + "\nsynthetic/model:exact\n1\nq\n"
+                    "1\n1\n1\n1\n" + endpoint + "\n1\n1\nq\n"
                 )
                 Check.That(guided.Code == 1, guided.Output + guided.Error)
                 Check.Contains(guided.Output, "Reasoning effort")

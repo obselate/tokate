@@ -355,24 +355,18 @@ internal class Startup {
                 (
                 options.Get("set-default") == "true" || (options.Get("fix") == "true" && J.Text(saved, "harness") == "")
             ) {
-                Terminal.Message("Choose your default harness (blank keeps the current choice):", error: true)
-                for i in 0 ... installed.Count {
-                    let name = installed[i].Name
-                    Terminal.Message(
-                        (i + 1).ToString() +
-                            ") " +
-                            name +
-                            (DonorDefaults.Provider(name) == "" ? " (external work)": ""),
-                        error: true
-                    )
+                let labels = List[string]()
+                for tool in installed {
+                    labels.Add(tool.Name + (DonorDefaults.Provider(tool.Name) == "" ? " (external work)": ""))
                 }
-                Console.Error.Write("Choice: ")
-                let choice = Console.ReadLine() ?? ""
-                var index int32
-                if choice != "" {
-                    if !Int32.TryParse(choice, out index) || index < 1 || index > installed.Count {
-                        throw Exception("Choose one of the discovered harnesses")
-                    }
+                labels.Add("Keep the current choice")
+                let index = WizardScreen.Choose(
+                    "Choose your default harness",
+                    "Choose a discovered harness or keep the current choice.",
+                    labels.ToArray(),
+                    selected: labels.Count
+                )
+                if index <= installed.Count {
                     selected = installed[index - 1].Name
                 }
             }
