@@ -18,3 +18,4 @@ artifacts/
 /CONVENTIONS.md
 /.codex/hooks.json
 /.codex/load_constitution.py
+/.omp/
