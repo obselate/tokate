@@ -12,11 +12,13 @@ internal class ApprovalBase {
             if args.Get("base-branch") != "" {
                 return RepositoryIdentity.Branch(args.Get("base-branch"))
             }
+
             if !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
                 !Console.IsInputRedirected &&
                 !Console
                 .IsOutputRedirected {
                 var note = ""
+
                 while true {
                     let answer = WizardScreen.Read(
                         "Target branch",
@@ -25,27 +27,33 @@ internal class ApprovalBase {
                         fallback,
                         "Enter a Git branch name, or press Enter to keep the default."
                     )
+
                     try {
                         let branch = RepositoryIdentity.Branch(answer)
                         WizardScreen.Close()
+
                         return branch
                     } catch (error Exception) {
                         note = "\n\n" + error.Message
                     }
                 }
             }
+
             return RepositoryIdentity.Branch(fallback)
         }
 
         internal func Check(repo string, approval JsonElement, quiet bool = false) ValueTuple[Policy, string] {
             let branch = J.Text(GitHub.Api("repos/" + repo), "default_branch")
             let authority = RepositoryIdentity.Branch(J.Text(approval, "authority_branch"))
+
             if branch != authority {
                 throw CliFailure("stale_approval", "Repository authority branch changed. The owner must approve again.")
             }
+
             let current = GitHub.Branch(repo, branch)
             let policy = Policy.Load(repo, current)
             let template = PrBody.Template(repo, current, policy)
+
             if policy.Digest != J.Text(approval, "policy_hash") || Data.Hash(template) != J.Text(
                 approval,
                 "template_hash"
@@ -55,16 +63,21 @@ internal class ApprovalBase {
                     "Repository policy or template changed. The owner must approve again."
                 )
             }
+
             let baseBranch = RepositoryIdentity.Branch(J.Text(approval, "base_branch"))
             let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
             let target = baseBranch == branch ? current: GitHub.Branch(repo, baseBranch)
+
             if target != approved && !quiet {
                 let message = "Target " + baseBranch + " is now " + target + "; approved base remains " + approved
+
                 if Advisories.Add(message) {
                     Terminal.Message(message, "cyan", true)
                 }
             }
+
             Decree.CheckCurrent(repo, target, approval)
+
             return ValueTuple[Policy, string](policy, template)
         }
     }
