@@ -1159,6 +1159,8 @@ internal class CliDiscovery {
             record["state"] = JsonValue.Create("generated")
             record["model"] = JsonValue.Create("second\u001b[31m")
             File.WriteAllText(Path.Combine(second, "run.json"), record.ToJsonString())
+            File.SetLastWriteTimeUtc(Path.Combine(first, "run.json"), DateTime(2024, 2, 1))
+            File.SetLastWriteTimeUtc(Path.Combine(second, "run.json"), DateTime(2024, 1, 1))
             let firstBytes = Check.Hash(Path.Combine(first, "run.json"))
             let secondBytes = Check.Hash(Path.Combine(second, "run.json"))
             let obsolete = Path.Combine(root, "obsolete")
@@ -1177,13 +1179,20 @@ internal class CliDiscovery {
             let command = []string{"-q", "-e", "-c", "exec '" + executable.Replace("'", "'\"'\"'") + "'", "/dev/null"}
             let selected = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n99\n1\n3\n3\n2\nq\n")
             Check.Success(selected)
-            Check.Contains(selected.Output, "a first")
+            Check.Contains(selected.Output, "claimed | 1-1")
             Check.That(
                 File.ReadAllText(Path.Combine(obsolete, "run.json")) == obsoleteText,
                 "Unsupported saved run was changed"
             )
-            Check.Contains(selected.Output, "b second")
-            Check.Contains(selected.Output, "Unreadable entries skipped: 4")
+            Check.Contains(selected.Output, "generated | 1-2")
+            Check.That(
+                !selected.Output.Contains("a first") && !selected.Output.Contains("b second"),
+                "Saved rows exposed storage names"
+            )
+            Check.Contains(
+                selected.Output.Replace("\r\n", " ").Replace("\n", " "),
+                "Unreadable entries skipped: 4 (unsupported, invalid or unsafe metadata). Inspect entries with tokate runs --json."
+            )
             Check.Contains(selected.Output, "Choose a number from 1 to 2.")
             Check.Contains(selected.Output, "Start reserved donation")
             let last = selected.Output.Substring(selected.Output.LastIndexOf("Continue contribution"))
@@ -1207,14 +1216,67 @@ internal class CliDiscovery {
             let named = Path.Combine(root, "owner-project-1-7")
             Directory.CreateDirectory(named)
             File.Copy(Path.Combine(second, "run.json"), Path.Combine(named, "run.json"))
+            File.SetLastWriteTimeUtc(Path.Combine(named, "run.json"), DateTime(2024, 3, 1))
             let listed = Check.Envelope(Call(binary, []string{"runs", "owner/project", "--json"}, temp), "runs", "ok")
             Check.That(
-                Check.Text(listed["data"]?["runs"]?[0]?["name"]) == "owner/project#1-1" && Check.Text(
+                Check.Text(listed["data"]?["runs"]?[0]?["name"]) == "owner/project#1-7" && Check.Text(
                     listed["data"]?["runs"]?[1]?["run"]
-                ) == second &&
-                    Check.Text(listed["data"]?["runs"]?[2]?["name"]) == "owner/project#1-7",
+                ) == first &&
+                    Check.Text(listed["data"]?["runs"]?[2]?["name"]) == "owner/project#1-2",
                 "Saved runs lost stable names"
             )
+            let skipped = listed["data"]?["skipped_entries"]?.AsArray() ?? throw Exception("Missing skipped entries")
+            Check.That(skipped.Count == 4 && Check.Text(listed["data"]?["skipped"]) == "4", "Skipped entries missing")
+            for entry in skipped {
+                let path = Check.Text(entry["run"])
+                let reason = Check.Text(entry["reason"])
+                Check.That(
+                    (path == obsolete && reason == "Unsupported version or incomplete saved contribution.") ||
+                        (
+                        (path == broken || path == oversized) && reason == "Missing, invalid or oversized run metadata."
+                    ) ||
+                        (path == Path.Combine(root, "linked") && reason == "Unsafe saved run path."),
+                    "Skipped entry lost its path or reason"
+                )
+            }
+            let other = Path.Combine(root, Guid.NewGuid().ToString("D"))
+            Directory.CreateDirectory(other)
+            record["repo"] = JsonValue.Create("aaa/other")
+            File.WriteAllText(Path.Combine(other, "run.json"), record.ToJsonString())
+            File.SetLastWriteTimeUtc(Path.Combine(other, "run.json"), DateTime(2024, 4, 1))
+            record["repo"] = JsonValue.Create("owner/project")
+            let git = Path.Combine(temp.Root, "bin/git")
+            File.WriteAllText(git, "#!/bin/sh\nprintf '%s\\n' 'origin https://github.com/OWNER/PROJECT.git (fetch)'\n")
+            File.SetUnixFileMode(git, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+            temp.Env["PATH"] += ":/usr/bin:/bin"
+            let ordered = Check.Envelope(Call(binary, []string{"runs", "--json"}, temp), "runs", "ok")
+            Check.That(
+                Check.Text(ordered["data"]?["runs"]?[0]?["run"]) == named && Check.Text(
+                    ordered["data"]?["runs"]?[1]?["run"]
+                ) == first &&
+                    Check.Text(ordered["data"]?["runs"]?[2]?["run"]) == second && Check.Text(
+                    ordered["data"]?["runs"]?[3]?["run"]
+                ) == other,
+                "Saved list did not put the local repository first and newest entries first"
+            )
+            let orderedScreen = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
+            Check.Success(orderedScreen)
+            Check.That(
+                orderedScreen.Output.IndexOf("generated | 1-7") < orderedScreen.Output.IndexOf("claimed | 1-1") &&
+                    orderedScreen
+                    .Output
+                    .IndexOf("claimed | 1-1") < orderedScreen.Output.IndexOf("generated | 1-2") &&
+                    orderedScreen
+                    .Output
+                    .IndexOf("generated | 1-2") < orderedScreen.Output.IndexOf("aaa/other #1") &&
+                    !orderedScreen
+                    .Output
+                    .Contains(Path.GetFileName(other)),
+                "Saved screen lost ordering or exposed a run UUID"
+            )
+            File.Delete(git)
+            temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
+            Directory.Delete(other, true)
             let exact = Check.Envelope(
                 Call(binary, []string{"status", "owner/project#1-7", "--json"}, temp),
                 "status",
@@ -1245,7 +1307,9 @@ internal class CliDiscovery {
             partial["state"] = JsonValue.Create("incomplete_generated")
             partial["incomplete"] = JsonValue.Create(true)
             File.WriteAllText(Path.Combine(second, "run.json"), partial.ToJsonString())
-            let incomplete = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n2\n3\nq\n")
+            File.SetLastWriteTimeUtc(Path.Combine(first, "run.json"), DateTime(2024, 2, 1))
+            File.SetLastWriteTimeUtc(Path.Combine(second, "run.json"), DateTime(2024, 3, 1))
+            let incomplete = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n1\n3\nq\n")
             Check.Success(incomplete)
             Check.Contains(incomplete.Output, "Submit incomplete work for a draft PR")
             Check.That(!incomplete.Output.Contains("Submit verified work"), "Incomplete work was labeled verified")
@@ -1275,6 +1339,7 @@ internal class CliDiscovery {
             let empty = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nq\n")
             Check.Success(empty)
             Check.Contains(empty.Output, "No readable saved contributions were found.")
+            Check.Contains(empty.Output, "tokate runs --json")
             Check.That(!empty.Output.Contains("Saved contribution number"), "Empty list requested a selection")
             for index in 0 ... 130 {
                 Directory.CreateDirectory(Path.Combine(root, "extra-" + index.ToString()))

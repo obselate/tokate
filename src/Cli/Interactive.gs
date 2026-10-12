@@ -2,7 +2,6 @@ package Tokate
 
 import System
 import System.Collections.Generic
-import System.IO
 
 internal class Interactive {
     shared {
@@ -153,11 +152,18 @@ internal class Interactive {
         private func Saved() {
             let saved = RunStorage.Discover()
             let rows = J.Items(J.Get(saved, "runs"))
+            var note = "Saved work on this computer. No network access is needed to list it."
+            if J.Number(saved, "skipped") > 0 {
+                note += "\nUnreadable entries skipped: " + J.Number(saved, "skipped").ToString() +
+                    " (unsupported, invalid or unsafe metadata). Inspect entries with tokate runs --json."
+            }
+            if J.Bool(saved, "truncated") {
+                note += "\nShowing the first 128 inspected entries."
+            }
             if rows.Count == 0 {
                 WizardScreen.Read(
                     "Saved contributions",
-                    "No readable saved contributions were found." +
-                        (J.Bool(saved, "truncated") ? "\nShowing the first 128 inspected entries.": ""),
+                    "No readable saved contributions were found.\n" + note,
                     "Enter to return"
                 )
                 return
@@ -167,16 +173,9 @@ internal class Interactive {
                 labels.Add(
                     J.Text(row, "repo") + " #" + J.Number(row, "issue").ToString() + " | " + J.Text(row, "model") +
                         " | " +
-                        J.Text(row, "state") + " | " + Path.GetFileName(J.Text(row, "run")) +
-                        (J.Text(row, "storage") == "previous" ? " (previous storage)": "")
+                        J.Text(row, "state") + " | " + J.Number(row, "issue").ToString() + "-" + J.Number(row, "number")
+                        .ToString() + (J.Text(row, "storage") == "previous" ? " (previous storage)": "")
                 )
-            }
-            var note = "Saved work on this computer. No network access is needed to list it."
-            if J.Number(saved, "skipped") > 0 {
-                note += "\nUnreadable entries skipped: " + J.Number(saved, "skipped").ToString()
-            }
-            if J.Bool(saved, "truncated") {
-                note += "\nShowing the first 128 inspected entries."
             }
             let selected = WizardScreen.Choose("Saved contributions", note, labels.ToArray())
             Continue(J.Text(rows[selected - 1], "run"))
