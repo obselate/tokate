@@ -116,7 +116,7 @@ internal class Contribution {
             if patch != candidate {
                 throw Exception("Verification changed the saved patch")
             }
-            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch + "\n")
+            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
             run.Fields["usage"] = usage
             run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
             run.Fields["state"] = "generated"
@@ -133,7 +133,7 @@ internal class Contribution {
             }
             budget.Git(checkout, "add", "-A")
             budget.Git(checkout, "diff", "--cached", "--check")
-            let patch = budget.Git(checkout, "diff", "--cached", "--binary", run.Text("base"))
+            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")}, budget)
             if patch == "" {
                 throw Exception("No changes returned. No PR will be opened.")
             }
