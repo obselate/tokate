@@ -180,6 +180,20 @@ internal class CheckGates {
                     Check.Text(result["machine_status"]) != "passed",
                     "Incomplete required check passed: " + state
                 )
+                if state == "missing" {
+                    let hint = "GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI."
+                    Check.That(Check.Text(result["ci_hint"]) == hint, "Missing CI start hint")
+                    Check.Contains(Read(test, 8, human: true).Output, hint)
+                    let head = Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"])
+                    var queried bool
+                    for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                        queried = queried || Check.Text(call["path"]) ==
+                        "repos/owner/project/actions/runs?head_sha=" + head + "&per_page=1"
+                    }
+                    Check.That(queried, "CI start query did not select the exact head")
+                } else {
+                    Check.That(result["ci_hint"] == nil, "CI start hint shown without a missing required check")
+                }
                 if state == "conflicting" || state == "reverse-conflict" {
                     Check.That(
                         Check.Text(result["required_checks"]?[0]?["status"]) == "conflicting",
@@ -263,6 +277,7 @@ internal class CheckGates {
             let actions = approval["required_owner_actions"]?.ToJsonString() ?? ""
             Check.Contains(actions, "Inspect the PR diff, then approve")
             Check.Contains(actions, "in GitHub")
+            Check.That(approval["ci_hint"] == nil, "CI start hint shown while workflow approval is pending")
             Check.Contains(Read(test, 8, human: true).Output, "Workflow runs await owner approval")
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 let path = Check.Text(call["path"])
@@ -270,6 +285,9 @@ internal class CheckGates {
                     Check.Contains(path, "head_sha=" + head + "&status=action_required")
                 }
             }
+            flow.State["workflow_runs"] = JsonArray(completed.DeepClone())
+            flow.Save()
+            Check.That(Data(Read(test, 8))["ci_hint"] == nil, "CI start hint shown with an exact-head workflow run")
             test.Restore()
             Passing(test)
             flow.State["statuses"] = Check.Json("[{\"context\":\"verify\",\"state\":\"pending\"}]")
