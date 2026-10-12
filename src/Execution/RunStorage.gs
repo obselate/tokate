@@ -115,8 +115,12 @@ internal class RunStorage {
         }
 
         internal func Discover() JsonElement {
-            let saved = SavedRuns(Roots(), 128)
-            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated)))
+            var repo = ""
+            try {
+                repo = RepositoryInput.Local()
+            } catch (error Exception) { }
+            let saved = SavedRuns(Roots(), 128, listingRepo: repo)
+            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated, saved.SkippedEntries)))
         }
 
         private func Size(path string) int64 {

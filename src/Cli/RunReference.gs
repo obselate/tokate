@@ -96,7 +96,11 @@ internal class RunReference {
         }
 
         internal func Print(args Args) {
-            let saved = SavedRuns(RunStorage.Roots())
+            var localRepo = ""
+            try {
+                localRepo = RepositoryInput.Local()
+            } catch (error Exception) { }
+            let saved = SavedRuns(RunStorage.Roots(), listingRepo: localRepo)
             let repo = args.Get("issue") != "" && args.Get("repo") == "" ? RepositoryInput.Local(): args.Get("repo")
             let rows = List[SavedRun]()
             for row in saved.Rows {
@@ -106,8 +110,8 @@ internal class RunReference {
                 }
             }
             if PublicOutput.Enabled {
-                PublicOutput.ResultData = SavedRuns.Summary(rows, saved.Skipped)
-                PublicOutput.Truncated = rows.Count > 128
+                PublicOutput.ResultData = SavedRuns.Summary(rows, saved.Skipped, saved.Truncated, saved.SkippedEntries)
+                PublicOutput.Truncated = saved.Truncated || rows.Count > 128
             } else if rows.Count == 0 {
                 Terminal.Message("No saved runs.", "default")
             } else {
