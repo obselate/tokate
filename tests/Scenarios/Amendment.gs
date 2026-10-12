@@ -341,6 +341,14 @@ internal class AmendmentFlow {
             summary bool = true
         ) {
             Check.That(Check.Text(Saved(run)["commit"]) == commit, "Saved amendment head differs")
+            let replay = Path.Combine(flow.Temp.Root, "amendment-replay-" + commit)
+            flow.Git("clone", "--no-local", Path.Combine(run, "checkout"), replay)
+            flow.Git("-C", replay, "checkout", "--detach", Check.Text(Saved(run)["base"]))
+            flow.Git("-C", replay, "apply", "--index", Path.Combine(run, "amendments", commit, "candidate.patch"))
+            Check.That(
+                flow.Git("-C", replay, "write-tree") == flow.Git("-C", replay, "rev-parse", commit + "^{tree}"),
+                "Amendment patch changed the tree"
+            )
             flow.Reload()
             Check.That(flow.State["pulls"]?.AsArray().Count == 1, "Amendment duplicated PR")
             let body = Check.Text(flow.State["pulls"]?[0]?["body"])

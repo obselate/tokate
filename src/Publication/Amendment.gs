@@ -285,14 +285,9 @@ internal class Amendment {
                 ProtectedPaths.Local(checkout, policy, approval, run.Text("base"), commit)
                 ProtectedPaths.Local(checkout, policy, approval, previous, commit)
             }
-            return Commands.Git(checkout, "rev-parse", "HEAD^{tree}") + "\n" + Commands.Git(
+            return Commands.Git(checkout, "rev-parse", "HEAD^{tree}") + "\n" + Commands.GitRaw(
                 checkout,
-                "diff",
-                "--no-ext-diff",
-                "--no-textconv",
-                "--binary",
-                run.Text("base"),
-                commit
+                []string{"diff", "--no-ext-diff", "--no-textconv", "--binary", run.Text("base"), commit}
             )
         }
 
