@@ -48,10 +48,7 @@ class SetupTab {
         return Stack{
             Gap: 18,
             Children: []Blob{
-                TabRow.Mount(
-                    "setup-steps",
-                    TabRowInput{Button: page.Button, Tabs: SetupSteps.Names, Selected: step, OnSelect: show}
-                ),
+                PresetGroup{Button: page.Button, Labels: SetupSteps.Names, Selected: step, OnChoose: show}.Build(),
                 Swap{Key: step.ToString(), Gap: 18, Children: body.ToArray()}.Build(),
             },
         }.Build()
@@ -68,7 +65,7 @@ class SetupTab {
         let policy = state.Policy
         let modelPolicy = setup.EffectiveModelPolicy(policy)
         let models = List[Blob]{
-            Heading{Content: "Models"}.Build(),
+            IconHeading{Icon: "tune", Content: "Models", Detail: "The models that a donor can use."}.Build(),
             ModelPolicyPicker{
                 Policy: modelPolicy,
                 Disabled: page.Busy,
@@ -108,13 +105,35 @@ class SetupTab {
         }.Build()
     }
 
+    private func Count(number int32, noun string) string -> number.ToString() + " " + noun + (number == 1 ? "": "s")
+
     private func Review(page PageContext) Blob {
         let state = owner.Current
+        let setup = state.Setup
+        let policy = state.Policy
+        let pairs = setup.EffectiveTools(policy)
+        let harnesses = List[string]()
+        for option in HarnessOption.All {
+            let providers = List[string]()
+            for pair in pairs {
+                if pair.StartsWith(option.Id + "/") {
+                    providers.Add(pair.Substring(option.Id.Length + 1))
+                }
+            }
+            if providers.Count > 0 {
+                harnesses.Add(option.Id == "omp" ? option.Name + " (" + String.Join(", ", providers) + ")": option.Name)
+            }
+        }
+        let minutes = setup.Minutes != "" ? setup.Minutes: (policy.MaxSeconds / 60).ToString()
         return SetupReview{
             Path: state.Setup.Path,
             Repository: owner.Repository,
             CommandCount: state.Setup.Commands.Length,
             CheckCount: state.Setup.Checks.Length,
+            Contributors: Eligibility.Label(setup.EffectiveEligibility(policy)),
+            Harnesses: String.Join(", ", harnesses),
+            Models: setup.EffectiveModelPolicy(policy) == "unrestricted" ? "All supported": Count(setup.Models.Length, "selected model"),
+            Limit: minutes == "0" ? "": Count(int32.TryParse(minutes, out var limit) ? limit: 0, "minute") + " for each donation",
             Written: state.Written,
             Disabled: page.Busy,
             Compact: page.CompactPanels,

@@ -206,7 +206,10 @@ data struct AmendmentForm {
             labels.Add(
                 switch option {
                     case EditedBy.Hand: "I edited the files by hand"
-                    case EditedBy.Donation: "The tool of the donation: " + Run.Harness + ", " + Run.Model + " / " + Run.Effort
+                    case EditedBy.Donation: "The harness of the donation: " + ModelChoice.Tool(Run.Harness, Run.Provider) + ", " + ModelChoice.Pair(
+                        Run.Model,
+                        Run.Effort
+                    )
                     default: "Other tools, with a tool declarations file"
                 }
             )

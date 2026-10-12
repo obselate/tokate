@@ -4,9 +4,10 @@ import Goo
 import Goo.Widgets.Inputs
 import System
 
-/// A labeled checkbox.
+/// A labeled checkbox, with an optional line of detail below its label.
 data struct Check {
     var Label string
+    var Detail string
     var Value bool
     var OnChange Action[bool]?
     var Disabled bool
@@ -29,6 +30,15 @@ data struct Check {
             CheckedBorderColor: p.Ink,
         }.Build()
         checkbox.Focus = AppTheme.FocusStyle()
-        return Interaction.RevealFocus(checkbox)
+        let check = Interaction.RevealFocus(checkbox)
+        if (Detail ?? "") == "" {
+            return check
+        }
+        return Container{
+            Gap: 2,
+            AlignItems: AlignItems.FlexStart,
+            check,
+            Container{Padding: Edges{Left: 28}, Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()},
+        }
     }
 }

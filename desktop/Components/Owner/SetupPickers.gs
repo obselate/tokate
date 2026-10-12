@@ -19,7 +19,7 @@ data struct EligibilityPicker {
             cards.Add(
                 ChoiceCard{
                     Title: Eligibility.Label(mode),
-                    Detail: "",
+                    Detail: Eligibility.Detail(mode),
                     Icon: mode == "open" ? "public": "verified_user",
                     Selected: Selected == mode,
                     OnChoose: () -> choose?.Invoke(value),
@@ -29,7 +29,10 @@ data struct EligibilityPicker {
         }
         return Panel{
             Compact: Compact,
-            Children: []Blob{Heading{Content: "Who can contribute"}.Build(), Row{Children: cards.ToArray()}.Build()},
+            Children: []Blob{
+                IconHeading{Icon: "group", Content: "Who can contribute", Detail: "The donors that can claim an approved issue."}.Build(),
+                Row{Children: cards.ToArray()}.Build(),
+            },
         }.Build()
     }
 }
@@ -46,7 +49,7 @@ data struct ModelPolicyPicker {
             Children: []Blob{
                 ChoiceCard{
                     Title: "All supported",
-                    Detail: "",
+                    Detail: "Each model that a harness accepts.",
                     Icon: "apps",
                     Selected: Policy == "unrestricted",
                     OnChoose: () -> choose?.Invoke("unrestricted"),
@@ -54,7 +57,7 @@ data struct ModelPolicyPicker {
                 }.Build(),
                 ChoiceCard{
                     Title: "Selected models",
-                    Detail: "",
+                    Detail: "Only the models in your list.",
                     Icon: "checklist",
                     Selected: Policy != "unrestricted",
                     OnChoose: () -> choose?.Invoke("whitelist"),
@@ -76,7 +79,7 @@ data struct LimitsEditor {
     func Build() Blob -> Panel{
         Compact: Compact,
         Children: []Blob{
-            Heading{Content: "Limits"}.Build(),
+            IconHeading{Icon: "schedule", Content: "Time limit", Detail: "The longest time that one donation can use."}.Build(),
             InputField{
                 Label: "Maximum minutes per donation",
                 Value: Minutes,

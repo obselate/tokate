@@ -108,6 +108,13 @@ data struct ModelChoice {
             Provider: "",
         }
 
+        /// A model with its effort, for one line of text.
+        func Pair(model string, effort string) string -> effort == "" ? model: model + " / " + EffortLabel(effort)
+
+        /// The name of a harness, with the provider of an OMP selection.
+        func Tool(harness string, provider string) string -> harness == "omp" && (provider ?? "") != "" ?
+        HarnessOption.NameOf(harness) + " \u00b7 " + provider: HarnessOption.NameOf(harness)
+
         func EffortLabel(value string) string -> value == "xhigh" ? "Extra high": value == "absent" ? "Not set": value == "" ? "": char.ToUpperInvariant(
             value[0]
         ).ToString() + value.Substring(1)

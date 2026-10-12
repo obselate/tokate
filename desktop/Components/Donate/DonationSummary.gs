@@ -10,7 +10,18 @@ data struct DonationSummary {
     var Title string
     var Account string
     var Draft DonationDraft
+    /// The models of the selected harness, for the name of the model.
+    var Models []ModelChoice
     var Compact bool
+
+    private func ModelName() string {
+        for model in Models ?? []ModelChoice{} {
+            if model.Slug == Draft.Model {
+                return model.DisplayName
+            }
+        }
+        return Draft.Model
+    }
 
     func Build() Blob -> Panel{
         Compact: Compact,
@@ -32,8 +43,8 @@ data struct DonationSummary {
                         },
                     }.Build(),
                     DetailRow{Caption: "Account", Value: Account}.Build(),
-                    DetailRow{Caption: "Harness", Value: Draft.Harness}.Build(),
-                    DetailRow{Caption: "Model", Value: Draft.Model + " / " + Draft.Effort}.Build(),
+                    DetailRow{Caption: "Harness", Value: ModelChoice.Tool(Draft.Harness, Draft.Provider)}.Build(),
+                    DetailRow{Caption: "Model", Value: ModelChoice.Pair(ModelName(), Draft.Effort)}.Build(),
                 },
             }.Build(),
         },

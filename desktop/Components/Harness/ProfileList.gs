@@ -69,12 +69,8 @@ data struct ProfileList {
         return panel
     }
 
-    private func Summary(profile DonorProfile) string {
-        var text = HarnessOption.NameOf(profile.Harness)
-        if profile.Harness == "omp" && profile.Provider != "" {
-            text += " \u00b7 " + profile.Provider
-        }
-        text += " \u00b7 " + profile.Model
-        return profile.Effort != "" ? text + " / " + ModelChoice.EffortLabel(profile.Effort): text
-    }
+    private func Summary(profile DonorProfile) string -> ModelChoice.Tool(profile.Harness, profile.Provider) + " \u00b7 " + ModelChoice.Pair(
+        profile.Model,
+        profile.Effort
+    )
 }

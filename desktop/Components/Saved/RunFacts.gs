@@ -14,10 +14,10 @@ data struct RunFacts {
         let run = Item.Run ?? Run.Empty
         let facts = List[Blob]()
         if run.Harness != "" {
-            facts.Add(DetailRow{Caption: "Tool", Value: run.Harness}.Build())
+            facts.Add(DetailRow{Caption: "Harness", Value: ModelChoice.Tool(run.Harness, run.Provider)}.Build())
         }
         if run.Model != "" {
-            facts.Add(DetailRow{Caption: "Model", Value: run.Model + " / " + run.Effort}.Build())
+            facts.Add(DetailRow{Caption: "Model", Value: ModelChoice.Pair(run.Model, run.Effort)}.Build())
         }
         if run.Unlimited || run.CodingSeconds > 0 {
             facts.Add(DetailRow{Caption: "Coding limit", Value: run.CodingTime}.Build())
