@@ -18,7 +18,6 @@ internal class DonorSelection {
             (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic") ||
             (J.Text(value, "harness") == "omp" && J.Text(value, "provider") != "")
 
-        // A saved OMP default without a provider is managed; the owner policy supplies the provider.
         internal func Managed(saved JsonElement) bool -> Supported(saved) || J.Text(saved, "harness") == "omp"
 
         internal func ApplyDefaults(args Args) {

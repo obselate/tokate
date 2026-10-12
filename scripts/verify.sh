@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+if git grep -nE '^[[:space:]]*//([^/]|$)' -- '*.gs'; then
+    echo 'Code comments are not allowed.' >&2
+    exit 1
+fi
+if git grep -nE '(ghp_|github_pat_|gho_|sk-ant-|sk-proj-)[A-Za-z0-9_]{10,}'; then
+    echo 'A tracked file contains a secret-shaped token.' >&2
+    exit 1
+fi
 bash scripts/build.sh
 runtime="${TOKATE_RUNTIME_IDENTIFIER:-linux-x64}"
 tests=artifacts/tests/tokate-tests
