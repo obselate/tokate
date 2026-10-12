@@ -14,7 +14,12 @@ internal class OwnerApproval {
             var body = args.Get("body-file") == "" ? args.Get("body"): File.ReadAllText(args.Need("body-file"))
             if number == 0 && title == "" {
                 while title == "" {
-                    title = WizardScreen.Read("Write an issue", repo, "Title")
+                    title = WizardScreen.Read(
+                        "Write an issue",
+                        repo,
+                        "Title",
+                        help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+                    )
                 }
                 if args.Get("body") == "" && args.Get("body-file") == "" {
                     let lines = List[string]()
@@ -22,7 +27,8 @@ internal class OwnerApproval {
                         let line = WizardScreen.Read(
                             "Describe the issue",
                             "Title: " + title + "\n\n" + String.Join("\n", lines),
-                            "Description (Enter on an empty line finishes)"
+                            "Description (Enter on an empty line finishes)",
+                            help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
                         )
                         if line == "" {
                             break
@@ -34,7 +40,8 @@ internal class OwnerApproval {
                 if WizardScreen.Choose(
                     "Review issue",
                     repo + "\n\nTitle: " + title + "\n\nDescription:\n" + body,
-                    []string{"Create and approve", "Cancel"}
+                    []string{"Create and approve", "Cancel"},
+                    "Create and approve opens the issue and approves it for donors. Cancel creates nothing."
                 ) == 2 {
                     return
                 }
