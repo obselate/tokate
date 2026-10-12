@@ -639,6 +639,31 @@ internal partial class Fixture {
                 Check.Map("encoding", "base64", "content", Convert.ToBase64String(Encoding.UTF8.GetBytes(content)))
             )
         }
+        if tail == "issues" && method == "POST" {
+            let issues = State["issues"]?.AsObject() ?? Check.Map("1", State["issue"]?.DeepClone()).AsObject()
+            let number = issues.Count + 1
+            let issue = Check.Map(
+                "number",
+                number,
+                "state",
+                "open",
+                "title",
+                Check.Text(body["title"]),
+                "body",
+                Check.Text(body["body"]),
+                "html_url",
+                "https://github.com/owner/project/issues/" + number.ToString(),
+                "labels",
+                JsonArray(),
+                "assignees",
+                JsonArray()
+            )
+            issues[number.ToString()] = issue
+            if State["issues"] == nil {
+                State["issues"] = issues
+            }
+            return Answer(issue)
+        }
         if tail.StartsWith("issues?") {
             let query = tail.Substring(tail.IndexOf('?') + 1).Split('&')
             let sizeField = Array.Find(query, field -> field.StartsWith("per_page=", StringComparison.Ordinal)) ??
