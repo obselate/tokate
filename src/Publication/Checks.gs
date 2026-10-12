@@ -157,7 +157,19 @@ internal class Checks {
                         }
                     )
                     gates["lifecycle"] = map[string, Object?]{
-                        "status": isOpen ? "passed": (historical ? "failed": "unavailable")
+                        "status": isOpen ? "passed": (historical ? "historical": "unavailable")
+                    }
+                    if historical {
+                        facts["machine_status"] = "historical"
+                        PublicOutput.Checks(run, J.Parse("[]"), "unread", facts)
+                        Terminal.Message(
+                            "PR #" + run.Number("pr").ToString() +
+                                (
+                                J.Bool(pull, "merged") || J.Get(pull, "merged_at").ValueKind == JsonValueKind.String ?
+                                " was merged.": " was closed without merge."
+                            )
+                        )
+                        return 0
                     }
                     if !isOpen {
                         throw CliFailure(
