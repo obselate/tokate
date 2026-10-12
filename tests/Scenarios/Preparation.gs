@@ -1454,6 +1454,10 @@ internal class PreparationChecks {
             Check.Contains(declined.Output, "1 minutes")
             Check.Contains(declined.Output, "Cancelled")
             Check.That(!declined.Output.Contains("rejected |"), "Guided menu offered an owner-rejected profile")
+            let home = TestTerminal.Pty(binary, []string{"work", "owner/project#1"}, flow.Temp, 80, "1\n1\n1\nh\nq\n")
+            Check.Success(home)
+            Check.Contains(home.Output, "Review donation")
+            Check.Contains(home.Output, "Welcome")
             flow.Reload()
             Check.That(
                 flow.State["request_count"] == nil && flow.State["fork_creations"] == nil,

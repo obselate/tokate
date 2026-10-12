@@ -99,7 +99,9 @@ for cancelled in (False, True):
         assert b"\x1b[?25l" not in initial, "Picker changed cursor visibility"
         if cancelled:
             os.write(fd, b"\x1b")
-            finish(pid, fd, 1)
+            expect(fd, b"What would you like to do?")
+            os.write(fd, b"q")
+            finish(pid, fd, 0)
             assert not os.path.exists(os.path.join(path, ".github"))
             continue
         os.write(fd, b" ")
