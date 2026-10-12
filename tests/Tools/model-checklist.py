@@ -134,10 +134,21 @@ for cancelled in (False, True):
         expect(fd, b"3 selected")
         os.write(fd, b"\r")
         expect(fd, b"Review project setup")
+        resize(fd, 80, 24)
+        expect(fd, b"Review project setup")
+        os.write(fd, b"\x1b[B\r")
+        expect(fd, b"Change project setup")
+        os.write(fd, b"\x1b[B" * 4 + b"\r")
+        reservation = expect(fd, b"Reservation time [5m]: ")
+        assert reservation.count(b"Reservation time [5m]: ") == 1, reservation
+        assert b"Value: " not in reservation, reservation
+        os.write(fd, b"10m\r")
+        expect(fd, b"Review project setup")
         os.write(fd, b"\r")
         finish(pid, fd, 0)
         with open(os.path.join(path, ".github", "tokate.json")) as file:
             policy = json.load(file)
+        assert policy["reservation_seconds"] == 600, policy["reservation_seconds"]
         models = policy["models"]
         assert models == {
             "gpt-6.1-sol": ["high"], local_model: ["absent"], "remote-model": ["absent"],

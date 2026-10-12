@@ -223,7 +223,10 @@ internal class CliDiscovery {
                 owner: true
             )
             Check.That(!safePreview.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
-            Check.Contains(safePreview.Error, "not verified")
+            Check.Contains(
+                safePreview.Error,
+                "Review wiring and permissions against a pinned workflow: tokate coordinator-setup owner/project --output tokate-coordinator.yml."
+            )
             Check.That(File.ReadAllText(workflowPath) == escaped, "Preview changed the custom workflow")
             let custom = Path.Combine(root, ".github/tokate-pr.md")
             File.WriteAllText(custom, TestResources.Template("tokate-pr.md") + "Owner customization\n")
@@ -416,7 +419,10 @@ internal class CliDiscovery {
             )
             Check.Contains(terminal.Output, "Maximum donor time (--max-time) [1h]")
             Check.Contains(terminal.Output, "Target branch (--base-branch) [main]")
-            Check.Contains(terminal.Output, "Reservation time (--reservation-time) [24h]")
+            Check.Contains(terminal.Output, "Reservation time [24h]")
+            Check.Contains(terminal.Output, "Required checks   verify build")
+            Check.Contains(terminal.Output, "PR text   none")
+            Check.That(!terminal.Output.Contains('{'), "Setup result showed raw configuration")
             flow.Reload()
             Check.Contains(terminal.Output, "GitHub branch protection")
             Check.Contains(terminal.Output, "Require checks on release: verify, build. No other protection changes.")
@@ -561,6 +567,65 @@ internal class CliDiscovery {
                     }
                 }
                 Check.That(reads == 1, "Setup did not make exactly one check-name read")
+                if suggestionIndex == 1 {
+                    configured["verification"] = Check.Json(
+                        "[[\"/bin/sh\",\"-c\",\"python3 -m unittest -v\"],[\"/usr/bin/true\"]]"
+                    )
+                    let current = configured.ToJsonString()
+                    let savedPolicy = Path.Combine(suggestionRoot, ".github/tokate.json")
+                    File.WriteAllText(savedPolicy, current)
+                    Publish(flow, current)
+                    let keep = TestProcess.Run(
+                        "/usr/bin/script",
+                        []string{
+                            "-q",
+                            "-e",
+                            "-c",
+                            "'" +
+                                binary +
+                                "' init --path '" +
+                                suggestionRoot +
+                                "' --plain --eligibility trusted --model-policy unrestricted",
+                            "/dev/null"
+                        },
+                        env,
+                        "2\n1\n\n1\n"
+                    )
+                    Check.Success(keep)
+                    Check.Contains(keep.Output, "1  Keep: python3 -m unittest -v, /usr/bin/true")
+                    Check.Contains(keep.Output, "2  Replace with: python3 -m unittest")
+                    Check.Contains(keep.Output, "nothing to commit")
+                    Check.That(File.ReadAllText(savedPolicy) == current, "Keep changed existing verification commands")
+                    let replace = TestProcess.Run(
+                        "/usr/bin/script",
+                        []string{
+                            "-q",
+                            "-e",
+                            "-c",
+                            "'" +
+                                binary +
+                                "' init --path '" +
+                                suggestionRoot +
+                                "' --plain --eligibility trusted --model-policy unrestricted",
+                            "/dev/null"
+                        },
+                        env,
+                        "2\n1\n2\n\n1\n"
+                    )
+                    Check.Success(replace)
+                    let result = replace.Output.Substring(replace.Output.IndexOf("Updated ", StringComparison.Ordinal))
+                    Check.Contains(result, "Checks   python3 -m unittest")
+                    Check.That(
+                        !result.Contains("Limit    ") && !result.Contains('{'),
+                        "Result included unchanged settings or raw configuration"
+                    )
+                    let replaced = Check.Json(File.ReadAllText(savedPolicy))
+                    Check.That(
+                        replaced["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"python3 -m unittest\"]]",
+                        "Replace did not apply the selected suggestion"
+                    )
+                    Publish(flow, nil)
+                }
             }
             let savedToken = flow.Temp.Env["GH_TOKEN"]
             flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
@@ -605,6 +670,10 @@ internal class CliDiscovery {
                 let options = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
                 TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "1\n": "")
                 Check.Success(options)
+                if flag == "" {
+                    Check.Contains(options.Output, "Claude Code (Subscription), aider")
+                    Check.That(!options.Output.Contains('{'), "Setup result showed raw explicit configuration")
+                }
                 Check.That(
                     options.Output.Contains("Review project setup") == (flag == ""),
                     "Init used the wrong interactive mode"
