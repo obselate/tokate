@@ -6,7 +6,6 @@ __pycache__/
 bin/
 obj/
 artifacts/
-/branding/
 .tokate/
 .tokate-scratch/
 .env
