@@ -833,6 +833,53 @@ internal partial class NativeFlow : NativeFixture {
             NoInference()
             Faults("", JsonArray())
         }
+        let token = "github_" + "pat_" + String('a', 30)
+        let permission = "fork_collab Fork collab can't be granted by someone without permission"
+        let body = Check.Map(
+            "message",
+            "Validation Failed",
+            "errors",
+            Check.Json("[]"),
+            "ignored",
+            "synthetic-response-secret"
+        )
+        body["errors"]?.AsArray().Add(Check.Map("message", permission))
+        body["errors"]?.AsArray().Add(Check.Map("message", "Second error " + token + " Bearer synthetic-token"))
+        for json in[]bool{false, true} {
+            Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", body.DeepClone())))
+            let result = Call(
+                json ? []string{"approve", "owner/project#1", "--json"}: []string{"approve", "owner/project#1"},
+                1,
+                owner: true
+            )
+            let message = json ? Check.Text(Check.Json(result.Output)["error"]?["message"]): result.Error
+            Check.Contains(message, "GitHub mutation failed (HTTP 422)")
+            Check.Contains(message, "Validation Failed")
+            Check.Contains(message, permission)
+            Check.Contains(message, "Second error [redacted] [redacted]")
+            Check.Contains(message, "tokate submit --run with the saved run")
+            Check.That(!message.Contains("tokate publish"), "Mutation failure named a missing command")
+            Check.That(!message.Contains(token) && !message.Contains("synthetic-token"), "Mutation leaked tokens")
+            Check.That(!message.Contains("synthetic-response-secret"), "Mutation leaked unselected output")
+            Reload()
+            Check.That(Check.Text(State["fault_index"]) == "1", "Mutation retried validation failure")
+        }
+        for value in[]JsonNode{
+            Check.Map("message", String('x', 2048) + "omitted-tail"),
+            Check.Map("message", 42, "errors", Check.Json("[null,{\"message\":false},{\"message\":\"Nested reason\"}]"))
+        } {
+            Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", value)))
+            let result = Call([]string{"approve", "owner/project#1", "--json"}, 1, owner: true)
+            let message = Check.Text(Check.Json(result.Output)["error"]?["message"])
+            Check.Contains(message, "tokate submit --run with the saved run")
+            if value["message"]?.ToJsonString() == "42" {
+                Check.Contains(message, "Nested reason")
+            } else {
+                Check.That(message.Length < 1500 && !message.Contains("omitted-tail"), "GitHub reason was unbounded")
+            }
+        }
+        Faults("", JsonArray())
+        NoInference()
     }
 
     internal func BackgroundCleanup() {

@@ -1090,8 +1090,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.ResetTraffic()
         let failure = Coordinate(path, 1)
         Check.Contains(failure.Error, "One conditional ref retry was made")
-        Check.Contains(failure.Error, "owner reruns the failed Tokate workflow run")
-        Check.Contains(failure.Error, "donor runs the same command again")
+        Check.Contains(failure.Error, "owner must update the coordinator, then re-process the request")
+        Check.Contains(failure.Error, "donor runs the same saved command again")
         Flow.Reload()
         var attempts int32
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {

@@ -6,6 +6,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.Globalization
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class ApiResponse {
     internal var Status int32
@@ -91,6 +92,34 @@ internal class ApiResponse {
         }
     }
 
+    internal func FailureReason() string {
+        var reason = ""
+        try {
+            let value = J.Parse(Body)
+            let messages = List[JsonElement]{J.Get(value, "message")}
+            for error in J.Items(J.Get(value, "errors")) {
+                messages.Add(J.Get(error, "message"))
+            }
+            for message in messages {
+                if message.ValueKind != JsonValueKind.String {
+                    continue
+                }
+                let text = Regex.Replace(
+                    Terminal.Clean(message.GetString() ?? "").Replace('\n', ' ').Trim(),
+                    "(?i)(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|bearer\\s+[^\\s,;]+",
+                    "[redacted]"
+                )
+                if text != "" {
+                    reason += (reason == "" ? "": "; ") + text
+                }
+                if reason.Length > 1024 {
+                    return reason.Substring(0, Char.IsHighSurrogate(reason[1023]) ? 1023: 1024)
+                }
+            }
+        } catch { }
+        return reason
+    }
+
     internal func Delay(rateLimited bool) double {
         let now = DateTimeOffset.UtcNow
         var date DateTimeOffset
@@ -146,6 +175,8 @@ internal class ApiDeadlineException : Exception {
 
 internal class ApiTransport {
     shared {
+        internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again."
+
         private let Cache Dictionary[string, ApiCache] = Dictionary[string, ApiCache]()
 
         private const CacheByteLimit int64 = 4 * 1024 * 1024
@@ -293,11 +324,14 @@ internal class ApiTransport {
             )
         }
 
-        private func Failure(status int32, read bool, delay double) Exception {
+        private func Failure(status int32, read bool, delay double, body string = "") Exception {
             let reason = status == 0 ? "transport failure or missing response status": "HTTP " + status.ToString()
             var message = "GitHub " + (read ? "read": "mutation") + " failed (" + reason + "). "
+            if body != "" {
+                message += "GitHub reason: " + body + ". "
+            }
             message += read ? "At most three attempts within 60 seconds are allowed.":
-            "No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate publish --run with the saved run."
+            "No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate submit --run with the saved run."
 
             if delay > 0 {
                 let bounded = Math.Min(delay, (DateTimeOffset.MaxValue - DateTimeOffset.UtcNow).TotalSeconds - 1.0)
@@ -423,7 +457,7 @@ internal class ApiTransport {
                 }
 
                 if timer.Elapsed.TotalSeconds >= 60.0 {
-                    throw Failure(response.Status, read, response.Delay(limited))
+                    throw Failure(response.Status, read, response.Delay(limited), response.FailureReason())
                 }
 
                 if response.Status == 304 {
@@ -469,7 +503,7 @@ internal class ApiTransport {
                 }
 
                 if !read || !retryable || attempt == 2 || delay >= 60.0 - timer.Elapsed.TotalSeconds {
-                    throw Failure(response.Status, read, delay)
+                    throw Failure(response.Status, read, delay, response.FailureReason())
                 }
 
                 Wait(delay)

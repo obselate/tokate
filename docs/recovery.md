@@ -159,8 +159,8 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Claim pending. Run: DIR; resume explicitly with work --run DIR or prepare --run DIR. If the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again.` | Managed donor: `tokate work --run DIR` |
-| `Claim pending. Run: DIR; resume explicitly with prepare --run DIR. If the Tokate workflow failed, the owner reruns the failed workflow run in GitHub Actions, then the donor runs the same command again.` | External donor: `tokate prepare --run DIR` |
+| `Claim pending. Run: DIR; resume explicitly with work --run DIR or prepare --run DIR. If the Tokate workflow failed: A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again.` | Managed donor: `tokate work --run DIR` |
+| `Claim pending. Run: DIR; resume explicitly with prepare --run DIR. If the Tokate workflow failed: A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again.` | External donor: `tokate prepare --run DIR` |
 | `Approval revoked or task changed` | Owner: `tokate approve 42` |
 | `Repository policy or template changed. The owner must approve again.` | Owner: `tokate approve 42` |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
@@ -169,7 +169,7 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | `No saved runs.` | `tokate status OWNER/REPO#42` |
 | `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status 42-1 --json` |
 
-For a pending claim, run the same saved command again. If the Tokate workflow failed, the owner reruns that failed workflow in GitHub Actions first.
+For a pending claim, inspect the failed workflow before resuming the saved command. A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, resume with the saved run.
 
 For a provider capacity error, inspect the saved run before selecting a different model. Tokate has no automatic retry or fallback.
 
@@ -189,6 +189,7 @@ Open the private verification artifact listed by status. Correct completed work 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
 | `Submit pending. Run the same command again: tokate submit --run DIR` | `tokate submit --run DIR` |
+| `GitHub mutation failed (HTTP STATUS). GitHub reason: MESSAGE. No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate submit --run with the saved run.` | Inspect remote state, then use `tokate submit --run DIR`. `STATUS` and `MESSAGE` contain the HTTP status and bounded GitHub message fields when present. |
 | `Publication attempt fence was invalidated or replaced` | `tokate status --run DIR --json` |
 | `No saved amendment request. Start a new amendment with --time.` | `tokate amend 42-1 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE` |
 
