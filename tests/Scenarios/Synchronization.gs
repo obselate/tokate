@@ -648,8 +648,15 @@ internal class SynchronizationChecks {
             flow.Call([]string{"checks", "--run", run}, owner: true)
             PublishedContribution.Write(flow.Upstream, "later-target.txt", "acceptance must recheck target\n")
             flow.Commit("Target moved before final acceptance")
-            flow.Call([]string{"checks", "--run", run}, 1, owner: true)
-            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            let checked = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
+            Check.That(
+                Check.Text(checked["data"]?["verified_target_revision"]) == upstream && Check.Text(
+                    checked["data"]?["target_moved"]
+                ) == "true" &&
+                    Check.Text(checked["data"]?["gates"]?["freshness"]?["status"]) == "passed",
+                "Later target movement rejected verified synchronization history"
+            )
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
             let newGrant = Grant(flow, newCandidate, newUpstream)
@@ -729,7 +736,15 @@ internal class SynchronizationChecks {
                     mode == "edits" ? "local.txt": "shared.txt",
                     "committed donor work\n"
                 )
+                if mode == "edits" {
+                    PublishedContribution.Write(checkout, ".gitignore", "/artifacts/\n/bin/\n/obj/\n")
+                }
                 start = Commit(flow, checkout, "Committed local work")
+            }
+            if mode == "edits" {
+                for path in[]string{"artifacts/build.txt", "bin/build.txt", "obj/build.txt"} {
+                    PublishedContribution.Write(checkout, path, "ignored build output\n")
+                }
             }
             var index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
             if mode == "dirty" {
@@ -877,6 +892,13 @@ internal class SynchronizationChecks {
                 refuse || conflict ? 1: 0,
                 owner: mode == "donor"
             )
+            if mode == "edits" {
+                let advisory = "Target main is now " + upstream + "; approved base remains " + base
+                Check.That(
+                    result.Error.Split(advisory).Length == 2,
+                    "Reconciliation must print the unchanged target advisory once"
+                )
+            }
             flow.Reload()
             Check.That(
                 Check.Text(flow.State["exec_count"]) == inference && Check.Text(flow.State["git_pushes"]) == pushes,
@@ -968,6 +990,12 @@ internal class SynchronizationChecks {
                     File.ReadAllText(Path.Combine(checkout, "local.txt")) == "committed donor work\n",
                     "Merge lost committed edits"
                 )
+                for path in[]string{"artifacts/build.txt", "bin/build.txt", "obj/build.txt"} {
+                    Check.That(
+                        File.ReadAllText(Path.Combine(checkout, path)) == "ignored build output\n",
+                        "Reconciliation changed ignored build output"
+                    )
+                }
             }
             let grant = Grant(flow, candidate, upstream)
             Amend(flow, run, candidate, grant)
@@ -976,6 +1004,21 @@ internal class SynchronizationChecks {
             Amend(flow, run, candidate, grant)
             Check.That(Check.Text(Saved(run)["commit"]) == candidate, "Amend did not publish reconciled candidate")
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            if mode == "edits" {
+                PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")
+                flow.Commit("Upstream ignored path collision")
+                index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
+                let rejected = flow.Call([]string{"reconcile", "--run", run, "--json"}, 1)
+                Check.Contains(rejected.Output + rejected.Error, "Ignored path collision preserved")
+                Check.Contains(rejected.Output + rejected.Error, "artifacts/build.txt")
+                Check.That(
+                    File.ReadAllText(Path.Combine(checkout, "artifacts/build.txt")) == "ignored build output\n" &&
+                        flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate && Convert.ToHexString(
+                        index
+                    ) == Convert.ToHexString(File.ReadAllBytes(Path.Combine(checkout, ".git/index"))),
+                    "Ignored path collision lost work"
+                )
+            }
         }
 
         internal func All(binary string, only string = "", partition int32 = 0) {

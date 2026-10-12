@@ -394,15 +394,43 @@ internal class CheckGates {
             Passing(test)
             File.WriteAllText(Path.Combine(flow.Upstream, "already-advanced.txt"), "Target changed before checks\n")
             flow.Commit("Advance target before readiness read")
-            let advanced = Data(Read(test, 1))
-            Gate(advanced, "freshness", "stale")
-            Check.That(
-                Check.Text(advanced["reconciliation_required"]) == "true" && Check.Text(
-                    advanced["machine_status"]
-                ) == "failed",
-                "Pre-existing target movement retained machine readiness"
-            )
-            Check.Contains(Check.Text(advanced["reconciliation_next"]), "current donor")
+            let current = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
+            for state in[]string{"clean", "dirty", "behind", "blocked", "unknown"} {
+                flow.Reload()
+                let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+                pull["mergeable"] = state == "unknown" ? nil: JsonValue.Create(state != "dirty")
+                pull["mergeable_state"] = JsonValue.Create(state)
+                flow.Save()
+                let advanced = Data(Read(test))
+                for name in[]string{"receipt", "report", "checks", "dependencies", "freshness"} {
+                    Gate(advanced, name, "passed")
+                }
+                let reconcile = state == "dirty" || state == "behind"
+                Check.That(
+                    Check.Text(advanced["target_moved"]) == "true" && Check.Text(
+                        advanced["target_revision_after"]
+                    ) == current &&
+                        Check.Text(advanced["verified_target_revision"]) == Check.Text(advanced["binding"]?["base"]),
+                    "Target movement facts lost"
+                )
+                Check.That(
+                    JsonNode.DeepEquals(advanced["mergeable"], pull["mergeable"]) && Check.Text(
+                        advanced["mergeable_state"]
+                    ) == state &&
+                        Check.Text(advanced["machine_status"]) == "passed",
+                    "GitHub mergeability changed machine readiness"
+                )
+                Check.That(
+                    Check.Text(advanced["reconciliation_required"]) == (reconcile ? "true": "false"),
+                    "Wrong reconciliation recommendation"
+                )
+                if reconcile {
+                    Check.Contains(Check.Text(advanced["reconciliation_next"]), "current donor")
+                    Check.Contains(Check.Text(advanced["reconciliation_next"]), "reconcile")
+                } else {
+                    Check.That(advanced["reconciliation_next"] == nil, "Unneeded reconciliation recommended")
+                }
+            }
             for kind in[]string{
                 "head",
                 "approval",
@@ -427,11 +455,28 @@ internal class CheckGates {
                     let next = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
                     flow.Git("-C", flow.Upstream, "update-ref", "refs/heads/main", base)
                     flow.State["overlap_move_target"] = Check.Map("branch", "main", "sha", next)
+                    let target = flow.State["pulls"]?[0]?["base"] ?? throw Exception("Missing PR target")
+                    target["sha"] = JsonValue.Create(base)
+                    let liveBase = target.DeepClone()
+                    liveBase["sha"] = JsonValue.Create(next)
+                    flow.State["pull_read_effect"] = Check.Map("base", liveBase)
                 } else {
                     flow.State["check_read_effect"] = JsonValue.Create(kind)
                 }
                 flow.Save()
-                let result = Data(Read(test, 1))
+                let result = Data(Read(test, kind == "target" ? 0: 1))
+                if kind == "target" {
+                    for name in[]string{"receipt", "report", "checks", "dependencies", "freshness"} {
+                        Gate(result, name, "passed")
+                    }
+                    Check.That(
+                        Check.Text(result["target_moved"]) == "true" && Check.Text(
+                            result["target_revision_after"]
+                        ) != Check.Text(result["target_revision"]) && Check.Text(result["machine_status"]) == "passed",
+                        "Target movement during checks lost readiness or current revision"
+                    )
+                    continue
+                }
                 Gate(result, "freshness", kind == "merged-branch" ? "unavailable": "stale", kind)
                 Gate(result, "report", "stale")
                 Gate(result, "checks", "stale")

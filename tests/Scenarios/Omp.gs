@@ -8,7 +8,15 @@ import System.Text.Json.Nodes
 internal class OmpChecks {
     shared {
         private func Managed(binary string) {
-            for mode in[]string{"normal", "failed", "substituted", "length", "incomplete"} {
+            for mode in[]string{
+                "normal",
+                "failed",
+                "substituted",
+                "length",
+                "incomplete",
+                "late-assistant",
+                "late-tool"
+            } {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 let flow = test.Flow
@@ -104,6 +112,10 @@ internal class OmpChecks {
                 )
                 if mode == "normal" {
                     Check.That(
+                        File.ReadAllText(Path.Combine(run, "report.md")) == "OMP fixture completed.",
+                        "OMP advisor tail changed the assistant report"
+                    )
+                    Check.That(
                         Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
                         "OMP skipped independent verification"
                     )
@@ -125,7 +137,8 @@ internal class OmpChecks {
                         Check.Text(saved["error"]),
                         mode == "failed" ? "OMP did not complete: 402 Insufficient credits for this request [redacted];":
                         mode == "substituted" ? "differs from the selected model or provider":
-                        mode == "length" ? "output length limit": "did not report a terminal result"
+                        mode == "length" ? "output length limit":
+                        mode == "incomplete" ? "did not report a terminal result": "events after its terminal result"
                     )
                     flow.NoPr()
                 }

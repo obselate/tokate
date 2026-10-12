@@ -183,7 +183,7 @@ internal class Cli {
                 "DIR",
                 "Run storage; default: tokate/runs under XDG_STATE_HOME, or ~/.local/state/tokate/runs"
             ),
-            CliOption("run", "DIR", "Saved run directory"),
+            CliOption("run", "DIR", "Exact saved run directory"),
             CliOption("from-pr", "N", "Seed a donation from another donor's last coordinated PR commit"),
             CliOption(
                 "continue-from",
@@ -1062,7 +1062,7 @@ internal class Cli {
                     if !command.Has(option.Name) || option.Name == "traffic" {
                         continue
                     }
-                    let required = command.Needs(option.Name) ? " (required)": ""
+                    let required = command.Needs(option.Name) && option.Name != "run" ? " (required)": ""
                     OptionHelp(
                         text,
                         "--" + option.Name + (option.Value == "" ? "": " " + option.Value) + required,

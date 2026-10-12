@@ -13,7 +13,7 @@ Commands below do not start inference unless they explicitly use `work`.
 | Expired claim or stale approval | Return to the owner. |
 | Verified work awaiting publication | `submit RUN`. |
 | Existing PR needs changes | Use an amendment below. |
-| Upstream moved | `reconcile RUN`, inspect conflicts, then obtain owner authorization for amendment. |
+| Upstream moved | Inspect GitHub mergeability. Reconcile only for conflicts or required up-to-date branches. |
 
 Always use `tokate help COMMAND` for the installed command's inputs and restrictions.
 An uncertain remote write must be reconciled before another write. Repeating the
@@ -48,7 +48,12 @@ A summary describes the entire final diff. Owner edits outside Tokate's PR-body
 regions are preserved. Original execution and later editing remain separately
 attributed. Fresh CI and owner review are still required.
 
-If upstream moved, `reconcile RUN` merges the current target without inference.
+Target movement alone does not fail `checks`. It reports the verified and current
+target revisions and GitHub mergeability. GitHub controls up-to-date branch and
+merge queue requirements.
+
+If GitHub reports a conflict or requires an up-to-date branch, `reconcile RUN`
+merges the current target without inference.
 Resolve conflicts and use `--resume`. The owner then issues `authorize-sync` for the
 exact candidate and upstream commits. Pass that grant to `amend --sync GRANT`.
 

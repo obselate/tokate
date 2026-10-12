@@ -26,7 +26,11 @@ internal class ContributionAuthority {
                 J.Get(saved, "donor_id")
             ) != RepositoryIdentity
                 .PositiveId(J.Get(J.Get(value, "identity"), "actor")) {
-                throw CliFailure("stale_approval", "Saved execution attempt fence changed; old work is preserved")
+                throw CliFailure(
+                    "stale_approval",
+                    "Saved execution attempt fence changed; old work is preserved",
+                    attemptInvalidated: true
+                )
             }
             let record = state.Check(repo, run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
             ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))

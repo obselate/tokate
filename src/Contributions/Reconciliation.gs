@@ -72,7 +72,6 @@ internal class Reconciliation {
                 "status",
                 "--porcelain",
                 "--untracked-files=all",
-                "--ignored",
                 "--ignore-submodules=none"
             ) != "" {
                 throw CliFailure(
@@ -301,6 +300,37 @@ internal class Reconciliation {
                 )
             }
             Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), J.Text(bound, "upstream"))
+            let preview = Commands.GitResult(
+                checkout,
+                []string{"merge-tree", "--write-tree", "--no-messages", start, J.Text(bound, "upstream")}
+            )
+            if preview.Code != 0 && preview.Code != 1 {
+                throw CliFailure("invalid_state", "Cannot inspect the upstream merge; workspace preserved.")
+            }
+            let tree = RepositoryIdentity.CommitSha(preview.Output.Split('\n')[0])
+            let ignored = Commands.GitRaw(
+                checkout,
+                []string{"ls-files", "--others", "--ignored", "--exclude-standard", "-z"}
+            )
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            for path in Commands.GitRaw(
+                checkout,
+                []string{"diff", "--name-only", "--no-renames", "--diff-filter=AMT", "-z", start, tree, "--"}
+            )
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries) {
+                for file in ignored {
+                    if file == path || file.StartsWith(path + "/", StringComparison.Ordinal) || path.StartsWith(
+                        file + "/",
+                        StringComparison.Ordinal
+                    ) {
+                        throw CliFailure(
+                            "invalid_state",
+                            "Ignored path collision preserved: " + J.Write(file) +
+                                ". Move it explicitly before merging the saved upstream. No files were replaced."
+                        )
+                    }
+                }
+            }
             intent["phase"] = "merging"
             run.Fields["reconciliation"] = intent
             run.Save(directory)
@@ -317,6 +347,7 @@ internal class Reconciliation {
                     "--no-ff",
                     "--no-edit",
                     "--no-verify",
+                    "--no-overwrite-ignore",
                     J.Text(bound, "upstream")
                 }
             )

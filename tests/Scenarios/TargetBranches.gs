@@ -61,12 +61,16 @@ internal class TargetBranches {
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
-            let stale = Check.Json(flow.Call([]string{"checks", "owner/project#10", "--json"}, 1, owner: true).Output)
+            let current = flow.Git("-C", flow.Upstream, "rev-parse", branch)
+            let checked = Check.Json(flow.Call([]string{"checks", "owner/project#10", "--json"}, owner: true).Output)
             Check.That(
-                Check.Text(stale["data"]?["reconciliation_required"]) == "true" && Check.Text(
-                    stale["data"]?["gates"]?["freshness"]?["status"]
-                ) == "stale",
-                "Advanced named target did not require reconciliation"
+                Check.Text(checked["data"]?["reconciliation_required"]) == "false" && Check.Text(
+                    checked["data"]?["gates"]?["freshness"]?["status"]
+                ) == "passed" &&
+                    Check.Text(checked["data"]?["verified_target_revision"]) == base && Check.Text(
+                    checked["data"]?["target_revision_after"]
+                ) == current,
+                "Advanced named target lost readiness or revision facts"
             )
             flow.Git("-C", flow.Upstream, "update-ref", "refs/heads/" + branch, base)
             flow.Call([]string{"checks", "owner/project#10"}, owner: true)
