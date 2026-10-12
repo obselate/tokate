@@ -57,6 +57,7 @@ class ContributionsTab {
                 OwnerIssueCard{
                     Issue: issue,
                     Work: work,
+                    Reading: work == nil && page.Busy,
                     Reviews: state.Reviews,
                     CanWrite: state.Project.CanWrite,
                     SupportsApproval: state.Policy.Version >= 2,

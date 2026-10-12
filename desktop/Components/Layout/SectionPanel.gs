@@ -2,7 +2,8 @@ package TokateDesktop
 
 import Goo
 
-/// A bordered surface for the lines of a list, below a heading with the count of lines on its baseline.
+/// A bordered surface for the lines of a list, below a heading with the count of lines on its baseline. A
+/// count below zero does not show.
 /// `Trailing` blobs sit at the end of the heading row. `Note` is small text below the lines.
 data struct SectionPanel {
     var Title string
@@ -21,7 +22,7 @@ data struct SectionPanel {
                     NoWrap: true,
                     Children: []Blob{
                         Heading{Content: Title, Size: AppTheme.ItemSize}.Build(),
-                        Label{Content: Count.ToString(), Size: AppTheme.SmallSize, Muted: true}.Build(),
+                        Label{Content: Count < 0 ? "": Count.ToString(), Size: AppTheme.SmallSize, Muted: true}.Build(),
                     },
                 }.Build(),
                 Spacer{}.Build(),

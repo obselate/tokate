@@ -32,7 +32,11 @@ data struct RunDetails {
             Rule{}.Build(),
             Row{
                 Children: []Blob{
-                    MaterialIcons.Create(look.Icon == "" ? "arrow_circle_right": look.Icon, 26, look.Edge),
+                    tone == Tone.Wait ? WaitMark.Mount("run-wait", WaitMarkInput{Icon: look.Icon, Size: 26, Ink: look.Edge}): MaterialIcons.Create(
+                        look.Icon == "" ? "arrow_circle_right": look.Icon,
+                        26,
+                        look.Edge
+                    ),
                     Heading{Content: guide.Heading}.Build(),
                 },
             }.Build(),

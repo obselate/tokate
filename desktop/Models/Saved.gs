@@ -205,8 +205,16 @@ data struct RunGuide {
                 Text: "Start the donation. The time starts then.",
                 Main: RunAction.Work,
             }
-            case "Preparing workspace": RunGuide{Step: 1, Heading: "Tokate prepares the workspace", Text: ""}
-            case "Donation in progress": RunGuide{Step: 1, Heading: "A donation runs for this contribution", Text: ""}
+            case "Preparing workspace": RunGuide{
+                Step: 1,
+                Heading: "Tokate prepares the workspace",
+                Text: "No action is necessary. Refresh the status to see the result.",
+            }
+            case "Donation in progress": RunGuide{
+                Step: 1,
+                Heading: "A donation runs for this contribution",
+                Text: "No action is necessary. Refresh the status to see the result.",
+            }
             case "Initial donation failed": RunGuide{
                 Step: 1,
                 Heading: "The donation failed",

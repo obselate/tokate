@@ -10,6 +10,8 @@ import System.Collections.Generic
 data struct OwnerIssueCard {
     var Issue Issue
     var Work IssueWork?
+    /// Whether the status of the issue is being read for the first time.
+    var Reading bool
     var Reviews []DraftReview
     var CanWrite bool
     var SupportsApproval bool
@@ -59,7 +61,11 @@ data struct OwnerIssueCard {
         for draft in drafts {
             lines.Add(Draft(draft))
         }
-        if lines.Count == 0 {
+        if Reading {
+            let line = ListRow{Children: []Blob{Label{Content: "Reading the contribution", Muted: true}.Build()}}.Build()
+            line.Opacity = AppTheme.Motion ? Button.Pulse: 1
+            lines.Add(line)
+        } else if lines.Count == 0 {
             lines.Add(ListRow{Children: []Blob{Label{Content: "No draft pull requests.", Muted: true}.Build()}}.Build())
         }
         return Stack{
@@ -68,7 +74,7 @@ data struct OwnerIssueCard {
                 approval,
                 SectionPanel{
                     Title: "Draft pull requests",
-                    Count: drafts.Length,
+                    Count: Reading ? -1: drafts.Length,
                     Children: lines.ToArray(),
                     Note: "Before you accept a pull request: verify the receipt, make sure that CI is green on the reviewed commit, and read the diff. You merge on GitHub.",
                 }.Build(),
