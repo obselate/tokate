@@ -4,61 +4,81 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// Step II: the coding tool, model and time limits.
+/// Step II: the harness, model and time limits.
 class LimitsStepView {
     private let donation DonationService
+    private let art ArtworkService
+    private let manage Action
 
-    init(donation DonationService) {
+    init(donation DonationService, art ArtworkService, manage Action) {
         this.donation = donation
+        this.art = art
+        this.manage = manage
     }
 
     func Build(page PageContext) []Blob {
         let state = donation.Current
         let draft = state.Draft
-        let tools = List[Blob]{
-            Heading{Content: "Coding tool"}.Build(),
-            HarnessPicker{Selected: draft.Harness, Disabled: page.Busy, OnChoose: id -> donation.ChooseHarness(id)}.Build(),
-        }
-        if state.Profiles.Length > 0 {
-            tools.Add(
-                ProfileButtons{
-                    Profiles: state.Profiles,
-                    Button: page.Button,
-                    OnUse: profile -> donation.UseProfile(profile),
-                }.Build()
-            )
-        }
-        if draft.Profile != "" {
-            tools.Add(DetailRow{Caption: "Profile", Value: draft.Profile}.Build())
-        }
-        tools.Add(
-            ModelPicker{
-                Harness: draft.Harness,
-                Model: draft.Model,
-                Effort: draft.Effort,
-                Endpoint: draft.Endpoint,
-                Models: state.Models,
-                Efforts: state.Efforts(),
-                Disabled: page.Busy,
-                OnModel: value -> donation.SetModel(value),
-                OnEffort: value -> donation.SetEffort(value),
-                OnEndpoint: value -> donation.SetEndpoint(value),
-                OnPopupKey: page.OnPopupKey,
-                OnPopupPointer: page.OnPopupPointer,
-            }.Build()
-        )
+        let compact = page.CompactPanels || page.Metrics.WindowHeight < 900
         return []Blob{
             Heading{Content: state.Identity + "  " + state.IssueTitle}.Build(),
+            Panel{
+                Compact: compact,
+                Name: "Harness settings",
+                Children: []Blob{
+                    IconHeading{Icon: "terminal", Content: "Harness"}.Build(),
+                    HarnessPicker{
+                        Selected: draft.Harness,
+                        Policy: state.Policy,
+                        Unready: state.Unready,
+                        Logo: id -> art.Logo(id).Render(),
+                        Disabled: page.Busy,
+                        OnChoose: id -> donation.ChooseHarness(id),
+                    }.Build(),
+                },
+            }.Build(),
             CardColumns{
                 Stacked: page.Metrics.ContentWidth < 740,
                 Cards: []Container{
-                    Panel{Compact: page.CompactPanels, Name: "Coding tool settings", Children: tools.ToArray()}.Build(),
+                    Panel{
+                        Compact: compact,
+                        Name: "Model settings",
+                        Children: []Blob{
+                            IconHeading{Icon: "tune", Content: "Model"}.Build(),
+                            ModelPicker{
+                                Harness: draft.Harness,
+                                Provider: draft.Provider,
+                                Providers: state.Policy.Providers("omp"),
+                                Model: draft.Model,
+                                Effort: draft.Effort,
+                                Endpoint: draft.Endpoint,
+                                Models: state.Catalog(),
+                                Efforts: state.Efforts(),
+                                Disabled: page.Busy,
+                                OnModel: value -> donation.SetModel(value),
+                                OnEffort: value -> donation.SetEffort(value),
+                                OnEndpoint: value -> donation.SetEndpoint(value),
+                                OnProvider: value -> donation.SetProvider(value),
+                                Popup: page.Popup,
+                            }.Build(),
+                            Rule{}.Build(),
+                            ProfilePicker{
+                                Profiles: state.Profiles,
+                                Selected: draft.Profile,
+                                Button: page.Button,
+                                Disabled: page.Busy,
+                                OnUse: profile -> donation.UseProfile(profile),
+                                OnManage: manage,
+                                Popup: page.Popup,
+                            }.Build(),
+                        },
+                    }.Build(),
                     TimeLimits{
                         Draft: draft,
                         Policy: state.Policy,
                         Button: page.Button,
                         Disabled: page.Busy,
-                        Compact: page.CompactPanels,
+                        Compact: compact,
                         OnPreset: minutes -> donation.ChoosePreset(minutes),
                         OnUnlimited: value -> donation.SetUnlimited(value),
                         OnCoding: value -> donation.SetCoding(value),

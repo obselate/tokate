@@ -34,8 +34,8 @@ func ModelTests() {
     Regression.Check(!draft.PresetAllowed(60, policy), "preset over the limit is disabled")
     Regression.Equal(draft.ForHarness("pi").Model, "", "pi clears the model")
     Regression.Equal(draft.ForHarness("codex").Effort, "high", "codex restores the default effort")
-    Regression.Equal(CodexModel.EffortLabel("xhigh"), "Extra high", "xhigh effort label")
-    Regression.Equal(CodexModel.EffortLabel("medium"), "Medium", "effort label capitalization")
+    Regression.Equal(ModelChoice.EffortLabel("xhigh"), "Extra high", "xhigh effort label")
+    Regression.Equal(ModelChoice.EffortLabel("medium"), "Medium", "effort label capitalization")
     Regression.Equal(DonationProgress.ElapsedText(3725), "01:02:05", "elapsed time text")
 
     let parsed = RepositoryRef.Parse("https://github.com/owner/repo/issues/42/")

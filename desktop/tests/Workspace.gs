@@ -66,7 +66,7 @@ func TiledLayouts(host TestHost, window Window, adapter TestAccessibility) {
         let height = sizes[i * 2 + 1]
         host.Resize(width, height, width * 2, height * 2)
         Settle(host)
-        for name in[]string{"Welcome", "Donate", "My project", "Saved work", "Appearance"} {
+        for name in[]string{"Welcome", "Donate", "My project", "Saved work", "Profiles", "Appearance"} {
             FocusVisible(host, window, adapter, name, width, height, true)
         }
         for name in[]string{"Donate", "Saved work", "My project"} {

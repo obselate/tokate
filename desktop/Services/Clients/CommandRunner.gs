@@ -1,6 +1,7 @@
 package TokateDesktop
 
 import System
+import System.Collections.Generic
 import System.Text.Json
 
 /// Runs commands as the current activity. Each call begins the activity, runs the client in a `go` worker
@@ -63,13 +64,40 @@ class CommandRunner {
     }
 
     /// Reads Codex's bundled model catalog.
-    func Codex(finish Action[Reply[[]CodexModel]], seconds int32 = 15) bool {
+    func Codex(finish Action[Reply[[]ModelChoice]], seconds int32 = 15) bool {
         let catalog = CodexCatalog()
         guard let ticket = activity.Begin("debug", catalog) else {
             return false
         }
         go RunCodex(catalog, seconds, ticket, Finisher(finish, false))
         return true
+    }
+
+    /// Reads the models that the donor's OMP lists.
+    func Omp(finish Action[Reply[[]ModelChoice]], seconds int32 = 60) bool {
+        let catalog = OmpCatalog()
+        guard let ticket = activity.Begin("models", catalog) else {
+            return false
+        }
+        go RunOmp(catalog, seconds, ticket, Finisher(finish, false))
+        return true
+    }
+
+    /// Reads the model catalog of Codex or OMP and gives the models to show. Other harnesses have none to read.
+    func Models(harness string, finish Action[[]ModelChoice]) bool {
+        let done = (reply Reply[[]ModelChoice]) -> {
+            if Failed(reply.Outcome) {
+                return
+            }
+            let visible = List[ModelChoice]()
+            for model in reply.Value ?? []ModelChoice{} {
+                if !model.Hidden {
+                    visible.Add(model)
+                }
+            }
+            finish(visible.ToArray())
+        }
+        return harness == "codex" ? Codex(done): harness == "omp" && Omp(done)
     }
 
     /// Runs a GitHub CLI command and decodes its whole result.
@@ -89,7 +117,7 @@ class CommandRunner {
             return false
         }
         let page = navigation.Current
-        if page == Destination.Donate || page == Destination.Project || page == Destination.Saved {
+        if page == Destination.Donate || page == Destination.Project || page == Destination.Saved || page == Destination.Profiles {
             feedback.ShowError(outcome)
             return true
         }
@@ -130,7 +158,11 @@ class CommandRunner {
         activity.Complete(ticket, client.Run[T](arguments, decode, seconds), finish)
     }
 
-    private func RunCodex(catalog CodexCatalog, seconds int32, ticket ActivityTicket, finish Action[Reply[[]CodexModel]]) {
+    private func RunOmp(catalog OmpCatalog, seconds int32, ticket ActivityTicket, finish Action[Reply[[]ModelChoice]]) {
+        activity.Complete(ticket, catalog.Load(seconds), finish)
+    }
+
+    private func RunCodex(catalog CodexCatalog, seconds int32, ticket ActivityTicket, finish Action[Reply[[]ModelChoice]]) {
         activity.Complete(ticket, catalog.Load(seconds), finish)
     }
 }

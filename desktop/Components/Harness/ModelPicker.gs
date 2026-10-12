@@ -5,78 +5,74 @@ import Goo.Widgets.Inputs
 import System
 import System.Collections.Generic
 
-/// The model and reasoning effort. Codex offers its catalog; other tools take exact IDs and a local endpoint.
+/// The provider, model and reasoning effort. `Models` are the choices. Pi takes an exact model ID when
+/// there are none, and a local endpoint. OMP offers `Providers`, or takes a provider name when there are none.
 data struct ModelPicker {
     var Harness string
+    var Provider string
+    var Providers []string
     var Model string
     var Effort string
     var Endpoint string
-    var Models []CodexModel
+    var Models []ModelChoice
     var Efforts []string
     var Disabled bool
     var OnModel Action[string]?
     var OnEffort Action[string]?
     var OnEndpoint Action[string]?
-    var OnPopupKey Action[KeyEvent]?
-    var OnPopupPointer Action[PointerEvent]?
+    var OnProvider Action[string]?
+    var Popup PopupInput
 
     func Build() Blob {
-        let children = List[Blob]()
-        if Harness == "codex" {
+        let fields = List[Blob]()
+        if Harness == "omp" {
+            let providers = List[ComboBoxOption]()
+            for provider in Providers {
+                providers.Add(Option(provider, provider))
+            }
+            fields.Add(
+                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, 150): Field(
+                    "Provider",
+                    Provider,
+                    OnProvider,
+                    "Provider name",
+                    150
+                )
+            )
+        }
+        if Harness == "pi" && Models.Length == 0 {
+            fields.Add(Field("Model", Model, OnModel, "Exact model ID", 230))
+        } else {
             let models = List[ComboBoxOption]()
             for model in Models {
                 models.Add(Option(model.Slug, model.DisplayName))
             }
-            let efforts = List[ComboBoxOption]()
-            for effort in Efforts {
-                efforts.Add(Option(effort, CodexModel.EffortLabel(effort)))
-            }
-            children.Add(
-                Row{
-                    Children: []Blob{
-                        Choice("Model", Model, models.ToArray(), OnModel, 230),
-                        Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, 170),
-                    },
-                }.Build()
-            )
-        } else {
-            children.Add(
-                Row{
-                    Children: []Blob{
-                        InputField{
-                            Label: "Model",
-                            Value: Model,
-                            OnChange: OnModel,
-                            Placeholder: "Exact model ID",
-                            Width: 230,
-                            Disabled: Disabled,
-                        }.Build(),
-                        InputField{
-                            Label: "Reasoning effort",
-                            Value: Effort,
-                            OnChange: OnEffort,
-                            Placeholder: "For example, high",
-                            Width: 170,
-                            Disabled: Disabled,
-                        }.Build(),
-                    },
-                }.Build()
-            )
+            fields.Add(Choice("Model", Model, models.ToArray(), OnModel, Harness == "omp" ? 270: 230))
         }
+        let efforts = List[ComboBoxOption]()
+        for effort in Efforts {
+            efforts.Add(Option(effort, ModelChoice.EffortLabel(effort)))
+        }
+        fields.Add(Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, 170))
+        let children = List[Blob]{Row{Align: AlignItems.FlexEnd, Children: fields.ToArray()}.Build()}
         if Harness == "pi" {
-            children.Add(
-                InputField{
-                    Label: "Local endpoint",
-                    Value: Endpoint,
-                    OnChange: OnEndpoint,
-                    Placeholder: "http://127.0.0.1:8080/v1",
-                    Width: 540,
-                    Disabled: Disabled,
-                }.Build()
-            )
+            children.Add(Field("Local endpoint", Endpoint, OnEndpoint, "http://127.0.0.1:8080/v1", 0))
         }
         return Stack{Gap: 18, Children: children.ToArray()}.Build()
     }
+
+    /// A text field. Zero width fills the row.
+    private func Field(caption string, value string, change Action[string]?, placeholder string, width float64) Blob ->
+    InputField{
+        Label: caption,
+        Controlled: true,
+        Value: value,
+        OnChange: change,
+        Placeholder: placeholder,
+        Width: width,
+        Fill: width == 0,
+        Disabled: Disabled,
+    }.Build()
 
     private func Option(id string, name string) ComboBoxOption -> ComboBoxOption{
         Id: id,
@@ -91,8 +87,8 @@ data struct ModelPicker {
         Options: options,
         OnChange: change,
         Width: width,
+        Searchable: options.Length > 12,
         Disabled: Disabled,
-        OnPopupKey: OnPopupKey,
-        OnPopupPointer: OnPopupPointer,
+        Popup: Popup,
     }.Build()
 }

@@ -15,6 +15,7 @@ class RootView : Cell {
     private let saved SavedView
     private let welcome WelcomeView
     private let appearance AppearanceView
+    private let profiles ProfilesView
     private let loadingPulse Anim[float64]
     private var pulseElapsed int32 = -1
     private var pulsing bool
@@ -23,11 +24,12 @@ class RootView : Cell {
         this.app = app
         app.Theme.Bind(Animate(0.0))
         loadingPulse = Animate(1.0)
-        donate = DonateView(app.Donation, app.Feedback, next -> Navigate(next), path -> OpenSaved(path))
+        donate = DonateView(app.Donation, app.Feedback, app.Art, next -> Navigate(next), path -> OpenSaved(path))
         project = ProjectView(app.Owner, app.Feedback)
         saved = SavedView(app.Saved, app.Feedback)
         welcome = WelcomeView(app, next -> Navigate(next), path -> OpenSaved(path))
         appearance = AppearanceView(app)
+        profiles = ProfilesView(app.Profiles, app.Feedback, app.Art)
         app.Commands.RememberRun = path -> app.Saved.Remember(path)
         app.Saved.OnWork = (run, path) -> {
             Navigate(Destination.Donate)
@@ -59,6 +61,12 @@ class RootView : Cell {
         }
         if next == Destination.Project {
             app.Owner.Enter()
+        }
+        if next == Destination.Donate {
+            app.Donation.Enter()
+        }
+        if next == Destination.Profiles {
+            app.Profiles.Enter()
         }
         if next == Destination.Welcome {
             app.Welcome.Refresh(app.Saved.Current.RunPath)
@@ -112,8 +120,11 @@ class RootView : Cell {
             Metrics: app.Window.Metrics,
             Loader: message -> SkyLoader.Mount(SkyLoaderInput{Message: message, Sun: app.Art.Sun, Moon: app.Art.Moon}),
             OnTop: () -> app.Window.ContentScroller.JumpTo(0, 0),
-            OnPopupKey: event -> app.Window.KeyNavigation(event),
-            OnPopupPointer: event -> app.Window.FocusHints(false),
+            Popup: PopupInput{
+                KeyBindings: WidgetKeyBindings.Editing(app.Window.PlatformInput),
+                OnKeyDown: event -> app.Window.KeyNavigation(event),
+                OnPointerDown: event -> app.Window.FocusHints(false),
+            },
         }
     }
 
@@ -150,6 +161,7 @@ class RootView : Cell {
             case Destination.Donate: app.Art.Scene("donate")
             case Destination.Project: app.Art.Scene("my-project")
             case Destination.Saved: app.Art.Scene("saved-work")
+            case Destination.Profiles: app.Art.Scene("donate")
             default: nil
         }
         guard let landscape = scene else {
@@ -212,6 +224,7 @@ class RootView : Cell {
             case Destination.Donate: donate.Build(Page())
             case Destination.Project: project.Build(Page())
             case Destination.Saved: saved.Build(Page())
+            case Destination.Profiles: profiles.Build(Page())
             case Destination.Appearance: appearance.Build()
             default: welcome.Build()
         }

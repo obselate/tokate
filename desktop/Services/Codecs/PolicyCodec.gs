@@ -19,8 +19,10 @@ class PolicyCodec {
                 }
             }
             let tools = List[string]()
+            let providers = List[string]()
             for tool in Json.Items(value, "allowed_tools") {
                 tools.Add(Json.Text(tool, "harness"))
+                providers.Add(Json.Text(tool, "harness") + "/" + Json.Text(tool, "provider"))
             }
             return Policy{
                 Loaded: Json.IsObject(value),
@@ -34,6 +36,7 @@ class PolicyCodec {
                 ModelPolicy: Json.Text(value, "model_policy"),
                 Eligibility: Json.Text(value, "eligibility"),
                 AllowedTools: tools.ToArray(),
+                ToolProviders: providers.ToArray(),
             }
         }
 

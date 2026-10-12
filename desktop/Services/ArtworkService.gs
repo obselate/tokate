@@ -26,6 +26,8 @@ class ArtworkService : IDisposable {
     private var dispatcher UiDispatcher = UiDispatcher.Inline()
     private var changed Action = () -> { }
     private var disposed bool
+    private let logos Dictionary[string, VectorAsset] = Dictionary[string, VectorAsset]()
+    private var night bool
 
     shared {
         let Landscapes []string = []string{"donate", "my-project", "saved-work"}
@@ -48,10 +50,21 @@ class ArtworkService : IDisposable {
 
     /// Sets the paint effects for the current light and texture preference.
     func Paint(twilight float64, oilPaint bool) {
+        night = twilight > 0.5
         Effect.SetParameter(0, Vector4(float32(twilight), oilPaint ? 1.0F: 0.0F, 0.0F, 0.04F))
         Effect.Playing = false
         LandscapeEffect.SetParameter(0, Vector4(0.0F, oilPaint ? 1.0F: 0.0F, 0.0F, 0.04F))
         LandscapeEffect.Playing = false
+    }
+
+    /// The logo of a harness. Its dark parts take the ink of the current theme.
+    func Logo(harness string) VectorAsset {
+        let key = harness + (night ? "-night": "-day")
+        if !logos.ContainsKey(key) {
+            let text = File.ReadAllText(Asset("harness-" + harness + ".svg")).Replace("#111111", night ? "#EEE5CF": "#303B2B")
+            logos[key] = Svg.Parse(text)
+        }
+        return logos[key]
     }
 
     /// The landscape for `name`, or nil while it is still decoding.

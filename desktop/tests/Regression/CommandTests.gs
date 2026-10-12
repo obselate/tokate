@@ -24,6 +24,16 @@ func CommandTests() {
         "select o/r fast --non-interactive",
         "select with a profile"
     )
+    Regression.Equal(
+        Regression.Args(
+            TokateCommands.DefaultsSet(
+                "fast",
+                draft with{Harness = "omp", Provider = " openrouter ", Model = "a/b", Effort = "low", Profile = "old"}
+            )
+        ),
+        "defaults set fast --harness omp --model a/b --effort low --provider openrouter",
+        "save a profile"
+    )
     let pi = draft with{Harness = "pi", Model = " qwen ", Effort = "absent", Endpoint = " http://127.0.0.1:8080/v1 "}
     Regression.Equal(
         Regression.Args(TokateCommands.Claim("o/r", pi with{Profile = "local"}, "42", 3600)),

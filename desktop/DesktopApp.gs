@@ -16,6 +16,7 @@ class DesktopApp {
     let Owner OwnerService
     let Donation DonationService
     let Saved SavedWorkService
+    let Profiles ProfileService
     let Welcome WelcomeService
     let Root RootView
     private var pending bool
@@ -33,6 +34,7 @@ class DesktopApp {
         Owner = OwnerService(Commands, Activity, Feedback, Dialogs, changed)
         Donation = DonationService(Commands, Activity, Feedback, Dialogs, Navigation, Window, changed)
         Saved = SavedWorkService(Commands, Activity, Feedback, Dialogs, Window, changed)
+        Profiles = ProfileService(Commands, Feedback, Dialogs, Window, changed)
         Welcome = WelcomeService(Window, changed)
         Root = RootView(this)
     }

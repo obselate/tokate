@@ -76,6 +76,44 @@ func CodecTests() {
     let models = DonorCodec.CodexModels(Regression.Fixture("codex-models.json"))
     Regression.Check(models.Length == 2 && models[1].Hidden && models[0].Efforts.Length == 3, "codex models")
 
+    let omp = DonorCodec.OmpModels(
+        Json.Parse(
+            "{\"models\":[{\"provider\":\"openrouter\",\"id\":\"a/b\",\"kind\":\"chat\",\"reasoning\":true,\"thinking\":[\"low\",\"high\"]},{\"provider\":\"anthropic\",\"id\":\"plain\",\"kind\":\"chat\",\"reasoning\":false},{\"provider\":\"openrouter\",\"id\":\"image\",\"kind\":\"image\"}]}"
+        )
+    )
+    Regression.Equal(String.Join(",", omp[0].Efforts) + " " + omp[1].Efforts[0], "off,low,high absent", "omp efforts")
+    Regression.Check(omp.Length == 2 && omp[0].Provider == "openrouter", "omp chat models")
+    let whitelist = Policy.Empty with{
+        Loaded = true,
+        Models = []ModelAllowance{
+            ModelAllowance{Model: "a/b", Efforts: []string{"high", "max"}},
+            ModelAllowance{Model: "claude-opus-5-5", Efforts: []string{"high"}},
+        },
+    }
+    let offered = ModelChoice.Catalog("omp", "openrouter", []ModelChoice{}, omp, whitelist)
+    Regression.Check(offered.Length == 1 && String.Join(",", offered[0].Efforts) == "high", "whitelist limits the catalog")
+    Regression.Check(ModelChoice.Catalog("omp", "anthropic", []ModelChoice{}, omp, Policy.Empty).Length == 1, "catalog of a provider")
+    let local = ModelChoice.Catalog("pi", "", []ModelChoice{}, omp, whitelist)
+    Regression.Check(local.Length == 1 && local[0].Slug == "a/b", "whitelist offers Pi the models of no other catalog")
+    let claude = DonationState.Initial with{Policy = whitelist, Draft = DonationDraft.Initial.ForHarness("claude")}
+    Regression.Equal(
+        (claude with{Draft = claude.Draft with{Model = "claude-opus-5-5", Effort = "max"}}).Settled().Draft.Model +
+            "/" +
+            (claude with{Draft = claude.Draft with{Model = "claude-opus-5-5", Effort = "max"}}).Settled().Draft.Effort,
+        "claude-opus-5-5/",
+        "an effort outside the whitelist is cleared"
+    )
+    Regression.Equal(
+        (claude with{Draft = claude.Draft with{Model = "claude-fable-5-1", Effort = "high"}}).Settled().Draft.Model,
+        "",
+        "a model outside the whitelist is cleared"
+    )
+    Regression.Check(
+        !DonorCodec.HarnessReady(Json.Parse("{\"tools\":[{\"name\":\"pi\",\"status\":\"failed\"}]}"), "pi") &&
+            DonorCodec.HarnessReady(Json.Parse("{\"tools\":[]}"), "pi"),
+        "harness readiness"
+    )
+
     let reservation = RunCodec.Reservation(Regression.Fixture("coordination.json"))
     let claim = RunCodec.ClaimId(Regression.Fixture("run-file.json"))
     let owner = Run.Empty with{Approval = "appr-1", DonorId = "12345"}

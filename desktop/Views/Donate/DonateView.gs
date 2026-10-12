@@ -13,11 +13,17 @@ class DonateView {
     private let review ReviewStepView
     private let progress DonationStepView
 
-    init(donation DonationService, feedback FeedbackService, navigate Action[Destination], openSaved Action[string]) {
+    init(
+        donation DonationService,
+        feedback FeedbackService,
+        art ArtworkService,
+        navigate Action[Destination],
+        openSaved Action[string]
+    ) {
         this.donation = donation
         this.feedback = feedback
         issue = IssueStepView(donation)
-        limits = LimitsStepView(donation)
+        limits = LimitsStepView(donation, art, () -> navigate(Destination.Profiles))
         review = ReviewStepView(donation)
         progress = DonationStepView(donation, navigate, openSaved)
     }

@@ -4,21 +4,31 @@ import Goo
 import Goo.Widgets.Inputs
 import System
 
+/// What a popup needs from the window. A popup shows outside the page, so the editing keys and the focus
+/// hints of the page do not reach it.
+data struct PopupInput {
+    var KeyBindings []KeyBinding?
+    var OnKeyDown Action[KeyEvent]?
+    var OnPointerDown Action[PointerEvent]?
+}
+
 /// A labeled single-choice list. Popup key and pointer events are forwarded so the host can track focus hints.
 data struct Dropdown {
     var Caption string
     var Value string
+    /// The text that shows when no option is selected.
+    var Placeholder string
+    /// Whether the list has a search field.
+    var Searchable bool
     var Options []ComboBoxOption
     var OnChange Action[string]?
     var Width float64
     var Disabled bool
-    var OnPopupKey Action[KeyEvent]?
-    var OnPopupPointer Action[PointerEvent]?
+    var Popup PopupInput
 
     func Build() Blob {
         let change = OnChange
-        let key = OnPopupKey
-        let pointer = OnPopupPointer
+        let outside = Popup
         return Interaction.RevealFocus(
             Container{
                 Width: Width,
@@ -30,7 +40,9 @@ data struct Dropdown {
                     ComboBoxInput{
                         Items: Options,
                         SelectedId: Value,
-                        Placeholder: Value,
+                        Placeholder: Value != "" ? Value: Placeholder ?? "",
+                        Searchable: Searchable,
+                        SearchPlaceholder: "Search",
                         OnSelect: selected -> change?.Invoke(selected),
                         AccessibilityName: Caption,
                         Disabled: Disabled,
@@ -50,6 +62,15 @@ data struct Dropdown {
                             button.Hover = Style{BorderColor: p.Accent}
                             return button
                         },
+                        CreateSearch: (input, search) -> {
+                            let p = AppTheme.Current
+                            search.BackgroundColor = p.Paper
+                            search.Color = p.Ink
+                            search.BorderColor = p.Line
+                            search.FontFamily = AppTheme.BodyFont
+                            search.FontSize = AppTheme.SmallSize
+                            return search
+                        },
                         CreateRow: (input, item, row) -> {
                             let p = AppTheme.Current
                             row.BackgroundColor = item.Id == input.SelectedId ? p.Paper: p.Surface
@@ -60,8 +81,9 @@ data struct Dropdown {
                         CreatePopup: (input, popup) -> {
                             popup.BackgroundColor = AppTheme.Current.Surface
                             popup.BorderColor = AppTheme.Current.Line
-                            popup.OnKeyDown = event -> key?.Invoke(event)
-                            popup.OnPointerDown = event -> pointer?.Invoke(event)
+                            popup.KeyBindings = outside.KeyBindings
+                            popup.OnKeyDown = event -> outside.OnKeyDown?.Invoke(event)
+                            popup.OnPointerDown = event -> outside.OnPointerDown?.Invoke(event)
                             return popup
                         },
                     }

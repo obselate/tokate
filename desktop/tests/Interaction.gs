@@ -149,7 +149,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         Script(
             fixture,
             "tokate",
-            "case \"$1\" in\npolicy) data='{\"policy\":{\"version\":2,\"allow_unlimited\":true,\"max_seconds\":3600}}';;\ndefaults) data='{\"profiles\":{},\"default\":{\"harness\":\"codex\",\"model\":\"obsolete-default\",\"effort\":\"low\"}}';;\nselect) data='{\"harness\":\"codex\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}';;\n*) exit 1;;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"success\",\"exit_code\":0,\"data\":%s}' \"$1\" \"$$data\"\n"
+            "case \"$1\" in\npolicy) data='{\"policy\":{\"version\":2,\"allow_unlimited\":true,\"max_seconds\":3600,\"model_policy\":\"unrestricted\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]}}';;\ndefaults) data='{\"profiles\":{},\"default\":{\"harness\":\"codex\",\"model\":\"obsolete-default\",\"effort\":\"low\"}}';;\nselect) data='{\"harness\":\"codex\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}';;\n*) exit 1;;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"success\",\"exit_code\":0,\"data\":%s}' \"$1\" \"$$data\"\n"
         )
         Directory.CreateDirectory(Path.Combine(fixture, "run"))
         let request = Guid.NewGuid().ToString("D")
@@ -252,7 +252,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         }
         host.Resize(1440, 900, 1440, 900)
         Settle(host)
-        guard let tools = Find(adapter.Root, AccessibilityRole.Group, "Coding tool settings") else {
+        guard let tools = Find(adapter.Root, AccessibilityRole.Group, "Model settings") else {
             throw Exception("Missing tool card")
         }
         guard let limits = Find(adapter.Root, AccessibilityRole.Group, "Time limit settings") else {

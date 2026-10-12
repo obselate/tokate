@@ -24,9 +24,9 @@ func DonationTests() {
     Regression.Check(!donation.IsBrowsing, "no issues before searching")
 
     donation.Current = donation.Current with{
-        Models = []CodexModel{
-            CodexModel{Slug: "a", DisplayName: "A", Efforts: []string{"high", "xhigh"}},
-            CodexModel{Slug: "b", DisplayName: "B", Efforts: []string{"low"}},
+        Models = []ModelChoice{
+            ModelChoice{Slug: "a", DisplayName: "A", Efforts: []string{"high", "xhigh"}},
+            ModelChoice{Slug: "b", DisplayName: "B", Efforts: []string{"low"}},
         },
     }
     donation.SetModel("a")
@@ -45,7 +45,7 @@ func DonationTests() {
     donation.SetEndpoint("http://127.0.0.1:8080/v1")
     Regression.Equal(donation.Current.Draft.Endpoint, "http://127.0.0.1:8080/v1", "endpoint")
 
-    donation.UseProfile(DonorProfile{Name: "fast", Harness: "codex", Model: "a", Effort: "xhigh", Endpoint: ""})
+    donation.UseProfile(DonorProfile{Name: "fast", Harness: "codex", Provider: "openai", Model: "a", Effort: "xhigh", Endpoint: ""})
     Regression.Check(donation.Current.Draft.Profile == "fast" && donation.Current.Draft.Harness == "codex", "profile applies")
     donation.SetEffort("high")
     Regression.Equal(donation.Current.Draft.Profile, "", "editing leaves the profile")

@@ -38,7 +38,18 @@ data struct HarnessOption {
     shared {
         let All []HarnessOption = []HarnessOption{
             HarnessOption{Id: "codex", Name: "Codex"},
+            HarnessOption{Id: "claude", Name: "Claude"},
+            HarnessOption{Id: "omp", Name: "OMP"},
             HarnessOption{Id: "pi", Name: "Pi / local"},
+        }
+
+        func NameOf(id string) string {
+            for option in All {
+                if option.Id == id {
+                    return option.Name
+                }
+            }
+            return id
         }
     }
 }
@@ -46,26 +57,102 @@ data struct HarnessOption {
 data struct DonorProfile {
     var Name string
     var Harness string
+    var Provider string
     var Model string
     var Effort string
     var Endpoint string
 }
 
-data struct CodexModel {
+/// A model that a harness offers, with the reasoning efforts that it supports.
+data struct ModelChoice {
     var Slug string
     var DisplayName string
     var Efforts []string
     var Hidden bool
+    /// The provider that offers the model. Only OMP models have one.
+    var Provider string
 
     shared {
-        func EffortLabel(value string) string -> value == "xhigh" ? "Extra high": value == "" ? "": char.ToUpperInvariant(
+        /// The Claude models that Tokate accepts. Claude Code has no catalog to read.
+        let Claude []ModelChoice = []ModelChoice{
+            ClaudeModel("claude-fable-5-1", "Claude Fable 5.1", true),
+            ClaudeModel("claude-fable-5", "Claude Fable 5", true),
+            ClaudeModel("claude-opus-5-5", "Claude Opus 5.5", true),
+            ClaudeModel("claude-sonnet-5-5", "Claude Sonnet 5.5", true),
+            ClaudeModel("claude-haiku-5-5", "Claude Haiku 5.5", true),
+            ClaudeModel("claude-opus-5", "Claude Opus 5", true),
+            ClaudeModel("claude-sonnet-5", "Claude Sonnet 5", true),
+            ClaudeModel("claude-opus-4-8", "Claude Opus 4.8", true),
+            ClaudeModel("claude-opus-4-7", "Claude Opus 4.7", true),
+            ClaudeModel("claude-opus-4-6", "Claude Opus 4.6", false),
+            ClaudeModel("claude-sonnet-4-6", "Claude Sonnet 4.6", false),
+        }
+
+        private func ClaudeModel(slug string, name string, extraHigh bool) ModelChoice -> ModelChoice{
+            Slug: slug,
+            DisplayName: name,
+            Efforts: extraHigh ? []string{"low", "medium", "high", "xhigh", "max"}: []string{"low", "medium", "high", "max"},
+            Provider: "",
+        }
+
+        func EffortLabel(value string) string -> value == "xhigh" ? "Extra high": value == "absent" ? "Not set": value == "" ? "": char.ToUpperInvariant(
             value[0]
         ).ToString() + value.Substring(1)
+
+        /// The models to choose from for `harness`: its catalog, limited to the models and efforts of a
+        /// whitelist of the owner. Pi has no catalog, so a whitelist offers its models that no other
+        /// catalog has.
+        func Catalog(harness string, provider string, codex []ModelChoice, omp []ModelChoice, policy Policy) []ModelChoice {
+            let offered = harness == "codex" ? codex: harness == "claude" ? Claude: harness == "omp" ? omp: []ModelChoice{}
+            let result = List[ModelChoice]()
+            for model in offered {
+                if harness == "omp" && model.Provider != provider {
+                    continue
+                }
+                if !policy.RestrictsModels {
+                    result.Add(model)
+                    continue
+                }
+                for allowance in policy.Models {
+                    if allowance.Model == model.Slug {
+                        let efforts = List[string]()
+                        for effort in model.Efforts {
+                            if Array.IndexOf(allowance.Efforts, effort) >= 0 {
+                                efforts.Add(effort)
+                            }
+                        }
+                        result.Add(model with{Efforts = efforts.ToArray()})
+                    }
+                }
+            }
+            if harness == "pi" && policy.RestrictsModels {
+                for allowance in policy.Models {
+                    let slug = allowance.Model
+                    if !Array.Exists(codex, model -> model.Slug == slug) && !Array.Exists(Claude, model -> model.Slug == slug) {
+                        result.Add(ModelChoice{Slug: slug, DisplayName: slug, Efforts: allowance.Efforts, Provider: ""})
+                    }
+                }
+            }
+            return result.ToArray()
+        }
+
+        /// The providers of the OMP models, in the order of the catalog.
+        func Providers(omp []ModelChoice) []string {
+            let result = List[string]()
+            for model in omp {
+                if !result.Contains(model.Provider) {
+                    result.Add(model.Provider)
+                }
+            }
+            return result.ToArray()
+        }
     }
 }
 
 data struct DonationDraft {
     var Harness string
+    /// The provider of an OMP donation. Other tools have one provider, which Tokate selects.
+    var Provider string
     var Model string
     var Effort string
     var Endpoint string
@@ -100,8 +187,26 @@ data struct DonationDraft {
         return total
     }
 
+    /// The reasoning efforts to choose from: those of the selected model in `models`, or all that Tokate
+    /// knows when Pi has no models to offer.
+    func EffortChoices(models []ModelChoice) []string {
+        for model in models {
+            if model.Slug == Model {
+                return model.Efforts
+            }
+        }
+        return Harness == "pi" && models.Length == 0 ? DonationDraft.Efforts: []string{}
+    }
+
+    /// Selects a model. An effort that the new model does not support is cleared.
+    func WithModel(model string, models []ModelChoice) DonationDraft {
+        let next = this with{Model = model, Profile = ""}
+        return Array.IndexOf(next.EffortChoices(models), Effort) < 0 ? next with{Effort = ""}: next
+    }
+
     func ForHarness(id string) DonationDraft -> this with{
         Harness = id,
+        Provider = "",
         Model = id == "codex" ? DonationDraft.DefaultModel: "",
         Effort = id == "codex" ? DonationDraft.DefaultEffort: "",
         Profile = "",
@@ -110,6 +215,7 @@ data struct DonationDraft {
     func UsingProfile(profile DonorProfile) DonationDraft -> this with{
         Profile = profile.Name,
         Harness = profile.Harness,
+        Provider = profile.Provider,
         Model = profile.Model,
         Effort = profile.Effort,
         Endpoint = profile.Endpoint,
@@ -118,8 +224,10 @@ data struct DonationDraft {
     shared {
         let DefaultModel string = "gpt-6.1-sol"
         let DefaultEffort string = "high"
+        let Efforts []string = []string{"off", "minimal", "low", "medium", "high", "xhigh", "max", "ultra", "absent"}
         let Initial DonationDraft = DonationDraft{
             Harness: "codex",
+            Provider: "",
             Model: DefaultModel,
             Effort: DefaultEffort,
             Endpoint: "",
@@ -181,19 +289,34 @@ data struct DonationState {
     var IssueTitle string
     var Draft DonationDraft
     var Profiles []DonorProfile
-    var Models []CodexModel
+    /// The catalog of Codex.
+    var Models []ModelChoice
+    var OmpModels []ModelChoice
+    /// The harnesses that are not set up on this computer.
+    var Unready []string
     var Progress DonationProgress
 
     prop Identity string -> Repository + " #" + Issue
 
-    /// The reasoning efforts the selected Codex model supports.
-    func Efforts() []string {
-        for model in Models {
-            if model.Slug == Draft.Model {
-                return model.Efforts
-            }
+    /// The models to choose from for the selected harness and provider.
+    func Catalog() []ModelChoice -> ModelChoice.Catalog(Draft.Harness, Draft.Provider, Models, OmpModels, Policy)
+
+    func Efforts() []string -> Draft.EffortChoices(Catalog())
+
+    /// Clears a model or an effort that the catalog does not offer. A profile keeps its saved choice, and
+    /// a catalog that is not loaded changes nothing.
+    func Settled() DonationState {
+        let harness = Draft.Harness
+        if Draft.Profile != "" || (harness == "codex" && Models.Length == 0) || (harness == "omp" && OmpModels.Length == 0) ||
+            (harness == "pi" && !Policy.RestrictsModels) {
+            return this
         }
-        return []string{}
+        let models = Catalog()
+        let model = Draft.Model
+        if !Array.Exists(models, choice -> choice.Slug == model) {
+            return this with{Draft = Draft with{Model = "", Effort = ""}}
+        }
+        return Array.IndexOf(Draft.EffortChoices(models), Draft.Effort) < 0 ? this with{Draft = Draft with{Effort = ""}}: this
     }
 
     shared {
@@ -209,7 +332,9 @@ data struct DonationState {
             IssueTitle: "",
             Draft: DonationDraft.Initial,
             Profiles: []DonorProfile{},
-            Models: []CodexModel{},
+            Models: []ModelChoice{},
+            OmpModels: []ModelChoice{},
+            Unready: []string{},
             Progress: DonationProgress.Empty,
         }
     }

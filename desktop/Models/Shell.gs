@@ -7,6 +7,7 @@ enum Destination {
     Donate,
     Project,
     Saved,
+    Profiles,
     Appearance
 }
 
@@ -17,6 +18,7 @@ class Destinations {
             Destination.Donate,
             Destination.Project,
             Destination.Saved,
+            Destination.Profiles,
             Destination.Appearance,
         }
 
@@ -24,6 +26,7 @@ class Destinations {
             case Destination.Donate: "Donate"
             case Destination.Project: "My project"
             case Destination.Saved: "Saved work"
+            case Destination.Profiles: "Profiles"
             case Destination.Appearance: "Appearance"
             default: "Welcome"
         }
@@ -67,6 +70,9 @@ data struct Activity {
             case "status": "Loading saved work"
             case "init": "Preparing project setup"
             case "doctor": "Checking prerequisites"
+            case "defaults": "Loading profiles"
+            case "models": "Loading models"
+            case "debug": "Loading models"
             case "recover": "Verifying contribution"
             case "submit": "Submitting contribution"
             case "publish": "Publishing draft PR"

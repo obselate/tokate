@@ -46,7 +46,7 @@ class DonationService {
     prop IsBrowsing bool -> Current.Step == DonationStep.Issue && Issues.Current.Loaded
 
     private func Set(next DonationState) {
-        Current = next
+        Current = next.Settled()
         changed()
     }
 
@@ -150,6 +150,11 @@ class DonationService {
     /// Moves to limits for `issue` and loads the donor's saved profiles and Codex's models.
     func Choose(issue Issue) {
         Set(Current with{Issue = issue.NumberText, IssueTitle = issue.Title, Step = DonationStep.Limits})
+        LoadProfiles(() -> LoadModels())
+        go CheckHarnesses()
+    }
+
+    private func LoadProfiles(then Action? = nil) {
         commands.Cli[[]DonorProfile](
             TokateCommands.DefaultsList(),
             DonorCodec.Profiles,
@@ -157,53 +162,59 @@ class DonationService {
                 if commands.Failed(reply.Outcome) {
                     return
                 }
-                Set(Current with{Profiles = reply.Value ?? []DonorProfile{}})
-                LoadModels()
+                let profiles = reply.Value ?? []DonorProfile{}
+                var draft = Current.Draft
+                if draft.Profile != "" && !Array.Exists(profiles, profile -> profile.Name == draft.Profile) {
+                    draft = draft with{Profile = ""}
+                }
+                Set(Current with{Profiles = profiles, Draft = draft})
+                then?.Invoke()
             }
         )
     }
 
     private func LoadModels() {
-        commands.Codex(
-            (reply Reply[[]CodexModel]) -> {
-                if commands.Failed(reply.Outcome) {
-                    return
-                }
-                let visible = List[CodexModel]()
-                for model in reply.Value ?? []CodexModel{} {
-                    if !model.Hidden {
-                        visible.Add(model)
-                    }
-                }
-                Set(Current with{Models = visible.ToArray()})
-            }
-        )
+        let harness = Current.Draft.Harness
+        if harness == "codex" && Current.Models.Length == 0 {
+            commands.Models(harness, models -> Set(Current with{Models = models}))
+        }
+        if harness == "omp" && Current.OmpModels.Length == 0 {
+            commands.Models(harness, models -> Set(Current with{OmpModels = models}))
+        }
+    }
+
+    /// Finds the harnesses that are not set up. Runs on a worker, apart from the visible commands.
+    private func CheckHarnesses() {
+        let unready = HarnessDoctor.Unready()
+        window.Post(() -> Set(Current with{Unready = unready}))
     }
 
     // Limits
 
     func ChooseHarness(id string) {
-        SetDraft(Current.Draft.ForHarness(id))
-        if id == "codex" && Current.Models.Length == 0 {
-            LoadModels()
+        let providers = Current.Policy.Providers(id)
+        SetDraft(Current.Draft.ForHarness(id) with{Provider = id == "omp" && providers.Length > 0 ? providers[0]: ""})
+        LoadModels()
+    }
+
+    func UseProfile(profile DonorProfile) {
+        SetDraft(Current.Draft.UsingProfile(profile))
+        LoadModels()
+    }
+
+    /// Reads the saved profiles again when the donor returns to the limits.
+    func Enter() {
+        if Current.Step == DonationStep.Limits {
+            LoadProfiles()
         }
     }
 
-    func UseProfile(profile DonorProfile) -> SetDraft(Current.Draft.UsingProfile(profile))
-
-    /// Selects a model. A Codex effort the new model does not support is cleared.
-    func SetModel(model string) {
-        var draft = Current.Draft with{Model = model, Profile = ""}
-        if draft.Harness == "codex" {
-            Current = Current with{Draft = draft}
-            if Array.IndexOf(Current.Efforts(), draft.Effort) < 0 {
-                draft = draft with{Effort = ""}
-            }
-        }
-        SetDraft(draft)
-    }
+    func SetModel(model string) -> SetDraft(Current.Draft.WithModel(model, Current.Catalog()))
 
     func SetEffort(effort string) -> SetDraft(Current.Draft with{Effort = effort, Profile = ""})
+
+    /// Selects an OMP provider. The model belongs to the earlier provider, so it is cleared.
+    func SetProvider(provider string) -> SetDraft(Current.Draft with{Provider = provider, Model = "", Effort = "", Profile = ""})
 
     func SetEndpoint(endpoint string) -> SetDraft(Current.Draft with{Endpoint = endpoint, Profile = ""})
 

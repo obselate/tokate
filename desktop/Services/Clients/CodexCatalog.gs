@@ -12,8 +12,8 @@ class CodexCatalog : Cancellable {
 
     func RecentOutput() string -> process.RecentOutput()
 
-    func Load(seconds int32 = 120) Reply[[]CodexModel] {
-        var models = []CodexModel{}
+    func Load(seconds int32 = 120) Reply[[]ModelChoice] {
+        var models = []ModelChoice{}
         var outcome = CommandOutcome{Diagnostics: "", Failure: "", Report: "", RunPath: ""}
         try {
             let start = CommandStart("codex", CodexCommands.BundledModels())
@@ -46,6 +46,6 @@ class CodexCatalog : Cancellable {
         } catch (error Exception) {
             outcome = outcome with{Failure = error.Message}
         }
-        return Reply[[]CodexModel]{Outcome: outcome, Value: models}
+        return Reply[[]ModelChoice]{Outcome: outcome, Value: models}
     }
 }

@@ -34,6 +34,10 @@ class TokateCommands {
             }
             if draft.Profile == "" || command == "claim" {
                 args.AddRange([]string{"--harness", draft.Harness, "--model", draft.Model.Trim(), "--effort", draft.Effort.Trim()})
+                if draft.Harness == "omp" && draft.Provider != "" {
+                    args.Add("--provider")
+                    args.Add(draft.Provider)
+                }
                 if draft.Harness == "pi" && draft.Endpoint.Trim() != "" {
                     args.Add("--endpoint")
                     args.Add(draft.Endpoint.Trim())
@@ -45,6 +49,16 @@ class TokateCommands {
 
         func DefaultsList() []string -> []string{"defaults", "list"}
 
+        /// Saves the harness, model and effort of `draft` as the profile `name`.
+        func DefaultsSet(name string, draft DonationDraft) []string {
+            let args = Selection("defaults", "set", draft with{Profile = "", Provider = draft.Provider.Trim()})
+            args.Insert(2, name)
+            args.Remove("--non-interactive")
+            return args.ToArray()
+        }
+
+        func DefaultsRemove(name string) []string -> []string{"defaults", "remove", name}
+
         func Policy(repo string) []string -> []string{"policy", repo}
 
         func Status(run string) []string -> []string{"status", "--run", run}
@@ -54,6 +68,8 @@ class TokateCommands {
         func Work(run string) []string -> []string{"work", "--run", run, "--yes"}
 
         func Coordination(repo string, issue string) []string -> []string{"coordination", repo + "#" + issue}
+
+        func HarnessDoctor(harness string) []string -> []string{"doctor", "managed", harness}
 
         func OwnerDoctor() []string -> []string{"doctor", "owner", "--auth"}
 
@@ -193,6 +209,12 @@ class GitHubCommands {
                 "page=" + batch.ToString(),
             }
         }
+    }
+}
+
+class OmpCommands {
+    shared {
+        func Models() []string -> []string{"models", "--json"}
     }
 }
 

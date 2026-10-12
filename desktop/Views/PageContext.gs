@@ -15,8 +15,8 @@ data struct PageContext {
     var Loader Func[string, Blob]?
     /// Scrolls the page to its top.
     var OnTop Action?
-    var OnPopupKey Action[KeyEvent]?
-    var OnPopupPointer Action[PointerEvent]?
+    /// What a popup outside the page needs from the window.
+    var Popup PopupInput
 
     prop CompactPanels bool -> Metrics.ContentWidth < 650
 
