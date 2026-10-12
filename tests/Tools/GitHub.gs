@@ -1135,7 +1135,7 @@ internal partial class Fixture {
             let headPush = State["repository_info"]?[headRepo]?["permissions"]?["push"] ??
                 (headLogin == "owner" ? State["repo_permissions"]?["push"]: State["fork_push"]) ??
                 JsonValue.Create(String.Equals(actor, headLogin, StringComparison.OrdinalIgnoreCase))
-            if Check.Text(body["maintainer_can_modify"]) == "true" && Check.Text(headPush) != "true" {
+            if Check.Text(body["maintainer_can_modify"]) != "false" && Check.Text(headPush) != "true" {
                 return Response(
                     422,
                     Check.Map(
