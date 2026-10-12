@@ -32,13 +32,85 @@ internal class OwnerSetup {
             return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
         }
 
-        internal func Report(path string, before string, after string) {
-            Console.Error.WriteLine(
-                (before == "" ? "Added ": before == after ? "Unchanged ": "Updated ") + Terminal.Clean(path)
-            )
-            if before != after {
-                Console.Error.WriteLine(Terminal.Clean(after))
+        private func Report(value JsonElement, before string = "") string {
+            let previous = before == "" ? default(JsonElement): J.Parse(before)
+            let rows = List[string]()
+            for field in[]string{
+                "eligibility",
+                "model_policy",
+                "models",
+                "verification",
+                "required_checks",
+                "max_seconds",
+                "allowed_tools",
+                "target_branch",
+                "reservation_seconds",
+                "pr_text",
+                "close_message"
+            } {
+                let item = J.Get(value, field)
+                if field == "models" && J.Text(value, "model_policy") != "whitelist" ||
+                    field == "close_message" &&
+                    item.ValueKind == JsonValueKind.Undefined {
+                    continue
+                }
+                let old = J.Get(previous, field)
+                if before != "" && RequestData.Same(item, old) {
+                    continue
+                }
+                let label = switch field {
+                    case "eligibility": "Access   "
+                    case "model_policy": "Models   "
+                    case "models": "Allowed models   "
+                    case "verification": "Checks   "
+                    case "required_checks": "Required checks   "
+                    case "max_seconds": "Limit    "
+                    case "allowed_tools": "Tools    "
+                    case "target_branch": "Branch   "
+                    case "reservation_seconds": "Reserve  "
+                    case "pr_text": "PR text   "
+                    default: "Close message   "
+                }
+                var text = J.Text(value, field)
+                let items = List[string]()
+                if field == "verification" || field == "allowed_tools" {
+                    for entry in J.Items(item) {
+                        if field == "verification" {
+                            items.Add(
+                                entry.GetArrayLength() == 3 && entry[0].ToString() == "/bin/sh" &&
+                                    entry[1].ToString() == "-c" ? entry[2].ToString(): Terminal.Command(entry)
+                            )
+                        } else {
+                            items.Add(
+                                switch J.Text(entry, "harness") {
+                                    case "codex": "Codex (Subscription)"
+                                    case "claude": "Claude Code (Subscription)"
+                                    case "pi": "Pi (Local)"
+                                    case "omp": "OMP (" + J.Text(entry, "provider") + ")"
+                                    default: J.Text(entry, "harness")
+                                }
+                            )
+                        }
+                    }
+                    text = String.Join(", ", items)
+                } else if field == "models" && item.ValueKind == JsonValueKind.Object {
+                    for entry in item.EnumerateObject() {
+                        let efforts = List[string]()
+                        for effort in entry.Value.EnumerateArray() {
+                            efforts.Add(effort.GetString() ?? "")
+                        }
+                        items.Add(entry.Name + " / " + String.Join(", ", efforts))
+                    }
+                    text = String.Join(", ", items)
+                } else if field == "required_checks" {
+                    text = Terminal.Command(item)
+                } else if field == "max_seconds" || field == "reservation_seconds" {
+                    text = (J.Number(value, field) / 60.0).ToString("0.##") +
+                        (field == "max_seconds" ? " minutes total": " minutes")
+                }
+                rows.Add(label + (text == "" ? "none": text.Replace('\n', ' ')))
             }
+            return String.Join("\n", rows)
         }
 
         private func Checkout(path string) string {
@@ -189,11 +261,33 @@ internal class OwnerSetup {
                             suggestion = "make test"
                         }
                     }
-                    if suggestion != "" && WizardScreen.Choose(
+                    let current = J.Get(J.Parse(J.Write(fields)), "verification")
+                    let options = List[string]()
+                    let kept = List[string]()
+                    for command in J.Items(current) {
+                        kept.Add(
+                            command.GetArrayLength() == 3 && command[0].ToString() == "/bin/sh" &&
+                                command[1].ToString() == "-c" ? command[2].ToString(): Terminal.Command(command)
+                        )
+                    }
+                    if kept.Count > 0 {
+                        options.Add("Keep: " + String.Join(", ", kept))
+                    }
+                    if suggestion != "" {
+                        options.Add((kept.Count > 0 ? "Replace with: ": "Suggested: ") + suggestion)
+                    }
+                    options.Add("Enter a command")
+                    let choice = options.Count == 1 ? 1: WizardScreen.Choose(
                         "Verification commands",
                         explanation,
-                        []string{"Suggested: " + suggestion, "Enter a command"}
-                    ) == 1 {
+                        options.ToArray(),
+                        selected: kept.Count > 0 ? 1: 0
+                    )
+                    if kept.Count > 0 && choice == 1 {
+                        edit = ""
+                        continue
+                    }
+                    if suggestion != "" && choice == (kept.Count > 0 ? 2: 1) {
                         commands.Add([]string{"/bin/sh", "-c", suggestion})
                     }
                     while true {
@@ -259,54 +353,11 @@ internal class OwnerSetup {
                     fields["required_checks"] = names
                 }
                 edit = ""
+                fields["model_policy"] = args.Need("model-policy")
                 let value = J.Parse(J.Write(fields))
-                let checks = List[string]()
-                for command in J.Items(J.Get(value, "verification")) {
-                    checks.Add(Terminal.Command(command))
-                }
-                let models = List[string]()
-                if J.Get(value, "models").ValueKind == JsonValueKind.Object {
-                    for entry in J.Get(value, "models").EnumerateObject() {
-                        let efforts = List[string]()
-                        for effort in entry.Value.EnumerateArray() {
-                            efforts.Add(effort.GetString() ?? "")
-                        }
-                        models.Add(entry.Name + " / " + String.Join(", ", efforts))
-                    }
-                }
-                let tools = List[string]()
-                for tool in J.Items(J.Get(value, "allowed_tools")) {
-                    tools.Add(
-                        J.Text(tool, "harness") == "pi" ? "Pi (Local)": J.Text(
-                            tool,
-                            "harness"
-                        ) == "codex" ? "Codex (Subscription)": J.Text(tool, "harness") == "omp" ?
-                        "OMP (" + J.Text(tool, "provider") + ")": J.Text(tool, "harness")
-                    )
-                }
                 let action = WizardScreen.Choose(
                     "Review project setup",
-                    repo + "\n\nAccess   " + J.Text(value, "eligibility") + "\nModels   " + args.Need("model-policy") +
-                        (
-                        args.Need("model-policy") == "whitelist" ? "\n         " + String.Join(
-                            "\n         ",
-                            models
-                        ): ""
-                    ) +
-                        "\nChecks   " +
-                        (checks.Count == 0 ? "None configured": String.Join("\n         ", checks)) +
-                        "\nGitHub   " +
-                        Terminal.Command(J.Get(value, "required_checks")) +
-                        "\nLimit    " +
-                        (J.Number(value, "max_seconds") / 60.0).ToString("0.##") +
-                        " minutes total" +
-                        "\nTools    " +
-                        String.Join(", ", tools) + "\nBranch   " + J.Text(value, "target_branch") +
-                        "\nReserve  " +
-                        (J.Number(value, "reservation_seconds") / 60.0).ToString("0.##") +
-                        " minutes" +
-                        "\nPR text  " +
-                        J.Text(value, "pr_text"),
+                    repo + "\n\n" + Report(value),
                     []string{
                         "Create policy files",
                         "Change checks, times or PR settings",
@@ -348,7 +399,7 @@ internal class OwnerSetup {
                                     change == 2 ? "Project time limit": "Reservation time",
                                     change == 2 ? "Total time for coding and verification, such as 1h or 30m.":
                                     "Time to reserve a task, such as 24h or 30m.",
-                                    change == 2 ? "Maximum donor time (--max-time)": "Reservation time (--reservation-time)",
+                                    change == 2 ? "Maximum donor time (--max-time)": "Reservation time",
                                     seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
                                     seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
                                 ),
@@ -706,10 +757,15 @@ internal class OwnerSetup {
             if File.ReadAllText(path) != text || File.ReadAllText(workflow) != yaml {
                 throw Exception("Setup output differs from the generated configuration")
             }
-            Report(path, before, text)
-            Report(workflow, oldWorkflow, yaml)
+            Console.Error.WriteLine(
+                (before == "" ? "Added ": before == text ? "Unchanged ": "Updated ") + Terminal.Clean(path)
+            )
+            if before != text && !PublicOutput.Enabled {
+                Terminal.Message(Report(policy.Value, before), error: true)
+            }
+            Console.Error.WriteLine((oldWorkflow == "" ? "Added ": "Unchanged ") + Terminal.Clean(workflow))
             if File.Exists(template) {
-                Report(template, File.ReadAllText(template), File.ReadAllText(template))
+                Console.Error.WriteLine("Unchanged " + Terminal.Clean(template))
             }
             Terminal.Message(
                 "Owner footprint: " +
@@ -719,7 +775,9 @@ internal class OwnerSetup {
                 true
             )
             Terminal.Message(
-                oldWorkflow == "" ? "Workflow permissions: contents write for coordination refs, issues read for canonical requests, pull-requests write for draft publication; no secrets inheritance or checkout.": "Existing owner workflow is preserved. Tokate wiring and permissions are not verified; review and complete owner installation before use.",
+                oldWorkflow == "" ? "Workflow permissions: contents write for coordination refs, issues read for canonical requests, pull-requests write for draft publication; no secrets inheritance or checkout.": "Existing owner workflow is preserved. Review wiring and permissions against a pinned workflow: tokate coordinator-setup " +
+                    repo +
+                    " --output tokate-coordinator.yml.",
                 "cyan",
                 true
             )
