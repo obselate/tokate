@@ -206,6 +206,12 @@ class OwnerService {
                 if command != "verify" && status == "" {
                     return
                 }
+                if command != "verify" && status == DraftReview.NeedsApproval {
+                    feedback.Show(
+                        "The workflows of PR #" + pr + " wait for your approval. Inspect the diff, then approve the runs in GitHub.",
+                        Tone.Need
+                    )
+                }
                 let known = Current.ReviewFor(pr)
                 let reviews = List[DraftReview](Current.Reviews)
                 reviews.RemoveAll(existing -> existing.Pr == pr)

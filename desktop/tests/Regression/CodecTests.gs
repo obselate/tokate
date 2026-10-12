@@ -49,6 +49,16 @@ func CodecTests() {
     Regression.Check(search.Rows[0].IsApproved && !search.Rows[0].IsPullRequest, "approved issue")
     Regression.Check(search.Rows[1].IsPullRequest, "pull request flag")
 
+    Regression.Equal(
+        PullRequestCodec.ChecksStatus(Json.Parse("{\"checks_status\":\"pending\",\"workflow_runs_awaiting_approval\":[{\"id\":7}]}")),
+        DraftReview.NeedsApproval,
+        "workflow runs that wait for the owner come before the checks state"
+    )
+    Regression.Equal(
+        PullRequestCodec.ChecksStatus(Json.Parse("{\"checks_status\":\"pending\",\"workflow_runs_awaiting_approval\":[]}")),
+        "pending",
+        "checks without waiting workflow runs keep their state"
+    )
     let pull = PullRequestCodec.PullRequest(Regression.Fixture("pull-request.json"))
     Regression.Check(pull.ChecksPending && !pull.ChecksFailed, "pull request checks")
 

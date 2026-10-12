@@ -25,6 +25,9 @@ class PullRequestCodec {
             }
         }
 
-        func ChecksStatus(data JsonElement) string -> Json.Text(data, "checks_status")
+        /// The CI state of a pull request. Workflow runs that wait for the approval of the owner come first,
+        /// because the checks cannot finish before the owner approves them.
+        func ChecksStatus(data JsonElement) string -> Json.Items(data, "workflow_runs_awaiting_approval").Length > 0 ?
+        DraftReview.NeedsApproval: Json.Text(data, "checks_status")
     }
 }

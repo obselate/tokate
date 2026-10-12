@@ -48,7 +48,12 @@ data struct DraftReview {
 
     prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" ? Tone.Wait: Tone.Fail
 
-    prop CiTone Tone -> Ci == "passed" ? Tone.Done: Ci == "failed" ? Tone.Fail: Tone.Wait
+    prop CiTone Tone -> Ci == "passed" ? Tone.Done: Ci == "failed" ? Tone.Fail: Ci == NeedsApproval ? Tone.Need: Tone.Wait
+
+    shared {
+        /// The CI state when workflow runs wait for the approval of the owner.
+        let NeedsApproval string = "needs your approval"
+    }
 }
 
 data struct AccessRequest {
