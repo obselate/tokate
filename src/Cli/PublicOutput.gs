@@ -287,6 +287,13 @@ internal class PublicOutput {
                         "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
                         "command": []string{"tokate", "help", "prepare", "--json"}
                     }
+                } else if run.Text("source") == "tokate" && run.Number("pr") == 0 && run.Text("commit") == "" &&
+                    run.Flag("turn_completed") && run.Text("failure_reason") == "public_summary_invalid" {
+                    result["next"] = map[string, Object?]{
+                        "role": "donor",
+                        "action": "Correct tokate-public-summary.json in the saved checkout, then run tokate submit. No new inference is needed.",
+                        "command": []string{"tokate", "submit", "--run", directory, "--json"}
+                    }
                 }
             }
             result["artifacts"] = Artifacts(directory)

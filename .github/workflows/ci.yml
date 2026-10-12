@@ -123,6 +123,8 @@ jobs:
       - run: mkdir -p artifacts && tar -xzf "$RUNNER_TEMP/tokate-binaries.tar.gz" -C artifacts linux-x64/tokate
       - run: bash scripts/harness-layout-proof.sh
         id: layouts
+        env:
+          GH_TOKEN: ${{ github.token }}
   harness-installation:
     if: ${{ needs.build.outputs.full == 'true' }}
     needs: build

@@ -268,16 +268,44 @@ internal class PublicDescriptions {
                 flow.Approve()
                 let run = flow.Claim()
                 flow.Reload()
-                flow.State["public_summary"] = JsonValue.Create(
-                    missing ? "missing": Summary("Fix content from /tmp/private.log").ToJsonString()
-                )
+                let invalid = Summary("Add final result content.")
+                invalid["changes"]?.AsArray().Add(JsonValue.Create("Fix content from /tmp/private.log") as JsonNode)
+                flow.State["public_summary"] = JsonValue.Create(missing ? "missing": invalid.ToJsonString())
                 flow.Save()
-                flow.Call([]string{"work", "--run", run}, missing ? 0: 1)
+                let work = flow.Call([]string{"work", "--run", run}, missing ? 0: 1)
                 if missing {
                     flow.Publish(run)
                     Check.Contains(Body(flow), "Change summary unavailable for this candidate")
                 } else {
                     flow.NoPr()
+                    Check.Contains(work.Error, "changes[1]")
+                    Check.Contains(work.Error, "first disallowed character \"/\"")
+                    let status = Check.Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+                    Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "Correct tokate-public-summary.json")
+                    Check.That(
+                        status["data"]?["next"]?["command"]?.ToJsonString() ==
+                        Check.Json("[\"tokate\",\"submit\",\"--run\",\"" + run + "\",\"--json\"]").ToJsonString(),
+                        "Invalid summary omitted the saved submit action"
+                    )
+                    Check.Contains(status["next_actions"]?.ToJsonString() ?? "", "\"submit\"")
+                    Check.That(!File.Exists(Path.Combine(run, "changes.patch")), "Invalid summary reached verification")
+                    flow.Reload()
+                    let executions = Check.Text(flow.State["exec_count"])
+                    let prompt = Check.Text(flow.State["prompts"]?[0])
+                    Check.Contains(prompt, "Allowed characters are A-Z, a-z, 0-9, space")
+                    Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =.")
+                    File.WriteAllText(
+                        Path.Combine(run, "checkout", "tokate-public-summary.json"),
+                        Summary("Add final result content with shout=True.").ToJsonString()
+                    )
+                    flow.Publish(run)
+                    Check.Contains(Body(flow), "- Add final result content with shout=True.")
+                    Check.That(Check.Text(flow.State["exec_count"]) == executions, "Summary recovery started inference")
+                    Check.That(
+                        !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
+                        "Recovered summary artifact committed"
+                    )
+                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
                 }
             }
         }

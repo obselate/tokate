@@ -32,16 +32,25 @@ internal class PublicSummary {
                     (key == "changes" && list.GetArrayLength() == 0) {
                     throw Exception("Public summary needs bounded changes, verification and limitations lists")
                 }
+                var index int32
                 for item in list.EnumerateArray() {
-                    if item.ValueKind != JsonValueKind.String || !Safe(item.GetString() ?? "") {
-                        throw Exception("Public summary contains invalid public text")
+                    let text = item.ValueKind == JsonValueKind.String ? item.GetString() ?? "": ""
+                    if item.ValueKind != JsonValueKind.String || !Safe(text) {
+                        let rejected = Regex.Match(text, "[^A-Za-z0-9 .,;:!?()'+_=-]")
+                        throw CliFailure(
+                            "invalid_state",
+                            "Public summary " + key + "[" + index.ToString() +
+                                "] contains invalid public text" +
+                                (rejected.Success ? "; first disallowed character " + J.Write(rejected.Value): "")
+                        )
                     }
+                    index++
                 }
             }
         }
 
         private func Safe(text string) bool -> text.Length >= 3 && text.Length <= 200 && text == text.Trim() &&
-            Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_-]+$") && !Regex.IsMatch(
+            Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(
             text,
             "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|sk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
         )
