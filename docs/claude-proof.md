@@ -1,21 +1,50 @@
 # Native Claude checks
 
-These checks exercise native controls without external inference. They do not
-establish subscription availability or remote model identity.
+These checks exercise native Claude controls with local synthetic responses. They use no external inference.
 
-```sh
-python3 scripts/claude-download.py --output /tmp/claude
-python3 scripts/claude-proof.py --claude /tmp/claude
-```
+## Run the checks
 
-The helper resolves the official latest channel and verifies manifest size and
-SHA256. Ordinary synthetic fixtures cover existing login reuse, configured MCP
-tools, exact model requests, cancellation and child cleanup without
-external inference. Reports omit effort, which is checked only in the synthetic
-request. Authentication stays in Claude; Tokate retains only bounded native
-login metadata. Native file and Bash controls use Claude's own
-sandbox settings. Real subscription use remains unverified.
+1. Build Tokate with the [development guide](development.md).
 
-Use `tokate help claude-capabilities` for the diagnostic gate. Configuration follows
-[Claude's CLI](https://code.claude.com/docs/en/cli-reference) and
-[sandboxing controls](https://code.claude.com/docs/en/sandboxing).
+2. Download the official native Claude executable.
+
+   ```sh
+   python3 scripts/claude-download.py --output /tmp/claude
+   ```
+
+3. Run the proof.
+
+   ```sh
+   python3 scripts/claude-proof.py --claude /tmp/claude
+   ```
+
+4. Read the diagnostic gate requirements.
+
+   ```sh
+   tokate help claude-capabilities
+   ```
+
+## Evidence
+
+| Check | Evidence |
+| --- | --- |
+| Download | Official latest channel, manifest size, SHA256 and native Linux x64 artifact. |
+| Login | Existing default login reuse and native Pro and Max authentication schemas. Authentication stays in Claude. |
+| Prerequisites | Python 3, Linux bubblewrap at `/usr/bin/bwrap`, a built Tokate binary and a Claude model with an effort in `.github/tokate.json`. |
+| Tools | Native file and Bash controls, plus configured MCP tools. |
+| Model and effort | Exact requests checked by the synthetic service. Reports omit effort. |
+| Lifecycle | Cancellation, timeout and child cleanup. |
+| Isolation | Linux bubblewrap blocks external service access. |
+| Stored login data | Tokate retains bounded native login metadata, not credentials. |
+| Not established | Real subscription use, remote model identity, model availability or arbitrary containment attacks. |
+
+Configuration follows [Claude's CLI](https://code.claude.com/docs/en/cli-reference) and [sandbox controls](https://code.claude.com/docs/en/sandboxing).
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `Linux bubblewrap is required; no fallback` | `tokate doctor claude --json` |
+| `Official native artifact checksum or size mismatch` | `python3 scripts/claude-download.py --output /tmp/claude` |
+| `Native proof requires an explicit Claude model/effort in the repository policy` | `${EDITOR:-vi} .github/tokate.json` |
+| `Native Claude proof failed; do not publish managed support` | `tokate doctor claude --json` |

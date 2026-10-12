@@ -1,70 +1,119 @@
 # Build and verify
 
-Run from the repository root with Bash, curl, the exact .NET SDK in `global.json`,
-Clang and zlib development headers. These are build requirements. The released
-native CLI does not require .NET or G#. On Ubuntu 24.04:
+Build Tokate from the repository root. The released native CLI does not need .NET or G#.
 
-```sh
-sudo apt-get update
-sudo apt-get install --no-install-recommends bash curl ca-certificates clang zlib1g-dev libicu74 libgssapi-krb5-2
-```
+## Build from source
 
-Other distributions need their [.NET system dependencies](https://learn.microsoft.com/dotnet/core/install/linux-scripted-manual#dependencies)
-and [NativeAOT build packages](https://learn.microsoft.com/dotnet/core/deploying/native-aot/#prerequisites).
-The build restores the pinned G# SDK and NuGet packages automatically; the first
-restore needs network access. Supported binaries target Linux x86_64 with glibc 2.34+ or Alpine 3.24.
-On Alpine, set `TOKATE_RUNTIME_IDENTIFIER=linux-musl-x64` for the build and package scripts.
-Musl tests are written to `artifacts/tests-musl`; set `TOKATE_BINARY` to the musl CLI when running them.
+1. Install the Ubuntu 24.04 build packages.
 
-```sh
-sdk_setup=$(mktemp)
-curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$sdk_setup"
-bash "$sdk_setup" --jsonfile global.json --install-dir "$HOME/.dotnet" --no-path
-rm "$sdk_setup"
-export PATH="$HOME/.dotnet:$PATH"
-bash scripts/build.sh
-artifacts/linux-x64/tokate --version
-```
+   ```sh
+   sudo apt-get update
+   sudo apt-get install --no-install-recommends bash git tar curl ca-certificates clang zlib1g-dev libicu74 libgssapi-krb5-2
+   ```
 
-Skip SDK installation when the pinned SDK is already available on `PATH`.
+2. Install the exact SDK from `global.json`.
 
-## Test the changed system
+   ```sh
+   sdk_setup=$(mktemp)
+   curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$sdk_setup"
+   bash "$sdk_setup" --jsonfile global.json --install-dir "$HOME/.dotnet" --no-path
+   rm "$sdk_setup"
+   ```
 
-After building, use the generated test executable for focused behavior checks:
+3. Add the SDK to `PATH`.
 
-```sh
-artifacts/tests/tokate-tests --saved-runs
-artifacts/tests/tokate-tests --pi-runtime
-artifacts/tests/tokate-tests --preparation PendingClaim
-```
+   ```sh
+   export PATH="$HOME/.dotnet:$PATH"
+   ```
 
-`bash scripts/verify.sh` builds and runs the core contribution smoke checks.
-Pass an existing test selector to verify a specific system. Selectors are in
-[the test entry point](https://github.com/obselate/tokate/blob/main/tests/Dispatch/Main.gs). An unmatched selector must not
-be treated as a successful check.
+4. Build the CLI and test executable.
 
-Use `bash scripts/verify.sh --full` for full release validation, including native
-harness proof. CI offers the same focused selector and full-validation choices.
-A fixture test does not prove a real installed harness supports its adapter.
-Native proof uses deterministic local responses and reports actual harness versions
-and unsupported capabilities. It does not establish real model quality or allowance.
+   ```sh
+   bash scripts/build.sh
+   ```
+
+5. Check the built version.
+
+   ```sh
+   artifacts/linux-x64/tokate --version
+   ```
+
+## Prerequisites
+
+| Requirement | Use |
+| --- | --- |
+| .NET SDK `10.0.401` exactly | `global.json` sets `rollForward` to `disable`. |
+| Clang and a native linker | NativeAOT compilation. |
+| zlib development headers | NativeAOT linking. Ubuntu package: `zlib1g-dev`. |
+| Ubuntu `libicu74` and `libgssapi-krb5-2` | .NET system dependencies. |
+| Bash, git, tar and curl | Build, verification, packaging and SDK setup. |
+| CA certificates and NuGet network access | First restore of pinned G# SDK and locked packages. |
+
+For other distributions, use the [.NET system dependencies](https://learn.microsoft.com/dotnet/core/install/linux-scripted-manual#dependencies) and [NativeAOT prerequisites](https://learn.microsoft.com/dotnet/core/deploying/native-aot/#prerequisites).
+
+## Verify a change
+
+1. Run the core contribution smoke checks.
+
+   ```sh
+   bash scripts/verify.sh
+   ```
+
+2. Run the selector for the changed system.
+
+   ```sh
+   bash scripts/verify.sh --saved-runs
+   bash scripts/verify.sh --pi-runtime
+   bash scripts/verify.sh --preparation PendingClaim
+   ```
+
+3. Run full validation before a release.
+
+   ```sh
+   bash scripts/verify.sh --full
+   ```
+
+| Mode | Checks |
+| --- | --- |
+| No arguments | Builds, then runs `CrossAccountFlow` and `CanonicalSubmit`. Allow about 2 minutes with a warm build. |
+| Selector | Builds, then runs the selected checks. No match is an error. |
+| `--full` | Full test suite and native harness proof. |
+| Native harness proof | Deterministic local responses and actual harness versions. Not model quality, account entitlement or allowance. |
+
+Find selectors in [the test entry point](https://github.com/obselate/tokate/blob/main/tests/Dispatch/Main.gs). CI supports focused selectors and full validation.
 
 ## Package
 
-Edit `VERSION` to change the product version used by MSBuild, Nix and release packaging.
+1. Set the product version in `VERSION`.
 
-```sh
-bash scripts/package.sh
-```
+2. Build the release archive.
 
-The archive contains the matching binary, public guides and license notices.
-Inspect its contents and checksum before publishing. Keep private run artifacts,
-credentials and local engineering instructions out of source commits and releases.
+   ```sh
+   bash scripts/package.sh
+   ```
+
+3. Inspect the archive and checksum before publication.
+
+| Target | Setting or output |
+| --- | --- |
+| Linux x86_64 | glibc 2.34 or newer. Output: `artifacts/linux-x64`. |
+| Alpine 3.24 | Set `TOKATE_RUNTIME_IDENTIFIER=linux-musl-x64` for build, verify and package scripts. |
+| Musl tests | `artifacts/tests-musl/tokate-tests`. Set `TOKATE_BINARY` to the musl CLI for direct test runs. |
+| Archive | Matching binary, public guides and license notices. |
+| Private data | Keep run artifacts, credentials and local engineering instructions out of commits and releases. |
 
 ## Source boundaries
 
-`src/Cli` parses and presents user actions. Contributions and policy code own
-authority and lifecycle rules. Execution owns harness and verification boundaries.
-Publication owns receipts and PR writes. GitHub code owns transport and remote
-identity. Compose existing operations from the CLI instead of adding a parallel
-workflow. Keep G# changes direct and readable.
+| Area | Owns |
+| --- | --- |
+| `src/Cli` | Argument parsing and presentation. Compose existing operations here. |
+| Contributions and policy | Authority and lifecycle rules. |
+| Execution | Harness and verification boundaries. |
+| Publication | Receipts and pull request writes. |
+| GitHub | Transport and remote identity. |
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `No test matched the selected arguments.` | `bash scripts/verify.sh --saved-runs` |

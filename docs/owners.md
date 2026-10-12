@@ -1,104 +1,203 @@
 # Accept donations
 
-Owners need Git, the GitHub CLI, repository write access and Tokate. A coding
-harness or AI subscription is not required. Use public GitHub repositories.
+Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work before merge.
 
 ## Set up once
 
-1. Run `gh auth login`, then `tokate doctor owner --auth`.
-2. Run `tokate init OWNER/REPO` inside your repository checkout, or pass `--path`
-   to one. Setup starts from the policy on your default branch on GitHub.
-3. Review the GitHub Actions settings before answering project questions. If the
-   event policy is missing, setup offers to create the active "Tokate coordinator
-   events" policy for the coordinator workflow, allowing `issue_comment`,
-   `pull_request_target` and `workflow_call`. If PR creation is disabled, setup
-   offers to enable "Allow GitHub Actions to create and approve pull requests"
-   while keeping the default workflow permissions. Confirm the displayed changes
-   to apply them. With `--non-interactive`, missing settings cause failure before
-   any writes. Existing blocking event or actor policies require owner review in
-   Settings > Actions > Policies, including access for external actors.
-4. Choose contributor access, model restrictions, verification commands, required
-   CI checks and time limits. New setup uses Trusted access. Time prompts use
-   `--max-time` and `--reservation-time` units, such as `1h` or `30m`, and show
-   defaults in those units. The model checklist searches as you type. Space
-   selects, Enter accepts, and F2 adds a model absent from local discovery.
-   Suggestions are not selected for you. A local model needs its exact ID and
-   supported reasoning levels. Use `absent` only for models without reasoning.
-   Availability remains unknown.
-5. Select Codex or Claude Code (Subscription), Pi (Local), or their combination
-   at the allowed-tools prompt. Scripts can use `--allowed-tools codex,pi`.
-   Omission preserves existing tools. New noninteractive setup defaults to Codex.
-   OMP requires exact provider pairs, such as
-   `--allowed-tools codex/openai,omp/openrouter`. Exact pairs replace the whole
-   list. The `codex,claude,pi` shorthand keeps existing OMP pairs. OMP runs with
-   the donor's configuration and no additional isolation.
-6. Review the generated diff. Setup uses a matching stable release and writes
-   `.github/tokate.json` and a small, immutable shared-workflow entry directly.
-   Existing configuration is preserved. The coordinator does not execute donor
-   code. It can close PRs without current owner authorization. Review that
-   behavior before enabling the workflow.
-7. Commit and push the policy and workflow to the default branch before approving
-   work. Keep fork CI read-only, without secrets, and require its checks in branch
-   protection. Use `tokate init --help` for scripted setup and policy options.
-   Optional root `DECREE.md` contains task instructions captured at approval.
-   It cannot expand permissions or donor budgets. Use `protected_paths` to protect
-   verification tooling and other authority files beyond Tokate's built-in
-   protections.
+1. Install Tokate on Linux x86_64 with glibc 2.34+ or Alpine 3.24.
+
+   ```sh
+   curl -qfsSL https://tokate.dev/install.sh | sh
+   ```
+
+2. Sign in to GitHub.
+
+   ```sh
+   gh auth login
+   ```
+
+3. Check the owner tools and authentication.
+
+   ```sh
+   tokate doctor owner --auth
+   ```
+
+4. Check that Actions permits the `obselate/tokate` reusable workflow.
+
+   ```sh
+   gh api repos/OWNER/REPO/actions/permissions
+   ```
+
+5. Open your repository checkout.
+
+   ```sh
+   cd /path/to/repo
+   ```
+
+6. Start setup.
+
+   ```sh
+   tokate init OWNER/REPO
+   ```
+
+7. On **Target branch**, press Enter to keep the default branch.
+8. On **GitHub Actions settings**, review the listed changes. Select **Apply** to make them or **Cancel** to stop setup.
+9. On **Who can contribute?**, select one access mode from the table below.
+10. On **Allowed models**, select **Any supported model** or **Choose allowed models**.
+11. In the model checklist, select the exact models and reasoning levels. Use Space to select, Enter to accept, or F2 to add a model.
+12. On **Verification commands**, enter one test command at a time. Press Enter on a blank prompt to finish.
+13. Use repository-relative paths in each command. Tokate runs each command with `/bin/sh -c` from the repository root.
+14. On **Required GitHub checks**, select a check or enter exact CI check names separated by commas. Use real names from CI that already ran on the target branch.
+15. On **Review project setup**, review the rules. Use **Change checks, times or PR settings**, **Review allowed models**, or **Change tools** to change them.
+16. Select **Create policy files**.
+17. On **GitHub branch protection**, select **Apply** to require the listed checks or **Skip** to leave protection unchanged.
+18. Commit the generated files.
+
+   ```sh
+   git add .github
+   git commit -m "Set up Tokate"
+   ```
+
+19. Push them to the default branch before task approval.
+
+   ```sh
+   git push
+   ```
+
+20. Initialize donor access.
+
+   ```sh
+   tokate access init
+   ```
+
+| Requirement | Check |
+| --- | --- |
+| Public GitHub repository | Repository visibility is public. |
+| Git, GitHub CLI and repository admin rights | `tokate doctor owner --auth` |
+| Actions permits the `obselate/tokate` reusable workflow | `gh api repos/OWNER/REPO/actions/permissions` |
+| CI already ran on `main` | `gh run list --repo OWNER/REPO --branch main` |
+| Test command works on Linux from a clean clone | Run your test command from the repository root. |
+| No tracked build output | Keep generated build files out of Git. |
+
+| Who can contribute? | Access |
+| --- | --- |
+| **Trusted people** | Trusted donors or donors with an issue grant. Newcomers request access first. |
+| **Anyone eligible** | Authenticated GitHub users who are not denied. |
+| **Choose each time** | Donors with an issue grant. You approve each donor. |
+
+Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
 ## Approve an issue and donor
 
-Write a small issue with scope, acceptance criteria and failure cases, then run:
+1. Inspect access requests.
 
-```sh
-tokate access init
-tokate approve 42
-tokate access trust DONOR
-```
+   ```sh
+   tokate access
+   ```
 
-Tokate keeps its state in `tokate/` branches; do not open or merge pull requests from them.
+2. Trust a donor for future approved tasks.
 
-In a checkout, `42` names issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
+   ```sh
+   tokate access trust DONOR
+   ```
 
-See the [positional arguments guide](arguments.md) for references and command forms.
+3. For access to only one issue, grant that issue instead.
 
-Initialize access once. Trust permits future approved tasks. Use `access grant DONOR 42`
-for one issue instead. `tokate access` shows requests and trusted donors. Requests grant no access. Open eligibility accepts authenticated,
-non-denied donors. Manual eligibility requires an issue grant. Explicit denial
-blocks participation in every mode.
+   ```sh
+   tokate access grant DONOR 42
+   ```
 
-Issue, policy or PR-format changes require fresh approval. Revoking donor access
-also blocks new work and publication. Share the [donor guide](donors.md) and the
-project's build prerequisites.
+4. Create and approve a new issue.
+
+   ```sh
+   tokate approve
+   ```
+
+5. On **Write an issue**, enter a short title.
+6. On **Describe the issue**, enter scope, acceptance criteria and failure cases. Press Enter on a blank line to finish.
+7. On **Review issue**, select **Create and approve** or **Cancel**.
+8. On **Target branch**, select the branch that receives the work.
+9. To approve an existing issue, use its number instead.
+
+   ```sh
+   tokate approve 42
+   ```
+
+10. If **Replace approval** appears, select **Re-approve** only to replace the current approval. Select **Cancel** to keep it.
+
+Access requests grant no access. Explicit denial blocks every access mode.
+
+Issue, policy or PR-template changes need fresh approval. Do not open or merge PRs from `tokate/` state branches.
 
 ## Review and merge
 
-```sh
-tokate verify 10
-tokate checks 10 --watch
-```
+1. Inspect the PR diff and its public change report.
 
-Inspect the diff before approving a first-time fork workflow. Every required check
-must pass on the current PR head. Check scope, acceptance criteria, limitations and
-conflicts before merging. Receipts validate recorded authority and commits. They
-do not prove model identity, billing or semantic correctness. Tokate leaves final
-acceptance and merging to you.
+   ```sh
+   gh pr diff 10
+   gh pr view 10
+   ```
 
-Target movement alone does not fail `checks`. It reports the verified and current
-target revisions and GitHub mergeability. Reconcile only when GitHub reports a
-conflict or branch protection requires an up-to-date branch. GitHub controls
-up-to-date branch and merge queue requirements. The `verify` command and authority
-checks are unchanged.
+2. Approve first-time fork workflows in the PR's linked GitHub Actions runs after diff review.
+3. Verify the receipt against owner approval.
+
+   ```sh
+   tokate verify 10
+   ```
+
+4. Wait for required checks on the current PR head.
+
+   ```sh
+   tokate checks 10 --watch
+   ```
+
+5. Review scope, acceptance criteria, limitations and conflicts.
+6. Mark the accepted draft ready.
+
+   ```sh
+   gh pr ready 10
+   ```
+
+7. Merge with your repository's required merge method.
+
+   ```sh
+   gh pr merge 10
+   ```
+
+Checks do not accept the task or merge the PR. Target movement needs synchronization only for conflicts or required up-to-date branches.
 
 ## Update the coordinator
 
-Updating your local CLI does not update the repository's pinned coordinator:
+1. Update the local CLI.
 
-```sh
-tokate update
-tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
-```
+   ```sh
+   tokate update
+   ```
 
-Review the generated entry and replace the existing coordinator workflow, preserving
-necessary customization. Commit it before using features that need the new coordinator,
-including readable request comments and continued-run submissions. Do not add a
-second coordinator. See [recovery](recovery.md) when existing work needs attention.
+2. Generate a matching pinned workflow entry outside `.github`.
+
+   ```sh
+   tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
+   ```
+
+3. Review the generated file against the existing coordinator workflow.
+4. Replace the existing workflow entry with the new pin. Keep required custom settings and use only one coordinator.
+5. Commit and push the workflow.
+
+   ```sh
+   git add .github
+   git commit -m "Update Tokate coordinator"
+   git push
+   ```
+
+The local update does not change the repository pin. See [donors](donors.md), [arguments](arguments.md) and [recovery](recovery.md).
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `GitHub settings were not changed` | `tokate init OWNER/REPO` |
+| `Approval revoked or task changed` | Owner: `tokate approve 42` |
+| `Repository policy or template changed. The owner must approve again.` | Owner: `tokate approve 42` |
+| `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks 10 --watch` |
+| `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | `gh pr view 10 --web` |

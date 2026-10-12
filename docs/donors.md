@@ -1,172 +1,256 @@
 # Donate work
 
-Use your own GitHub account and coding harness. Tokate needs Linux x86_64,
-glibc 2.34+ or [Alpine 3.24](alpine.md), Git, the GitHub CLI and util-linux `setpriv` and `unshare` with working user namespaces.
-Project build tools must be accessible from system paths. Keep managed runs and
-harness installations outside `/tmp`.
+Use your GitHub account and coding tool to work on an approved issue. Tokate 0.4.7 runs your tool, checks the result and requests a draft PR.
 
-```sh
-gh auth login
-```
+## Set up
 
-For in-harness guidance, run `sh plugins/install.sh codex` from the release archive
-(or choose `claude`, `pi` or `omp`), then restart the harness and invoke its Tokate skill.
+1. Use Linux x86_64 with glibc 2.34+ or [Alpine 3.24](alpine.md).
+2. Install Tokate.
 
-Choose an approved, available issue. If access is required, request it and wait
-for the owner to grant it:
+   ```sh
+   curl -qfsSL https://tokate.dev/install.sh | sh
+   ```
 
-```sh
-tokate access request OWNER/REPO#42 --trust
-```
+3. Sign in to GitHub.
 
-## Choose a tool
+   ```sh
+   gh auth login
+   ```
 
-`tokate doctor --fix` repairs common dependencies and reports installed harnesses.
-In a terminal, it lets you choose an installed harness as your default.
-Installing a harness requires `tokate doctor codex --fix` or `tokate doctor pi --fix`.
-Change the default with `tokate doctor --set-default`. Keep multiple setups with
-`defaults set NAME --harness HARNESS`, then switch with
-`defaults use NAME`. Model settings can be added later.
-Use `--harness-path` for an existing custom installation.
-Harness authentication and [host namespace policy](linux-security.md)
-remain separate from package installation.
+4. Check your coding tool.
 
-For Codex, use a current native installation with your ChatGPT login:
+   ```sh
+   tokate doctor codex
+   ```
 
-```sh
-codex login
-tokate doctor managed codex --auth
-tokate defaults set --harness codex --model MODEL --effort EFFORT
-tokate select OWNER/REPO
-```
+5. Install missing tools when doctor reports them.
 
-Select an owner-allowed model and effort. The offline catalog and login check do
-not prove account availability or remaining allowance. `tokate defaults` lists saved
-profiles; `tokate defaults show [NAME]` shows the default or a named profile. Use
-`tokate defaults set NAME` to keep several choices. Pass a profile name after the
-issue in `claim`, `work` or `prepare`, or after `OWNER/REPO` in `select`.
-Profiles do not store budgets.
+   ```sh
+   tokate doctor codex --fix
+   ```
 
-Codex runs unattended, so tools that need approval are refused. Set
-`default_tools_approval_mode = "approve"` on MCP servers you trust for donations.
+6. Sign in to the coding tool before you start a donation.
+7. Install the project's toolchain on your machine. Tokate needs it to run the owner's verification commands.
+8. Keep harness installations and saved runs outside `/tmp` and the project checkout.
+9. Read the [security guide](security.md) before you start.
 
-### Claude Code
+| Coding tool | Check | Account or runtime |
+| --- | --- | --- |
+| Codex | `tokate doctor codex --auth` | Native Codex with your ChatGPT login. Use `codex login` to sign in. |
+| Claude Code | `tokate doctor claude --auth` | Native Claude Code with your personal Pro or Max login. Its sandbox needs bubblewrap and socat. |
+| Pi | `tokate doctor pi` | Pi, Node and your configured local model server. |
+| OMP | `tokate doctor omp` | Your installed OMP and its configured providers. Use `omp models` to list models. |
 
-Choose Claude Code in the donation wizard. It uses your installed native CLI,
-existing login, settings and tools. Sign in through Claude Code first with your
-personal Pro or Max subscription. `--claude-profile DIR` selects an existing
-configuration directory when needed. Claude Code's sandbox needs bubblewrap and
-socat; `tokate doctor claude --fix` installs missing packages.
+Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix setup](nix.md) for a Nix installation.
 
-For a saved choice, after native sign-in:
+## Start a donation
 
-```sh
-tokate defaults set claude --harness claude --model MODEL --effort EFFORT
-```
+1. Open a terminal in the project checkout.
+2. Start the guided donation for issue 42.
 
-Use that profile with the same `claim`, `work` and `submit` commands below. Tokate
-never reads or copies its credentials. Login status does not prove model availability.
+   ```sh
+   tokate work 42
+   ```
 
-### Local inference with Pi
+3. At **Set your limit**, enter the coding minutes.
+4. At **Verification time**, enter the minutes for the owner's checks. The coding and verification minutes must fit the owner's limit.
+5. If saved profiles appear, choose one or choose **Set up another coding tool**.
+6. At **Your coding tool**, choose an allowed tool.
+7. Choose the model and effort offered for that tool.
+8. At **Review donation**, check the issue, tool, model, coding time and check time.
+9. Choose **Start donation** to start work.
+10. Keep the run identifier printed by Tokate, such as `42-1`.
+11. Wait for coding and independent verification to finish.
+12. Submit the saved run. It prints `Draft PR: URL`.
 
-Install current Pi and Node using [Pi's official instructions](https://pi.dev/).
-Configure the model in Pi and start a no-auth HTTP loopback Chat Completions endpoint.
-Tokate does not start a model server. The owner must allow
-`pi/local-chat-completions` and your exact model and reasoning level. The guided CLI
-offers levels from Pi. Use `absent` only for a model without reasoning.
+    ```sh
+    tokate submit 42-1
+    ```
 
-```sh
-tokate defaults set local --harness pi --model 'MODEL_ID' \
-  --effort high --endpoint http://127.0.0.1:8080/v1
-tokate select OWNER/REPO local
-```
+13. If it prints `Submit pending. Run the same command again`, run the same command once more.
 
-Tokate discovers the CLI and Node from supported npm or managed Pi installations.
-For a custom layout, supply absolute `--pi-root` and `--node` paths. There is no
-`/usr/bin/node` requirement. Pi's nonsecret SDK metadata must supply the configured
-context and output limits. The endpoint must advertise the exact model at
-`/v1/models`. Missing or incompatible metadata stops before inference. Remote
-endpoints, authentication and paid Pi providers are not supported by this route.
+Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO` to pick an approved issue.
 
-### OMP
+| Screen control | Action |
+| --- | --- |
+| Arrow keys, then Enter | Select a picker item. |
+| Type in a picker | Filter its items. |
+| `?` | Explain the current choice. At a text prompt, enter `?` and press Enter. |
+| `h` | Return home. At a text prompt, enter `h` and press Enter. Clear picker search first. |
+| `q` | Quit. At a text prompt, enter `q` and press Enter. Clear picker search first. |
+| Esc | Return home in the full-screen interface. |
+| **Change tool or time limit** | Change the selection before starting. |
+| **Reserve for later, without starting AI** | Save a claim without inference. |
 
-Install OMP with its [official installer](https://github.com/can1357/oh-my-pi) and
-sign in or configure a provider in OMP first. The owner must allow `omp/PROVIDER`
-and your exact model and reasoning level. Check without inference, then save a choice:
+| During the run | Result |
+| --- | --- |
+| Claim request | Tokate waits for coordinator acceptance. A pending request is not a reservation. |
+| Preparation | Tokate prepares separate coding and verification checkouts. |
+| Coding | Your selected harness uses your configured tools and subagents. |
+| Verification | Tokate runs the owner's checks independently. Your machine must have the required toolchain. |
+| Time limit | `--time` covers coding and verification. It does not cap tokens or provider charges. |
+| Network | The harness, its tools and verification commands have network access. |
+| Failure | Tokate saves the run. It does not restart failed work automatically. |
+| Submission | Tokate pushes saved work and requests a draft PR. It discovers or creates your fork. |
+| Review | The owner reviews and merges the PR. |
 
-```sh
-tokate doctor managed omp
-tokate defaults set omp --harness omp --provider PROVIDER \
-  --model 'MODEL_ID' --effort EFFORT
-tokate select OWNER/REPO omp
-```
+## Use a script
 
-`omp models` lists what your OMP can use. `--provider` can be omitted when the
-owner allows one OMP provider. Use `absent` only for a model without reasoning.
-Tokate runs your normal OMP CLI unattended with its tools, extensions and stored
-login, approves its tool calls automatically and saves no OMP session. It never reads
-OMP credentials or forwards API key variables; a provider that needs one must be
-configured inside OMP. OMP has no sandbox. A provider error, such as rejected
-credentials or exhausted credits, stops the run and `work` prints OMP's reason.
-Tokate does not retry it.
-Charges are unknown to Tokate.
+1. Replace `N` with the issue number, `M` with an allowed model and `E` with its allowed effort.
+2. Reserve the issue without inference.
 
-## Claim, work and submit
+   ```sh
+   tokate claim N --harness codex --model M --effort E --time 1h
+   ```
 
-In a checkout of the project, `42` names issue 42 of its GitHub remote. Elsewhere
-use `OWNER/REPO#42` or the issue URL.
+3. Wait for coordinator acceptance.
+4. Use the exact saved attempt printed by claim. For the first attempt:
 
-See the [positional arguments guide](arguments.md) for references and command forms.
+   ```sh
+   tokate work N-1
+   ```
 
-In a terminal, start with `tokate work OWNER/REPO`. Choose an available approved
-issue, tool and budget. Review the task, model and budget before confirming.
+5. Submit that attempt after successful verification.
 
-To reserve without starting inference, for example for one hour with 20 minutes
-reserved for verification:
+   ```sh
+   tokate submit N-1
+   ```
 
-```sh
-tokate claim 42 local --time 1h --verify-time 20m
-```
+Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positional arguments](arguments.md) for issue and run references.
 
-Omit the profile name to use your default tool choice. Claiming spends no inference.
-Tokate posts the request and saves the run as attempt `42-1`. A pending request is
-not a reservation. Wait for coordinator acceptance, then run:
+## Save a profile
 
-```sh
-tokate work 42
-tokate submit 42
-```
+1. Save an allowed tool, model and effort.
 
-A bare issue number selects its newest attempt only. If its state does not fit,
-the command fails, writes nothing and lists attempts. Name another attempt as `42-2`.
-`tokate runs` lists saved runs offline. `--run DIR` names a run directory exactly.
+   ```sh
+   tokate defaults set my-codex --harness codex --model MODEL --effort EFFORT
+   ```
 
-`work` spends the selected budget and independently verifies completed work.
-`submit` requests the draft PR. Tokate discovers or creates your fork. Use `--fork`
-only when you need to select one explicitly. You do not need to write request JSON.
-After coordinator publication, repeat `submit 42` to save the PR locally.
+2. Check the saved profile.
 
-Before `tokate external RUN --commit SHA`, run `git -C CODING push https://github.com/HEAD_REPO.git SHA:refs/heads/BRANCH` with the coding checkout, fork and branch from the external claim output.
+   ```sh
+   tokate defaults show my-codex
+   ```
 
-`--time` caps coding plus verification time, not tokens or server billing.
-The harness, its tools and owner verification always have network access, which
-cloud and local model servers both need. Native harness settings control its retries and context handling
-within the budget; Tokate never restarts a failed run automatically.
-Review [data and isolation limits](security.md).
+3. Use it for a donation.
 
-## Check progress
+   ```sh
+   tokate work 42 my-codex
+   ```
 
-Bare `tokate` also offers saved contributions. Inspection works offline and requires
-explicit selection. From a shell:
+| Command | Action |
+| --- | --- |
+| `tokate defaults` | List profiles. |
+| `tokate defaults use my-codex` | Make the profile your default. |
+| `tokate doctor --set-default` | Choose an installed default harness. |
+| `tokate select OWNER/REPO my-codex` | Choose a permitted model without inference. |
 
-```sh
-tokate status 42-1
-tokate checks 10 --watch
-```
+Profiles save tool settings, not time budgets. The owner must allow your tool, provider, model and effort.
 
-On `checks`, a bare number is a PR number. `pause`, `resume`, `renew` and `release`
-take a run, for example `tokate release 42`.
+## Local inference with Pi
 
-Follow the reported next action. Quiet output does not justify restarting work.
-Keep the saved directory for [recovery and review changes](recovery.md). The owner
-reviews and merges.
+1. Install Pi and Node with [Pi's instructions](https://pi.dev/).
+2. Configure your model in Pi.
+3. Start a no-auth HTTP loopback Chat Completions server. Tokate does not start it.
+4. Make sure `/v1/models` lists the exact model ID.
+5. Ask the owner to allow `pi/local-chat-completions`, that model and its reasoning level.
+6. Check Pi.
+
+   ```sh
+   tokate doctor pi
+   ```
+
+7. Save the local profile.
+
+   ```sh
+   tokate defaults set local --harness pi --model MODEL_ID \
+     --effort high --endpoint http://127.0.0.1:8080/v1
+   ```
+
+8. Select an allowed model choice.
+
+   ```sh
+   tokate select OWNER/REPO local
+   ```
+
+9. Start the donation.
+
+   ```sh
+   tokate work OWNER/REPO#42 local
+   ```
+
+| Pi setting | Requirement |
+| --- | --- |
+| Effort | Use a supported reasoning level. Use `absent` only for a model without reasoning. |
+| Endpoint | HTTP loopback URL ending in `/v1`. Remote endpoints and authentication are not supported. |
+| Model limits | Pi SDK metadata must provide valid context and output limits. |
+| Custom installation | Supply absolute `--pi-root` and `--node` paths. `--pi-root` names the installed `node_modules` directory. |
+
+## Use OMP
+
+1. Install OMP with its [official installer](https://github.com/can1357/oh-my-pi).
+2. Sign in or configure a provider inside OMP.
+3. Check OMP without inference.
+
+   ```sh
+   tokate doctor omp
+   ```
+
+4. Save an owner-allowed provider, model and effort.
+
+   ```sh
+   tokate defaults set omp --harness omp --provider PROVIDER \
+     --model MODEL_ID --effort EFFORT
+   ```
+
+5. Start a donation with that profile.
+
+   ```sh
+   tokate work OWNER/REPO#42 omp
+   ```
+
+| OMP behavior | Result |
+| --- | --- |
+| Tools and extensions | Tokate uses your normal OMP setup and approves tool calls automatically. |
+| Isolation | OMP has no sandbox. |
+| Credentials | Tokate does not read OMP credentials or forward API key variables. Configure the provider inside OMP. |
+| Sessions | Tokate saves no OMP session. |
+| Provider error | Work stops and prints OMP's reason. Tokate does not retry it. |
+| Charges | Charges are unknown to Tokate. |
+
+## Check or control a run
+
+1. List saved runs offline.
+
+   ```sh
+   tokate runs
+   ```
+
+2. Inspect the exact attempt.
+
+   ```sh
+   tokate status 42-1
+   ```
+
+3. Use the command for the required reservation change.
+
+| Command | Action |
+| --- | --- |
+| `tokate pause 42-1` | Pause your reservation. |
+| `tokate resume 42-1` | Resume a paused reservation without inference. |
+| `tokate renew 42-1` | Renew before the reservation expires. |
+| `tokate release 42-1` | Release the reservation for other donors. |
+| `tokate work 42-1` | Start work on an accepted saved claim. |
+| `tokate checks 10 --watch` | Watch PR 10 checks. The number is a PR number. |
+
+Keep the saved run directory. Use [recovery](recovery.md) for stopped work, external work and PR changes.
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix` |
+| `The owner policy allows no supported managed coding tools` | `tokate policy OWNER/REPO` |
+| `OMP lists no models. Sign in with omp login or configure a provider.` | `omp login` |
+
+For other failures, use the exact-message tables in [recovery](recovery.md) and [Linux security](linux-security.md).
