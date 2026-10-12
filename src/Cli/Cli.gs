@@ -18,6 +18,7 @@ internal class CliOption(name string, value string, description string, choices 
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files; no inference"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
+        case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
@@ -128,6 +129,9 @@ internal class Cli {
             CliOption("required-checks", "JSON", "Required GitHub check names as a JSON array"),
             CliOption("reservation-time", "TIME", "Reservation lifetime from 5m to 7d"),
             CliOption("pr-text", "TEXT", "Optional literal owner text appended to PRs; no template expressions"),
+            CliOption("title", "TEXT", "Title of a new issue to create and approve; excludes ISSUE"),
+            CliOption("body", "TEXT", "Plain text description of the new issue; excludes --body-file"),
+            CliOption("body-file", "FILE", "Read the new issue description from a file; excludes --body"),
             CliOption(
                 "close-message",
                 "TEXT",
@@ -342,10 +346,10 @@ internal class Cli {
             ),
             CliCommand(
                 "approve",
-                "base-branch,yes",
-                "repo,issue",
-                "Approve an issue for donors with a GitHub record and label; no donor assignment.",
-                "ISSUE [--base-branch BRANCH] [--yes]",
+                "base-branch,yes,title,body,body-file,non-interactive",
+                "repo",
+                "Create or approve an issue for donors with a GitHub record and label; no donor assignment.",
+                "[ISSUE | --title TEXT [--body TEXT | --body-file FILE]] [--base-branch BRANCH] [--non-interactive] [--yes]",
                 "approve 42",
                 effects: "local_read github_read github_write",
                 target: "issue",
@@ -1118,6 +1122,17 @@ internal class Cli {
 
         internal func Validate(args Args, guided bool = false) {
             let command = Find(args.Command)
+            if args.Command == "approve" {
+                if args.Get("issue") != "" && args.Get("title") + args.Get("body") + args.Get("body-file") != "" {
+                    throw Exception("ISSUE excludes --title, --body and --body-file")
+                }
+                if args.Get("body") != "" && args.Get("body-file") != "" {
+                    throw Exception("--body and --body-file are mutually exclusive")
+                }
+                if !args.Help && args.Get("issue") == "" && !DonorSelection.Interactive(args) {
+                    args.Need("title")
+                }
+            }
             if !args.Help {
                 RunReference.Resolve(args)
             }

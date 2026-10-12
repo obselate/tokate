@@ -186,12 +186,25 @@ internal class Interactive {
             ApprovalBase.Advisories.Clear()
             let options = Args([]string{command})
             options.Guided = true
-            if command == "init" {
+            if command == "init" || command == "approve" {
                 GuidedWork.Repository(options)
+                if command == "approve" {
+                    options.Values.Remove("--issue")
+                }
             }
             Cli.Validate(options, guided: true)
             GuidedWork.Fill(options)
             Execute(options)
+            if command == "approve" {
+                if options.Get("issue") != "" {
+                    WizardScreen.Read(
+                        "Issue approved",
+                        "https://github.com/" + options.Need("repo") + "/issues/" + options.Need("issue"),
+                        "Enter to return"
+                    )
+                }
+                return
+            }
             let directory = PublicOutput.RunDirectory
             if directory != "" {
                 Continue(directory)
@@ -216,14 +229,15 @@ internal class Interactive {
                         []string{
                             "Donate AI time          Work on an approved issue",
                             "Set up my project       Let people contribute",
-                            "Continue existing work  Find a saved contribution"
+                            "Continue existing work  Find a saved contribution",
+                            "Write and approve an issue"
                         },
                         "Choose the job you want to do. Tokate fills in details it can find."
                     )
                     if action == 3 {
                         Saved()
                     } else {
-                        Start(action == 1 ? "work": "init")
+                        Start(action == 1 ? "work": action == 4 ? "approve": "init")
                     }
                 } catch (error WizardHome) {
                     continue
