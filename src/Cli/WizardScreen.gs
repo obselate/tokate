@@ -110,7 +110,7 @@ internal class WizardScreen {
             return value.Length
         }
 
-        private func Lines(title string, body string, width int32, height int32) List[string] {
+        internal func Lines(title string, body string, width int32, height int32) List[string] {
             let rows = List[string]()
             if title == "Welcome" && width >= 64 && height >= 19 {
                 let sprig = []string{
@@ -326,6 +326,9 @@ internal class WizardScreen {
         }
 
         internal func Choose(title string, body string, options[]string, help string = "", selected int32 = 0) int32 {
+            if Available() {
+                return ModelChecklist.Pick(options, title, body, help, selected) + 1
+            }
             let text = StringBuilder(body + "\n\n")
             for i in 0 ... options.Length {
                 text.AppendLine((i + 1).ToString() + "  " + options[i])
