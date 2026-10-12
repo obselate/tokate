@@ -54,7 +54,8 @@ internal class OwnerApproval {
                     "decree": decree,
                     "authority_branch": authority,
                     "nonce": Guid.NewGuid().ToString("N")
-                }
+                },
+                args.Get("yes") == "true"
             )
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",

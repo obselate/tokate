@@ -493,7 +493,7 @@ internal class AttemptContinuationChecks {
                         test.Lifecycle("pause")
                     }
                     case "reapproved" {
-                        test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+                        test.Flow.Call([]string{"approve", "owner/project#1", "--yes"}, owner: true)
                         test.Coordinate(test.Event(test.ClaimRequest()))
                     }
                     case "legacy" {

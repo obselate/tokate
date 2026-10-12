@@ -244,7 +244,7 @@ internal open class NativeFixture : IDisposable {
 
     internal func Approve(baseBranch string = "") {
         OwnerAccess()
-        let args = List[string]{"approve", "owner/project#1"}
+        let args = List[string]{"approve", "owner/project#1", "--yes"}
         if baseBranch != "" {
             args.AddRange([]string{"--base-branch", baseBranch})
         }
