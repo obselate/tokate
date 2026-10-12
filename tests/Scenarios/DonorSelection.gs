@@ -80,6 +80,12 @@ internal class DonorSelectionChecks {
             Check.Contains(flow.Call([]string{"defaults", "show"}).Output, "gpt-6.1-sol")
             flow.Call([]string{"defaults", "remove"})
             Check.That(!File.Exists(path), "Defaults were not removed")
+            for flag in[]string{"--plain", "--ascii"} {
+                Check.Contains(
+                    flow.Call([]string{"defaults", flag}).Output,
+                    "Default: none. Choose one with tokate defaults use NAME.\n"
+                )
+            }
             let named = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
             let privateRoot = Path.Combine(flow.Temp.Root, "private-runtime", "node_modules")
             let privateNode = Path.Combine(flow.Temp.Root, "private-runtime", "node")

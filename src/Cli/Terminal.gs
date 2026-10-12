@@ -583,7 +583,19 @@ internal class Terminal {
                     }
                     Message(label + ":" + (items.Count == 0 ? " none": ""), "default")
                     for i in 0 ... items.Count {
-                        if items[i].ValueKind == JsonValueKind.Object {
+                        if field.Name == "allowed_tools" {
+                            Line(
+                                Clean("  " + J.Text(items[i], "harness") + " / " + J.Text(items[i], "provider")),
+                                "default",
+                                false
+                            )
+                        } else if field.Name == "verification" && items[i].ValueKind == JsonValueKind.Array {
+                            let command = J.Items(items[i])
+                            let text = command.Count == 3 && command[0].ToString() == "/bin/sh" &&
+                                command[1].ToString() == "-c" ?
+                            command[2].ToString(): Command(items[i], false)
+                            Line(Clean("  " + text), "default", false)
+                        } else if items[i].ValueKind == JsonValueKind.Object {
                             Message("  " + (i + 1).ToString() + ".", "default")
                             Fields(items[i], "    ")
                         } else {
@@ -591,8 +603,11 @@ internal class Terminal {
                         }
                     }
                 } else {
-                    let text = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() ?? "":
+                    var text = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() ?? "":
                     field.Value.GetRawText()
+                    if field.Name == "default" && field.Value.ValueKind == JsonValueKind.Null {
+                        text = "none. Choose one with tokate defaults use NAME."
+                    }
                     let color = field.Name == "state" || field.Name == "status" || field.Name.EndsWith(
                         "_status",
                         StringComparison.Ordinal
