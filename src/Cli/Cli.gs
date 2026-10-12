@@ -643,6 +643,9 @@ internal class Cli {
                     return command
                 }
             }
+            if name == "verify-pr" {
+                throw Exception("Unknown command: verify-pr. Use tokate verify.")
+            }
             var nearest = ""
             var distance int32 = 3
             for command in Commands {
