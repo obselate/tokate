@@ -385,13 +385,27 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 flow.Temp.Env,
-                "2\n"
+                "?\n2\n"
             )
             Check.Success(result)
+            Check.Contains(
+                result.Output,
+                "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
+            )
             Check.Contains(result.Output, "Model: gpt-6.1-sol\r\n")
             Check.Contains(result.Output, "Effort: xhigh\r\n")
             Check.Contains(result.Output, "Source: interactive donor choice\r\n")
             Check.That(!File.Exists(Settings(flow)), "Interactive choice saved preferences implicitly")
+            flow.Temp.Env["TERM"] = "xterm-256color"
+            let explained = TestTerminal.Pty(binary, []string{"select", "owner/project"}, flow.Temp, 160, "?\x1b[B\n")
+            Check.Success(explained)
+            Check.Contains(
+                explained.Output,
+                "Choose a model and effort allowed by the project and supported by your tool."
+            )
+            Check.Contains(explained.Output, "Availability is not checked before you start.")
+            Check.Contains(explained.Output, "Effort: xhigh")
+            flow.Temp.Env.Remove("TERM")
             let refused = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
@@ -417,7 +431,11 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
                 flow.Temp.Env,
-                "1\n\n"
+                "1\n?\n\n"
+            )
+            Check.Contains(
+                declined.Output,
+                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing."
             )
             Check.That(declined.Code == 1, "Declined confirmation launched work")
             Check.Contains(declined.Output, "Inference was not confirmed")

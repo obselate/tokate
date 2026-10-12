@@ -202,7 +202,7 @@ internal class OwnerSetup {
                             "Anyone eligible  Anyone meeting your policy may claim",
                             "Choose each time Approve each donor yourself"
                         },
-                        "Every contribution still needs your review before merge.",
+                        "Choose who may claim an approved task. \"Trusted people\" limits claims to trusted donors. \"Anyone eligible\" accepts any GitHub user you have not denied. \"Choose each time\" asks you to approve each donor.",
                         current
                     ) - 1
                 ]
@@ -212,7 +212,7 @@ internal class OwnerSetup {
                 "Allowed models",
                 "Choose how much control you want over the coding model.",
                 []string{"Any supported model", "Choose allowed models"},
-                "Existing restrictions remain unless you explicitly change them.",
+                "Choose whether donors may use any supported model or only models you select. A whitelist gives you more control.",
                 J.Text(initial, "model_policy") == "unrestricted" ? 1: J.Get(initial, "models")
                     .ValueKind == JsonValueKind.Object ? 2: 0
             )
@@ -281,6 +281,7 @@ internal class OwnerSetup {
                         "Verification commands",
                         explanation,
                         options.ToArray(),
+                        "Enter commands that check the project after coding. Example: npm test. Press Enter on a blank prompt to finish.",
                         selected: kept.Count > 0 ? 1: 0
                     )
                     if kept.Count > 0 && choice == 1 {
@@ -295,7 +296,8 @@ internal class OwnerSetup {
                             "Verification commands",
                             explanation +
                                 "\nExamples: python3 -m unittest, npm test, cargo test, go test ./..., make test.\nEnter one shell command at a time. Enter finishes the list after at least one command.",
-                            "Shell command"
+                            "Shell command",
+                            help: "Enter commands that check the project after coding. Example: npm test. Press Enter on a blank prompt to finish."
                         )
                         if command == "" {
                             if commands.Count > 0 {
@@ -332,7 +334,12 @@ internal class OwnerSetup {
                     names.Clear()
                     if options.Count > 0 {
                         options.Add("Enter names")
-                        let choice = WizardScreen.Choose("Required GitHub checks", explanation, options.ToArray())
+                        let choice = WizardScreen.Choose(
+                            "Required GitHub checks",
+                            explanation,
+                            options.ToArray(),
+                            "Enter the exact GitHub check names that must pass before merge. Example: build, tests."
+                        )
                         if choice < options.Count {
                             names.Add(options[choice - 1])
                         }
@@ -342,7 +349,8 @@ internal class OwnerSetup {
                             "Required GitHub checks",
                             explanation + "\nThe names are CI job names. Enter them separated by commas.",
                             "Check names",
-                            fallback
+                            fallback,
+                            "Enter the exact GitHub check names that must pass before merge. Example: build, tests."
                         )
                         for name in answer.Split(',') {
                             if name.Trim() != "" {
@@ -365,7 +373,7 @@ internal class OwnerSetup {
                         "Change tools",
                         "Back to home"
                     },
-                    "Setup writes local configuration. Review and commit it before approving a task. Existing custom settings and workflow files are preserved."
+                    "Review the project rules before Tokate writes them. Commit the files, then approve a task so donors can use the rules."
                 )
                 if action == 1 {
                     return
@@ -385,7 +393,8 @@ internal class OwnerSetup {
                             "Reservation time",
                             "Pull request text",
                             "Back to review"
-                        }
+                        },
+                        "Choose which project setting to change. These settings control checks, time limits, the target branch, reservations, and pull request text."
                     )
                     if change == 1 {
                         edit = "verification"
@@ -401,7 +410,9 @@ internal class OwnerSetup {
                                     "Time to reserve a task, such as 24h or 30m.",
                                     change == 2 ? "Maximum donor time (--max-time)": "Reservation time",
                                     seconds % 3600 == 0 ? (seconds / 3600).ToString() + "h":
-                                    seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s"
+                                    seconds % 60 == 0 ? (seconds / 60).ToString() + "m": seconds.ToString() + "s",
+                                    change == 2 ? "Set the total time allowed for coding and verification. Example: 1h. The owner limit applies to each donor.":
+                                    "Choose how long a donor may reserve a task before the reservation expires. Example: 24h."
                                 ),
                                 change == 2 ? "max-time": "reservation-time"
                             )
@@ -417,7 +428,9 @@ internal class OwnerSetup {
                             change == 4 ? "Choose the branch that receives contributions.":
                             "Optional owner text appended to pull requests.",
                             change == 4 ? "Target branch (--base-branch)": "Pull request text (--pr-text)",
-                            J.Text(value, field)
+                            J.Text(value, field),
+                            change == 4 ? "Choose the branch that receives donor changes. Use the project's main development branch, for example main.":
+                            "Enter optional owner text that Tokate adds to donor pull requests. Example: Please include a test plan."
                         )
                     }
                 }
@@ -425,7 +438,8 @@ internal class OwnerSetup {
                     let mode = WizardScreen.Choose(
                         "Allowed models",
                         "Choose your model policy.",
-                        []string{"Any supported model", "Choose allowed models"}
+                        []string{"Any supported model", "Choose allowed models"},
+                        "Choose whether donors may use any supported model or only models you select. A whitelist gives you more control."
                     )
                     args.Values["--model-policy"] = mode == 1 ? "unrestricted": "whitelist"
                     if mode == 2 {
@@ -442,7 +456,8 @@ internal class OwnerSetup {
                             "Pi | Local",
                             "Codex, Claude Code and Pi",
                             "Edit exact harness/provider pairs"
-                        }
+                        },
+                        "Choose which coding tools donors may use. Select exact harness/provider pairs only when you need to control those routes."
                     )
                     let pairs = List[string]()
                     for tool in J.Items(J.Get(value, "allowed_tools")) {
@@ -572,17 +587,13 @@ internal class OwnerSetup {
                             J.Text(permissions, "default_workflow_permissions") + ")"
                     )
                 }
-                let answer = WizardScreen.Read(
+                if WizardScreen.Choose(
                     "GitHub Actions settings",
                     String.Join("\n\n", changes),
-                    "Apply these GitHub settings? (yes/no)",
-                    "no"
-                )
-                if !String.Equals(answer, "yes", StringComparison.OrdinalIgnoreCase) && !String.Equals(
-                    answer,
-                    "y",
-                    StringComparison.OrdinalIgnoreCase
-                ) {
+                    []string{"Apply", "Cancel"},
+                    "Apply the listed GitHub settings so Tokate can coordinate project work. Choose Apply only if you want Tokate to make these changes.",
+                    selected: 2
+                ) != 1 {
                     throw OperationCanceledException("GitHub settings were not changed")
                 }
                 if !events {
