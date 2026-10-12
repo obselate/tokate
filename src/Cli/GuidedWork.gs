@@ -504,8 +504,7 @@ internal class GuidedWork {
                         "harness"
                     ) == "omp" ? "Uses the provider account or local runtime configured in your OMP. Charges are unknown.": "Uses your selected harness subscription. Extra-charge status is unknown."
                 ) +
-                    "\nAvailability: " +
-                    J.Text(selection, "availability")
+                    "\nTokate cannot check your remaining usage before it starts."
                 let options = args.Command == "claim" ? []string{
                     "Reserve for later, without starting AI",
                     "Change tool or time limit"
