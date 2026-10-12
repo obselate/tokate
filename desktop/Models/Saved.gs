@@ -310,8 +310,8 @@ data struct PublicSummary {
             if text.Length < 3 || text.Length > 200 {
                 return "Use 3 to 200 characters."
             }
-            if !Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_-]+$") {
-                return "Use only letters, numbers, spaces and . , ; : ! ? ( ) ' + _ -"
+            if !Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") {
+                return "Use only letters, numbers, spaces and . , ; : ! ? ( ) ' + _ = -"
             }
             if Regex.IsMatch(
                 text,

@@ -66,6 +66,7 @@ func SavedTests() {
         "The verification commands changed files that the commit tracks: __pycache__/greet.pyc, out/a b.txt. Remove generated files from the commit, then publish again.",
         "a changed candidate names the files that verification changed"
     )
+    Regression.Equal(PublicSummary.Problem("Set retries=3 by default."), "", "a summary line can have an equals sign, as Tokate accepts it")
 
     saved.Select(SavedRun.Pending("/runs/b") with{Run = run})
     Regression.Check(
