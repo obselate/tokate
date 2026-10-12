@@ -265,6 +265,21 @@ internal partial class Fixture {
         let folder = State["repository_folders"]?[repo] is JsonNode selected ? Check.Text(selected):
         repo == "owner/project" ? "upstream": "fork"
         let tail = String.Join("/", parts, 3, parts.Length - 3)
+        if tail.StartsWith("branches/") && tail.Contains("/protection") {
+            if method == "PUT" {
+                State["branch_protection"] = body.DeepClone()
+                return Answer(body)
+            }
+            if method == "POST" {
+                let contexts = State["branch_protection"]?["required_status_checks"]?["contexts"]?.AsArray() ??
+                    throw Exception("Missing required status checks")
+                for context in body["contexts"]?.AsArray() ?? JsonArray() {
+                    contexts.Add(context?.DeepClone())
+                }
+                return Answer(contexts)
+            }
+            return State["branch_protection"] is JsonNode protection ? Answer(protection): Response(404)
+        }
         if tail == "actions/permissions/workflow" {
             if method == "PUT" {
                 State["workflow_permissions"] = body.DeepClone()
