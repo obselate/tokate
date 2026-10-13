@@ -10,6 +10,97 @@ internal class AttemptContinuation {
     shared {
         internal func Has(run Data) bool -> run.Text("continuation_source") != ""
 
+        internal func TimeLimited(run Data) bool -> run.Text("source") == "tokate" && run.Text("state") == "failed" &&
+            run.Number("preparation_version") == 1 && !run.Flag("unlimited") &&
+            (run.Text("harness") == "codex" || run.Text("harness") == "pi" || run.Text("harness") == "omp") &&
+            run.Text("failure_stage") == "inference" && !run.Flag("turn_completed") && run.Text("commit") == "" &&
+            run.Number("pr") == 0 &&
+            (
+            run.Text("error").StartsWith("Runtime limit reached", StringComparison.Ordinal) || run.Text(
+                "error"
+            ) == "Runtime allowance exhausted"
+        )
+
+        internal func Next(directory string, run Data) Dictionary[string, Object?] {
+            let target = run.Text("repo") + "#" + run.Number("issue").ToString()
+            let next = map[string, Object?]{
+                "role": "donor",
+                "action": "Read current authority before continuing the stopped run with a new time budget.",
+                "command": []string{"tokate", "status", target, "--json"}
+            }
+
+            try {
+                let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+                let viewer = GitHub.Api("user")
+                let record = state.CheckApproval(run.Text("repo"), run.Number("issue"), quiet: true)
+                LeaseLifecycle.Owner(state, J.Get(viewer, "id"))
+
+                if !RepositoryIdentity.SameDonor(viewer, run) || J.Text(state.Value(), "approval_id") != run.Text(
+                    "approval"
+                ) ||
+                    J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
+                    return next
+                }
+
+                let seconds = Math.Min(run.Number("seconds") * 2, J.Number(J.Get(record, "policy"), "max_seconds"))
+                let reserve = run.Number("verification_reserve") > 0 ? run.Number("verification_reserve"): Math.Max(
+                    1,
+                    seconds / 3
+                )
+                let command = List[string]{
+                    "tokate",
+                    "prepare",
+                    target,
+                    "--state",
+                    state.Sha,
+                    "--source",
+                    "tokate",
+                    "--continue-from",
+                    directory,
+                    "--time",
+                    seconds.ToString() + "s",
+                    "--verify-time",
+                    reserve.ToString() + "s",
+                    "--fork",
+                    run.Text("head_repo")
+                }
+
+                for key in[]string{
+                    "harness",
+                    "provider",
+                    "model",
+                    "effort",
+                    "harness_path",
+                    "pi_endpoint",
+                    "pi_root",
+                    "pi_node"
+                } {
+                    if run.Text(key) != "" {
+                        let option = key == "pi_endpoint" ? "endpoint": key == "pi_node" ? "node": key.Replace('_', '-')
+                        command.AddRange([]string{"--" + option, run.Text(key)})
+                    }
+                }
+
+                command.AddRange([]string{"--yes", "--json"})
+                next["command"] = command.ToArray()
+                next[
+                    "action"
+                ] = "Review the new time budget, then prepare a fresh attempt with the stopped run's partial changes."
+                let reservation = J.Get(state.Value(), "reservation")
+                if J.Text(reservation, "attempt") == run.Text("attempt") || J.Text(reservation, "status") == "paused" {
+                    next["action"] = "First " +
+                        (
+                        J.Text(reservation, "status") == "paused" ? "":
+                        Terminal.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
+                    ) +
+                        Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
+                        ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before preparation."
+                }
+            } catch (error Exception) { }
+
+            return next
+        }
+
         internal func Confirm(args Args, selection JsonElement) {
             let confirmed = map[string, Object?]{}
 

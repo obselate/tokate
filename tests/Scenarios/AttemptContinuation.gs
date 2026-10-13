@@ -240,12 +240,72 @@ internal class AttemptContinuationChecks {
             let source = Setup(test, mode, harness, endpoint)
             let original = Bytes(source)
             let prior = Read(source)
+            if mode == "timeout" {
+                let status = Check.Envelope(
+                    test.Flow.Call([]string{"status", "--run", source, "--json"}),
+                    "status",
+                    "ok"
+                )
+                Check.That(
+                    Check.Text(status["data"]?["next"]?["action"]).Contains("tokate pause --run"),
+                    "Time-limited status omitted pause guidance: " + status.ToJsonString() + " after " + Check.Text(
+                        prior["error"]
+                    )
+                )
+                Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "tokate resume --run")
+                Check.That(
+                    Check.Text(status["data"]?["next"]?["command"]?[4]) == Check.Text(test.State()["sha"]),
+                    "Time-limited status omitted the current state SHA"
+                )
+                let refused = test.Flow.Call(Args(test, source, harness, endpoint: endpoint), 1)
+                Check.Contains(refused.Error, source)
+                Check.Contains(refused.Error, "tokate pause --run")
+                Check.Contains(refused.Error, "tokate resume --run")
+                Preserved(source, original)
+            }
             if mode != "crash" && mode != "cancel" {
                 FreshAttempt(test, mode == "incomplete_turn")
             }
             let state = Check.Text(test.State()["sha"])
-            let fresh = Prepare(test, Args(test, source, harness, endpoint: endpoint))
+            var args = Args(test, source, harness, endpoint: endpoint)
+            if mode == "timeout" {
+                let status = Check.Envelope(
+                    test.Flow.Call([]string{"status", "--run", source, "--json"}),
+                    "status",
+                    "ok"
+                )
+                let command = status["data"]?["next"]?["command"] ?? throw Exception("Missing continuation command")
+                let selected = List[string]()
+                for i in 1 ... command.AsArray().Count {
+                    let value = Check.Text(command[i])
+                    if value != "--json" {
+                        selected.Add(value)
+                    }
+                }
+                args = selected.ToArray()
+                Check.That(
+                    args[Array.IndexOf(args, "--state") + 1] == state,
+                    "Continuation guidance used a stale state SHA"
+                )
+                Check.That(
+                    args[Array.IndexOf(args, "--continue-from") + 1] == source,
+                    "Continuation guidance selected another run"
+                )
+                Check.That(
+                    args[Array.IndexOf(args, "--fork") + 1] == Check.Text(prior["head_repo"]),
+                    "Continuation guidance changed the saved fork"
+                )
+                args[Array.IndexOf(args, "--time") + 1] = "40s"
+                args[Array.IndexOf(args, "--verify-time") + 1] = "12s"
+            }
+            let fresh = Prepare(test, args)
             let run = Read(fresh)
+            Check.That(
+                File.ReadAllText(Path.Combine(fresh, "checkout/tracked.txt")) == "preserved\n" && File.ReadAllText(
+                    Path.Combine(fresh, "checkout/imported.txt")
+                ) == "untracked\n",
+                "Fresh continuation lost the time-limited run's partial changes"
+            )
             Check.That(
                 fresh != source && Check.Text(run["id"]) == Check.Text(prior["id"]) && Check.Text(
                     run["attempt"]

@@ -386,6 +386,13 @@ internal class PublicOutput {
                         "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
                         "command": []string{"tokate", "help", "prepare", "--json"}
                     }
+                    if AttemptContinuation.TimeLimited(run) {
+                        result["error"] = map[string, Object?]{
+                            "code": code,
+                            "message": "Runtime limit reached. Preserve partial work and prepare a fresh attempt under unchanged approval with a new time budget."
+                        }
+                        result["next"] = AttemptContinuation.Next(directory, run)
+                    }
                 } else if run.Text("source") == "tokate" && run.Number("pr") == 0 && run.Text("commit") == "" &&
                     run.Flag("turn_completed") && run.Text("failure_reason") == "public_summary_invalid" {
                     result["next"] = map[string, Object?]{
