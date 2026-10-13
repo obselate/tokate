@@ -215,7 +215,7 @@ internal class Startup {
                     let result = Commands.Run(
                         executable,
                         []string{tool.Name == "socat" ? "-V": "--version"},
-                        seconds: 10,
+                        seconds: 30,
                         harness: tool.Name == "codex"
                     )
 
