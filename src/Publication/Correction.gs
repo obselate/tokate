@@ -103,8 +103,11 @@ internal class Correction {
                     directory,
                     File.ReadAllText(Path.Combine(directory, "events.jsonl"))
                 )
-            } catch (error Exception) {
-                throw Exception("incomplete_turn: " + error.Message)
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw CliFailure("invalid_state", "incomplete_turn: " + error.Message)
             }
         }
 
@@ -222,7 +225,7 @@ internal class Correction {
                     let source = Path.Combine(directory, file)
 
                     if FileInfo(source).LinkTarget != nil {
-                        throw Exception("Original saved records must not be links: " + file)
+                        throw CliFailure("invalid_state", "Original saved records must not be links: " + file)
                     }
 
                     if File.Exists(source) {
@@ -322,6 +325,16 @@ internal class Correction {
         )
 
         internal func Recover(args Args) {
+            try {
+                RecoverSaved(args)
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
+        }
+
+        private func RecoverSaved(args Args) {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
@@ -514,7 +527,12 @@ internal class Correction {
                 Save(directory, correction)
 
                 Activate(directory, run, correction)
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) {
                 correction.Fields["state"] = "failed"
                 correction.Fields["error"] = error.Message
 

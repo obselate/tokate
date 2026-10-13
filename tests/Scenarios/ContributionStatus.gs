@@ -677,7 +677,8 @@ internal class ContributionStatusChecks {
                     Read(
                         test,
                         missing == "merged" ? 0: 1,
-                        failure: missing == "contribution" ? "invalid_state": "command_failed"
+                        failure: missing == "contribution" || missing == "receipt" || missing == "ambiguous_receipt" ?
+                        "invalid_state": "command_failed"
                     )
                 )
                 Check.That(

@@ -28,7 +28,7 @@ internal class ReceiptVerification {
             )
 
             if J.Number(receipt, "version") != 2 {
-                throw Exception("Unsupported receipt protocol")
+                throw CliFailure("invalid_state", "Unsupported receipt protocol")
             }
 
             return VerifyCurrent(repo, number, pull, receipt, ready, paths, pending)
@@ -79,7 +79,7 @@ internal class ReceiptVerification {
             ContributionHandoff.Declaration(handoff)
 
             if !RequestData.Same(J.Get(receipt, "handoff"), handoff) {
-                throw Exception("Receipt handoff differs from the authoritative source")
+                throw CliFailure("stale_approval", "Receipt handoff differs from the authoritative source")
             }
 
             ContributionHandoff.Authority(state, handoff)
@@ -88,7 +88,7 @@ internal class ReceiptVerification {
             let incomplete = current.GetRawText() == contribution.GetRawText() && RequestData.Incomplete(metadata)
 
             if J.Get(receipt, "incomplete").ValueKind != (incomplete ? JsonValueKind.True: JsonValueKind.Undefined) {
-                throw Exception("Receipt completion state differs from the current contribution")
+                throw CliFailure("stale_approval", "Receipt completion state differs from the current contribution")
             }
 
             let outcome = J.Get(current, "outcome")
@@ -99,7 +99,13 @@ internal class ReceiptVerification {
             }
 
             let donor = RepositoryIdentity.Login(J.Text(receipt, "donor"))
-            let record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
+            var record JsonElement
+            try {
+                record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
+            } catch (error Exception) when error.GetType() == typeof(Exception) &&
+                error.Message == "Choose an open issue" {
+                throw CliFailure("invalid_state", error.Message)
+            }
             let publicationRevision = J.Text(value, "publication_revision")
             let authenticated = publicationRevision == "" ? state: CoordinationState.At(
                 repo,
@@ -253,7 +259,10 @@ internal class ReceiptVerification {
 
             for key in[]string{"predecessor", "import_manifest_sha256"} {
                 if !RequestData.Same(J.Get(receipt, key), J.Get(metadata, key)) {
-                    throw Exception("Continuation receipt differs from authoritative import provenance")
+                    throw CliFailure(
+                        "stale_approval",
+                        "Continuation receipt differs from authoritative import provenance"
+                    )
                 }
             }
 
@@ -261,16 +270,16 @@ internal class ReceiptVerification {
 
             if prior.ValueKind != JsonValueKind.Undefined {
                 if J.Text(receipt, "attempt") != J.Text(metadata, "attempt") {
-                    throw Exception("Continuation receipt lost its destination attempt fence")
+                    throw CliFailure("stale_approval", "Continuation receipt lost its destination attempt fence")
                 }
 
                 AttemptContinuation.Authority(authenticated, prior)
 
                 if !PrBody.ReportText(J.Text(pull, "body")).Contains(PrBody.ContinuationReport(prior).Trim()) {
-                    throw Exception("PR report omitted interrupted-origin provenance")
+                    throw CliFailure("invalid_state", "PR report omitted interrupted-origin provenance")
                 }
             } else if J.Get(receipt, "attempt").ValueKind != JsonValueKind.Undefined {
-                throw Exception("Receipt claims continuation authority without predecessor evidence")
+                throw CliFailure("stale_approval", "Receipt claims continuation authority without predecessor evidence")
             }
 
             let amendment = J.Get(receipt, "amendment")
@@ -289,13 +298,13 @@ internal class ReceiptVerification {
                 )
 
                 if !RequestData.Same(J.Get(amendment, "summary"), J.Get(current, "summary")) {
-                    throw Exception("PR amendment summary differs from coordination authority")
+                    throw CliFailure("stale_approval", "PR amendment summary differs from coordination authority")
                 }
 
                 let observedReport = PrBody.ReportText(J.Text(pull, "body"))
 
                 if observedReport != report {
-                    throw Exception("PR amendment report differs from coordination authority")
+                    throw CliFailure("stale_approval", "PR amendment report differs from coordination authority")
                 }
 
                 let failure = "Amendment receipt differs from current coordination record"
@@ -305,31 +314,31 @@ internal class ReceiptVerification {
                     "previous"
                 ) ||
                     J.Number(amendment, "seconds") != J.Number(current, "seconds") {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if RequestData.Canonical(J.Get(amendment, "tools")) != RequestData.Canonical(J.Get(current, "tools")) {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
             } else if amendment.ValueKind != JsonValueKind.Undefined {
-                throw Exception("Receipt claims an amendment without coordination authority")
+                throw CliFailure("stale_approval", "Receipt claims an amendment without coordination authority")
             }
 
             let history = Synchronization.History(receipt)
             let synchronizationFailure = "Synchronization receipt differs from authoritative coordination history"
 
             if J.Text(amendment, "sync") != J.Text(current, "sync") {
-                throw Exception(synchronizationFailure)
+                throw CliFailure("stale_approval", synchronizationFailure)
             }
 
             if RequestData.Canonical(history) != RequestData.Canonical(Synchronization.History(current)) {
-                throw Exception(synchronizationFailure)
+                throw CliFailure("stale_approval", synchronizationFailure)
             }
 
             let correction = J.Get(receipt, "correction")
 
             if !RequestData.Same(correction, J.Get(metadata, "correction")) {
-                throw Exception("Correction receipt differs from authoritative publication metadata")
+                throw CliFailure("stale_approval", "Correction receipt differs from authoritative publication metadata")
             }
 
             if correction.ValueKind != JsonValueKind.Undefined {
@@ -375,7 +384,7 @@ internal class ReceiptVerification {
                 let live = CoordinationState.Load(repo, J.Number(receipt, "issue"))
 
                 if live.Sha != state.Sha {
-                    throw Exception("Coordination authority changed during receipt validation")
+                    throw CliFailure("stale_approval", "Coordination authority changed during receipt validation")
                 }
 
                 live.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))

@@ -176,7 +176,7 @@ See [donors](donors.md), [owners](owners.md) and [argument names](arguments.md).
 
 Messages with `DIR` below contain your actual run path. Use that path in the command.
 
-For Contributions commands, match `error.code` in `--json` output and the symptom below.
+For Contributions and Publication commands, match `error.code` in `--json` output and the symptom below.
 Keep saved work and inspect current state before any explicit next action.
 
 | Code | Symptom (message text or failure) | Do |
@@ -189,6 +189,25 @@ Keep saved work and inspect current state before any explicit next action.
 | `stale_approval` | `Saved fork repository identity changed` | Inspect the original repository and fork before further work. |
 | `authentication_required` | `Active GitHub account differs from the saved donor` | Use the original donor account and inspect `tokate status --run DIR --json`. |
 | `command_failed` | Required remote evidence could not be read or saved data could not be written | Inspect partial status and the remote or file access failure before an explicit next action. |
+
+### Publication failure codes
+
+Correction publication keeps the underlying code when its message starts with `publication_interrupted (interrupted_publication):`.
+
+| Code | Symptom (message text or failure) | Do |
+| --- | --- | --- |
+| `invalid_state` | `No PR has been published for this run` | Inspect `tokate status --run DIR --json` before submitting or reading checks. |
+| `invalid_state` | `Public summary needs bounded changes, verification and limitations lists`, `Set head in the summary to SHA.` or invalid public text | Supply a valid summary for the exact candidate before an explicit submit, recover or amend command. |
+| `invalid_state` | Malformed or ambiguous Tokate receipt or report, unsupported receipt protocol, missing public report or changed original evidence | Preserve saved evidence. Restore the report from its current authority or declare a corrected candidate. |
+| `invalid_state` | `incomplete_turn:` followed by the failure | Correction requires a completed successful inference turn. Inspect stopped work before continuation or incomplete publication. |
+| `invalid_state` | `interrupted_publication:` followed by incomplete, invalid or ambiguous physical PR history | Inspect physical PRs and saved intent before resuming publication. Do not create another request to bypass the refusal. |
+| `invalid_state` | `Saved amendment INPUT input differs or cannot be read.` | Restore the original input or declare a new exact commit with a new verification budget. |
+| `stale_approval` | Receipt, handoff, continuation, amendment or synchronization evidence differs from coordination authority | Inspect current approval, PR head and coordination evidence before acceptance. The owner must resolve changed authority. |
+| `stale_approval` | `Saved version-2 publication intent changed`, `Physical PR and remote branch disagree` or changed original authority | Preserve the saved run and inspect remote state. Do not overwrite the branch or edit authority to bypass validation. |
+| `verification_failed` | Correction or amendment owner verification failed or its budget was exhausted | Inspect saved verification results and declare a corrected exact commit with an explicit budget. |
+| `command_failed` | `Uncertain request write; no unique canonical evidence. No POST retry made.` | Inspect remote comments and coordination state before resuming the same saved intent. No automatic POST retry is made. |
+| `command_failed` | `Cannot read workflow runs awaiting approval`, `Cannot read workflow runs for this head` or bounded history exceeded | Inspect incomplete CI evidence before acceptance. Missing evidence is not success. |
+| `command_failed` | Original evidence could not be captured or corrected remote commit is missing after push | Preserve saved evidence and inspect file access or remote state before an explicit next action. |
 
 ### Setup
 

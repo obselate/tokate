@@ -137,7 +137,7 @@ internal class Checks {
             }
 
             if run.Number("pr") == 0 {
-                throw Exception("No PR has been published for this run")
+                throw CliFailure("invalid_state", "No PR has been published for this run")
             }
 
             var previous string = ""
@@ -285,7 +285,7 @@ internal class Checks {
                         )
 
                         gates["report"] = map[string, Object?]{"status": "passed", "evidence": "complete"}
-                    } catch (error Exception) {
+                    } catch (error CliFailure) {
                         reportFailure = error.Message
                         gates["report"] = map[string, Object?]{
                             "status": "failed",
@@ -295,7 +295,16 @@ internal class Checks {
 
                     stage = "checks"
 
-                    let rows = CommitChecks.Read(run.Text("repo"), run.Text("commit"), observed)
+                    var rows JsonElement
+                    try {
+                        rows = CommitChecks.Read(run.Text("repo"), run.Text("commit"), observed)
+                    } catch (error Exception) when error.GetType() == typeof(Exception) &&
+                        (
+                        error.Message == "Cannot read complete commit checks" ||
+                            error.Message == "Commit check inspection exceeded its bounded history"
+                    ) {
+                        throw CliFailure("command_failed", error.Message)
+                    }
                     let awaiting = List[Object]()
                     facts["workflow_runs_awaiting_approval"] = awaiting
 
@@ -309,7 +318,7 @@ internal class Checks {
                         let workflows = J.Get(response, "workflow_runs")
 
                         if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > 100 {
-                            throw Exception("Cannot read workflow runs awaiting approval")
+                            throw CliFailure("command_failed", "Cannot read workflow runs awaiting approval")
                         }
 
                         for workflow in workflows.EnumerateArray() {
@@ -334,7 +343,10 @@ internal class Checks {
                         }
 
                         if page == 10 {
-                            throw Exception("Workflow approval inspection exceeded its bounded history")
+                            throw CliFailure(
+                                "command_failed",
+                                "Workflow approval inspection exceeded its bounded history"
+                            )
                         }
                     }
 
@@ -413,7 +425,7 @@ internal class Checks {
                         )
 
                         if workflows.ValueKind != JsonValueKind.Array {
-                            throw Exception("Cannot read workflow runs for this head")
+                            throw CliFailure("command_failed", "Cannot read workflow runs for this head")
                         }
 
                         if workflows.GetArrayLength() == 0 {
@@ -516,7 +528,12 @@ internal class Checks {
                     if args.Get("watch") != "true" {
                         return 8
                     }
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is ApiDeadlineException ||
+                    error is IOException ||
+                    error is UnauthorizedAccessException ||
+                    error is JsonException ||
+                    error.GetType() == typeof(Exception) {
                     if previous != "" {
                         facts["previous_observation"] = map[string, Object?]{
                             "current": false,
@@ -584,7 +601,11 @@ internal class Checks {
 
                     Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
 
-                    throw error
+                    if error is CliFailure || error is ApiDeadlineException {
+                        throw error
+                    }
+
+                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
                 }
 
                 ApiTransport.PollWait()

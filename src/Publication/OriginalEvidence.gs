@@ -19,30 +19,34 @@ internal class OriginalEvidence {
         }
 
         internal func CopyFile(source string, target string) {
-            let descriptor = EvidenceOpen(source, 131072 | 2048)
+            try {
+                let descriptor = EvidenceOpen(source, 131072 | 2048)
 
-            if descriptor < 0 {
-                throw Exception("Cannot safely capture original evidence: " + source)
-            }
-
-            using let handle = SafeFileHandle(IntPtr(descriptor), true)
-            using let input = FileStream(handle, FileAccess.Read)
-
-            if !input.CanSeek {
-                throw Exception("Original evidence must be a regular file: " + source)
-            }
-
-            using let output = FileStream(
-                target,
-                FileStreamOptions{
-                    Mode: FileMode.CreateNew,
-                    Access: FileAccess.Write,
-                    Share: FileShare.None,
-                    UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+                if descriptor < 0 {
+                    throw CliFailure("command_failed", "Cannot safely capture original evidence: " + source)
                 }
-            )
 
-            input.CopyTo(output)
+                using let handle = SafeFileHandle(IntPtr(descriptor), true)
+                using let input = FileStream(handle, FileAccess.Read)
+
+                if !input.CanSeek {
+                    throw CliFailure("invalid_state", "Original evidence must be a regular file: " + source)
+                }
+
+                using let output = FileStream(
+                    target,
+                    FileStreamOptions{
+                        Mode: FileMode.CreateNew,
+                        Access: FileAccess.Write,
+                        Share: FileShare.None,
+                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+                    }
+                )
+
+                input.CopyTo(output)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            }
         }
 
         private func Inventory(directory string) Dictionary[string, Object?] {
@@ -50,7 +54,7 @@ internal class OriginalEvidence {
 
             for path in Directory.EnumerateFileSystemEntries(directory) {
                 if FileInfo(path).LinkTarget != nil {
-                    throw Exception("Original archive contains a link")
+                    throw CliFailure("invalid_state", "Original archive contains a link")
                 }
 
                 if Directory.Exists(path) {
@@ -66,20 +70,27 @@ internal class OriginalEvidence {
         }
 
         internal func VerificationArtifacts(directory string, target string) {
-            LocalPaths.DirectoryPath(directory)
+            try {
+                LocalPaths.DirectoryPath(directory)
 
-            for evidence in Directory.EnumerateFileSystemEntries(directory, "verification-*") {
-                if FileInfo(evidence).LinkTarget != nil || !Directory.Exists(evidence) {
-                    throw Exception("Original verification evidence must be real directories without links")
+                for evidence in Directory.EnumerateFileSystemEntries(directory, "verification-*") {
+                    if FileInfo(evidence).LinkTarget != nil || !Directory.Exists(evidence) {
+                        throw CliFailure(
+                            "invalid_state",
+                            "Original verification evidence must be real directories without links"
+                        )
+                    }
+
+                    let destination = Path.Combine(target, Path.GetFileName(evidence))
+
+                    Directory.CreateDirectory(destination)
+
+                    for file in Directory.EnumerateFileSystemEntries(evidence) {
+                        CopyFile(file, Path.Combine(destination, Path.GetFileName(file)))
+                    }
                 }
-
-                let destination = Path.Combine(target, Path.GetFileName(evidence))
-
-                Directory.CreateDirectory(destination)
-
-                for file in Directory.EnumerateFileSystemEntries(evidence) {
-                    CopyFile(file, Path.Combine(destination, Path.GetFileName(file)))
-                }
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
             }
         }
 
@@ -102,62 +113,75 @@ internal class OriginalEvidence {
                         root + "/",
                         StringComparison.Ordinal
                     ) {
-                        throw Exception(failure)
+                        throw CliFailure("invalid_state", failure)
                     }
 
                     LocalPaths.DirectoryPath(Path.GetDirectoryName(path) ?? root)
 
                     if FileInfo(path).LinkTarget != nil || !File.Exists(path) {
-                        throw Exception(failure)
+                        throw CliFailure("invalid_state", failure)
                     }
                 }
             }
         }
 
         internal func Seal(directory string) {
-            VerificationReferences(directory, J.Get(Data.Load(directory).Element(), "verification"))
+            try {
+                VerificationReferences(directory, J.Get(Data.Load(directory).Element(), "verification"))
 
-            let checks = Path.Combine(directory, "verification.json")
+                let checks = Path.Combine(directory, "verification.json")
 
-            if File.Exists(checks) {
-                VerificationReferences(directory, J.Parse(File.ReadAllText(checks)))
+                if File.Exists(checks) {
+                    VerificationReferences(directory, J.Parse(File.ReadAllText(checks)))
+                }
+
+                let inventory = Inventory(directory)
+                let manifest = RequestData.Canonical(J.Parse(J.Write(inventory)))
+
+                File.WriteAllText(Path.Combine(directory, "manifest.json"), manifest + "\n")
+
+                let seal = Data()
+                seal.Fields["manifest_sha256"] = Data.Hash(manifest)
+
+                seal.Write(Path.Combine(directory, "seal.json"))
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
             }
-
-            let inventory = Inventory(directory)
-            let manifest = RequestData.Canonical(J.Parse(J.Write(inventory)))
-
-            File.WriteAllText(Path.Combine(directory, "manifest.json"), manifest + "\n")
-
-            let seal = Data()
-            seal.Fields["manifest_sha256"] = Data.Hash(manifest)
-
-            seal.Write(Path.Combine(directory, "seal.json"))
         }
 
         internal func Load(directory string, run Data? = nil) Data {
-            let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
-            let inventory = Inventory(archive)
-            let manifest = File.ReadAllText(Path.Combine(archive, "manifest.json")).TrimEnd('\n')
-            let seal = Data.Read(Path.Combine(archive, "seal.json"))
+            try {
+                let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
+                let inventory = Inventory(archive)
+                let manifest = File.ReadAllText(Path.Combine(archive, "manifest.json")).TrimEnd('\n')
+                let seal = Data.Read(Path.Combine(archive, "seal.json"))
 
-            inventory.Remove("manifest.json")
-            inventory.Remove("seal.json")
+                inventory.Remove("manifest.json")
+                inventory.Remove("seal.json")
 
-            if Data.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
-                J.Parse(J.Write(inventory))
-            ) != manifest {
-                throw Exception(
-                    "Original evidence archive changed or is incomplete; no silent reconstruction is allowed"
-                )
+                if Data.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
+                    J.Parse(J.Write(inventory))
+                ) != manifest {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Original evidence archive changed or is incomplete; no silent reconstruction is allowed"
+                    )
+                }
+
+                let original = Data.Load(archive)
+
+                if run != nil {
+                    Authority(original, run)
+                }
+
+                return original
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
-
-            let original = Data.Load(archive)
-
-            if run != nil {
-                Authority(original, run)
-            }
-
-            return original
         }
 
         private func Authority(original Data, run Data) {
@@ -193,45 +217,52 @@ internal class OriginalEvidence {
             } {
                 if key == "repo" || key == "head_repo" {
                     if !RepositoryIdentity.SameRepo(original.Text(key), run.Text(key)) {
-                        throw Exception("Saved original authority changed: " + key)
+                        throw CliFailure("stale_approval", "Saved original authority changed: " + key)
                     }
                 } else if !RequestData.Same(J.Get(original.Element(), key), J.Get(run.Element(), key)) {
-                    throw Exception("Saved original authority or execution attribution changed: " + key)
+                    throw CliFailure(
+                        "stale_approval",
+                        "Saved original authority or execution attribution changed: " + key
+                    )
                 }
             }
         }
 
         internal func Amended(directory string, run Data, amendment Data? = nil) Data {
-            let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
-            let history = J.Items(J.Get(run.Element(), "amendments"))
-            var first = amendment
+            try {
+                let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
+                let history = J.Items(J.Get(run.Element(), "amendments"))
+                var first = amendment
 
-            if history.Count > 0 {
-                let location = LocalPaths.DirectoryPath(
-                    Path.Combine(directory, "amendments", RepositoryIdentity.CommitSha(J.Text(history[0], "head")))
-                )
+                if history.Count > 0 {
+                    let location = LocalPaths.DirectoryPath(
+                        Path.Combine(directory, "amendments", RepositoryIdentity.CommitSha(J.Text(history[0], "head")))
+                    )
 
-                if FileInfo(Path.Combine(location, "run.json")).LinkTarget != nil {
-                    throw Exception("Saved original amendment must not be a link")
+                    if FileInfo(Path.Combine(location, "run.json")).LinkTarget != nil {
+                        throw CliFailure("invalid_state", "Saved original amendment must not be a link")
+                    }
+
+                    first = Data.Load(location)
+
+                    if first.Text("id") != J.Text(history[0], "id") {
+                        throw CliFailure("invalid_state", "Saved first amendment differs from contribution history")
+                    }
                 }
 
-                first = Data.Load(location)
+                let original = Load(directory, run)
+                let digest = Data.Read(Path.Combine(archive, "seal.json")).Text("manifest_sha256")
 
-                if first.Text("id") != J.Text(history[0], "id") {
-                    throw Exception("Saved first amendment differs from contribution history")
+                for saved in[]Data? {first, amendment} {
+                    if saved != nil && saved.Text("original_evidence_sha256") != digest {
+                        throw CliFailure("invalid_state", "Saved original evidence seal changed")
+                    }
                 }
+
+                return original
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
-
-            let original = Load(directory, run)
-            let digest = Data.Read(Path.Combine(archive, "seal.json")).Text("manifest_sha256")
-
-            for saved in[]Data? {first, amendment} {
-                if saved != nil && saved.Text("original_evidence_sha256") != digest {
-                    throw Exception("Saved original evidence seal changed")
-                }
-            }
-
-            return original
         }
     }
 }

@@ -329,7 +329,9 @@ internal class CheckGates {
             test.Restore()
             flow.State["check_runs"] = Check.Map("total_count", 1, "check_runs", JsonArray())
             flow.Save()
-            Gate(Data(Read(test, 1)), "checks", "unavailable")
+            let incomplete = Read(test, 1)
+            Check.Envelope(incomplete, "checks", "error", "command_failed")
+            Gate(Data(incomplete), "checks", "unavailable")
             test.Restore()
             flow.State["check_runs"] = Check.Map(
                 "total_count",

@@ -32,7 +32,10 @@ internal class Publication {
                 )
 
                 if response.ValueKind != JsonValueKind.Array {
-                    throw Exception("interrupted_publication: matching PR history is invalid; refusing publication")
+                    throw CliFailure(
+                        "invalid_state",
+                        "interrupted_publication: matching PR history is invalid; refusing publication"
+                    )
                 }
 
                 let rows = J.Items(response)
@@ -43,7 +46,10 @@ internal class Publication {
                 }
             }
 
-            throw Exception("interrupted_publication: matching PR history is incomplete; refusing publication")
+            throw CliFailure(
+                "invalid_state",
+                "interrupted_publication: matching PR history is incomplete; refusing publication"
+            )
         }
 
         internal func Match(run Data, pull JsonElement, expectedReceipt JsonElement) {
@@ -53,7 +59,7 @@ internal class Publication {
             let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
 
             if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let comparable = Dictionary[string, Object?]()
@@ -64,15 +70,16 @@ internal class Publication {
 
             if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
                 body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
 
             if J.Text(head, "sha") != run.Text("commit") || J.Text(head, "ref") != run.Text("branch") ||
-                !RepositoryIdentity.SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
-                throw Exception(failure)
+                !RepositoryIdentity
+                .SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
+                throw CliFailure("invalid_state", failure)
             }
 
             let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
@@ -85,7 +92,7 @@ internal class Publication {
                 J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) ||
                 J.Number(pull, "number") < 1 {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
         }
 
@@ -93,7 +100,7 @@ internal class Publication {
             let pulls = Pulls(run)
 
             if pulls.Count > 1 {
-                throw Exception("interrupted_publication: ambiguous physical PRs; intent preserved")
+                throw CliFailure("invalid_state", "interrupted_publication: ambiguous physical PRs; intent preserved")
             }
 
             if pulls.Count == 0 {

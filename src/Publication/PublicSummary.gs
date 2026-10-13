@@ -24,7 +24,7 @@ internal class PublicSummary {
             RequestData.Keys(value, "head,changes,verification,limitations")
 
             if head != "" && J.Text(value, "head") != head {
-                throw Exception("Set head in the summary to " + head + ".")
+                throw CliFailure("invalid_state", "Set head in the summary to " + head + ".")
             }
 
             if J.Get(value, "head").ValueKind != JsonValueKind.Undefined {
@@ -36,7 +36,10 @@ internal class PublicSummary {
 
                 if list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > (key == "limitations" ? 4: 8) ||
                     (key == "changes" && list.GetArrayLength() == 0) {
-                    throw Exception("Public summary needs bounded changes, verification and limitations lists")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Public summary needs bounded changes, verification and limitations lists"
+                    )
                 }
 
                 var index int32
@@ -80,57 +83,68 @@ internal class PublicSummary {
                 text,
                 "(?i)(gh[pousr]_|github_pat_|sk-|secret|password)"
             ) {
-                throw Exception("Tool declaration contains an invalid public identifier")
+                throw CliFailure("invalid_state", "Tool declaration contains an invalid public identifier")
             }
 
             return text
         }
 
         internal func FileSummary(path string, head string) JsonElement {
-            if path == "" {
-                return JsonElement{}
+            try {
+                if path == "" {
+                    return JsonElement{}
+                }
+
+                if FileInfo(path).LinkTarget != nil {
+                    throw CliFailure("invalid_state", "Public summary must not be a symbolic link")
+                }
+
+                let size = FileInfo(path).Length
+
+                if size < 1 || size > 4096 {
+                    throw CliFailure("invalid_state", "Public summary must contain 1 to 4096 bytes")
+                }
+
+                let value = RequestData.FileData(path, 4096)
+
+                Validate(value, head)
+
+                return value
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
-
-            if FileInfo(path).LinkTarget != nil {
-                throw Exception("Public summary must not be a symbolic link")
-            }
-
-            let size = FileInfo(path).Length
-
-            if size < 1 || size > 4096 {
-                throw Exception("Public summary must contain 1 to 4096 bytes")
-            }
-
-            let value = RequestData.FileData(path, 4096)
-
-            Validate(value, head)
-
-            return value
         }
 
         internal func Capture(directory string, checkout string, run Data) {
-            let path = Path.Combine(checkout, Artifact)
+            try {
+                let path = Path.Combine(checkout, Artifact)
 
-            if !File.Exists(path) && FileInfo(path).LinkTarget == nil {
-                return
+                if !File.Exists(path) && FileInfo(path).LinkTarget == nil {
+                    return
+                }
+
+                if Commands.Git(checkout, "ls-files", "--", Artifact) != "" {
+                    throw CliFailure("invalid_state", "Public summary artifact conflicts with a repository-owned file")
+                }
+
+                let summary = FileSummary(path, "")
+
+                if J.Get(summary, "head").ValueKind != JsonValueKind.Undefined {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Managed public summary must omit head; Tokate binds the final patch"
+                    )
+                }
+
+                run.Fields["public_summary"] = summary
+                run.Fields.Remove("summary_patch_sha256")
+
+                File.Delete(path)
+
+                run.Save(directory)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
-
-            if Commands.Git(checkout, "ls-files", "--", Artifact) != "" {
-                throw Exception("Public summary artifact conflicts with a repository-owned file")
-            }
-
-            let summary = FileSummary(path, "")
-
-            if J.Get(summary, "head").ValueKind != JsonValueKind.Undefined {
-                throw Exception("Managed public summary must omit head; Tokate binds the final patch")
-            }
-
-            run.Fields["public_summary"] = summary
-            run.Fields.Remove("summary_patch_sha256")
-
-            File.Delete(path)
-
-            run.Save(directory)
         }
 
         internal func Bind(run Data, patch string) {
