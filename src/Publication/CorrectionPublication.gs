@@ -147,7 +147,11 @@ internal class CorrectionPublication {
             let pinned = J.Parse(File.ReadAllText(Path.Combine(directory, "original-evidence", "approval.json")))
 
             for key in[]string{"approval", "policy", "template"} {
-                if !RequestData.Same(J.Get(record, key), J.Get(pinned, key)) {
+                let previous = J.Get(pinned, key)
+                let current = J.Get(record, key)
+                let same = key == "policy" ? Policy(J.Write(previous)).Digest == Policy(J.Write(current)).Digest:
+                RequestData.Same(previous, current)
+                if !same {
                     throw CliFailure("stale_approval", "Original pinned approval, policy or template changed")
                 }
             }
@@ -289,7 +293,8 @@ internal class CorrectionPublication {
                         run.Text("repo"),
                         run.Number("issue"),
                         J.Get(record, "approval"),
-                        J.Get(run.Element(), "donor_id")
+                        J.Get(run.Element(), "donor_id"),
+                        ApprovalBase.Check(run.Text("repo"), J.Get(record, "approval"), true).Item1.Value
                     )
 
                     Publication.Push(Path.Combine(directory, "checkout"), run, correction.Text("commit"))
@@ -332,7 +337,8 @@ internal class CorrectionPublication {
                     run.Text("repo"),
                     run.Number("issue"),
                     J.Get(record, "approval"),
-                    J.Get(run.Element(), "donor_id")
+                    J.Get(run.Element(), "donor_id"),
+                    ApprovalBase.Check(run.Text("repo"), J.Get(record, "approval"), true).Item1.Value
                 )
 
                 SetStage(directory, correction, "request_pending")

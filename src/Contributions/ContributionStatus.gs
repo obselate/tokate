@@ -174,7 +174,7 @@ internal class ContributionStatus {
 
                 let actor = RepositoryIdentity.PositiveId(J.Get(Viewer, "id"))
                 let donor = RepositoryIdentity.Login(J.Text(Viewer, "login"))
-                let mode = AccessState.Mode(approval)
+                let mode = AccessState.Mode(policy)
                 let eligible = Access?.Allows(actor, mode, issue) == true
                 row["eligibility_status"] = eligible ? "eligible": "access_waiting"
                 row["eligibility_scope"] = "viewer"
@@ -298,7 +298,7 @@ internal class ContributionStatus {
             }
         )
 
-        ActionFor(repo, row, drafts, state)
+        ActionFor(repo, row, drafts, state, policy)
 
         return row
     }
@@ -642,9 +642,22 @@ internal class ContributionStatus {
         }
     }
 
-    private func ActionFor(repo string, row Dictionary[string, Object?], drafts List[Object], state CoordinationState) {
+    private func ActionFor(
+        repo string,
+        row Dictionary[string, Object?],
+        drafts List[Object],
+        state CoordinationState,
+        policy JsonElement
+    ) {
         var stage = "approval_waiting"
-        var next = Next("owner", "Approve again under the current policy; the target selection must be supplied.")
+        var next = Next(
+            "owner",
+            Text(row, "approval_reason") == "" ? "Approve the issue under the current task fields.": Text(
+                row,
+                "approval_reason"
+            ),
+            []string{"tokate", "approve", repo + "#" + Text(row, "issue")}
+        )
 
         if Text(row, "approval_status") == "current" {
             if Text(row, "eligibility_status") == "eligible" ||
@@ -690,7 +703,7 @@ internal class ContributionStatus {
                     next = Next(
                         "donor",
                         "Request owner review for the required donor access.",
-                        AccessState.Mode(approval) == "trusted" ? []string{
+                        AccessState.Mode(policy) == "trusted" ? []string{
                             "tokate",
                             "access",
                             "request",

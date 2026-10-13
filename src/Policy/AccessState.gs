@@ -87,8 +87,8 @@ internal class AccessState {
     }
 
     shared {
-        internal func Mode(approval JsonElement) string {
-            let mode = J.Text(approval, "eligibility")
+        internal func Mode(policy JsonElement) string {
+            let mode = J.Text(policy, "eligibility")
             return mode == "manual" ? "trusted": mode
         }
 
@@ -165,7 +165,7 @@ internal class AccessState {
             return result
         }
 
-        internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement) {
+        internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement, policy JsonElement) {
             Task(approval)
 
             PublicOutput.ResultData = map[string, Object?]{
@@ -186,7 +186,7 @@ internal class AccessState {
                 }
 
                 let access = Load(repo, repoId)
-                let mode = Mode(approval)
+                let mode = Mode(policy)
                 let allowed = access.Allows(id, mode, issue)
 
                 PublicOutput.ResultData = map[string, Object?]{

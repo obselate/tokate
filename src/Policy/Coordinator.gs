@@ -216,7 +216,7 @@ internal class Coordinator {
                 RepositoryAccess.ValidateFork(repo, metadata, actor)
 
                 if pull.ValueKind == JsonValueKind.Undefined {
-                    AccessState.Check(repo, number, J.Get(record, "approval"), actor)
+                    AccessState.Check(repo, number, J.Get(record, "approval"), actor, J.Get(record, "policy"))
                     pull = GitHub.Api(
                         "repos/" + repo + "/pulls",
                         map[string, Object?]{
@@ -290,7 +290,7 @@ internal class Coordinator {
             if (action == "claim" || LeaseLifecycle.Transition(action)) && action != "release" {
                 live.Check(repo, number, donor, actor)
             } else if action != "release" {
-                AccessState.Check(repo, number, J.Get(live.Value(), "approval"), actor)
+                AccessState.Check(repo, number, J.Get(live.Value(), "approval"), actor, J.Get(record, "policy"))
             }
 
             try {
@@ -518,7 +518,7 @@ internal class Coordinator {
                     throw Exception("PR body changed before amendment write")
                 }
 
-                AccessState.Check(repo, number, J.Get(record, "approval"), actor)
+                AccessState.Check(repo, number, J.Get(record, "approval"), actor, J.Get(record, "policy"))
                 let changes = map[string, Object?]{"body": updated}
                 let title = J.Text(J.Get(record, "issue"), "title")
                 if RequestData.Incomplete(old) && J.Text(fresh, "title") == "Incomplete: " + title {

@@ -351,7 +351,83 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 let path = Path.Combine(run, "run.json")
                 let saved = File.ReadAllText(path)
                 let original = test.State()
-                test.Flow.SetModelPolicy(mode, mode == "unrestricted" ? "omit": "")
+                if mode == "whitelist" {
+                    using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
+                    let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
+                    for field in[]string{
+                        "verification",
+                        "protected_paths",
+                        "required_checks",
+                        "max_seconds",
+                        "allow_unlimited",
+                        "reservation_seconds",
+                        "legacy_digest"
+                    } {
+                        baseline.Restore()
+                        if field == "legacy_digest" {
+                            let state = test.State()["state"] ?? throw Exception("Missing state")
+                            let approval = state["approval"] ?? throw Exception("Missing approval")
+                            approval["policy_hash"] = JsonValue.Create(Check.Hash(policyPath))
+                            state["approval_id"] = JsonValue.Create(Check.FixtureDigest(approval))
+                            test.RewriteState(state)
+                        } else {
+                            let policy = Check.Json(File.ReadAllText(policyPath))
+                            policy[field] = Check.Json(
+                                switch field {
+                                    case "verification": "[[\"bash\",\"scripts/verify.sh\"]]"
+                                    case "protected_paths": "[\"owner-files/\"]"
+                                    case "required_checks": "[\"new-check\"]"
+                                    case "max_seconds": "3601"
+                                    case "allow_unlimited": "true"
+                                    default: "300"
+                                }
+                            )
+                            File.WriteAllText(policyPath, policy.ToJsonString())
+                            test.Flow.Commit("Owner changes task field " + field)
+                        }
+                        let status = Check.Envelope(
+                            test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                            "status",
+                            "ok"
+                        )
+                        let work = status["data"]?["work"]?[0] ?? throw Exception("Missing task status")
+                        Check.That(
+                            Check.Text(work["approval_status"]) == "stale",
+                            "Task field change retained approval"
+                        )
+                        Check.Contains(
+                            Check.Text(work["approval_reason"]),
+                            "Approval no longer matches current task fields."
+                        )
+                        Check.That(
+                            work["next"]?["command"]?.ToJsonString() == "[\"tokate\",\"approve\",\"owner/project#1\"]",
+                            "Stale approval status omitted the owner command"
+                        )
+                        Check.Contains(
+                            test.Flow.Call([]string{"status", "owner/project#1", "--plain"}).Output,
+                            "tokate approve owner/project#1"
+                        )
+                        Check.Contains(
+                            test.Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1).Error,
+                            field == "legacy_digest" ? "Saved run has stale coordination authority": "Approval no longer matches current task fields."
+                        )
+                        Check.That(File.ReadAllText(path) == saved, "Stale task fields rewrote the saved run")
+                        test.Flow.NoInference()
+                        test.Flow.NoPr()
+                    }
+                    baseline.Restore()
+                    test.Flow.SetModelPolicy("whitelist")
+                    let equivalent = Check.Envelope(
+                        test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                        "status",
+                        "ok"
+                    )
+                    Check.That(
+                        Check.Text(equivalent["data"]?["work"]?[0]?["approval_status"]) == "current",
+                        "Explicit default model mode changed the task digest"
+                    )
+                }
+                test.Flow.SetModelPolicy(mode, mode == "unrestricted" ? "omit": "{\"gpt-6.1-sol\":[\"high\"]}")
                 Check.Contains(
                     test.Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1).Error,
                     "Repository policy or template changed. The owner must approve again."
@@ -1360,6 +1436,24 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         let run = Prepare("tokate")
         Flow.Call([]string{"work", "--run", run})
+        using let baseline = FixtureSnapshot(Flow.Temp.Root)
+        let comment = Comment
+        Flow.Call([]string{"recover", "--run", run})
+        let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
+        let policy = Check.Json(File.ReadAllText(policyPath))
+        policy["close_message"] = JsonValue.Create("Updated owner message")
+        policy["eligibility"] = JsonValue.Create("open")
+        File.WriteAllText(policyPath, policy.ToJsonString())
+        Flow.Commit("Owner changes descriptive text and eligibility after evidence capture")
+        Flow.Call([]string{"access", "untrust", "donor", "owner/project"}, owner: true)
+        Flow.Call([]string{"recover", "--run", run})
+        let corrected = CorrectionChecks.Correct(Flow, run)
+        CorrectionChecks.Recover(Flow, run, corrected, tools: Tools)
+        Flow.Call([]string{"submit", "--run", run})
+        Coordinate(Event(Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))))
+        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        baseline.Restore()
+        Comment = comment
         Flow.Call([]string{"submit", "--run", run})
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         Flow.CommitIdentity(

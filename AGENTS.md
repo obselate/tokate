@@ -33,9 +33,15 @@ trusted donors and donors granted the issue may claim. With no trusted donors,
 grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
 may claim. Version 2 `manual` is read as `trusted`. Version 3 has no `manual` mode.
 
-A change to the policy or template revokes existing approvals. Re-approve open tasks
-after the change is merged. After a coordinator pin change, confirm that Actions
-permits `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
+A change to task fields or the PR template revokes existing approvals. Task fields
+cover verification, required checks, protected paths, tool models, runtime and
+unlimited-coding limits, and reservation duration. Eligibility, formatting and
+descriptive edits keep approvals valid. Current eligibility still controls access.
+Init lists affected issues and approval commands. Re-approve them after merge.
+Old whole-text approvals become stale once after the version 3 release upgrade.
+Status names the owner command when task fields no longer match. After a coordinator
+pin change, confirm that Actions permits
+`obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
 Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
 open PRs from them. Deleting `tokate/access` removes all trust and grants.

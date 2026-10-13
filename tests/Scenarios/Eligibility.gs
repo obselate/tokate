@@ -126,17 +126,53 @@ internal class EligibilityChecks {
                 let run = test.Prepare()
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
-                    Check.Text(saved["policy_hash"]) == Check.Hash(
-                        Path.Combine(test.Flow.Upstream, ".github/tokate.json")
-                    ),
-                    "Saved run changed the original policy hash"
+                    Check.Text(saved["policy_hash"]) == Check.Text(approval["policy_hash"]) && Check.Text(
+                        saved["policy_hash"]
+                    ) != Check.Hash(Path.Combine(test.Flow.Upstream, ".github/tokate.json")),
+                    "Saved run did not retain the task-field approval digest"
                 )
                 let commit = test.Candidate(request)
+                let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
+                let updated = Check.Json(File.ReadAllText(policyPath))
+                updated["eligibility"] = JsonValue.Create("open")
+                updated["pr_text"] = JsonValue.Create("Owner notes")
+                updated["close_message"] = JsonValue.Create("Ask the owner")
+                updated["target_branch"] = JsonValue.Create("release")
+                let keys = List[string]()
+                for field in updated.AsObject() {
+                    keys.Add(field.Key)
+                }
+                keys.Reverse()
+                let reordered = JsonObject()
+                for key in keys {
+                    reordered[key] = updated[key]?.DeepClone()
+                }
+                File.WriteAllText(policyPath, "\n" + reordered.ToJsonString() + "\n")
+                test.Flow.Commit("Change eligibility, descriptive fields and formatting during a claim")
+                let current = Check.Envelope(
+                    test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                    "status",
+                    "ok"
+                )
+                Check.That(
+                    Check.Text(current["data"]?["work"]?[0]?["approval_status"]) == "current" && Check.Text(
+                        current["data"]?["work"]?[0]?["eligibility"]?["mode"]
+                    ) == "open",
+                    "Nontask edits revoked approval or retained the old access mode"
+                )
                 test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
                 test.Flow.Call([]string{"submit", "--run", run})
                 let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
                 test.Coordinate(test.Event(publish))
                 test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                if version == 2 {
+                    Policy(test, "open", 3)
+                    test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    Check.That(
+                        Check.Text(test.State()["state"]?["approval_id"]) == Check.Text(state["approval_id"]),
+                        "Version conversion replaced existing approval"
+                    )
+                }
                 test.Flow.Reload()
                 test.Flow.State["fork_owner_id"] = JsonValue.Create(124)
                 test.Flow.Save()
@@ -208,6 +244,17 @@ internal class EligibilityChecks {
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/heads/tokate/access", blob)
                 } else if fault == "policy" {
                     Policy(test, "trusted")
+                    let status = Check.Envelope(
+                        test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                        "status",
+                        "ok"
+                    )
+                    Check.That(
+                        Check.Text(status["data"]?["work"]?[0]?["approval_status"]) == "current" && Check.Text(
+                            status["data"]?["work"]?[0]?["eligibility_status"]
+                        ) == "access_waiting",
+                        "Eligibility restriction revoked approval instead of checking current access"
+                    )
                 } else {
                     test.Flow.Reload()
                     if fault == "unavailable" {
@@ -738,7 +785,16 @@ internal class EligibilityChecks {
             policy["close_message"] = JsonValue.Create("Changed admission message")
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Change optional text")
-            test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
+            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            File.WriteAllText(
+                Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"),
+                TestResources.Template("tokate-pr.md") + "Changed template\n"
+            )
+            test.Flow.Commit("Change PR template")
+            Check.Contains(
+                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true).Error,
+                "PR template changed."
+            )
             test.Flow.NoInference()
         }
 

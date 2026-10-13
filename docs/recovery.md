@@ -177,7 +177,7 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the linked failure and re-process the request after fixing its cause. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
 | `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the pinned shared workflow in Actions settings, then re-process the request. |
 | `Approval revoked or task changed` | Owner: `tokate approve 42` |
-| `Repository policy or template changed. The owner must approve again.` | Owner: `tokate approve 42` |
+| `Repository policy or template changed. The owner must approve again.` followed by `Approval no longer matches current task fields.` or `PR template changed.` and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
 | `Selected model is donor-reported unavailable. No retry or fallback.` | `tokate select OWNER/REPO` |
 | `Model is donor-reported unavailable.` | `tokate select OWNER/REPO` |
@@ -185,6 +185,11 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status 42-1 --json` |
 
 For a pending claim, inspect the failed workflow before resuming the saved command. A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, resume with the saved run.
+
+Formatting, eligibility and descriptive policy edits keep approvals valid. Current
+eligibility still controls donor access. Task-field or PR-template changes need
+fresh owner approval. After the version 3 release upgrade, approvals made with the
+old whole-text digest become stale once. Use the owner command shown by status.
 
 Model and effort permissions apply to the exact harness/provider pair. Use `tokate policy OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
 

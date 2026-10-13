@@ -702,7 +702,8 @@ internal class Submission {
                     run.Text("repo"),
                     run.Number("issue"),
                     J.Get(record, "approval"),
-                    J.Get(run.Element(), "donor_id")
+                    J.Get(run.Element(), "donor_id"),
+                    J.Get(record, "policy")
                 )
 
                 Publication.Push(checkout, run, run.Text("commit"))
