@@ -47,7 +47,11 @@ internal class ApprovalBase {
             let authority = RepositoryIdentity.Branch(J.Text(approval, "authority_branch"))
 
             if branch != authority {
-                throw CliFailure("stale_approval", "Repository authority branch changed. The owner must approve again.")
+                throw CoordinationState.ApprovalFailure(
+                    repo,
+                    J.Number(approval, "issue"),
+                    "Repository authority branch changed."
+                )
             }
 
             let current = GitHub.Branch(repo, branch)
@@ -56,15 +60,17 @@ internal class ApprovalBase {
 
             let taskChanged = policy.Digest != J.Text(approval, "policy_hash")
             if taskChanged || Data.Hash(template) != J.Text(approval, "template_hash") {
-                let issue = repo + "#" + J.Number(approval, "issue").ToString()
-                let reason = taskChanged ? "Approval no longer matches current task fields.": "PR template changed."
-                throw CliFailure(
-                    "stale_approval",
-                    "Repository policy or template changed. The owner must approve again. " +
-                        reason +
-                        " Run: tokate approve " +
-                        issue,
-                    []string{"tokate", "approve", issue}
+                var reason = taskChanged ? "Approval no longer matches current task fields.": ""
+                if taskChanged {
+                    reason += ChangedFields(repo, approval, policy)
+                }
+                if Data.Hash(template) != J.Text(approval, "template_hash") {
+                    reason += (reason == "" ? "": " ") + "PR template changed."
+                }
+                throw CoordinationState.ApprovalFailure(
+                    repo,
+                    J.Number(approval, "issue"),
+                    "Repository policy or template changed. The owner must approve again. " + reason
                 )
             }
 
@@ -83,6 +89,27 @@ internal class ApprovalBase {
             Decree.CheckCurrent(repo, target, approval)
 
             return ValueTuple[Policy, string](policy, template)
+        }
+
+        private func ChangedFields(repo string, approval JsonElement, current Policy) string {
+            try {
+                let previous = Policy.Load(repo, J.Text(approval, "base"))
+                if previous.Digest == J.Text(approval, "policy_hash") {
+                    let changed = List[string]()
+                    for field in current.TaskFields.EnumerateObject() {
+                        if RequestData.Canonical(field.Value) != RequestData.Canonical(
+                            J.Get(previous.TaskFields, field.Name)
+                        ) {
+                            changed.Add(field.Name)
+                        }
+                    }
+                    return " Changed task fields: " + String.Join(", ", changed) + "."
+                }
+            } catch (error ApiDeadlineException) {
+                throw error
+            } catch (error Exception) { }
+
+            return " Previous task fields are unavailable or use a legacy approval digest."
         }
     }
 }

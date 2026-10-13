@@ -102,12 +102,21 @@ internal class CoordinationState {
         let state = Value()
         let approval = J.Get(state, "approval")
         let task = GitHub.Issue(repo, issue)
+        if approval.ValueKind == JsonValueKind.Undefined || approval.ValueKind == JsonValueKind.Null {
+            throw ApprovalFailure(repo, issue, "Issue is not approved.")
+        }
         AccessState.Task(approval)
 
-        if J.Bool(state, "revoked") || !GitHub.HasLabel(task) || J.Text(approval, "issue_hash") != GitHub.Fingerprint(
-            task
-        ) {
-            throw CliFailure("stale_approval", "Approval revoked or task changed")
+        if J.Bool(state, "revoked") || !GitHub.HasLabel(task) {
+            throw ApprovalFailure(
+                repo,
+                issue,
+                "Approval revoked or task changed. Issue approval is revoked or its approval label is missing."
+            )
+        }
+
+        if J.Text(approval, "issue_hash") != GitHub.Fingerprint(task) {
+            throw ApprovalFailure(repo, issue, "Approval revoked or task changed. Issue text changed since approval.")
         }
 
         let configuration = ApprovalBase.Check(repo, approval, quiet)
@@ -128,6 +137,15 @@ internal class CoordinationState {
     }
 
     shared {
+        internal func ApprovalFailure(repo string, issue int32, reason string) CliFailure {
+            let task = repo + "#" + issue.ToString()
+            return CliFailure(
+                "stale_approval",
+                reason + " The owner must run: tokate approve " + task,
+                []string{"tokate", "approve", task}
+            )
+        }
+
         internal func Ref(issue int32) string -> "tokate/contributions/" + issue.ToString()
 
         internal func Unix(value JsonElement, key string) int64 {
@@ -141,9 +159,12 @@ internal class CoordinationState {
 
         internal func Load(repo string, issue int32, missing bool = false) CoordinationState {
             let result = CoordinationState()
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + Ref(issue), missing: missing)
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + Ref(issue), missing: true)
 
             if reference.ValueKind == JsonValueKind.Undefined {
+                if !missing {
+                    throw ApprovalFailure(repo, issue, "Issue is not approved. Approval record is missing.")
+                }
                 return result
             }
 

@@ -399,6 +399,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
                             Check.Text(work["approval_reason"]),
                             "Approval no longer matches current task fields."
                         )
+                        Check.Contains(
+                            Check.Text(work["approval_reason"]),
+                            field == "legacy_digest" ? "legacy approval digest": "Changed task fields: " + field + "."
+                        )
                         Check.That(
                             work["next"]?["command"]?.ToJsonString() == "[\"tokate\",\"approve\",\"owner/project#1\"]",
                             "Stale approval status omitted the owner command"

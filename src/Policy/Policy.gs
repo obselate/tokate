@@ -11,6 +11,7 @@ internal class Policy {
     internal var Digest string = ""
     internal var Tools JsonElement
     internal var Eligibility string = ""
+    internal var TaskFields JsonElement
 
     internal init(text string) {
         Value = J.Parse(text)
@@ -203,7 +204,8 @@ internal class Policy {
                 "reservation_seconds"
             )
         }
-        Digest = Data.Hash(RequestData.Canonical(J.Parse(J.Write(task))))
+        TaskFields = J.Parse(J.Write(task))
+        Digest = Data.Hash(RequestData.Canonical(TaskFields))
     }
 
     private func ValidateModels(models JsonElement) {
