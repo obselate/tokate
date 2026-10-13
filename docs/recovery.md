@@ -201,7 +201,17 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | `No saved runs.` | `tokate status OWNER/REPO#42` |
 | `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status 42-1 --json` |
 
-For a pending claim, inspect the failed workflow before resuming the saved command. A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, resume with the saved run.
+For a pending claim, inspect the failed workflow before resuming the saved command. A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then run:
+
+```sh
+tokate recover-request OWNER/REPO#42
+```
+
+This command uses the installed coordinator and the owner's current GitHub login.
+It requires repository write permission and processes the latest unprocessed request
+comment with the same validation as the workflow. Recorded requests cannot be
+recovered. Inspection is limited to 1000 issue comments and fails at that limit.
+Do not repost an identical request. After owner recovery, resume with the saved run.
 
 Formatting, eligibility and descriptive policy edits keep approvals valid. Current
 eligibility still controls donor access. Task-field or PR-template changes need
