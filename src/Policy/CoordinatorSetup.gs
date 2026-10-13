@@ -180,10 +180,52 @@ internal class CoordinatorSetup {
                 )
             }
 
-            RepositoryAccess.RequireOwner(repo)
+            let info = RepositoryAccess.RequireOwner(repo)
             EventPolicy(repo)
 
             let yaml = Resolve()
+            let current = GitHub.FileAt(
+                repo,
+                ".github/workflows/tokate-coordinator.yml",
+                GitHub.Branch(repo, J.Text(info, "default_branch")),
+                missing: true
+            )
+
+            if current != "" {
+                let members = Regex.Matches(
+                    current,
+                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
+                )
+                let pattern = "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+                let pins = Regex.Matches(current, pattern)
+
+                if members.Count != 1 || pins.Count != 1 {
+                    throw Exception("Current coordinator version or shared workflow pin is missing or malformed")
+                }
+
+                let oldVersion = members[0].Groups[1].Value
+                let newVersion = ApplicationInfo.Version()
+                let oldCommit = pins[0].Groups[1].Value
+                let newCommit = Regex.Match(yaml, pattern).Groups[1].Value
+                let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
+                let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + newVersion
+                PublicOutput.ResultData = map[string, Object?]{
+                    "repo": repo,
+                    "output": requested,
+                    "current_version": oldVersion,
+                    "new_version": newVersion,
+                    "current_commit": oldCommit,
+                    "new_commit": newCommit,
+                    "compare_url": compareUrl,
+                    "release_url": releaseUrl
+                }
+                Console.Error.WriteLine(
+                    "Current Tokate version: " + oldVersion + ", shared workflow commit: " + oldCommit
+                )
+                Console.Error.WriteLine("New Tokate version: " + newVersion + ", shared workflow commit: " + newCommit)
+                Console.Error.WriteLine("Compare shared workflows: " + compareUrl)
+                Console.Error.WriteLine("New release: " + releaseUrl)
+            }
 
             OwnerSetup.Preview(output, File.Exists(output) ? File.ReadAllText(output): "", yaml)
 

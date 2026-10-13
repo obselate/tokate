@@ -259,11 +259,11 @@ func Dispatch(options Args) int32 {
         }
 
         case "coordinator-setup" {
-            CoordinatorSetup.Run(options)
             PublicOutput.ResultData = map[string, Object?]{
                 "repo": options.Get("repo"),
                 "output": Path.GetFullPath(options.Need("output"))
             }
+            CoordinatorSetup.Run(options)
         }
 
         case "access" {
