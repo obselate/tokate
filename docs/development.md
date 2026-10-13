@@ -53,7 +53,7 @@ For other distributions, use the [.NET system dependencies](https://learn.micros
 
 ## Verify a change
 
-1. Run the core contribution smoke checks.
+1. Run the PR fast gate.
 
    ```sh
    bash scripts/verify.sh
@@ -73,12 +73,16 @@ For other distributions, use the [.NET system dependencies](https://learn.micros
    bash scripts/verify.sh --full
    ```
 
-| Mode | Checks |
+| Tier | Checks and time |
 | --- | --- |
-| No arguments | Builds, then runs `CrossAccountFlow` and `CanonicalSubmit`. Allow about 2 minutes with a warm build. |
+| PR fast gate, no arguments | Builds, then runs 13 end-to-end and security selectors in parallel. Allow about 2 minutes locally with a warm build. The PR CI target is under 5 minutes. Required PR check: `verify`. |
 | Selector | Builds, then runs the selected checks. No match is an error. |
-| `--full` | Full test suite and native harness proof. |
-| Native harness proof | Deterministic local responses and actual harness versions. Not model quality, account entitlement or allowance. |
+| Nightly and pre-release | Full suite and native harness proofs. CI runs nightly on `main`, on manual runs with `full: true`, and on integration pushes. Allow about 18 minutes in CI. Run `--full` locally before release. |
+| Alpine and Nix | Platform build, packaging and runtime proofs. Run nightly, manually, on `main` and integration pushes, and on PRs that change their platform inputs. Allow about 5 minutes each in CI. These are not required PR checks. |
+
+The fast gate covers `CrossAccountFlow`, `CanonicalSubmit`, `VerificationNetwork`, protected paths, `ReceiptEvidence`, `CoordinatorPermissions`, `LabelApprovalPermissions`, `LeaseFencing`, `PublicationRevocation`, `ClaimRecovery`, correction `ProtectedAndExact`, amendment `ReceiptAuthority`, and continuation `ImportBoundary`.
+
+Harness proofs use deterministic local responses and actual harness versions. They do not measure model quality, account entitlement or allowance. A red nightly blocks merges.
 
 Find selectors in [the test entry point](https://github.com/obselate/tokate/blob/main/tests/Dispatch/Main.gs). CI supports focused selectors and full validation.
 

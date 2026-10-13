@@ -3,6 +3,8 @@ on:
   push:
     branches: [main, 'integration/**']
   pull_request:
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
     inputs:
       full:
@@ -22,7 +24,7 @@ jobs:
   build:
     outputs:
       node: ${{ steps.node.outputs.node-version }}
-      full: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
+      full: ${{ github.event_name == 'schedule' || inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -82,12 +84,12 @@ jobs:
             rockylinux@sha256:305de618a5681ff75b1d608fd22b10f362867dff2f550a4f1d427d21cd7f42b4 \
             /bin/sh -ec 'test "$(getconf GNU_LIBC_VERSION)" = "glibc 2.34"; /app/tokate --version; /app/tokate help --json > /dev/null'
       - name: Package the tested Node runtime with the suite binaries
-        if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
+        if: ${{ github.event_name == 'schedule' || inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
         run: |
           cp "$(command -v node)" artifacts/tests/node
           tar -czf "$RUNNER_TEMP/tokate-binaries.tar.gz" -C artifacts linux-x64/tokate tests/tokate-tests tests/node
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: ${{ inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
+        if: ${{ github.event_name == 'schedule' || inputs.full == true || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/integration/')) }}
         with:
           name: tokate-binaries
           path: ${{ runner.temp }}/tokate-binaries.tar.gz
