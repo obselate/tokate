@@ -63,7 +63,7 @@ internal class LocalPaths {
 
             try {
                 return !Within(CanonicalPath(path), checkout)
-            } catch (error CliFailure) when error.Code == "invalid_state" { }
+            } catch (error IOException) { } catch (error UnauthorizedAccessException) { }
 
             return false
         }
@@ -268,30 +268,24 @@ internal class LocalPaths {
         }
 
         internal func CanonicalPath(path string, depth int32 = 0) string {
-            try {
-                if depth > 40 {
-                    throw ExecutionFailure.Create("invalid_state", "Too many executable path symlinks")
-                }
-
-                let absolute = Path.GetFullPath(path)
-                var result = Path.GetPathRoot(absolute) ?? "/"
-
-                for part in absolute.Substring(result.Length).Split(Path.DirectorySeparatorChar) {
-                    let candidate = Path.Combine(result, part)
-
-                    if let link = File.ResolveLinkTarget(candidate, true) {
-                        result = CanonicalPath(link.FullName, depth + 1)
-                    } else {
-                        result = candidate
-                    }
-                }
-
-                return result
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is ArgumentException {
-                throw ExecutionFailure.From(error, "invalid_state")
+            if depth > 40 {
+                throw ExecutionFailure.Create("invalid_state", "Too many executable path symlinks")
             }
+
+            let absolute = Path.GetFullPath(path)
+            var result = Path.GetPathRoot(absolute) ?? "/"
+
+            for part in absolute.Substring(result.Length).Split(Path.DirectorySeparatorChar) {
+                let candidate = Path.Combine(result, part)
+
+                if let link = File.ResolveLinkTarget(candidate, true) {
+                    result = CanonicalPath(link.FullName, depth + 1)
+                } else {
+                    result = candidate
+                }
+            }
+
+            return result
         }
     }
 }

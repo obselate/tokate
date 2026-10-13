@@ -12,10 +12,9 @@ internal class ExecutionFailure {
                 return failure
             }
 
-            let failure = Create(code, error.Message)
+            let failure = CliFailure(code, error.Message, summary: PublicOutput.Message(code))
             if let result = Commands.InterruptedResult(error) {
                 failure.Data["command_result"] = result
-                failure.Data["command_cause"] = error.InnerException
             }
             return failure
         }

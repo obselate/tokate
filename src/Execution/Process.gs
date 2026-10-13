@@ -240,26 +240,22 @@ internal class Commands {
         }
 
         internal func Capture(path string) FileStream? {
-            try {
-                if path == "" {
-                    return nil
-                }
-
-                LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
-
-                return FileStream(
-                    path,
-                    FileStreamOptions{
-                        Mode: FileMode.CreateNew,
-                        Access: FileAccess.Write,
-                        Share: FileShare.Read,
-                        BufferSize: 1,
-                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
-                    }
-                )
-            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw ExecutionFailure.From(error, "command_failed")
+            if path == "" {
+                return nil
             }
+
+            LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
+
+            return FileStream(
+                path,
+                FileStreamOptions{
+                    Mode: FileMode.CreateNew,
+                    Access: FileAccess.Write,
+                    Share: FileShare.Read,
+                    BufferSize: 1,
+                    UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+                }
+            )
         }
 
         internal func Read(
@@ -372,14 +368,11 @@ internal class Commands {
             var failure Exception? = nil
 
             try {
-                process = Process.Start(info) ?? throw ExecutionFailure.Create(
-                    "command_failed",
-                    "Cannot start " + info.ArgumentList[0]
-                )
-            } catch (error Exception) when error is CliFailure ||
-                error is Win32Exception ||
-                error is InvalidOperationException {
-                failure = ExecutionFailure.From(error)
+                process = Process.Start(info) ?? throw Exception("Cannot start " + info.ArgumentList[0])
+            } catch (error Exception) when error is Win32Exception ||
+                error is InvalidOperationException ||
+                error.GetType() == typeof(Exception) {
+                failure = error
             }
 
             started <- process
@@ -388,7 +381,7 @@ internal class Commands {
                 try {
                     child.WaitForExit()
                 } catch (error Exception) when error is Win32Exception || error is InvalidOperationException {
-                    failure = ExecutionFailure.From(error)
+                    failure = error
                 }
             }
 
@@ -411,8 +404,7 @@ internal class Commands {
             errorPath string = "",
             budget RuntimeBudget? = nil,
             outputLine Action[string]? = nil,
-            errorLine Action[string]? = nil,
-            failureCode string = "command_failed"
+            errorLine Action[string]? = nil
         ) CommandResult {
             let info = ProcessStartInfo(isolated ? LocalPaths.NeedSystemTool("setsid", cwd): "setsid")
             info.ArgumentList.Add("--wait")
@@ -513,7 +505,7 @@ internal class Commands {
             if let signal = cancellation {
                 select {
                     case <- signal {
-                        throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
+                        throw Exception("Command cancelled: " + exe)
                     }
                     default { }
                 }
@@ -540,10 +532,7 @@ internal class Commands {
             let launched = <-started
             if launched == nil {
                 let failure = <-exited
-                if let error = failure {
-                    throw ExecutionFailure.From(error, failureCode)
-                }
-                throw ExecutionFailure.Create(failureCode, "Cannot start " + exe)
+                throw failure ?? Exception("Cannot start " + exe)
             }
 
             using let process = launched
@@ -586,7 +575,7 @@ internal class Commands {
 
                 while !inputDone || !outputDone || !errorDone || !exitDone {
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
+                        throw Exception("Runtime limit reached for " + exe)
                     }
 
                     var failure Exception? = nil
@@ -616,22 +605,22 @@ internal class Commands {
                             throw error
                         }
                         case <- cancelled {
-                            throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
+                            throw Exception("Command cancelled: " + exe)
                         }
                         case <- deadline {
-                            throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
+                            throw Exception("Runtime limit reached for " + exe)
                         }
                     }
 
                     select {
                         case <- cancelled {
-                            throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
+                            throw Exception("Command cancelled: " + exe)
                         }
                         default { }
                     }
 
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
+                        throw Exception("Runtime limit reached for " + exe)
                     }
 
                     if let error = failure {
@@ -640,7 +629,7 @@ internal class Commands {
                 }
 
                 result.Code = process.ExitCode
-            } catch (error Exception) when error is CliFailure ||
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is DecoderFallbackException ||
@@ -691,13 +680,13 @@ internal class Commands {
             if terminal == nil {
                 select {
                     case <- cancelled {
-                        terminal = ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
+                        terminal = Exception("Command cancelled: " + exe)
                     }
                     default { }
                 }
 
                 if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                    terminal = ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
+                    terminal = Exception("Runtime limit reached for " + exe)
                 }
             }
 
@@ -707,14 +696,14 @@ internal class Commands {
                 result.Code = nil
 
                 if !ready {
-                    throw ExecutionFailure.From(error, failureCode)
+                    throw error
                 }
 
                 if error is IOException io && inputFailed {
-                    throw ExecutionFailure.From(CommandInputInterrupted(io, result), failureCode)
+                    throw CommandInputInterrupted(io, result)
                 }
 
-                throw ExecutionFailure.From(CommandInterrupted(error, result), failureCode)
+                throw CommandInterrupted(error, result)
             }
 
             if result.Code != 0 {
@@ -799,11 +788,7 @@ internal class Commands {
 
         internal func GitOutput(result CommandResult) string {
             if result.Code != 0 {
-                throw CliFailure(
-                    "command_failed",
-                    "git failed: " + result.Error + result.Output,
-                    summary: PublicOutput.Message("command_failed")
-                )
+                throw Exception("git failed: " + result.Error + result.Output)
             }
 
             return result.Output.Trim()
@@ -815,18 +800,13 @@ internal class Commands {
                 if result.Code != 0 || result.Truncated || result.ReadFailed || Encoding.UTF8.GetByteCount(
                     result.Output
                 ) > 32 * 1024 * 1024 {
-                    throw CliFailure(
-                        "command_failed",
-                        "Cannot read complete Git path evidence: " + result.Error,
-                        summary: PublicOutput.Message("command_failed")
-                    )
+                    throw Exception("Cannot read complete Git path evidence: " + result.Error)
                 }
 
                 return result.Output
-            } catch (error CliFailure) {
-                if (InterruptedResult(error)?.ReadFailed ?? false) &&
-                    error.Data["command_cause"] is DecoderFallbackException {
-                    throw ExecutionFailure.Create("command_failed", "Cannot read complete Git path evidence")
+            } catch (error CommandInterrupted) {
+                if error.Result.ReadFailed && error.InnerException is DecoderFallbackException {
+                    throw Exception("Cannot read complete Git path evidence", error)
                 }
 
                 throw error

@@ -224,7 +224,7 @@ Execution keeps saved failure stages, interruption evidence and verification res
 | `verification_failed` | Missing independent results, unsafe runtime layout, owner checks failed, or verification cancelled or timed out | Inspect saved verification results before an explicit correction or amendment. |
 | `endpoint_unavailable` | Pi endpoint metadata is unavailable, malformed or does not advertise the selected model | Inspect the configured local service and exact model before fresh preparation. |
 | `stale_approval` | `Preserved external authority changed` | Preserve external history and inspect current owner authority before further work. |
-| `command_failed` | Git failed, command startup or capture failed, or runtime allowance was exhausted | Inspect saved state and private command evidence before any explicit next action. |
+| `command_failed` | `Runtime allowance exhausted` or run storage could not be read or written | Inspect saved state and private command evidence before any explicit next action. |
 
 ### Setup
 

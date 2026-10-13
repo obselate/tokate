@@ -62,8 +62,7 @@ internal class Worker {
                 outputPath: capture ? Path.Combine(directory, "events.jsonl"): "",
                 errorPath: capture ? Path.Combine(directory, "stderr.log"): "",
                 budget: budget,
-                outputLine: activity,
-                failureCode: capture ? "inference_failed": "command_failed"
+                outputLine: activity
             )
         }
 
@@ -153,8 +152,8 @@ internal class Worker {
                     )
                 }
             } catch (error Exception) when error is CliFailure ||
-                error is IOException ||
-                error is UnauthorizedAccessException {
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) || error is IOException || error is UnauthorizedAccessException {
                 failure = error
             }
 
@@ -179,7 +178,9 @@ internal class Worker {
                     if toolchain.Code != 0 || toolchain.Truncated || toolchain.ReadFailed {
                         throw ExecutionFailure.Create("missing_tools", "Pinned SDK startup failed")
                     }
-                } catch (error CliFailure) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) {
                     throw CliFailure(
                         "missing_tools",
                         "Pinned SDK/MSBuild startup failed. Install the global.json SDK in a standard system path; home-directory tools are unavailable."
@@ -423,6 +424,8 @@ internal class Worker {
                         run.Number("verification_reserve")
                     )
                 } catch (error Exception) when error is CliFailure ||
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) ||
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException {
@@ -443,7 +446,7 @@ internal class Worker {
 
                     run.Save(directory)
 
-                    throw ExecutionFailure.From(error)
+                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||

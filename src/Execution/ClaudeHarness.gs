@@ -176,8 +176,7 @@ internal class ClaudeHarness {
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
                         budget: coding,
-                        outputLine: activity,
-                        failureCode: "inference_failed"
+                        outputLine: activity
                     )
                 }
 
@@ -241,6 +240,8 @@ internal class ClaudeHarness {
                     run.Number("verification_reserve")
                 )
             } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
@@ -257,7 +258,7 @@ internal class ClaudeHarness {
 
                 run.Save(directory)
 
-                throw ExecutionFailure.From(error)
+                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
             }
         }
     }

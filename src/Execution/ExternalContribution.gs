@@ -394,6 +394,8 @@ internal class ExternalContribution {
                     Commands.Git(checkout, "diff", "--check", run.Text("base"), commit)
                     Contribution.CheckPaths(checkout, record, run, commit)
                 } catch (error Exception) when error is CliFailure ||
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) ||
                     error is IOException ||
                     error is UnauthorizedAccessException {
                     run.Fields["state"] = "failed"
@@ -401,7 +403,7 @@ internal class ExternalContribution {
 
                     run.Save(directory)
 
-                    throw ExecutionFailure.From(error)
+                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }
 
                 let timer = Stopwatch.StartNew()
@@ -488,6 +490,9 @@ internal class ExternalContribution {
 
                     run.Save(directory)
                 } catch (error Exception) when error is CliFailure ||
+                    error is CommandInterrupted ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) ||
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException {
@@ -496,7 +501,7 @@ internal class ExternalContribution {
 
                     run.Save(directory)
 
-                    throw ExecutionFailure.From(error)
+                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }
 
                 Terminal.Message("Exact external commit passed independent verification. Use submit --run " + directory)

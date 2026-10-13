@@ -1483,6 +1483,11 @@ internal class CliDiscovery {
             File.WriteAllText(Path.Combine(second, "run.json"), record.ToJsonString())
             File.SetLastWriteTimeUtc(Path.Combine(first, "run.json"), DateTime(2024, 2, 1))
             File.SetLastWriteTimeUtc(Path.Combine(second, "run.json"), DateTime(2024, 1, 1))
+            let offline = Check.Envelope(Call(binary, []string{"runs", "--json"}, temp), "runs", "ok")
+            Check.That(
+                offline["data"]?["runs"]?.AsArray().Count == 2,
+                "Local repository failure stopped saved-run listing"
+            )
             let firstBytes = Check.Hash(Path.Combine(first, "run.json"))
             let secondBytes = Check.Hash(Path.Combine(second, "run.json"))
             let obsolete = Path.Combine(root, "obsolete")

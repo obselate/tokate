@@ -459,15 +459,17 @@ internal class AttemptContinuationChecks {
             let source = Setup(test)
             Prepare(test, Args(test, source), 1)
             FreshAttempt(test)
-            {
-                using let active = File.Open(
-                    Path.Combine(source, ".lock"),
-                    FileMode.Open,
-                    FileAccess.ReadWrite,
-                    FileShare.None
-                )
-                Prepare(test, Args(test, source), 1)
-            }
+            using let active = File.Open(
+                Path.Combine(source, ".lock"),
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None
+            )
+            let args = List[string](Args(test, source))
+            args.Add("--json")
+            let rejected = Check.Envelope(test.Flow.Call(args.ToArray(), 1), "prepare", "error", "invalid_state")
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "Source attempt is active or leased")
+            active.Dispose()
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for mode in[]string{
                 "completed",

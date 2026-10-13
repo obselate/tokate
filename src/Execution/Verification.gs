@@ -97,8 +97,7 @@ internal class Verification {
 
             for entry in evidence.Split('\0') {
                 if entry != "" && (Char.IsLower(entry[0]) || entry[0] == 'S') {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
+                    throw Exception(
                         "Candidate index contains assume-unchanged or skip-worktree flags; inspect before continuing"
                     )
                 }
@@ -168,6 +167,8 @@ internal class Verification {
 
                 return result
             } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
@@ -259,8 +260,7 @@ internal class Verification {
                     errorPath: errorPath,
                     budget: budget,
                     outputLine: outputLine,
-                    errorLine: errorLine,
-                    failureCode: "verification_failed"
+                    errorLine: errorLine
                 )
 
                 select {

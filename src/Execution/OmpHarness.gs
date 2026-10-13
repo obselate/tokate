@@ -173,8 +173,7 @@ internal class OmpHarness {
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
                         budget: coding,
-                        outputLine: activity,
-                        failureCode: "inference_failed"
+                        outputLine: activity
                     )
                 }
 
@@ -214,6 +213,8 @@ internal class OmpHarness {
                     run.Number("verification_reserve")
                 )
             } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
@@ -230,7 +231,7 @@ internal class OmpHarness {
 
                 run.Save(directory)
 
-                throw ExecutionFailure.From(error)
+                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
             }
         }
     }

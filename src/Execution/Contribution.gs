@@ -44,6 +44,8 @@ internal class Contribution {
                 try {
                     PublicSummary.Capture(directory, checkout, run)
                 } catch (error Exception) when error is CliFailure ||
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) ||
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException {

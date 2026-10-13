@@ -147,7 +147,7 @@ internal class SavedRuns {
                         if row.Number == 0 {
                             legacy.Add(row)
                         }
-                    } catch (error Exception) when error is CliFailure ||
+                    } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
                         error is IOException ||
                         error is UnauthorizedAccessException ||
                         error is JsonException {
@@ -160,7 +160,7 @@ internal class SavedRuns {
                         }
                     }
                 }
-            } catch (error Exception) when error is CliFailure ||
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
                 error is IOException ||
                 error is UnauthorizedAccessException {
                 Skipped++

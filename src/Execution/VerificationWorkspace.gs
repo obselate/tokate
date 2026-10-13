@@ -71,8 +71,7 @@ internal class VerificationWorkspace : IDisposable {
                     seconds: 86400,
                     isolated: true,
                     cancellation: workspace.CopyCancellation,
-                    budget: budget,
-                    failureCode: "verification_failed"
+                    budget: budget
                 )
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     throw ExecutionFailure.Create(

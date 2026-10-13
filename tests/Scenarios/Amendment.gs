@@ -584,7 +584,24 @@ internal class AmendmentFlow {
             let tools = native && modelPolicy == "" ? "": flow.Tools
             if mode == "lost_push_response" || mode == "lost_request_response" {
                 flow.Flow.Mode(mode)
-                Amend(flow.Flow, run, commit, mode == "lost_request_response" ? 0: 1, tools, summary: true)
+                let rejected = Amend(
+                    flow.Flow,
+                    run,
+                    commit,
+                    mode == "lost_request_response" ? 0: 1,
+                    tools,
+                    summary: true
+                )
+                if mode == "lost_push_response" {
+                    Check.That(
+                        Check.Text(
+                            Saved(Path.Combine(run, "amendments", commit))["failure_reason"]
+                        ) == "publication_interrupted",
+                        "Interrupted Git publication lost its saved failure reason"
+                    )
+                    Check.Contains(rejected.Error, "Saved amendment")
+                    Check.Contains(rejected.Error, "Re-run the same amend command")
+                }
                 flow.Flow.Mode("")
             }
             let amended = Check.Envelope(

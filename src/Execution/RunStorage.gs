@@ -43,18 +43,14 @@ internal class RunStorage {
         }
 
         internal func Lease(directory string) FileStream {
-            try {
-                ControlPaths(directory)
+            ControlPaths(directory)
 
-                return File.Open(
-                    Path.Combine(directory, ".lock"),
-                    FileMode.OpenOrCreate,
-                    FileAccess.ReadWrite,
-                    FileShare.None
-                )
-            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw ExecutionFailure.From(error, "command_failed")
-            }
+            return File.Open(
+                Path.Combine(directory, ".lock"),
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None
+            )
         }
 
         private func Reject(path string) {
@@ -159,7 +155,7 @@ internal class RunStorage {
 
             try {
                 repo = RepositoryInput.Local()
-            } catch (error CliFailure) { }
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) { }
 
             let saved = SavedRuns(Roots(), 128, listingRepo: repo)
 
