@@ -258,7 +258,7 @@ internal class OwnerSetup {
             fields["allowed_tools"] = tools
         }
 
-        private func GuideModels(fields map[string, Object?]) {
+        private func GuideModels(fields map[string, Object?], keep bool = false) {
             let entries = J.Items(J.Get(J.Parse(J.Write(fields)), "allowed_tools"))
             let labels = List[string]()
             for entry in entries {
@@ -282,7 +282,8 @@ internal class OwnerSetup {
             SetModels(
                 fields,
                 restriction == 1 ? "unrestricted": "whitelist",
-                restriction == 1 ? JsonElement{}: RequestData.Parse(ModelChecklist().Run()),
+                restriction == 1 ? JsonElement{}: keep && current.ValueKind == JsonValueKind.Object ? current:
+                RequestData.Parse(ModelChecklist().Run()),
                 selected
             )
         }
@@ -316,7 +317,7 @@ internal class OwnerSetup {
                     SetModels(fields, mode, RequestData.Parse(ModelChecklist().Run()))
                 }
             } else if !args.Get("allowed-tools").TrimStart().StartsWith("[", StringComparison.Ordinal) {
-                GuideModels(fields)
+                GuideModels(fields, keep: true)
             }
 
             var edit = ""
@@ -1010,8 +1011,7 @@ internal class OwnerSetup {
                 "applied": changed,
                 "file_count": File.Exists(template) ? 3: 2,
                 "policy_changed": before != text,
-                "workflow_changed": oldWorkflow == "",
-                "policy_version": 3
+                "workflow_changed": oldWorkflow == ""
             }
         }
 

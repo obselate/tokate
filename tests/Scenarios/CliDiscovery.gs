@@ -464,7 +464,7 @@ internal class CliDiscovery {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 env,
-                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n3\n1\n?\n1\n"
+                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n4\n1\n?\n1\n"
             )
             Check.Success(terminal)
             Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
@@ -542,7 +542,7 @@ internal class CliDiscovery {
             Check.That(
                 Check.Text(selected["version"]) == "3" &&
                     selected["models"] == nil &&
-                    selected["allowed_tools"]?[0]?["models"] == nil &&
+                    selected["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\",\"xhigh\"]}" &&
                     selected["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]" &&
                     selected["required_checks"]?.ToJsonString() == "[\"verify\",\"build\"]",
                 "Interactive setup lost selected models, commands or check names"
@@ -552,9 +552,23 @@ internal class CliDiscovery {
                     selected["pr_text"]
                 ) == "Owner notes" &&
                     selected["allowed_tools"]?.ToJsonString() ==
-                "[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
+                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"model-a\":[\"high\",\"xhigh\"]}},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
                 "Guided init lost branch, PR text or tool choices"
             )
+            Publish(flow, File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
+            let guidedAgain = TestProcess.Run(
+                "/usr/bin/script",
+                []string{"-q", "-e", "-c", command, "/dev/null"},
+                env,
+                "\n1\n\n1\n"
+            )
+            Check.Success(guidedAgain)
+            Check.That(
+                Check.Json(File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json"))).ToJsonString() ==
+                selected.ToJsonString(),
+                "Repeated guided init changed existing policy choices"
+            )
+            Publish(flow, nil)
             var suggestionIndex int32
             for sample in[]string{
                 "pyproject.toml| |python3 -m unittest",
