@@ -45,6 +45,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 "ExpiryAndRevocation",
                 "InvalidEvents",
                 "CoordinatorPermissions",
+                "LabelApprovalPermissions",
+                "LabelApprovalLifecycle",
+                "LabelApprovalSafety",
                 "InterruptedWrite",
                 "PublicationRevocation",
                 "ExpiryDuringPublication",
@@ -93,6 +96,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 switch name {
                     case "ProtectedCoordinator" {
                         ProtectedCoordinator(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "LabelApprovalPermissions" {
+                        LabelApprovalPermissions(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "LabelApprovalLifecycle" {
+                        LabelApprovalLifecycle(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "LabelApprovalSafety" {
+                        LabelApprovalSafety(binary)
                         Console.WriteLine("PASS V2 " + name)
                         continue
                     }

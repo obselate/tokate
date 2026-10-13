@@ -100,6 +100,33 @@ internal open class CoordinationFixture : IDisposable {
         return path
     }
 
+    internal func LabelEvent(actor int32 = 1, login string = "owner") string {
+        Flow.Reload()
+        let issue = Flow.State["issue"] ?? throw Exception("Missing issue")
+        issue["id"] = JsonValue.Create(101)
+        issue["labels"] = Check.Json("[{\"name\":\"existing\"},{\"name\":\"tokate:approved\"}]")
+        Flow.Save()
+        let path = Path.Combine(Flow.Temp.Root, "label-event.json")
+        File.WriteAllText(
+            path,
+            Check.Map(
+                "action",
+                "labeled",
+                "repository",
+                Check.Map("full_name", "owner/project", "id", 1),
+                "issue",
+                issue,
+                "label",
+                Check.Map("name", "tokate:approved"),
+                "sender",
+                Check.Map("login", login, "id", actor)
+            )
+                .ToJsonString()
+        )
+        Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issues"
+        return path
+    }
+
     internal func Coordinate(path string, code int32 = 0, traffic bool = false) Result -> Flow.Call(
         []string{"coordinate", "owner/project", "--event", path},
         code,
