@@ -716,7 +716,7 @@ internal class EligibilityChecks {
                 "actions/*",
                 "obselate/tokate/.github/workflows/tokate-shared.yml@" + String('b', 40),
                 "obselate/*",
-                "*, !obselate/tokate/.github/workflows/tokate-shared.yml@*"
+                "*, !Obselate/Tokate/.github/workflows/tokate-shared.yml@*"
             } {
                 health.Flow.Reload()
                 let patterns = JsonArray()
@@ -737,16 +737,6 @@ internal class EligibilityChecks {
                     Check.Text(allowlist?["status"]) == (pattern == "obselate/*" ? "ok": "problem"),
                     "Owner doctor misread the pinned workflow allowlist"
                 )
-                Check.Contains(result.ToJsonString(), "startup_failure")
-                for row in result["data"]?["checks"]?.AsArray() ?? JsonArray() {
-                    if Check.Text(row["check"]) == "last_run" {
-                        Check.Contains(Check.Text(row["message"]), "repository's Actions settings")
-                    }
-                }
-                health.Flow.Reload()
-                for call in health.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    Check.That(Check.Text(call["method"]) == "GET", "Owner health check mutated repository data")
-                }
             }
             let policyPath = Path.Combine(health.Flow.Upstream, ".github/tokate.json")
             let changedPolicy = Check.Json(File.ReadAllText(policyPath))
@@ -755,6 +745,16 @@ internal class EligibilityChecks {
             health.Flow.Commit("Change approved task fields")
             health.Flow.Git("-C", health.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
             let broken = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
+            Check.Contains(broken.ToJsonString(), "startup_failure")
+            for row in broken["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                if Check.Text(row["check"]) == "last_run" {
+                    Check.Contains(Check.Text(row["message"]), "repository's Actions settings")
+                }
+            }
+            health.Flow.Reload()
+            for call in health.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(Check.Text(call["method"]) == "GET", "Owner health check mutated repository data")
+            }
             var missing bool
             var stale bool
             for row in broken["data"]?["checks"]?.AsArray() ?? JsonArray() {
@@ -779,6 +779,18 @@ internal class EligibilityChecks {
             Check.Contains(human, "tokate access init owner/project")
             Check.Contains(human, "tokate approve owner/project#1")
             Check.Contains(human, "Settings > Actions > General")
+            health.Flow.State["actions_permissions"] = Check.Map("enabled", false)
+            health.Flow.Save()
+            let disabled = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
+            Check.That(
+                !disabled.ToJsonString().Contains("workflow_allowlist"),
+                "Disabled Actions checked the allowlist"
+            )
+            for row in disabled["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                if Check.Text(row["check"]) == "actions" {
+                    Check.That(Check.Text(row["status"]) == "problem", "Disabled Actions were not reported")
+                }
+            }
             health.Flow.NoInference()
             using let empty = CoordinationFixture(binary)
             empty.Initialize(approve: false)

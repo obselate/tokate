@@ -23,7 +23,9 @@ internal class OwnerHealth {
         let action = command ?? []string{}
         if action.Length > 0 {
             row["command"] = action
-            PublicOutput.Actions.Add(action)
+            if status == "problem" {
+                PublicOutput.Actions.Add(action)
+            }
         }
         Checks.Add(row)
         if !PublicOutput.Enabled {
@@ -55,7 +57,7 @@ internal class OwnerHealth {
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
                 let member = Regex.Matches(
                     yaml,
-                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-(?:x64|musl-x64)/tokate['\"]?\\s*$"
+                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
                 )
                 let uses = Regex.Matches(
                     yaml,
@@ -105,8 +107,7 @@ internal class OwnerHealth {
                 if !tag.StartsWith("v") || !Version.TryParse(tag.Substring(1), out latest) || !Version.TryParse(
                     version,
                     out current
-                ) ||
-                    J.Bool(release, "draft") || J.Bool(release, "prerelease") {
+                ) {
                     throw Exception("Invalid stable release version")
                 }
                 let newer = latest > current
@@ -132,28 +133,23 @@ internal class OwnerHealth {
             "actions",
             async () -> {
                 let permissions = GitHub.Api("repos/" + repo + "/actions/permissions")
-                let enabled = J.Get(permissions, "enabled")
+                let enabled = J.Bool(permissions, "enabled")
                 let allowed = J.Text(permissions, "allowed_actions")
-                if (enabled.ValueKind != JsonValueKind.True && enabled.ValueKind != JsonValueKind.False) ||
-                    (allowed != "all" && allowed != "local_only" && allowed != "selected") {
-                    throw Exception("Invalid Actions permissions")
-                }
                 Add(
                     "actions",
-                    J.Bool(permissions, "enabled") ? "ok": "problem",
+                    enabled ? "ok": "problem",
                     "Actions " +
-                        (J.Bool(permissions, "enabled") ? "enabled": "disabled") +
+                        (enabled ? "enabled": "disabled") +
                         ", allowed_actions " +
                         allowed +
                         "." +
-                        (
-                        J.Bool(permissions, "enabled") ? "": " Enable Actions in " +
-                            settings +
-                            " > Actions permissions."
-                    ),
+                        (enabled ? "": " Enable Actions in " + settings + " > Actions permissions."),
                     J.Select(permissions, "enabled,allowed_actions"),
-                    J.Bool(permissions, "enabled") ? []string{}: openSettings
+                    enabled ? []string{}: openSettings
                 )
+                if !enabled {
+                    return
+                }
                 var permitted = allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
                 var blocked bool
                 let patterns = List[string]()
@@ -172,7 +168,8 @@ internal class OwnerHealth {
                         let deny = value.StartsWith("!")
                         let matches = pin != "" && Regex.IsMatch(
                             "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin,
-                            "^" + Regex.Escape(deny ? value.Substring(1): value).Replace("\\*", ".*") + "$"
+                            "^" + Regex.Escape(deny ? value.Substring(1): value).Replace("\\*", ".*") + "$",
+                            RegexOptions.IgnoreCase
                         )
                         blocked = blocked || (deny && matches)
                         permitted = permitted || (!deny && matches)
@@ -204,15 +201,10 @@ internal class OwnerHealth {
             async () -> {
                 let permissions = GitHub.Api("repos/" + repo + "/actions/permissions/workflow")
                 let defaults = J.Text(permissions, "default_workflow_permissions")
-                let pullRequests = J.Get(permissions, "can_approve_pull_request_reviews")
-                if (defaults != "read" && defaults != "write") ||
-                    (pullRequests.ValueKind != JsonValueKind.True && pullRequests.ValueKind != JsonValueKind.False) {
-                    throw Exception("Invalid workflow permissions")
-                }
                 let create = J.Bool(permissions, "can_approve_pull_request_reviews")
                 Add(
                     "workflow_permissions",
-                    !create ? "problem": defaults == "write" ? "warning": "ok",
+                    !create ? "problem": "ok",
                     "Default workflow permissions: " +
                         defaults +
                         ". Actions may create pull requests: " +
@@ -220,20 +212,19 @@ internal class OwnerHealth {
                         (
                         !create ? " In " +
                             settings +
-                            " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": defaults == "write" ? " In " +
-                            settings +
-                            " > Workflow permissions, select Read repository contents and packages permissions. The coordinator declares its write permissions.": ""
+                            " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
                     ),
                     J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
-                    !create || defaults == "write" ? openSettings: []string{}
+                    !create ? openSettings: []string{}
                 )
             }
         )
         Read(
             "policy",
             async () -> {
+                let text = GitHub.FileAt(repo, ".github/tokate.json", revision, missing: true)
                 try {
-                    let policy = Policy.Load(repo, revision, missing: true)
+                    let policy = Policy(text)
                     policyParsed = true
                     Add(
                         "policy",
@@ -248,12 +239,7 @@ internal class OwnerHealth {
                             "parses": true
                         }
                     )
-                } catch (error CliFailure) {
-                    throw error
-                } catch (error ApiDeadlineException) {
-                    throw error
                 } catch (error Exception) {
-                    let text = GitHub.FileAt(repo, ".github/tokate.json", revision, missing: true)
                     var value JsonElement
                     try {
                         value = J.Parse(text)
@@ -267,7 +253,9 @@ internal class OwnerHealth {
                             (J.Number(value, "version") == 0 ? "unknown": J.Number(value, "version").ToString()) +
                             ", eligibility " +
                             (J.Text(value, "eligibility") == "" ? "unknown": J.Text(value, "eligibility")) +
-                            ". Policy does not parse. Review the policy with tokate init " +
+                            ". " +
+                            error.Message +
+                            " Review the policy with tokate init " +
                             repo +
                             ".",
                         fields,
@@ -282,7 +270,7 @@ internal class OwnerHealth {
                 let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")), missing: true)
                 var trusted int32
                 for member in access.Members {
-                    if J.Bool(member, "trusted") {
+                    if J.Bool(member, "trusted") && !J.Bool(member, "denied") {
                         trusted++
                     }
                 }
@@ -316,14 +304,15 @@ internal class OwnerHealth {
                 }
                 var count int32
                 var stale int32
-                for page in 1 ... 11 {
+                var page = 1
+                while true {
                     let issues = GitHub.Api(
                         "repos/" +
                             repo +
                             "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" +
                             page.ToString()
                     )
-                    if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 100 {
+                    if issues.ValueKind != JsonValueKind.Array {
                         throw Exception("Invalid approved issue list")
                     }
                     for issue in J.Items(issues) {
@@ -344,7 +333,7 @@ internal class OwnerHealth {
                                 "problem",
                                 error.Summary,
                                 map[string, Object?]{"issue": number, "current": false},
-                                []string{"tokate", "approve", repo + "#" + number.ToString()}
+                                error.Action
                             )
                         }
                     }
@@ -357,8 +346,8 @@ internal class OwnerHealth {
                         )
                         return
                     }
+                    page++
                 }
-                throw Exception("Approved issue list exceeds 1000 records")
             }
         )
         Read(

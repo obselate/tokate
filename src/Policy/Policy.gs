@@ -488,8 +488,8 @@ internal class Policy {
             "close_message"
         )
 
-        internal func Load(repo string, revision string, missing bool = false) Policy -> Policy(
-            GitHub.FileAt(repo, ".github/tokate.json", revision, missing: missing)
+        internal func Load(repo string, revision string) Policy -> Policy(
+            GitHub.FileAt(repo, ".github/tokate.json", revision)
         )
     }
 }
