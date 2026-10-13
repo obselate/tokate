@@ -100,6 +100,15 @@ func Main(args[]string) int32 {
         " To recover a failed GitHub mutation: " + ApiTransport.MutationRecovery: ""
         message += recovery
         Terminal.Message("tokate: " + (PublicOutput.Enabled ? message: error.Message + recovery), "red", true)
+        if Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true" &&
+            (PublicOutput.Command == "coordinate" || PublicOutput.Command == "admit") {
+            Console.Error.WriteLine(
+                "::error::" + (PublicOutput.Enabled ? message: error.Message + recovery).Replace("\r", "").Replace(
+                    "\n",
+                    ""
+                )
+            )
+        }
 
         if !validated && !PublicOutput.Enabled {
             Terminal.Message(Cli.ErrorUsage(args), error: true)
@@ -340,6 +349,10 @@ func Dispatch(options Args) int32 {
                 let run = Data.Load(directory)
 
                 if run.Number("pr") == 0 {
+                    if let guidance = Submission.PendingWorkflow(directory, run) {
+                        Terminal.Message(guidance["action"]?.ToString() ?? "")
+                        return 0
+                    }
                     let request = RequestData.FileData(Path.Combine(directory, "request.json"), 8192)
 
                     ApiTransport.BeginDeadline(30)
@@ -359,7 +372,6 @@ func Dispatch(options Args) int32 {
                         }
                     } catch (error ApiDeadlineException) {
                         Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
-
                         return 0
                     } finally {
                         ApiTransport.EndDeadline()

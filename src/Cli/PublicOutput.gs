@@ -18,6 +18,7 @@ internal class PublicOutput {
         internal let Actions List[[]string] = List[[]string]()
 
         internal func Reset(command string = "help") {
+            Submission.ResetWorkflow()
             Command = command
             RunDirectory = ""
             RunName = ""
@@ -375,6 +376,11 @@ internal class PublicOutput {
 
             result["artifacts"] = Artifacts(directory)
 
+            if let guidance = Submission.PendingWorkflow(directory, run) {
+                result["coordinator"] = guidance["action"]
+                result["next"] = guidance
+            }
+
             if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
                 throw CliFailure("output_too_large", Message("output_too_large"))
             }
@@ -564,14 +570,16 @@ internal class PublicOutput {
                     var next Object?
                     if summary.TryGetValue("next", out next) &&
                         next is Dictionary[string, Object?]guidance &&
-                        guidance["command"] is []string command {
+                        guidance["command"] is []string command &&
+                        command.Length > 0 {
                         Actions.Add(command)
                     }
 
                     if code != "stale_approval" && code != "invalid_state" {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
-                        } else if run.Text("state") == "generated" || run.Text("state") == "incomplete_generated" {
+                        } else if !summary.ContainsKey("coordinator") &&
+                            (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") {
                             Actions.Add([]string{"tokate", "submit", "--run", RunDirectory, "--json"})
                         }
                     }

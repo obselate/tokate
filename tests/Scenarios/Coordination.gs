@@ -66,11 +66,19 @@ internal partial class CoordinationFlow : CoordinationFixture {
                         "Repository write permission is required"
                     )
                     if denied {
+                        test.Flow.Temp.Env["GITHUB_ACTIONS"] = "true"
                         test.Flow.Faults(
                             "repos/owner/project/git/refs/heads/tokate/contributions/1",
                             Check.Json("[{\"status\":403}]")
                         )
-                        Check.Contains(test.Coordinate(path, 1).Error, "No automatic retry was made")
+                        let failure = test.Coordinate(path, 1)
+                        Check.Contains(failure.Error, "No automatic retry was made")
+                        Check.Contains(failure.Error, "::error::GitHub mutation failed (HTTP 403).")
+                        Check.That(
+                            failure.Error.Split("::error::").Length == 2,
+                            "Coordinator emitted duplicate annotations"
+                        )
+                        test.Flow.Temp.Env.Remove("GITHUB_ACTIONS")
                         let state = test.State()
                         Check.That(
                             Check.Text(state["sha"]) == Check.Text(initial["sha"]) && state["state"]?.ToJsonString() ==
@@ -93,6 +101,20 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     test.Flow.NoPr()
                 }
             }
+            test.Flow.Temp.Env["GITHUB_ACTIONS"] = "true"
+            Check.Contains(
+                test.Flow.Call([]string{"admit", "owner/project", "--event", path}, 1, owner: true).Error,
+                "::error::Expected a supported upstream pull_request_target event"
+            )
+            test.Flow.Temp.Env.Remove("GITHUB_ACTIONS")
+            Check.That(
+                !test
+                    .Flow
+                    .Call([]string{"admit", "owner/project", "--event", path}, 1, owner: true)
+                    .Error
+                    .Contains("::error::"),
+                "Local failure emitted an Actions annotation"
+            )
         }
 
         internal func ModelPolicyModes(binary string) {
@@ -1003,6 +1025,61 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(File.ReadAllText(savedPath) == saved, "Graft rejection rewrote verification record")
         Flow.NoPr()
         Flow.NoInference()
+        baseline.Restore()
+        let waiting = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}).Output)
+        Check.That(waiting["data"]?["coordinator"] == nil, "Absent workflow changed submit guidance")
+        Check.Contains(
+            Flow.Call([]string{"submit", "--run", run}).Output,
+            "Submit pending. Run the same command again:"
+        )
+        for conclusion in[]string{"failure", "startup_failure", "queued"} {
+            Flow.Reload()
+            Flow.State["workflow_runs"] = JsonArray(
+                Check.Map(
+                    "created_at",
+                    "2026-10-12T00:00:00Z",
+                    "status",
+                    conclusion,
+                    "conclusion",
+                    conclusion,
+                    "check_suite_id",
+                    20,
+                    "html_url",
+                    "https://example.test/coordinator"
+                )
+            )
+            Flow.State["coordinator_checks"] = Check.Json("[{\"id\":30}]")
+            Flow.State["coordinator_annotations"] = JsonArray(
+                Check.Map(
+                    "annotation_level",
+                    "failure",
+                    "message",
+                    "GitHub mutation failed (HTTP 422). " + String('x', 1100)
+                )
+            )
+            Flow.Save()
+            let observed = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}).Output)
+            let action = Check.Text(observed["data"]?["next"]?["action"])
+            Check.Contains(
+                action,
+                conclusion == "failure" ? "GitHub mutation failed (HTTP 422).":
+                (conclusion == "startup_failure" ? "repository's Actions settings": "coordinator is still running")
+            )
+            Check.Contains(action, "https://example.test/coordinator")
+            Check.That(!action.Contains(String('x', 1025)), "Failure annotation exceeded its bound")
+            Check.That(
+                !(observed["next_actions"]?.ToJsonString() ?? "").Contains("\"submit\""),
+                "Pending workflow offered repeat submit"
+            )
+            let status = Check.Json(Flow.Call([]string{"status", "--run", run, "--json"}).Output)
+            Check.That(
+                Check.Text(status["data"]?["next"]?["action"]) == action,
+                "Status lost pending publication reason"
+            )
+            if conclusion == "failure" {
+                Check.Contains(Flow.Call([]string{"submit", "--run", run}).Output, "GitHub mutation failed (HTTP 422).")
+            }
+        }
         baseline.Restore()
         let submitted = Flow.Acquire([]string{"submit", "--run", run})
         Check.Contains(submitted.Output, "Draft PR: https://github.com/owner/project/pull/10")

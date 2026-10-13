@@ -161,6 +161,9 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | --- | --- |
 | `Claim pending. Run: DIR; resume explicitly with work --run DIR or prepare --run DIR. If the Tokate workflow failed: A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again.` | Managed donor: `tokate work --run DIR` |
 | `Claim pending. Run: DIR; resume explicitly with prepare --run DIR. If the Tokate workflow failed: A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again.` | External donor: `tokate prepare --run DIR` |
+| `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
+| `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the linked failure and re-process the request after fixing its cause. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
+| `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the pinned shared workflow in Actions settings, then re-process the request. |
 | `Approval revoked or task changed` | Owner: `tokate approve 42` |
 | `Repository policy or template changed. The owner must approve again.` | Owner: `tokate approve 42` |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
@@ -188,12 +191,14 @@ Open the private verification artifact listed by status. Correct completed work 
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Submit pending. Run the same command again: tokate submit --run DIR` | `tokate submit --run DIR` |
+| `Submit pending. Run the same command again: tokate submit --run DIR` | No workflow result was available. Inspect `tokate status --run DIR` before `tokate submit --run DIR`. |
+| `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
+| `Tokate workflow failed. MESSAGE RUN_URL` or `GitHub could not start the Tokate workflow.` with Actions settings guidance and recovery text | Owner: use the pending request recovery above. |
 | `GitHub mutation failed (HTTP STATUS). GitHub reason: MESSAGE. No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate submit --run with the saved run.` | Inspect remote state, then use `tokate submit --run DIR`. `STATUS` and `MESSAGE` contain the HTTP status and bounded GitHub message fields when present. |
 | `Publication attempt fence was invalidated or replaced` | `tokate status --run DIR --json` |
 | `No saved amendment request. Start a new amendment with --time.` | `tokate amend 42-1 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE` |
 
-Repeat a pending publication with the same saved intent. Do not start another run to bypass it.
+After owner recovery, repeat a pending publication with the same saved intent. Do not start another run to bypass it.
 
 ### Review and checks
 

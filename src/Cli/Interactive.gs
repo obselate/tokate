@@ -48,7 +48,7 @@ internal class Interactive {
                 let commands = List[string]()
                 let labels = List[string]()
 
-                if J.Text(summary, "state") == "claim_pending" {
+                if J.Text(summary, "state") == "claim_pending" && J.Text(summary, "coordinator") == "" {
                     commands.Add("prepare")
                     labels.Add("Check reservation and prepare work")
                 }
