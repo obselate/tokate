@@ -399,6 +399,16 @@ internal class Amendment {
         }
 
         internal func Run(args Args) {
+            try {
+                AmendSaved(args)
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
+        }
+
+        private func AmendSaved(args Args) {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
@@ -481,9 +491,21 @@ internal class Amendment {
                                     SHA256.HashData(File.ReadAllBytes(args.Need(key)))
                                 )
                             ) {
-                                throw Exception("Changed amendment input")
+                                throw CliFailure("invalid_state", "Changed amendment input")
                             }
-                        } catch (error Exception) {
+                        } catch (error Exception) when error is CliFailure ||
+                            error is IOException ||
+                            error is UnauthorizedAccessException ||
+                            error is JsonException ||
+                            error.GetType() == typeof(Exception) &&
+                            (
+                            error.Message.StartsWith("Required: ") || error.Message.StartsWith(
+                                "Invalid positive number: "
+                            ) ||
+                                error
+                                .Message
+                                .StartsWith("Use at most 24h: ")
+                        ) {
                             throw CliFailure(
                                 "invalid_state",
                                 "Saved amendment " + Cli.Label(key) +
@@ -684,7 +706,19 @@ internal class Amendment {
                     amendment.Fields.Remove("failure_reason")
 
                     amendment.Save(location)
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is IOException ||
+                    error is UnauthorizedAccessException ||
+                    error is JsonException ||
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) &&
+                    (
+                    error.Message.StartsWith("git failed: ") ||
+                        error.Message == "Runtime allowance exhausted" ||
+                        error
+                        .Message
+                        .StartsWith("Cannot copy the exact verification candidate: ")
+                ) {
                     amendment.Fields["state"] = "failed"
                     amendment.Fields["error"] = error.Message
 
@@ -696,7 +730,13 @@ internal class Amendment {
 
                     amendment.Save(location)
 
-                    throw error
+                    if error is CliFailure {
+                        throw error
+                    }
+
+                    let code = amendment.Text("failure_reason") == "verification_failed" ? "verification_failed":
+                    "invalid_state"
+                    throw CliFailure(code, error.Message, summary: PublicOutput.Message(code))
                 }
             }
 
@@ -709,7 +749,12 @@ internal class Amendment {
 
             try {
                 Publish(directory, location, run, amendment)
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
                 amendment.Fields["error"] = error.Message
                 amendment.Fields["failure_reason"] = error is CliFailure failure ? failure.Code:
                 "publication_interrupted"
@@ -722,12 +767,13 @@ internal class Amendment {
 
                 PublicOutput.FailureCode = "command_failed"
 
-                throw Exception(
+                throw CliFailure(
+                    "command_failed",
                     error.Message +
                         "\nSaved amendment: " +
                         location +
                         ". Remote/PR/state updates are not atomic; a physical PR may have an invalid receipt. Use verify to inspect authority. Re-run the same amend command to resume only saved publication intent without inference or repeating passed checks.",
-                    error
+                    summary: PublicOutput.Message("command_failed")
                 )
             }
         }

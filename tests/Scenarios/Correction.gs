@@ -999,9 +999,24 @@ internal class CorrectionChecks {
                     flow.Flow.State["request_response_fault"] = JsonValue.Create(fault)
                     flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
                     flow.Flow.Save()
+                    using let response = FixtureSnapshot(flow.Flow.Temp.Root)
+                    Check.Envelope(
+                        flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                        "submit",
+                        "error",
+                        "command_failed"
+                    )
+                    response.Restore()
+                    flow.Flow.Reload()
                     let first = flow.Flow.Call([]string{"submit", "--run", run}, 1)
                     let request = File.ReadAllText(Path.Combine(run, "request.json"))
                     Check.Contains(first.Error, "Uncertain request write")
+                    Check.Envelope(
+                        flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                        "submit",
+                        "error",
+                        "invalid_state"
+                    )
                     Check.That(Check.Text(Read(run)["state"]) == "generated", "Inconsistent response published a run")
                     if corrected {
                         Check.That(

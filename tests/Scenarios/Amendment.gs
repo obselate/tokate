@@ -333,6 +333,14 @@ internal class AmendmentFlow {
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 flow.ResetTraffic()
                 flow.Call([]string{"verify", "owner/project#10"}, 1)
+                if field == "amendment" {
+                    Check.Envelope(
+                        flow.Call([]string{"verify", "owner/project#10", "--json"}, 1),
+                        "verify",
+                        "error",
+                        "stale_approval"
+                    )
+                }
                 Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Altered receipt was accepted")
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {

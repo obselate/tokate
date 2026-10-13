@@ -19,13 +19,19 @@ internal class CorrectionPublication {
                     return ""
                 }
 
-                throw Exception("interrupted_publication: contribution branch is missing; intent preserved")
+                throw CliFailure(
+                    "invalid_state",
+                    "interrupted_publication: contribution branch is missing; intent preserved"
+                )
             }
 
             let head = J.Text(J.Get(reference, "object"), "sha")
 
             if head != run.Text("base") && head != (correction?.Text("commit") ?? "") {
-                throw Exception("interrupted_publication: remote branch changed; refusing to overwrite it")
+                throw CliFailure(
+                    "invalid_state",
+                    "interrupted_publication: remote branch changed; refusing to overwrite it"
+                )
             }
 
             return head
@@ -59,11 +65,11 @@ internal class CorrectionPublication {
             let failure = "Only the saved verified exact correction can be published"
 
             if correction.Text("state") != "verified" || run.Text("commit") != correction.Text("commit") {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if !RequestData.Same(J.Get(run.Element(), "correction"), Correction.Provenance(correction)) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let record = J.Parse(File.ReadAllText(Path.Combine(directory, "original-evidence", "approval.json")))
@@ -72,7 +78,7 @@ internal class CorrectionPublication {
             Verification.Results(run, record)
 
             if !RequestData.Same(J.Get(run.Element(), "verification"), J.Get(correction.Element(), "verification")) {
-                throw Exception("Correction verification results changed")
+                throw CliFailure("invalid_state", "Correction verification results changed")
             }
 
             return record
@@ -88,14 +94,14 @@ internal class CorrectionPublication {
 
         private func Preview(path string, expected string) {
             if FileInfo(path).LinkTarget != nil {
-                throw Exception("Publication preview must not be a link")
+                throw CliFailure("invalid_state", "Publication preview must not be a link")
             }
 
             if File.Exists(path) {
                 let value = File.ReadAllText(path)
 
                 if !RequestData.Same(J.Parse(value), J.Parse(expected)) {
-                    throw Exception("Saved publication preview differs from exact intent")
+                    throw CliFailure("invalid_state", "Saved publication preview differs from exact intent")
                 }
             } else {
                 File.WriteAllText(path, expected)
@@ -222,7 +228,7 @@ internal class CorrectionPublication {
             let correction = Data.Read(Path.Combine(directory, "correction.json"))
 
             if run.Number("version") != 2 || run.Text("source") != "tokate" {
-                throw Exception("Correction submit requires a managed version-2 contribution")
+                throw CliFailure("invalid_state", "Correction submit requires a managed version-2 contribution")
             }
 
             try {
@@ -256,7 +262,7 @@ internal class CorrectionPublication {
                     File.WriteAllText(Path.Combine(directory, "request.json"), J.Write(request) + "\n")
                     File.WriteAllText(Path.Combine(directory, "publication.json"), J.Write(request) + "\n")
                 } else if !RequestData.Same(J.Get(intent, "request"), Submission.PublicationRequest(run, correction)) {
-                    throw Exception("Saved version-2 publication intent changed")
+                    throw CliFailure("stale_approval", "Saved version-2 publication intent changed")
                 }
 
                 Preview(Path.Combine(directory, "request.json"), J.Write(J.Get(intent, "request")) + "\n")
@@ -273,8 +279,12 @@ internal class CorrectionPublication {
                     if existing.ValueKind == JsonValueKind.Undefined || remote != correction.Text("commit") || J.Number(
                         J.Get(J.Get(state.Value(), "contribution"), "outcome"),
                         "pr"
-                    ) != J.Number(existing, "number") {
-                        throw Exception("Saved coordination outcome lacks exact physical PR and branch")
+                    ) != J
+                        .Number(existing, "number") {
+                        throw CliFailure(
+                            "stale_approval",
+                            "Saved coordination outcome lacks exact physical PR and branch"
+                        )
                     }
 
                     Complete(directory, run, correction, existing)
@@ -283,7 +293,7 @@ internal class CorrectionPublication {
                 }
 
                 if existing.ValueKind != JsonValueKind.Undefined && remote != correction.Text("commit") {
-                    throw Exception("Physical PR and remote branch disagree")
+                    throw CliFailure("stale_approval", "Physical PR and remote branch disagree")
                 }
 
                 if remote != correction.Text("commit") {
@@ -302,7 +312,7 @@ internal class CorrectionPublication {
                     remote = Remote(run, correction)
 
                     if remote != correction.Text("commit") {
-                        throw Exception("Corrected remote commit missing after push")
+                        throw CliFailure("command_failed", "Corrected remote commit missing after push")
                     }
 
                     Authority(directory, run, correction)
@@ -315,7 +325,8 @@ internal class CorrectionPublication {
                         J.Get(run.Element(), "donor_id"),
                         J.Get(intent, "request")
                     ) {
-                        throw Exception(
+                        throw CliFailure(
+                            "invalid_state",
                             "interrupted_publication: saved request has no unique physical comment; refusing blind retry"
                         )
                     }
@@ -354,10 +365,22 @@ internal class CorrectionPublication {
                 SetStage(directory, correction, "requested")
 
                 Terminal.Message("Exact correction publication request posted. The coordinator remains publisher.")
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
                 Failure(directory, correction, error)
 
-                throw Exception("publication_interrupted (interrupted_publication): " + error.Message)
+                throw CliFailure(
+                    error is CliFailure failure ? failure.Code: "command_failed",
+                    "publication_interrupted (interrupted_publication): " + error.Message,
+                    action: error is CliFailure actionable ? actionable.Action: []string{},
+                    summary: error is CliFailure safe ? safe.Summary: PublicOutput.Message("command_failed"),
+                    attemptInvalidated: error is CliFailure invalidated && invalidated.AttemptInvalidated,
+                    httpStatus: error is CliFailure transport ? transport.HttpStatus: 0
+                )
             }
         }
     }

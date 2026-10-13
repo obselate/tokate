@@ -22,29 +22,33 @@ internal class PrBody {
                 "receipt"
             } {
                 if !text.Contains("{{" + key + "}}") {
-                    throw Exception("PR template must contain {{" + key + "}}")
+                    throw CliFailure("invalid_state", "PR template must contain {{" + key + "}}")
                 }
             }
         }
 
         internal func Template(repo string, revision string) string {
-            let custom = GitHub.Api(
-                "repos/" + repo + "/contents/.github/tokate-pr.md?ref=" + Uri.EscapeDataString(revision),
-                missing: true
-            )
-            var text = ApplicationInfo.Resource("tokate-pr.md")
+            try {
+                let custom = GitHub.Api(
+                    "repos/" + repo + "/contents/.github/tokate-pr.md?ref=" + Uri.EscapeDataString(revision),
+                    missing: true
+                )
+                var text = ApplicationInfo.Resource("tokate-pr.md")
 
-            if custom.ValueKind != JsonValueKind.Undefined {
-                if J.Text(custom, "encoding") != "base64" {
-                    throw Exception("Expected a small repository PR template")
+                if custom.ValueKind != JsonValueKind.Undefined {
+                    if J.Text(custom, "encoding") != "base64" {
+                        throw CliFailure("invalid_state", "Expected a small repository PR template")
+                    }
+
+                    text = Encoding.UTF8.GetString(Convert.FromBase64String(J.Text(custom, "content")))
+
+                    ValidateTemplate(text)
                 }
 
-                text = Encoding.UTF8.GetString(Convert.FromBase64String(J.Text(custom, "content")))
-
-                ValidateTemplate(text)
+                return text
+            } catch (error FormatException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
-
-            return text
         }
 
         internal func Render(template string, values Dictionary[string, string], policy JsonElement) string {
@@ -126,7 +130,7 @@ internal class PrBody {
             let end = body.IndexOf(" -->", start, StringComparison.Ordinal)
 
             if end < 0 {
-                throw Exception(malformed)
+                throw CliFailure("invalid_state", malformed)
             }
 
             return body.Substring(start + prefix.Length, end - start - prefix.Length)
@@ -140,7 +144,7 @@ internal class PrBody {
             let start = body.IndexOf(value, StringComparison.Ordinal)
 
             if start < 0 || body.IndexOf(value, start + value.Length, StringComparison.Ordinal) >= 0 {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             return start
@@ -157,7 +161,7 @@ internal class PrBody {
             let end = Unique(body, suffix)
 
             if end < start {
-                throw Exception("Malformed Tokate report region")
+                throw CliFailure("invalid_state", "Malformed Tokate report region")
             }
 
             return body.Substring(start, end - start).Trim()
@@ -172,7 +176,7 @@ internal class PrBody {
             let end = Unique(body, suffix)
 
             if end <= start {
-                throw Exception("Malformed Tokate report region")
+                throw CliFailure("invalid_state", "Malformed Tokate report region")
             }
 
             let length = end + suffix.Length - start
@@ -181,7 +185,7 @@ internal class PrBody {
             let receiptEnd = updated.IndexOf(" -->", receiptStart, StringComparison.Ordinal)
 
             if receiptEnd < 0 {
-                throw Exception("Malformed Tokate receipt")
+                throw CliFailure("invalid_state", "Malformed Tokate receipt")
             }
 
             return updated.Remove(receiptStart, receiptEnd + 4 - receiptStart).Insert(

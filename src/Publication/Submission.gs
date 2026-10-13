@@ -9,9 +9,13 @@ import System.Text.Json
 internal class Submission {
     shared {
         internal func Commit(directory string) {
-            using let lease = RunStorage.Lease(directory)
-            let run = Data.Load(directory)
-            CommitPrepared(directory, run)
+            try {
+                using let lease = RunStorage.Lease(directory)
+                let run = Data.Load(directory)
+                CommitPrepared(directory, run)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
         }
 
         private func CommitPrepared(directory string, run Data, incomplete bool = false) {
@@ -187,7 +191,7 @@ internal class Submission {
 
                     try {
                         candidate = RequestData.CommentData(body)
-                    } catch {
+                    } catch (error CliFailure) {
                         continue
                     }
 
@@ -326,16 +330,20 @@ internal class Submission {
                     WorkflowGuidance[key] = guidance
                 }
                 return guidance
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error is ApiDeadlineException {
                 return nil
             }
         }
 
         internal func Request(args Args) {
-            let path = Path.GetFullPath(args.Need("file"))
-            let value = RequestData.FileData(path, 8192)
+            try {
+                let path = Path.GetFullPath(args.Need("file"))
+                let value = RequestData.FileData(path, 8192)
 
-            Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
+                Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
         }
 
         internal func Request(
@@ -444,7 +452,7 @@ internal class Submission {
                 expires = CoordinationState.Unix(J.Get(state.Value(), "reservation"), "expires")
             }
 
-            {
+            try {
                 using let file = FileStream(
                     journal,
                     FileStreamOptions{
@@ -469,6 +477,8 @@ internal class Submission {
                 )
                 writer.Flush()
                 file.Flush(true)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
             }
 
             WriteRequest(repo, issue, actor, value, expires)
@@ -500,14 +510,22 @@ internal class Submission {
                 }
 
                 RepositoryIdentity.PositiveId(J.Get(posted, "id"))
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) &&
+                error.Message == "Expected a positive numeric GitHub identity" {
                 let latest = CoordinationState.Load(repo, issue)
 
                 if RequestData.Recorded(latest.Value(), actor, request)
                     .ValueKind == JsonValueKind.Undefined &&
                     !Posted(repo, issue, actor, request) {
-                    throw Exception(
-                        "Uncertain request write; no unique canonical evidence. No POST retry made. " + error.Message
+                    let code = error is CliFailure failure && failure.Code != "invalid_state" ? failure.Code:
+                    "command_failed"
+                    throw CliFailure(
+                        code,
+                        "Uncertain request write; no unique canonical evidence. No POST retry made. " + error.Message,
+                        action: error is CliFailure actionable ? actionable.Action: []string{},
+                        summary: PublicOutput.Message(code),
+                        attemptInvalidated: error is CliFailure invalidated && invalidated.AttemptInvalidated,
+                        httpStatus: error is CliFailure transport ? transport.HttpStatus: 0
                     )
                 }
             }
@@ -562,6 +580,19 @@ internal class Submission {
         }
 
         internal func Submit(args Args) {
+            try {
+                SubmitSaved(args)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            } catch (error Exception) when error is CommandInterrupted || error.GetType() == typeof(Exception) &&
+                error
+                .Message
+                .StartsWith("git failed: ") {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            }
+        }
+
+        private func SubmitSaved(args Args) {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
@@ -587,14 +618,22 @@ internal class Submission {
                         run.Number("verification_reserve"),
                         elapsed
                     )
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is IOException ||
+                    error is UnauthorizedAccessException ||
+                    error is JsonException ||
+                    error is CommandInterrupted {
                     run.Fields["state"] = "failed"
                     run.Fields["error"] = error.Message
                     run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
 
                     run.Save(directory)
 
-                    throw error
+                    if error is CliFailure {
+                        throw error
+                    }
+
+                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
                 }
 
                 CommitPrepared(directory, run)
