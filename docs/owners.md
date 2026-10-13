@@ -232,7 +232,7 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
    tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
    ```
 
-   The command prints the old and new pins. With `--yes`, it checks Actions permissions and replaces the old exact allowlist entry with the new commit, or adds it if missing. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Preview without `--yes` changes no files or settings.
+   The command prints the old and new pins. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Preview without `--yes` changes no files or settings.
 
    In Settings > Actions > General > Actions permissions, the pattern `obselate/tokate/.github/workflows/tokate-shared.yml@*` survives pin updates. The workflow itself stays pinned to an exact commit. An exact allowlist commit needs an update with each pin. Blocking exclusions, disabled Actions and organization restrictions need owner review. Setup does not remove exclusions or enable Actions.
 

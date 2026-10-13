@@ -168,7 +168,7 @@ internal class CoordinatorSetup {
             RegexOptions.IgnoreCase
         )
 
-        private func AllowWorkflow(repo string, pin string, oldPin string) string {
+        private func AllowWorkflow(repo string, pin string) string {
             let workflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
             let value = workflow + pin
             let manual = "In " +
@@ -219,14 +219,7 @@ internal class CoordinatorSetup {
                 if permitted {
                     return "Actions permits " + value + "."
                 }
-                let old = patterns.FindIndex(
-                    entry -> String.Equals(entry, workflow + oldPin, StringComparison.OrdinalIgnoreCase)
-                )
-                if old >= 0 {
-                    patterns[old] = value
-                } else {
-                    patterns.Add(value)
-                }
+                patterns.Add(value)
                 GitHub.Api(
                     path + "/selected-actions",
                     map[string, Object?]{
@@ -266,7 +259,6 @@ internal class CoordinatorSetup {
             let yaml = Resolve()
             let pattern = "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
             let newCommit = Regex.Match(yaml, pattern).Groups[1].Value
-            var oldCommit = ""
             let current = GitHub.FileAt(
                 repo,
                 ".github/workflows/tokate-coordinator.yml",
@@ -287,7 +279,7 @@ internal class CoordinatorSetup {
 
                 let oldVersion = members[0].Groups[1].Value
                 let newVersion = ApplicationInfo.Version()
-                oldCommit = pins[0].Groups[1].Value
+                let oldCommit = pins[0].Groups[1].Value
                 let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
                 let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + newVersion
                 PublicOutput.ResultData = map[string, Object?]{
@@ -317,7 +309,7 @@ internal class CoordinatorSetup {
 
             if OwnerSetup.Confirm(args) {
                 File.WriteAllText(output, yaml)
-                let allowlist = AllowWorkflow(repo, newCommit, oldCommit)
+                let allowlist = AllowWorkflow(repo, newCommit)
                 let data = PublicOutput.ResultData as Dictionary[string, Object?] ??
                     map[string, Object?]{"repo": repo, "output": requested, "new_commit": newCommit}
                 data["actions_allowlist"] = allowlist

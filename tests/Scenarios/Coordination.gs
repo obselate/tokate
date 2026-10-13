@@ -1552,10 +1552,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(Check.Text(data["release_url"]) == releaseUrl, "JSON lost the release link")
         Check.Contains(Check.Text(data["actions_allowlist"]), "Updated the Actions allowlist")
         let updated = selected.DeepClone()
-        updated["patterns_allowed"] = JsonArray(JsonValue.Create(unrelated), JsonValue.Create(shared + newCommit))
+        updated["patterns_allowed"]?.AsArray().Add(JsonValue.Create(shared + newCommit) as JsonNode)
         Check.That(
             Flow.State["selected_actions"]?.ToJsonString() == updated.ToJsonString(),
-            "Setup failed to replace only the old workflow entry"
+            "Setup failed to preserve existing entries and add the new workflow entry"
         )
         Check.That(File.ReadAllText(output) == yaml, "Review changed the proposed workflow")
         Check.That(File.ReadAllText(workflow) == current, "Setup updated the installed pin")
