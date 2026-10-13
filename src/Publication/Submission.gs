@@ -242,6 +242,13 @@ internal class Submission {
             Dictionary[string, Object?]?
         ]()
 
+        internal const StartupFailure string = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
+
+        internal func WorkflowRuns(repo string, query string, missing bool = false) JsonElement -> GitHub.Api(
+            "repos/" + repo + "/actions/workflows/tokate-coordinator.yml/runs?" + query,
+            missing: missing
+        )
+
         internal func ResetWorkflow() -> WorkflowGuidance.Clear()
 
         internal func PendingWorkflow(directory string, run Data) Dictionary[string, Object?]? {
@@ -264,10 +271,9 @@ internal class Submission {
                 if created == "" {
                     return nil
                 }
-                let runs = GitHub.Api(
-                    repo +
-                        "/actions/workflows/tokate-coordinator.yml/runs?event=issue_comment&actor=" +
-                        Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
+                let runs = WorkflowRuns(
+                    run.Text("repo"),
+                    "event=issue_comment&actor=" + Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
                         "&created=" +
                         Uri.EscapeDataString(">=" + created) + "&per_page=10"
                 )
@@ -285,7 +291,7 @@ internal class Submission {
                 let conclusion = J.Text(earliest, "conclusion")
                 let failed = conclusion == "failure" || conclusion == "startup_failure"
                 if conclusion == "startup_failure" {
-                    message = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
+                    message = StartupFailure
                 } else if conclusion == "failure" {
                     message = "Tokate workflow failed."
                     let checks = GitHub.Api(

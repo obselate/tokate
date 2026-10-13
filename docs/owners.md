@@ -2,6 +2,11 @@
 
 Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work before merge.
 
+Check an existing repository with `tokate doctor owner OWNER/REPO` or add `--json` for structured results.
+It reads the coordinator pin, latest release, Actions settings, policy, access record,
+approvals and last Tokate workflow run. Each problem names a fix command or setting.
+It changes nothing. Exit 0 means the read succeeded, even when problems are found.
+
 ## Set up once
 
 1. Install Tokate on Linux x86_64 with glibc 2.34+ or Alpine 3.24.

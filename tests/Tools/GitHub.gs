@@ -232,6 +232,9 @@ internal partial class Fixture {
             let id = Int32.Parse(path.Substring(5))
             return Answer(Check.Map("id", id, "login", id == 1 ? "owner": id == 123 ? "donor": "other"))
         }
+        if path == "repos/obselate/tokate/releases/latest" {
+            return State["latest_release"] is JsonNode release ? Answer(release): Response(404)
+        }
         if path.StartsWith("repos/obselate/tokate/releases/tags/") {
             if let release = State["release"] {
                 return Answer(release)
@@ -279,6 +282,14 @@ internal partial class Fixture {
                 return Answer(contexts)
             }
             return State["branch_protection"] is JsonNode protection ? Answer(protection): Response(404)
+        }
+        if tail == "actions/permissions" {
+            Check.That(method == "GET", "Health check changed Actions settings")
+            return Answer(State["actions_permissions"] ?? Check.Map("enabled", true, "allowed_actions", "all"))
+        }
+        if tail == "actions/permissions/selected-actions" {
+            Check.That(method == "GET", "Health check changed the allowlist")
+            return Answer(State["selected_actions"] ?? Check.Map("patterns_allowed", JsonArray()))
         }
         if tail == "actions/permissions/workflow" {
             if method == "PUT" {

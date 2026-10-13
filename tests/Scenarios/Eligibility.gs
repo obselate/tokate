@@ -678,6 +678,108 @@ internal class EligibilityChecks {
         }
 
         private func Presentation(binary string) {
+            using let health = CoordinationFixture(binary)
+            health.Initialize()
+            let version = TestProcess
+                .Run(binary, []string{"--version"}, health.Flow.Temp.Env)
+                .Output
+                .Trim()
+                .Split(' ')[1]
+            let workflows = Path.Combine(health.Flow.Upstream, ".github/workflows")
+            Directory.CreateDirectory(workflows)
+            File.WriteAllText(
+                Path.Combine(workflows, "tokate-coordinator.yml"),
+                "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                    String('a', 40) +
+                    "\n    with:\n      member: 'tokate-" +
+                    version +
+                    "-linux-x64/tokate'\n"
+            )
+            health.Flow.Commit("Add owner workflow")
+            health.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            health.Flow.Reload()
+            health.Flow.State["latest_release"] = Check.Map(
+                "tag_name",
+                "v" + version,
+                "draft",
+                false,
+                "prerelease",
+                false
+            )
+            health.Flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
+            health.Flow.State["workflow_runs"] = Check.Json(
+                "[{\"status\":\"completed\",\"conclusion\":\"startup_failure\",\"html_url\":\"https://example.test/coordinator\"}]"
+            )
+            health.Flow.Save()
+            let healthArgs = []string{"doctor", "owner", "owner/project", "--json"}
+            for pattern in[]string{
+                "actions/*",
+                "obselate/tokate/.github/workflows/tokate-shared.yml@" + String('b', 40),
+                "obselate/*",
+                "*, !obselate/tokate/.github/workflows/tokate-shared.yml@*"
+            } {
+                health.Flow.Reload()
+                let patterns = JsonArray()
+                for value in pattern.Split(", ") {
+                    patterns.Add(JsonValue.Create(value) as JsonNode)
+                }
+                health.Flow.State["selected_actions"] = Check.Map("patterns_allowed", patterns)
+                health.Flow.Save()
+                health.Flow.ResetTraffic()
+                let result = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
+                var allowlist JsonNode? = nil
+                for row in result["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(row["check"]) == "workflow_allowlist" {
+                        allowlist = row
+                    }
+                }
+                Check.That(
+                    Check.Text(allowlist?["status"]) == (pattern == "obselate/*" ? "ok": "problem"),
+                    "Owner doctor misread the pinned workflow allowlist"
+                )
+                Check.Contains(result.ToJsonString(), "startup_failure")
+                for row in result["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(row["check"]) == "last_run" {
+                        Check.Contains(Check.Text(row["message"]), "repository's Actions settings")
+                    }
+                }
+                health.Flow.Reload()
+                for call in health.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(call["method"]) == "GET", "Owner health check mutated repository data")
+                }
+            }
+            let policyPath = Path.Combine(health.Flow.Upstream, ".github/tokate.json")
+            let changedPolicy = Check.Json(File.ReadAllText(policyPath))
+            changedPolicy["max_seconds"] = JsonValue.Create(3601)
+            File.WriteAllText(policyPath, changedPolicy.ToJsonString())
+            health.Flow.Commit("Change approved task fields")
+            health.Flow.Git("-C", health.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            let broken = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
+            var missing bool
+            var stale bool
+            for row in broken["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                missing = missing ||
+                    (
+                    Check.Text(row["check"]) == "access" && Check.Text(row["status"]) == "problem" && Check.Text(
+                        row["present"]
+                    ) == "false"
+                )
+                stale = stale ||
+                    (
+                    Check.Text(row["check"]) == "approval" && Check.Text(row["status"]) == "problem" && Check.Text(
+                        row["issue"]
+                    ) == "1"
+                )
+            }
+            Check.That(missing && stale, "Owner doctor omitted missing access or stale approval")
+            let next = broken["next_actions"]?.ToJsonString() ?? ""
+            Check.Contains(next, "[\"tokate\",\"access\",\"init\",\"owner/project\"]")
+            Check.Contains(next, "[\"tokate\",\"approve\",\"owner/project#1\"]")
+            let human = health.Flow.Call([]string{"doctor", "owner", "owner/project"}, owner: true).Output
+            Check.Contains(human, "tokate access init owner/project")
+            Check.Contains(human, "tokate approve owner/project#1")
+            Check.Contains(human, "Settings > Actions > General")
+            health.Flow.NoInference()
             using let empty = CoordinationFixture(binary)
             empty.Initialize(approve: false)
             let notice = "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
