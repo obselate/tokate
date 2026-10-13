@@ -96,7 +96,9 @@ internal class AttemptContinuation {
                         Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
                         ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before preparation."
                 }
-            } catch (error Exception) { }
+            } catch (error CliFailure) { } catch (error JsonException) { } catch (
+                error ApiDeadlineException
+            ) { } catch (error Exception) when error.GetType() == typeof(Exception) { }
 
             return next
         }
@@ -116,16 +118,18 @@ internal class AttemptContinuation {
         private func Id(value string) {
             var id Guid
             if !Guid.TryParseExact(value, "D", out id) || id.ToString("D") != value {
-                throw Exception("Continuation requires canonical contribution and attempt identities")
+                throw CliFailure("invalid_state", "Continuation requires canonical contribution and attempt identities")
             }
         }
 
         internal func Store(args Args) string {
             let source = LocalPaths.DirectoryPath(args.Need("continue-from"))
-            let root = Path.GetDirectoryName(source) ?? throw Exception("Unsupported source run store")
+            let root = Path.GetDirectoryName(source) ??
+                throw CliFailure("invalid_state", "Unsupported source run store")
 
             if args.Get("runs") != "" && LocalPaths.DirectoryPath(args.Need("runs")) != root {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Continuation must use the source run store so each destination fence has one saved run"
                 )
             }
@@ -138,7 +142,8 @@ internal class AttemptContinuation {
                 Path.GetDirectoryName(run.Text("continuation_source")) ?? "",
                 run.Text("name") == "" ? run.Text("attempt"): run.Text("name")
             ) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Continuation destination moved or shares an ambiguous execution fence; use its original saved run"
                 )
             }
@@ -203,12 +208,12 @@ internal class AttemptContinuation {
                     (J.Text(prior, "harness") != "pi" || J.Text(prior, "provider") != "local-chat-completions") &&
                     J.Text(prior, "harness") != "omp"
             ) {
-                throw Exception("Invalid stopped managed v2 predecessor or destination attempt")
+                throw CliFailure("invalid_state", "Invalid stopped managed v2 predecessor or destination attempt")
             }
 
             for key in[]string{"harness", "provider", "model", "effort"} {
                 if J.Text(prior, key) != J.Text(declared[0], key) {
-                    throw Exception("Continuation cannot change its predecessor tool selection")
+                    throw CliFailure("invalid_state", "Continuation cannot change its predecessor tool selection")
                 }
             }
         }
@@ -225,7 +230,7 @@ internal class AttemptContinuation {
                 J.Text(metadata, "import_manifest_sha256"),
                 "^[0-9a-f]{64}$"
             ) {
-                throw Exception("Continuation requires managed source and bound import evidence")
+                throw CliFailure("invalid_state", "Continuation requires managed source and bound import evidence")
             }
 
             Predecessor(prior, J.Text(metadata, "attempt"), J.Get(metadata, "tools"))
@@ -245,7 +250,7 @@ internal class AttemptContinuation {
                     J.Get(approval, "repo_id")
                 ) != repoId
             ) {
-                throw Exception("Continuation repository numeric identity changed")
+                throw CliFailure("stale_approval", "Continuation repository numeric identity changed")
             }
 
             if !LeaseLifecycle.Supported(value) || J.Text(reservation, "status") != "active" || J.Text(
@@ -295,7 +300,10 @@ internal class AttemptContinuation {
                 .ValueKind == JsonValueKind.Object ||
                 J
                 .Items(J.Get(evidence, "amendments")).Count != 0 {
-                throw Exception("Ambiguous predecessor lineage or changed approval and contribution evidence")
+                throw CliFailure(
+                    "stale_approval",
+                    "Ambiguous predecessor lineage or changed approval and contribution evidence"
+                )
             }
         }
 
@@ -313,7 +321,10 @@ internal class AttemptContinuation {
             ) < 1 ||
                 !Regex
                 .IsMatch(run.Text("continuation_source_metadata_sha256"), "^[0-9a-f]{64}$") {
-                throw Exception("Saved continuation lost its explicit import identity or verification budget")
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved continuation lost its explicit import identity or verification budget"
+                )
             }
 
             RuntimeBudget.Validate(run)
@@ -367,7 +378,10 @@ internal class AttemptContinuation {
                 "publication_uuid"
             ) != "" ||
                 source.Text("publication_expected") != "" {
-                throw Exception("Source must be stopped, unpublished managed v2 work with incomplete coding")
+                throw CliFailure(
+                    "invalid_state",
+                    "Source must be stopped, unpublished managed v2 work with incomplete coding"
+                )
             }
 
             for name in[]string{
@@ -379,17 +393,22 @@ internal class AttemptContinuation {
             } {
                 let path = Path.Combine(directory, name)
                 if File.Exists(path) || Directory.Exists(path) || FileInfo(path).LinkTarget != nil {
-                    throw Exception("Publication-pending or corrected source work cannot be continued")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Publication-pending or corrected source work cannot be continued"
+                    )
                 }
             }
 
             let viewer = GitHub.Api("user")
 
             if !RepositoryIdentity.SameDonor(viewer, source) || !RepositoryIdentity.SameDonor(viewer, run) ||
-                !RepositoryIdentity.SameRepo(source.Text("repo"), run.Text("repo")) || source.Number(
-                "issue"
-            ) != run.Number("issue") {
-                throw Exception("Continuation source has a different numeric donor, repository or issue")
+                !RepositoryIdentity.SameRepo(source.Text("repo"), run.Text("repo")) || source.Number("issue") != run
+                .Number("issue") {
+                throw CliFailure(
+                    "invalid_state",
+                    "Continuation source has a different numeric donor, repository or issue"
+                )
             }
 
             for key in[]string{
@@ -410,7 +429,7 @@ internal class AttemptContinuation {
                 "claude_profile",
             } {
                 if source.Text(key) != run.Text(key) {
-                    throw Exception("Continuation changed predecessor binding or selection: " + key)
+                    throw CliFailure("invalid_state", "Continuation changed predecessor binding or selection: " + key)
                 }
             }
 
@@ -426,7 +445,7 @@ internal class AttemptContinuation {
                 "contribution"
             )
                 .ValueKind == JsonValueKind.Object {
-                throw Exception("Published or changed authority cannot be continued")
+                throw CliFailure("stale_approval", "Published or changed authority cannot be continued")
             }
 
             Predecessor(Provenance(source), run.Text("attempt"), J.Get(run.Element(), "tools"))
@@ -445,7 +464,7 @@ internal class AttemptContinuation {
             ) ||
                 !RepositoryIdentity
                 .SameRepo(source.Text("head_repo"), run.Text("head_repo")) {
-                throw Exception("Continuation repository or fork identity changed")
+                throw CliFailure("stale_approval", "Continuation repository or fork identity changed")
             }
 
             RepositoryAccess.ValidateRepository(
@@ -457,7 +476,7 @@ internal class AttemptContinuation {
             )
 
             if Publication.Pulls(source).Count != 0 {
-                throw Exception("Published contributions cannot be imported")
+                throw CliFailure("invalid_state", "Published contributions cannot be imported")
             }
 
             let reference = GitHub.Api(
@@ -465,7 +484,10 @@ internal class AttemptContinuation {
             )
 
             if J.Text(J.Get(reference, "object"), "sha") != source.Text("base") {
-                throw Exception("Source branch changed or publication is pending; source is preserved")
+                throw CliFailure(
+                    "invalid_state",
+                    "Source branch changed or publication is pending; source is preserved"
+                )
             }
 
             return source

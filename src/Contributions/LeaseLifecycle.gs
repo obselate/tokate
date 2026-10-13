@@ -40,13 +40,13 @@ internal class LeaseLifecycle {
                 "lease"
             ) ||
                 !Guid.TryParseExact(J.Text(identity, "id"), "D", out id) || id.ToString("D") != J.Text(identity, "id") {
-                throw Exception("Incomplete lease or contribution identity")
+                throw CliFailure("invalid_state", "Incomplete lease or contribution identity")
             }
 
             if J.Text(identity, "id") != J.Text(reservation, "reservation") || RepositoryIdentity.PositiveId(
                 J.Get(identity, "actor")
             ) != RepositoryIdentity.PositiveId(actor) {
-                throw Exception("Lease differs from the contribution identity")
+                throw CliFailure("invalid_state", "Lease differs from the contribution identity")
             }
 
             let status = J.Text(reservation, "status")
@@ -56,14 +56,14 @@ internal class LeaseLifecycle {
                 if !Guid.TryParseExact(J.Text(reservation, "attempt"), "D", out attempt) || attempt.ToString(
                     "D"
                 ) != J.Text(reservation, "attempt") {
-                    throw Exception("Active lease needs a canonical attempt identity")
+                    throw CliFailure("invalid_state", "Active lease needs a canonical attempt identity")
                 }
             } else if status == "paused" {
                 if J.Text(reservation, "attempt") != "" {
-                    throw Exception("Paused lease cannot retain an active attempt")
+                    throw CliFailure("invalid_state", "Paused lease cannot retain an active attempt")
                 }
             } else {
-                throw Exception("Unsupported lease lifecycle state")
+                throw CliFailure("invalid_state", "Unsupported lease lifecycle state")
             }
 
             if active && status != "active" {
@@ -98,11 +98,14 @@ internal class LeaseLifecycle {
             if action == "claim" {
                 if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                     CoordinationState.Unix(reservation, "expires") > now {
-                    throw Exception("An unexpired reservation already owns this contribution")
+                    throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
                 }
 
                 if reservation.ValueKind == JsonValueKind.Object && !Supported(value) {
-                    throw Exception("Legacy lease reacquisition is unsupported; fresh owner approval is required")
+                    throw CliFailure(
+                        "stale_approval",
+                        "Legacy lease reacquisition is unsupported; fresh owner approval is required"
+                    )
                 }
 
                 let same = Supported(value) && RepositoryIdentity.PositiveId(
@@ -145,14 +148,17 @@ internal class LeaseLifecycle {
             }
 
             if !Supported(value) {
-                throw Exception("Legacy lease transitions are unsupported; fresh owner approval is required")
+                throw CliFailure(
+                    "stale_approval",
+                    "Legacy lease transitions are unsupported; fresh owner approval is required"
+                )
             }
 
             Owner(state, actor)
 
             let status = J.Text(reservation, "status")
             if (action == "pause" && status != "active") || (action == "resume" && status != "paused") {
-                throw Exception("Lifecycle transition does not match the current lease state")
+                throw CliFailure("invalid_state", "Lifecycle transition does not match the current lease state")
             }
 
             Pin(state)

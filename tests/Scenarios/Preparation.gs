@@ -223,6 +223,12 @@ internal class PreparationChecks {
             let identity = File.ReadAllText(marker)
             File.Delete(marker)
             Resume(flow, run, 1)
+            Check.Envelope(
+                flow.Call([]string{"prepare", "--run", run, "--json"}, 1),
+                "prepare",
+                "error",
+                "invalid_state"
+            )
             File.WriteAllText(marker, identity)
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             flow.Git(
@@ -267,6 +273,13 @@ internal class PreparationChecks {
                 )
                 flow.Call(invalid.ToArray(), 1)
             }
+            let missing = List[string](args)
+            missing[missing.IndexOf("--tools") + 1] += ".missing"
+            Check.Envelope(flow.Call(missing.ToArray(), 1), "claim", "error", "invalid_state")
+            let originalTools = File.ReadAllText(test.Tools)
+            File.WriteAllText(test.Tools, "{")
+            Check.Envelope(flow.Call(args.ToArray(), 1), "claim", "error", "invalid_state")
+            File.WriteAllText(test.Tools, originalTools)
             Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Invalid external claim created a run")
             let result = Check.Json(flow.Call(args.ToArray(), 8).Output)
             let run = RunPath(flow)
@@ -314,6 +327,13 @@ internal class PreparationChecks {
             let original = File.ReadAllText(path)
             let work = Path.Combine(run, "coding/unfinished.txt")
             File.WriteAllText(work, "Saved work")
+            Check.Envelope(
+                test.Flow.Call([]string{"resume", "--run", run, "--json"}, 1),
+                "resume",
+                "error",
+                "invalid_state"
+            )
+            Check.That(File.ReadAllText(path) == original, "Refused resume changed the saved run")
             test.Flow.Call([]string{"pause", "--run", run, "--help"})
             var requests int32
             for action in[]string{"renew", "pause", "resume", "release"} {

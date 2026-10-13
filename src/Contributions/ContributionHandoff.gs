@@ -25,12 +25,12 @@ internal class ContributionHandoff {
             RepositoryIdentity.PositiveId(J.Get(value, "actor"))
 
             if J.Number(value, "pr") < 1 {
-                throw Exception("Handoff needs the prior pull request")
+                throw CliFailure("invalid_state", "Handoff needs the prior pull request")
             }
 
             var id Guid
             if !Guid.TryParseExact(J.Text(value, "id"), "D", out id) || id.ToString("D") != J.Text(value, "id") {
-                throw Exception("Handoff needs the prior contribution identity")
+                throw CliFailure("invalid_state", "Handoff needs the prior contribution identity")
             }
         }
 
@@ -44,7 +44,7 @@ internal class ContributionHandoff {
             if original.ValueKind != JsonValueKind.Object || RepositoryIdentity.PositiveId(
                 J.Get(original, "actor")
             ) != actor {
-                throw Exception("Handoff requires published progress from the prior donor")
+                throw CliFailure("invalid_state", "Handoff requires published progress from the prior donor")
             }
 
             let source = J.Parse(
@@ -89,7 +89,8 @@ internal class ContributionHandoff {
                 value,
                 "approval_id"
             ) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Handoff requires another donor's published contribution under the same approval; use amend --resume for your own work"
                 )
             }
@@ -105,7 +106,7 @@ internal class ContributionHandoff {
                 (J.Text(pull, "state") != "open" && J.Text(pull, "state") != "closed") ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(J.Get(J.Get(pull, "head"), "repo"), "full_name"), J.Text(source, "fork")) {
-                throw Exception("Prior pull request no longer identifies unmerged donor work")
+                throw CliFailure("invalid_state", "Prior pull request no longer identifies unmerged donor work")
             }
 
             let repo = J.Text(value, "repo")
@@ -152,7 +153,7 @@ internal class ContributionHandoff {
                 RepositoryIdentity.PositiveId(J.Get(identity, "actor")) == RepositoryIdentity.PositiveId(
                 J.Get(source, "actor")
             ) {
-                throw Exception("Handoff differs from the authoritative donor takeover")
+                throw CliFailure("stale_approval", "Handoff differs from the authoritative donor takeover")
             }
 
             let repo = J.Text(value, "repo")
@@ -162,7 +163,7 @@ internal class ContributionHandoff {
                 Source(prior),
                 source
             ) {
-                throw Exception("Handoff source or approval changed")
+                throw CliFailure("stale_approval", "Handoff source or approval changed")
             }
 
             Synchronization.Ancestor(repo, prior.Sha, repo, state.Sha)
@@ -197,7 +198,7 @@ internal class ContributionHandoff {
             if number < 1 || number == J.Number(source, "pr") || J.Number(pull, "number") != J.Number(source, "pr") ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(J.Get(J.Get(pull, "base"), "repo"), "full_name"), repo) {
-                throw Exception("Cannot link the superseded contribution")
+                throw CliFailure("invalid_state", "Cannot link the superseded contribution")
             }
 
             let marker = "<!-- tokate-superseded:" + number.ToString() + " -->"
@@ -228,7 +229,7 @@ internal class ContributionHandoff {
             }
 
             if head != run.Text("base") {
-                throw Exception("Handoff checkout changed before import; saved work is preserved")
+                throw CliFailure("invalid_state", "Handoff checkout changed before import; saved work is preserved")
             }
 
             Commands.Git(

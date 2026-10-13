@@ -21,7 +21,7 @@ internal class ReservationRequest {
             if request.ValueKind != JsonValueKind.Undefined {
                 RequestData.Request(request)
                 if !LeaseLifecycle.Transition(J.Text(request, "action")) {
-                    throw Exception("Invalid saved reservation request")
+                    throw CliFailure("invalid_state", "Invalid saved reservation request")
                 }
 
                 actions = []string{J.Text(request, "action")}
@@ -83,7 +83,7 @@ internal class ReservationRequest {
             let action = args.Need("operation")
 
             if !LeaseLifecycle.Transition(action) || run.Number("version") != 2 || run.Text("id") == "" {
-                throw Exception("Choose pause, resume, renew or release for a prepared version 2 run")
+                throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")
             }
 
             let viewer = GitHub.Api("user")
@@ -102,7 +102,8 @@ internal class ReservationRequest {
                 let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), request)
 
                 if outcome.ValueKind == JsonValueKind.Undefined && J.Text(request, "action") != action {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "A different reservation request is pending; inspect its outcome before another action"
                     )
                 }
@@ -136,7 +137,7 @@ internal class ReservationRequest {
                 let status = J.Text(J.Get(value, "reservation"), "status")
 
                 if (action == "pause" && status != "active") || (action == "resume" && status != "paused") {
-                    throw Exception("Reservation state does not permit this operation")
+                    throw CliFailure("invalid_state", "Reservation state does not permit this operation")
                 }
 
                 request = J.Parse(
@@ -160,7 +161,7 @@ internal class ReservationRequest {
             if !Guid.TryParseExact(J.Text(request, "uuid"), "D", out id) || !LeaseLifecycle.Transition(
                 J.Text(request, "action")
             ) {
-                throw Exception("Invalid saved reservation request")
+                throw CliFailure("invalid_state", "Invalid saved reservation request")
             }
 
             let journal = "reservation-" + id.ToString("D") + ".posting.json"

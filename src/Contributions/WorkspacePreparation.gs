@@ -35,7 +35,10 @@ internal class WorkspacePreparation {
 
         internal func CheckIdentity(run Data) {
             if run.Number("preparation_version") != 1 || !Identified(run) {
-                throw Exception("Saved preparation identity changed; import provenance cannot be removed or rebound")
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved preparation identity changed; import provenance cannot be removed or rebound"
+                )
             }
         }
 
@@ -155,25 +158,25 @@ internal class WorkspacePreparation {
             let failure = "prepare --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
 
             if run.Number("preparation_version") != 1 || !Identified(run) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if savedState != "preparing" && savedState != "claimed" {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if fields.ContainsKey("codex_version") || fields.ContainsKey("pi_version") || fields.ContainsKey(
                 "claude_version"
             ) ||
                 fields.ContainsKey("omp_version") || fields.ContainsKey("commit") {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let eventsPath = Path.Combine(directory, "events.jsonl")
             let reportPath = Path.Combine(directory, "report.md")
 
             if File.Exists(eventsPath) || File.Exists(reportPath) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let record = ContributionAuthority.Recheck(run)
@@ -189,7 +192,7 @@ internal class WorkspacePreparation {
                 "preparation_repo_id"
             )
                 .ToString() {
-                throw Exception("Selected upstream repository identity changed")
+                throw CliFailure("stale_approval", "Selected upstream repository identity changed")
             }
 
             run.Fields["preparation_repo_id"] = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
@@ -232,13 +235,16 @@ internal class WorkspacePreparation {
             AttemptContinuation.Location(directory, run)
 
             if !run.Flag("preparation_complete") || !Identified(run) {
-                throw Exception("Preparation is incomplete; use prepare --run " + directory + " before work")
+                throw CliFailure(
+                    "invalid_state",
+                    "Preparation is incomplete; use prepare --run " + directory + " before work"
+                )
             }
 
             let upstream = GitHub.Api("repos/" + run.Text("repo"))
 
             if J.Get(upstream, "id").ToString() != J.Get(run.Element(), "preparation_repo_id").ToString() {
-                throw Exception("Selected upstream repository identity changed")
+                throw CliFailure("stale_approval", "Selected upstream repository identity changed")
             }
 
             CheckFork(run, upstream)
@@ -249,7 +255,10 @@ internal class WorkspacePreparation {
             if AttemptContinuation.Has(run) {
                 Source(checkout, run)
                 if run.Text("continuation_phase") != "imported" {
-                    throw Exception("Continuation import is incomplete; use prepare --run " + directory)
+                    throw CliFailure(
+                        "invalid_state",
+                        "Continuation import is incomplete; use prepare --run " + directory
+                    )
                 }
 
                 ContinuationImport.Check(directory, run, ContributionAuthority.Recheck(run))
@@ -280,7 +289,10 @@ internal class WorkspacePreparation {
                         )
 
                         if items.ValueKind != JsonValueKind.Array {
-                            throw Exception("Incomplete fork discovery; select --fork DONOR/NAME explicitly")
+                            throw CliFailure(
+                                "invalid_state",
+                                "Incomplete fork discovery; select --fork DONOR/NAME explicitly"
+                            )
                         }
 
                         let pageItems = J.Items(items)
@@ -322,7 +334,8 @@ internal class WorkspacePreparation {
                     }
 
                     if !complete || candidates.Count > 1 {
-                        throw Exception(
+                        throw CliFailure(
+                            "invalid_state",
                             "Ambiguous or incomplete fork discovery; select --fork DONOR/NAME explicitly in a fresh preparation"
                         )
                     }
@@ -330,7 +343,10 @@ internal class WorkspacePreparation {
                     head = candidates.Count == 1 ? candidates[0]: run.Text("donor") + "/" + run.Text("repo")
                         .Split('/')[1]
                 } catch (error ApiDeadlineException) {
-                    throw Exception("Incomplete fork discovery after 60 seconds; select --fork DONOR/NAME explicitly")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Incomplete fork discovery after 60 seconds; select --fork DONOR/NAME explicitly"
+                    )
                 } finally {
                     ApiTransport.EndDeadline()
                 }
@@ -345,7 +361,7 @@ internal class WorkspacePreparation {
             let head = RepositoryIdentity.Repo(run.Text("preparation_head"))
 
             if !RepositoryIdentity.SameRepo(run.Text("head_repo"), head) {
-                throw Exception("Saved head repository differs from preparation identity")
+                throw CliFailure("invalid_state", "Saved head repository differs from preparation identity")
             }
 
             var info = GitHub.Api("repos/" + head, missing: true)
@@ -359,18 +375,24 @@ internal class WorkspacePreparation {
                     repo,
                     StringComparison.OrdinalIgnoreCase
                 ) {
-                    throw Exception("A missing fork must belong to the authenticated donor")
+                    throw CliFailure("invalid_state", "A missing fork must belong to the authenticated donor")
                 }
 
                 run.Fields["fork_creation_attempted"] = true
                 run.Save(directory)
 
+                var created JsonElement
                 try {
-                    let created = GitHub.Api(
+                    created = GitHub.Api(
                         "repos/" + run.Text("repo") + "/forks",
                         map[string, Object?]{"name": head.Split('/')[1]}
                     )
+                } catch (error CliFailure) {
+                    run.Fields["fork_creation_error"] = error.Message
+                    run.Save(directory)
+                }
 
+                if created.ValueKind != JsonValueKind.Undefined {
                     RepositoryAccess.ValidateRepository(
                         run.Text("repo"),
                         head,
@@ -381,9 +403,6 @@ internal class WorkspacePreparation {
 
                     run.Fields["preparation_head_id"] = RepositoryIdentity.PositiveId(J.Get(created, "id"))
 
-                    run.Save(directory)
-                } catch (error Exception) {
-                    run.Fields["fork_creation_error"] = error.Message
                     run.Save(directory)
                 }
             }
@@ -410,7 +429,7 @@ internal class WorkspacePreparation {
                         "preparation_head_id"
                     )
                         .ToString() {
-                        throw Exception("Saved fork identity changed; inspect the original fork")
+                        throw CliFailure("stale_approval", "Saved fork identity changed; inspect the original fork")
                     }
 
                     run.Fields["preparation_head_id"] = RepositoryIdentity.PositiveId(J.Get(info, "id"))
@@ -433,7 +452,8 @@ internal class WorkspacePreparation {
                 }
             }
 
-            throw Exception(
+            throw CliFailure(
+                "invalid_state",
                 "Fork creation is not ready or its response was lost. Inspect " +
                     head +
                     "; use prepare --run " +
@@ -454,7 +474,7 @@ internal class WorkspacePreparation {
             )
 
             if J.Get(info, "id").ToString() != J.Get(run.Element(), "preparation_head_id").ToString() {
-                throw Exception("Saved fork repository identity changed")
+                throw CliFailure("stale_approval", "Saved fork repository identity changed")
             }
         }
 
@@ -469,13 +489,17 @@ internal class WorkspacePreparation {
             let reference = Reference(run)
 
             if reference.ValueKind == JsonValueKind.Undefined {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "The recorded contribution branch is missing. Inspect remote state and the saved creation result; preparation never repeats a branch mutation. Use the original run after explicitly restoring its approved base branch."
                 )
             }
 
             if J.Text(J.Get(reference, "object"), "sha") != run.Text("base") {
-                throw Exception("Existing branch work is preserved; continuation remains unsupported until #14")
+                throw CliFailure(
+                    "invalid_state",
+                    "Existing branch work is preserved; continuation remains unsupported until #14"
+                )
             }
         }
 
@@ -496,7 +520,10 @@ internal class WorkspacePreparation {
                     )
 
                     if pulls.Count != 0 {
-                        throw Exception("Partial publication is preserved; continuation remains unsupported until #14")
+                        throw CliFailure(
+                            "invalid_state",
+                            "Partial publication is preserved; continuation remains unsupported until #14"
+                        )
                     }
 
                     run.Fields["branch_creation_attempted"] = true
@@ -513,7 +540,7 @@ internal class WorkspacePreparation {
                         "repos/" + run.Text("head_repo") + "/git/refs",
                         map[string, Object?]{"ref": "refs/heads/" + run.Text("branch"), "sha": run.Text("base")}
                     )
-                } catch (error Exception) {
+                } catch (error CliFailure) {
                     run.Fields["branch_creation_error"] = error.Message
                     run.Save(directory)
                 }
@@ -565,7 +592,8 @@ internal class WorkspacePreparation {
             for entry in Commands.Git(checkout, "config", "--local", "--no-includes", "--list").Split('\n') {
                 if Array.IndexOf(allowed, entry) < 0 {
                     if reconciliation {
-                        throw Exception(
+                        throw CliFailure(
+                            "invalid_state",
                             "Unsafe local Git configuration; inspect repository merge/filter programs and remove unsafe configuration explicitly before reconcile. Workspace preserved."
                         )
                     }
@@ -578,7 +606,8 @@ internal class WorkspacePreparation {
                 let path = Path.Combine(checkout, ".git", name)
                 if File.Exists(path) || (Directory.Exists(path) && Directory.GetFileSystemEntries(path).Length > 0) {
                     if reconciliation {
-                        throw Exception(
+                        throw CliFailure(
+                            "invalid_state",
                             "Unsafe local Git attributes, excludes or hooks; inspect metadata explicitly before reconcile. Workspace preserved."
                         )
                     }
@@ -590,7 +619,8 @@ internal class WorkspacePreparation {
 
         internal func PublishedSource(checkout string, run Data) {
             if run.Number("preparation_version") != 1 || !Identified(run) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Unidentified saved workspace; use its original prepared run and inspect saved evidence. Workspace preserved."
                 )
             }
@@ -602,10 +632,25 @@ internal class WorkspacePreparation {
                 ): checkout
 
                 Owned(source, run)
-            } catch (error Exception) {
-                throw Exception(
-                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved.",
-                    error
+            } catch (error CliFailure) {
+                throw CliFailure(
+                    "invalid_state",
+                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
+                )
+            } catch (error IOException) {
+                throw CliFailure(
+                    "invalid_state",
+                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
+                )
+            } catch (error UnauthorizedAccessException) {
+                throw CliFailure(
+                    "invalid_state",
+                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
+                )
+            } catch (error Exception) when error.GetType() == typeof(Exception) {
+                throw CliFailure(
+                    "invalid_state",
+                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
                 )
             }
 
@@ -621,7 +666,10 @@ internal class WorkspacePreparation {
                 let tab = entry.IndexOf('\t')
 
                 if tab < 0 {
-                    throw Exception("Incomplete submodule index evidence; inspect the saved index before reconcile.")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Incomplete submodule index evidence; inspect the saved index before reconcile."
+                    )
                 }
 
                 let metadata = Path.Combine(checkout, entry.Substring(tab + 1), ".git")
@@ -637,7 +685,7 @@ internal class WorkspacePreparation {
 
         internal func Source(checkout string, run Data) {
             if run.Number("preparation_version") != 1 || !Identified(run) {
-                throw Exception("Unsupported preparation identity; source is preserved")
+                throw CliFailure("invalid_state", "Unsupported preparation identity; source is preserved")
             }
 
             Owned(checkout, run)
@@ -663,7 +711,10 @@ internal class WorkspacePreparation {
             if run.Text("source") != "external" && run.Text("harness") == "codex" {
                 for file in Commands.Git(checkout, "ls-files").Split('\n') {
                     if file.StartsWith(".codex/") || file.Contains("/.codex/") {
-                        throw Exception("Repository Codex configuration is not supported in donor runs")
+                        throw CliFailure(
+                            "invalid_state",
+                            "Repository Codex configuration is not supported in donor runs"
+                        )
                     }
                 }
             }

@@ -6,7 +6,7 @@ import System.Globalization
 import System.Text.Json
 
 internal class ContributionStatus {
-    internal var Failure Exception? = nil
+    internal var Failure CliFailure? = nil
     internal var Truncated bool
     private var Viewer JsonElement
     private var Info JsonElement
@@ -19,7 +19,13 @@ internal class ContributionStatus {
         try {
             await read()
             return true
-        } catch (error Exception) {
+        } catch (error CliFailure) {
+            return Unavailable(target, part, error)
+        } catch (error JsonException) {
+            return Unavailable(target, part, error)
+        } catch (error ApiDeadlineException) {
+            return Unavailable(target, part, error)
+        } catch (error Exception) when error.GetType() == typeof(Exception) {
             return Unavailable(target, part, error)
         }
     }
@@ -29,7 +35,11 @@ internal class ContributionStatus {
         target[
             part + "_reason"
         ] = error is CliFailure failure ? failure.Summary: "Required remote data is unavailable or malformed."
-        Failure = Failure ?? error
+        Failure = Failure ??
+            (
+            error as CliFailure ??
+                CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+        )
 
         return false
     }
@@ -71,7 +81,7 @@ internal class ContributionStatus {
 
         if issue < 1 || J.Text(task, "state") != "open" || J.Get(task, "pull_request")
             .ValueKind != JsonValueKind.Undefined {
-            throw Exception("Expected an open issue in the approved-work index")
+            throw CliFailure("invalid_state", "Expected an open issue in the approved-work index")
         }
 
         let row = map[string, Object?]{
@@ -137,7 +147,7 @@ internal class ContributionStatus {
                         "issue"
                     ) != issue ||
                         J.Number(approval, "version") != 2 {
-                        throw Exception("Malformed approval identity")
+                        throw CliFailure("invalid_state", "Malformed approval identity")
                     }
 
                     let record = state.CheckApproval(repo, issue, quiet: true)
@@ -165,11 +175,11 @@ internal class ContributionStatus {
                 if RepositoryIdentity.PositiveId(J.Get(approval, "repo_id")) != RepositoryIdentity.PositiveId(
                     J.Get(Info, "id")
                 ) {
-                    throw Exception("Task repository numeric identity changed")
+                    throw CliFailure("stale_approval", "Task repository numeric identity changed")
                 }
 
                 if (Access == nil || Access?.Sha == "") {
-                    throw Exception("Task-scoped donor access is unavailable")
+                    throw CliFailure("invalid_state", "Task-scoped donor access is unavailable")
                 }
 
                 let actor = RepositoryIdentity.PositiveId(J.Get(Viewer, "id"))
@@ -198,7 +208,11 @@ internal class ContributionStatus {
                     let holder = RepositoryIdentity.PositiveId(J.Get(reservation, "actor"))
                     row["holder_eligible"] = Access?.Allows(holder, mode, issue) == true
                 }
-            } catch (error Exception) {
+            } catch (error CliFailure) {
+                Unavailable(row, "eligibility", error)
+            } catch (error JsonException) {
+                Unavailable(row, "eligibility", error)
+            } catch (error Exception) when error.GetType() == typeof(Exception) {
                 Unavailable(row, "eligibility", error)
             }
         }
@@ -245,7 +259,7 @@ internal class ContributionStatus {
                         )
 
                         if pulls.ValueKind != JsonValueKind.Array || pulls.GetArrayLength() > 5 {
-                            throw Exception("Cannot read bounded draft PRs")
+                            throw CliFailure("invalid_state", "Cannot read bounded draft PRs")
                         }
 
                         if pulls.GetArrayLength() == 5 {
@@ -259,7 +273,7 @@ internal class ContributionStatus {
                             )
 
                             if J.Number(canonical, "number") != J.Number(pull, "number") {
-                                throw Exception("Canonical PR number differs from discovery")
+                                throw CliFailure("invalid_state", "Canonical PR number differs from discovery")
                             }
 
                             Draft(repo, issue, canonical, state, approval, policy, drafts)
@@ -352,7 +366,7 @@ internal class ContributionStatus {
             J.Get(Info, "id")
         ) ||
             (recorded > 0 && recorded != number) {
-            throw Exception("Canonical PR upstream identity differs")
+            throw CliFailure("invalid_state", "Canonical PR upstream identity differs")
         }
 
         let sha = RepositoryIdentity.CommitSha(J.Text(head, "sha"))
@@ -400,7 +414,7 @@ internal class ContributionStatus {
         }
 
         if J.Text(pull, "state") != "open" {
-            throw Exception("Unknown canonical PR lifecycle")
+            throw CliFailure("invalid_state", "Unknown canonical PR lifecycle")
         }
 
         let bound = Admission.DonorBinding(repo, pull, state, requireLease: false).ValueKind == JsonValueKind.Object
@@ -426,7 +440,9 @@ internal class ContributionStatus {
                 draft["receipt"] = J.Get(receipt, "incomplete")
                     .ValueKind == JsonValueKind.True ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
             }
-        } catch { }
+        } catch (error CliFailure) { } catch (error JsonException) { } catch (
+            error Exception
+        ) when error.GetType() == typeof(Exception) { }
 
         if policy.ValueKind == JsonValueKind.Object {
             Observe(draft, "checks", async () -> CheckHead(repo, sha, policy, draft))
@@ -461,7 +477,7 @@ internal class ContributionStatus {
         let contribution = J.Get(value, "contribution")
 
         if contribution.ValueKind != JsonValueKind.Object {
-            throw Exception("Historical contribution evidence is unavailable")
+            throw CliFailure("invalid_state", "Historical contribution evidence is unavailable")
         }
 
         let current = CoordinationState.Current(value)
@@ -602,7 +618,7 @@ internal class ContributionStatus {
         let reviews = GitHub.Api("repos/" + repo + "/pulls/" + pr.ToString() + "/reviews?per_page=30&page=1")
 
         if reviews.ValueKind != JsonValueKind.Array || reviews.GetArrayLength() > 30 {
-            throw Exception("Cannot read bounded PR reviews")
+            throw CliFailure("invalid_state", "Cannot read bounded PR reviews")
         }
 
         let current = Dictionary[string, string]()
@@ -741,7 +757,8 @@ internal class ContributionStatus {
             }
 
             for item in drafts {
-                let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+                let draft = item as Dictionary[string, Object?] ??
+                    throw InvalidOperationException("Invalid status draft")
 
                 if Text(draft, "state") == "closed" {
                     continue
@@ -824,7 +841,7 @@ internal class ContributionStatus {
         }
 
         for item in drafts {
-            let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+            let draft = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status draft")
 
             if Text(draft, "state") != "closed" {
                 continue
@@ -901,7 +918,7 @@ internal class ContributionStatus {
                 RepositoryIdentity.PositiveId(J.Get(Info, "id"))
 
                 if !RepositoryIdentity.SameRepo(J.Text(Info, "full_name"), repo) {
-                    throw Exception("Repository identity changed")
+                    throw CliFailure("stale_approval", "Repository identity changed")
                 }
 
                 Result["repository_status"] = "observed"
@@ -943,7 +960,7 @@ internal class ContributionStatus {
                 async () -> {
                     Result["requests_truncated"] = AccessState.Pending(
                         repo,
-                        Access ?? throw Exception("Missing access"),
+                        Access ?? throw InvalidOperationException("Missing access"),
                         pending,
                         issue,
                         bounded: true
@@ -989,7 +1006,7 @@ internal class ContributionStatus {
                     )
 
                     if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 20 {
-                        throw Exception("Cannot read bounded approved-work issues")
+                        throw CliFailure("invalid_state", "Cannot read bounded approved-work issues")
                     }
 
                     Result["discovery_truncated"] = issues.GetArrayLength() == 20
@@ -1026,7 +1043,8 @@ internal class ContributionStatus {
                         Result["requests_status"] = "stale"
 
                         for item in Work {
-                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+                            let row = item as Dictionary[string, Object?] ??
+                                throw InvalidOperationException("Invalid status work")
 
                             row["eligibility_status"] = "stale"
                             row["state"] = "stale_remote_data"
@@ -1044,7 +1062,7 @@ internal class ContributionStatus {
         var stale = Text(Result, "access_status") == "stale"
 
         for item in Work {
-            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+            let row = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status work")
             stale = stale || Text(row, "remote_status") == "stale" || Text(row, "state") == "stale_remote_data"
         }
 
@@ -1062,10 +1080,11 @@ internal class ContributionStatus {
         Result["work_observed"] = Work.Count
 
         for item in Work {
-            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
+            let row = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status row")
             if row.ContainsKey("drafts") && row["drafts"] is List[Object]drafts {
                 for item in drafts {
-                    let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+                    let draft = item as Dictionary[string, Object?] ??
+                        throw InvalidOperationException("Invalid status draft")
 
                     if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
                         draft["checks_observed"] = checks.Count
@@ -1094,8 +1113,17 @@ internal class ContributionStatus {
 
             try {
                 status.Read(args)
-            } catch (error Exception) {
+            } catch (error CliFailure) {
                 status.Failure = status.Failure ?? error
+            } catch (error JsonException) {
+                status.Failure = status.Failure ??
+                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            } catch (error ApiDeadlineException) {
+                status.Failure = status.Failure ??
+                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            } catch (error Exception) when error.GetType() == typeof(Exception) {
+                status.Failure = status.Failure ??
+                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
             }
 
             if status.Failure != nil {
@@ -1129,7 +1157,8 @@ internal class ContributionStatus {
                         PublicOutput
                         .RunSummary(latest.Location).TryGetValue("next", out next) {
                         for item in status.Work {
-                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+                            let row = item as Dictionary[string, Object?] ??
+                                throw InvalidOperationException("Invalid status work")
                             if status.Text(row, "state") == "claim_accepted" &&
                                 row["reservation"] is Dictionary[string, Object?]reservation &&
                                 status.Text(reservation, "actor") == J.Get(latest.Value, "donor_id").ToString() {

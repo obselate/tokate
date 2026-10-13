@@ -150,8 +150,8 @@ internal class CoordinationState {
 
         internal func Unix(value JsonElement, key string) int64 {
             var result int64
-            if !J.Get(value, key).TryGetInt64(out result) {
-                throw Exception("Invalid coordination timestamp")
+            if J.Get(value, key).ValueKind != JsonValueKind.Number || !J.Get(value, key).TryGetInt64(out result) {
+                throw CliFailure("invalid_state", "Invalid coordination timestamp")
             }
 
             return result
@@ -181,7 +181,7 @@ internal class CoordinationState {
             let stateIssue = J.Number(value, "issue")
 
             if stateVersion != 2 || !RepositoryIdentity.SameRepo(stateRepo, repo) || stateIssue != issue {
-                throw Exception("Invalid version-2 coordination state")
+                throw CliFailure("invalid_state", "Invalid version-2 coordination state")
             }
 
             for field in value.EnumerateObject() {
