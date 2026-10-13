@@ -14,7 +14,7 @@ internal class Submission {
                 let run = Data.Load(directory)
                 CommitPrepared(directory, run)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
             }
         }
 
@@ -510,8 +510,7 @@ internal class Submission {
                 }
 
                 RepositoryIdentity.PositiveId(J.Get(posted, "id"))
-            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) &&
-                error.Message == "Expected a positive numeric GitHub identity" {
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
                 let latest = CoordinationState.Load(repo, issue)
 
                 if RequestData.Recorded(latest.Value(), actor, request)
@@ -582,13 +581,14 @@ internal class Submission {
         internal func Submit(args Args) {
             try {
                 SubmitSaved(args)
-            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
-            } catch (error Exception) when error is CommandInterrupted || error.GetType() == typeof(Exception) &&
-                error
-                .Message
-                .StartsWith("git failed: ") {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
+                let code = (
+                    error is IOException || error is UnauthorizedAccessException
+                ) ? "invalid_state": "command_failed"
+                throw CliFailure(code, error.Message, summary: PublicOutput.Message(code))
             }
         }
 
@@ -622,7 +622,8 @@ internal class Submission {
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException ||
-                    error is CommandInterrupted {
+                    error is CommandInterrupted ||
+                    error.GetType() == typeof(Exception) {
                     run.Fields["state"] = "failed"
                     run.Fields["error"] = error.Message
                     run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))

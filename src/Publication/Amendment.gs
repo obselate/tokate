@@ -497,15 +497,7 @@ internal class Amendment {
                             error is IOException ||
                             error is UnauthorizedAccessException ||
                             error is JsonException ||
-                            error.GetType() == typeof(Exception) &&
-                            (
-                            error.Message.StartsWith("Required: ") || error.Message.StartsWith(
-                                "Invalid positive number: "
-                            ) ||
-                                error
-                                .Message
-                                .StartsWith("Use at most 24h: ")
-                        ) {
+                            error.GetType() == typeof(Exception) {
                             throw CliFailure(
                                 "invalid_state",
                                 "Saved amendment " + Cli.Label(key) +
@@ -711,14 +703,7 @@ internal class Amendment {
                     error is UnauthorizedAccessException ||
                     error is JsonException ||
                     error is CommandInterrupted ||
-                    error.GetType() == typeof(Exception) &&
-                    (
-                    error.Message.StartsWith("git failed: ") ||
-                        error.Message == "Runtime allowance exhausted" ||
-                        error
-                        .Message
-                        .StartsWith("Cannot copy the exact verification candidate: ")
-                ) {
+                    error.GetType() == typeof(Exception) {
                     amendment.Fields["state"] = "failed"
                     amendment.Fields["error"] = error.Message
 
@@ -754,7 +739,7 @@ internal class Amendment {
                 error is UnauthorizedAccessException ||
                 error is JsonException ||
                 error is CommandInterrupted ||
-                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
+                error.GetType() == typeof(Exception) {
                 amendment.Fields["error"] = error.Message
                 amendment.Fields["failure_reason"] = error is CliFailure failure ? failure.Code:
                 "publication_interrupted"

@@ -370,7 +370,7 @@ internal class CorrectionPublication {
                 error is UnauthorizedAccessException ||
                 error is JsonException ||
                 error is CommandInterrupted ||
-                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
+                error.GetType() == typeof(Exception) {
                 Failure(directory, correction, error)
 
                 throw CliFailure(

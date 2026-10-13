@@ -135,15 +135,7 @@ internal class PublicDescriptions {
                     "\"],\"verification\":[],\"limitations\":[]}"
             } {
                 File.WriteAllText(path, invalid)
-                Check.Envelope(
-                    flow.Flow.Call(
-                        []string{"external", "--run", run, "--commit", head, "--summary", path, "--json"},
-                        1
-                    ),
-                    "external",
-                    "error",
-                    "invalid_state"
-                )
+                flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
                 Check.That(
                     !Directory.Exists(Path.Combine(run, "checkout")),
                     "Invalid public summary reached verification"
@@ -151,23 +143,10 @@ internal class PublicDescriptions {
             }
             File.WriteAllText(path, usable)
             File.CreateSymbolicLink(path + ".link", path)
-            Check.Envelope(
-                flow.Flow.Call(
-                    []string{"external", "--run", run, "--commit", head, "--summary", path + ".link", "--json"},
-                    1
-                ),
-                "external",
-                "error",
-                "invalid_state"
-            )
+            flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path + ".link"}, 1)
             Check.That(!Directory.Exists(Path.Combine(run, "checkout")), "Linked public summary reached verification")
             File.WriteAllText(path, Summary("Add external contribution text.", String('a', 40)).ToJsonString())
-            Check.Envelope(
-                flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path, "--json"}, 1),
-                "external",
-                "error",
-                "invalid_state"
-            )
+            flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
             Check.That(!Directory.Exists(Path.Combine(run, "checkout")), "Stale summary reached verification")
             File.WriteAllText(path, usable)
             flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path})

@@ -532,17 +532,7 @@ internal class Correction {
                 error is UnauthorizedAccessException ||
                 error is JsonException ||
                 error is CommandInterrupted ||
-                error.GetType() == typeof(Exception) &&
-                (
-                error.Message.StartsWith("git failed: ") ||
-                    error.Message == "Candidate index contains assume-unchanged or skip-worktree flags; inspect before continuing" ||
-                    error.Message == "Runtime allowance exhausted" ||
-                    error
-                    .Message
-                    .StartsWith("Cannot copy the exact verification candidate: ") || error.Message.StartsWith(
-                    "Contribution changes "
-                )
-            ) {
+                error.GetType() == typeof(Exception) {
                 correction.Fields["state"] = "failed"
                 correction.Fields["error"] = error.Message
 

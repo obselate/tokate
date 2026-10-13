@@ -532,7 +532,8 @@ internal class Checks {
                     error is ApiDeadlineException ||
                     error is IOException ||
                     error is UnauthorizedAccessException ||
-                    error is JsonException {
+                    error is JsonException ||
+                    error.GetType() == typeof(Exception) {
                     if previous != "" {
                         facts["previous_observation"] = map[string, Object?]{
                             "current": false,
