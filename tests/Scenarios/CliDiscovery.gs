@@ -159,6 +159,84 @@ internal class CliDiscovery {
                 []string{"approve", "owner/project", "--title", "Second task", "--body", "Another task"},
                 owner: true
             )
+            let sharedWorkflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
+            for setting in[]string{"disabled", "local_only", "stale", "empty", "excluded"} {
+                flow.Reload()
+                flow.State["actions_permissions"] = Check.Map(
+                    "enabled",
+                    setting != "disabled",
+                    "allowed_actions",
+                    setting == "local_only" ? "local_only": "selected"
+                )
+                let patterns = JsonArray()
+                if setting == "stale" {
+                    patterns.Add(JsonValue.Create(sharedWorkflow + String('b', 40)) as JsonNode)
+                }
+                if setting == "excluded" {
+                    patterns.Add(JsonValue.Create("*") as JsonNode)
+                    patterns.Add(JsonValue.Create("!" + sharedWorkflow + "*") as JsonNode)
+                }
+                flow.State["selected_actions"] = Check.Map("patterns_allowed", patterns)
+                flow.Save()
+                flow.ResetTraffic()
+                let blocked = flow.Call(args, 1, true)
+                Check.Contains(blocked.Error, "Settings > Actions > General > Actions permissions")
+                Check.Contains(
+                    blocked.Error,
+                    setting == "disabled" ? "Enable Actions": sharedWorkflow + String('a', 40)
+                )
+                flow.Reload()
+                var permissionsReads int32
+                var selectedReads int32
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    let path = Check.Text(call["path"])
+                    if path == "repos/owner/project/actions/permissions" {
+                        permissionsReads++
+                    }
+                    if path == "repos/owner/project/actions/permissions/selected-actions" {
+                        selectedReads++
+                    }
+                }
+                Check.That(permissionsReads == 1, "Init did not read Actions permissions exactly once")
+                Check.That(
+                    selectedReads == (setting == "disabled" || setting == "local_only" ? 0: 1),
+                    "Init read the wrong selected Actions settings"
+                )
+                if setting == "stale" {
+                    let jsonArgs = List[string](args)
+                    jsonArgs.Add("--json")
+                    let report = Check.Envelope(
+                        flow.Call(jsonArgs.ToArray(), 1, true),
+                        "init",
+                        "error",
+                        "command_failed"
+                    )
+                    Check.Contains(report.ToJsonString(), sharedWorkflow + String('a', 40))
+                    let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
+                    env["GH_TOKEN"] = "fixture-owner"
+                    let screen = TestProcess.Run(
+                        "/usr/bin/script",
+                        []string{"-q", "-e", "-c", "'" + binary + "' init --path '" + root + "' --plain", "/dev/null"},
+                        env,
+                        "\n"
+                    )
+                    Check.That(screen.Code == 1, screen.Output + screen.Error)
+                    Check.Contains(screen.Output, "GitHub Actions settings")
+                    Check.Contains(screen.Output, "Settings > Actions > General > Actions permissions")
+                    Check.Contains(screen.Output, sharedWorkflow + String('a', 40))
+                    Check.That(!screen.Output.Contains("Who can contribute?"), "Blocked Actions reached policy setup")
+                }
+                Check.That(!Directory.Exists(github), "Blocked Actions wrote setup files")
+                flow.Reload()
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(call["method"]) == "GET", "Init changed blocked Actions settings")
+                }
+            }
+            flow.State["selected_actions"] = Check.Map(
+                "patterns_allowed",
+                Check.Json("[\"" + sharedWorkflow + String('a', 40) + "\"]")
+            )
+            flow.Save()
             let created = flow.Call(args, owner: true)
             Check.Contains(created.Error, "Re-approve these issues after the policy change is merged: 1, 2")
             Check.Contains(created.Error, "tokate approve owner/project#1")
@@ -227,6 +305,28 @@ internal class CliDiscovery {
                 File.ReadAllText(policyPath) == original && File.ReadAllText(workflowPath) == yaml,
                 "Repeated setup changed owner files"
             )
+            File.WriteAllText(workflowPath, yaml.Replace(String('a', 40), String('c', 40)))
+            Check.Contains(
+                flow.Call([]string{"init", "--path", root, "--non-interactive"}, 1, true).Error,
+                sharedWorkflow + String('c', 40)
+            )
+            Check.That(
+                File.ReadAllText(workflowPath) == yaml.Replace(String('a', 40), String('c', 40)),
+                "Blocked Actions changed an existing workflow"
+            )
+            File.WriteAllText(workflowPath, yaml)
+            flow.Reload()
+            flow.State["selected_actions"] = Check.Map(
+                "patterns_allowed",
+                Check.Json("[\"Obselate/Tokate/.github/workflows/tokate-shared.yml@*\"]")
+            )
+            flow.Save()
+            flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            Check.That(File.ReadAllText(workflowPath) == yaml, "Wildcard allowlist changed the pinned workflow")
+            flow.Reload()
+            flow.State["actions_permissions"] = nil
+            flow.State["selected_actions"] = nil
+            flow.Save()
             let fresh = Path.Combine(flow.Temp.Root, "fresh")
             Checkout(flow, fresh)
             flow.Call([]string{"init", "owner/project", "--path", fresh, "--non-interactive"}, owner: true)

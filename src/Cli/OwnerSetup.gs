@@ -674,6 +674,30 @@ internal class OwnerSetup {
 
             let foreground = !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
                 !Console.IsInputRedirected
+            let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
+            let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
+            let health = OwnerHealth()
+            health.Inspect(repo, info, actionsOnly: true, workflow: yaml)
+            let problems = List[string]()
+            for check in health.Checks {
+                let row = check as Dictionary[string, Object?]
+                if row != nil && row["status"] as string == "problem" {
+                    problems.Add(row["message"] as string ?? "")
+                }
+            }
+            if problems.Count > 0 {
+                let message = String.Join("\n\n", problems)
+                if foreground {
+                    WizardScreen.Choose(
+                        "GitHub Actions settings",
+                        message,
+                        []string{"Cancel"},
+                        "Change the listed settings in GitHub, then run init again.",
+                        selected: 1
+                    )
+                }
+                throw CliFailure("command_failed", message)
+            }
             let permissionsPath = "repos/" + repo + "/actions/permissions/workflow"
             let permissions = GitHub.Api(permissionsPath)
             let events = CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow), required: false)
@@ -866,8 +890,6 @@ internal class OwnerSetup {
                 policy.Value
             ) ? before: Pretty(policy.Value)
 
-            let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
-            let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
             var protectionNote = ""
             try {
                 let branch = J.Text(policy.Value, "target_branch")

@@ -6,8 +6,9 @@ import System.Text.Json
 import System.Text.RegularExpressions
 
 internal class OwnerHealth {
-    private let Checks List[Object] = List[Object]()
+    internal let Checks List[Object] = List[Object]()
     private var Failure Exception? = nil
+    private var ActionsOnly bool
 
     private func Add(
         name string,
@@ -28,7 +29,7 @@ internal class OwnerHealth {
             }
         }
         Checks.Add(row)
-        if !PublicOutput.Enabled {
+        if !PublicOutput.Enabled && !ActionsOnly {
             Console.WriteLine(Terminal.Clean(name + ": " + status + " - " + message.Replace('\n', ' ')))
         }
     }
@@ -46,15 +47,21 @@ internal class OwnerHealth {
         }
     }
 
-    private func Inspect(repo string, info JsonElement) {
-        let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
+    internal func Inspect(repo string, info JsonElement, actionsOnly bool = false, workflow string = "") {
+        ActionsOnly = actionsOnly
+        let revision = actionsOnly ? "": GitHub.Branch(repo, J.Text(info, "default_branch"))
         let version = ApplicationInfo.Version()
         var pin = ""
         var policyParsed bool
         Read(
             "coordinator",
             async () -> {
-                let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
+                let yaml = actionsOnly ? workflow: GitHub.FileAt(
+                    repo,
+                    ".github/workflows/tokate-coordinator.yml",
+                    revision,
+                    missing: true
+                )
                 let member = Regex.Matches(
                     yaml,
                     "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
@@ -66,6 +73,9 @@ internal class OwnerHealth {
                 let configured = member.Count == 1 && uses.Count == 1
                 let pinnedVersion = member.Count == 1 ? member[0].Groups[1].Value: ""
                 pin = uses.Count == 1 ? uses[0].Groups[1].Value: ""
+                if actionsOnly {
+                    return
+                }
                 let matches = configured && pinnedVersion == version
                 let command = []string{"tokate", "coordinator-setup", repo, "--output", "tokate-coordinator.yml"}
                 Add(
@@ -93,40 +103,42 @@ internal class OwnerHealth {
                 )
             }
         )
-        Read(
-            "release",
-            async () -> {
-                let release = GitHub.Api("repos/obselate/tokate/releases/latest", missing: true)
-                if release.ValueKind == JsonValueKind.Undefined {
-                    Add("release", "warning", "No stable release is available.")
-                    return
+        if !actionsOnly {
+            Read(
+                "release",
+                async () -> {
+                    let release = GitHub.Api("repos/obselate/tokate/releases/latest", missing: true)
+                    if release.ValueKind == JsonValueKind.Undefined {
+                        Add("release", "warning", "No stable release is available.")
+                        return
+                    }
+                    let tag = J.Text(release, "tag_name")
+                    var latest Version
+                    var current Version
+                    if !tag.StartsWith("v") || !Version.TryParse(tag.Substring(1), out latest) || !Version.TryParse(
+                        version,
+                        out current
+                    ) {
+                        throw Exception("Invalid stable release version")
+                    }
+                    let newer = latest > current
+                    Add(
+                        "release",
+                        newer ? "warning": "ok",
+                        "Latest stable release " +
+                            tag +
+                            "." +
+                            (
+                            newer ? " Update the CLI with: tokate update. Then update the coordinator with tokate coordinator-setup " +
+                                repo +
+                                " --output tokate-coordinator.yml.": " No newer release exists."
+                        ),
+                        map[string, Object?]{"latest_version": tag.Substring(1), "newer_release": newer},
+                        newer ? []string{"tokate", "update"}: []string{}
+                    )
                 }
-                let tag = J.Text(release, "tag_name")
-                var latest Version
-                var current Version
-                if !tag.StartsWith("v") || !Version.TryParse(tag.Substring(1), out latest) || !Version.TryParse(
-                    version,
-                    out current
-                ) {
-                    throw Exception("Invalid stable release version")
-                }
-                let newer = latest > current
-                Add(
-                    "release",
-                    newer ? "warning": "ok",
-                    "Latest stable release " +
-                        tag +
-                        "." +
-                        (
-                        newer ? " Update the CLI with: tokate update. Then update the coordinator with tokate coordinator-setup " +
-                            repo +
-                            " --output tokate-coordinator.yml.": " No newer release exists."
-                    ),
-                    map[string, Object?]{"latest_version": tag.Substring(1), "newer_release": newer},
-                    newer ? []string{"tokate", "update"}: []string{}
-                )
-            }
-        )
+            )
+        }
         let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
         Read(
@@ -195,6 +207,9 @@ internal class OwnerHealth {
                 )
             }
         )
+        if actionsOnly {
+            return
+        }
         Read(
             "workflow_permissions",
             async () -> {
