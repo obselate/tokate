@@ -26,9 +26,9 @@ internal class GitHub {
             expires int64 = 0
         ) JsonElement -> ApiTransport.Request(path, body, method, missing, expires)
 
-        internal func FileAt(repo string, path string, revision string, missing bool = false) string {
+        internal func FileAt(repo string, path string, revision string = "", missing bool = false) string {
             let result = Api(
-                "repos/" + repo + "/contents/" + path + "?ref=" + Uri.EscapeDataString(revision),
+                "repos/" + repo + "/contents/" + path + (revision == "" ? "": "?ref=" + Uri.EscapeDataString(revision)),
                 missing: missing
             )
 

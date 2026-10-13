@@ -102,19 +102,68 @@ internal partial class NativeFlow : NativeFixture {
             Check.Contains(human, "Allowed tools:\n  codex / openai\n  pi / local-chat-completions\n")
             Check.Contains(human, "Verification:\n  test -f result.txt\n  /bin/echo 'literal  spaces'\n")
         }
-        let claim = Check.Envelope(Acquire(ClaimArgs(json: true)), "claim", "ok")
+        let workflow = Path.Combine(Upstream, ".github/workflows/tokate-coordinator.yml")
+        Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? "")
+        let version = Call([]string{"--version"}).Output.Trim().Substring(7)
+        let warning = "Warning: Repository coordinator 0.3.5 is older than CLI " + version
+        let update = "tokate coordinator-setup owner/project --output tokate-coordinator.yml"
+        for pinned in[]string{version, "99.0.0", "0.3.5"} {
+            File.WriteAllText(
+                workflow,
+                "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                    String('a', 40) +
+                    "\n    with:\n      member: 'tokate-" +
+                    pinned +
+                    "-linux-x64/tokate'\n"
+            )
+            Commit("Set coordinator version " + pinned)
+            let status = Call([]string{"status", "owner/project#1", "--json"})
+            Check.Envelope(status, "status", "ok")
+            Check.That(
+                status.Error.Contains("Warning: Repository coordinator") == (pinned == "0.3.5"),
+                "Coordinator warning did not compare versions"
+            )
+            if pinned == "0.3.5" {
+                Check.Contains(status.Error, warning)
+                Check.Contains(status.Error, update)
+            }
+        }
+        let claimed = Acquire(ClaimArgs(json: true))
+        Check.Contains(claimed.Error, warning)
+        Check.Contains(claimed.Error, update)
+        let claim = Check.Envelope(claimed, "claim", "ok")
         let run = Check.Text(claim["data"]?["run"])
         Check.That(Path.IsPathFullyQualified(run), "Claim omitted executable run path")
         NoInference()
+        for flag in[]string{"--json", "--plain"} {
+            let status = Call([]string{"status", "--run", run, flag})
+            Check.Contains(status.Error, warning)
+            Check.Contains(status.Error, update)
+        }
+        let workflowApi = "repos/owner/project/contents/.github/workflows/tokate-coordinator.yml"
+        Faults(workflowApi, Check.Json("[{\"status\":403}]"))
+        let unavailable = Call([]string{"status", "--run", run, "--json"})
+        Check.Envelope(unavailable, "status", "ok")
+        Check.Contains(unavailable.Error, "Warning: Repository coordinator version could not be checked.")
+        Reload()
+        Check.That(Check.Text(State["fault_index"]) == "1", "Coordinator warning retried a denied read")
+        Faults("", Check.Json("[]"))
         let work = Call([]string{"work", "--run", run, "--json", "--traffic"})
         Check.Envelope(work, "work", "ok")
+        Check.Contains(work.Error, warning)
+        Check.Contains(work.Error, update)
         Check.Contains(work.Error, "Running gpt-6.1-sol")
         Check.Contains(work.Error, "Tokate API traffic:")
         Check.That(
             !work.Output.Contains("synthetic-raw") && !work.Output.Contains("synthetic-usage-secret"),
             "Inference output leaked"
         )
-        Publish(run)
+        let submit = Call([]string{"submit", "--run", run, "--json"})
+        Check.Envelope(submit, "submit", "ok")
+        Check.Contains(submit.Error, warning)
+        Check.Contains(submit.Error, update)
+        CoordinatePosted()
+        Call([]string{"submit", "--run", run})
         Check.Envelope(Call([]string{"verify", "owner/project#10", "--json"}, owner: true), "verify", "ok")
         Check.Envelope(Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
         Check.Envelope(
