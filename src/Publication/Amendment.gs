@@ -255,7 +255,7 @@ internal class Amendment {
                 J.Get(viewer, "id")
             )
 
-            SyncAuthority(run, amendment, record, original, ready)
+            SyncAuthority(run, amendment, record, original, ready && state.Sha == amendment?.Text("expected"))
 
             return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
         }
