@@ -679,7 +679,28 @@ internal class SynchronizationChecks {
             flow.Reload()
             let renewedRequest = Check.PostedRequest(flow.State)
             coordination.Coordinate(coordination.Event(renewedRequest))
+            if mode == "ordinary" {
+                flow.Reload()
+                Check.That(
+                    Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"]) == newCandidate && Check.Text(
+                        Saved(run)["commit"]
+                    ) == next,
+                    "Missing published synchronization with an unrecorded saved head"
+                )
+                PublishedContribution.Write(flow.Upstream, "later-target.txt", "target moved before recording\n")
+                flow.Commit("Target moved after synchronization publication")
+            }
             Amend(flow, run, newCandidate, newGrant)
+            if mode == "ordinary" {
+                Check.That(Check.Text(Saved(run)["commit"]) == newCandidate, "Moved target blocked recording")
+                let recorded = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
+                Check.That(
+                    Check.Text(recorded["data"]?["target_moved"]) == "true" && Check.Text(
+                        recorded["data"]?["gates"]?["freshness"]?["status"]
+                    ) == "passed",
+                    "Moved target rejected recorded synchronization"
+                )
+            }
             Check.That(Saved(run)["synchronizations"]?.AsArray().Count == 2, "New grant discarded history")
             if mode == "tree-reuse" {
                 flow.StartTreeTraffic()
@@ -982,6 +1003,7 @@ internal class SynchronizationChecks {
                 )
                 if mode == "moving-target-coordinated" {
                     coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
+                    pending = ""
                 }
             }
             if mode == "moving-target" || mode == "moving-target-pushed" || mode == "moving-target-coordinated" {
@@ -1008,6 +1030,10 @@ internal class SynchronizationChecks {
                 if mode != "moving-target" && mode != "moving-target-pushed" && mode != "moving-target-coordinated" {
                     flow.Call([]string{"reconcile", "--run", run}, 1)
                     return
+                }
+                if mode == "moving-target-coordinated" {
+                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    Check.That(Check.Text(Saved(run)["commit"]) == h, "Owner verification changed saved head")
                 }
                 if pending != "" {
                     let failed = Amend(flow, run, candidate, pending, 1)
