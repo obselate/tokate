@@ -1432,7 +1432,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let version = Flow.Call([]string{"--version"}).Output.Trim().Substring(7)
         let bundle = "tokate-" + version + "-linux-x64"
         let archive = Path.Combine(Flow.Bin, "release.tar.gz")
-        Flow.Call(args, owner: true)
+        Flow.ResetTraffic()
+        let initial = Flow.Call(args, owner: true, traffic: true)
+        Flow.Traffic(9, 0, 0, 0, initial)
+        Check.That(!initial.Error.Contains("Compare shared workflows:"), "New setup reported a current pin")
         let yaml = File.ReadAllText(output)
         Check.Contains(yaml, "issues:\n    types: [labeled]\n")
         Check.Contains(yaml, "issues: write\n")
@@ -1447,6 +1450,52 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.Call(args, 1, owner: true)
         File.Delete(output)
+        let workflow = Path.Combine(Flow.Upstream, ".github/workflows/tokate-coordinator.yml")
+        Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? "")
+        let oldCommit = String('c', 40)
+        let newCommit = String('a', 40)
+        let current = yaml.Replace(bundle, "tokate-0.3.5-linux-x64").Replace(newCommit, oldCommit)
+        File.WriteAllText(workflow, current)
+        Flow.Commit("Install old coordinator pin")
+        let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
+        let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + version
+        Flow.ResetTraffic()
+        let preview = Flow.Call(
+            []string{"coordinator-setup", "owner/project", "--output", output, "--non-interactive"},
+            owner: true,
+            traffic: true
+        )
+        Flow.Traffic(9, 0, 0, 0, preview)
+        Check.Contains(preview.Error, "Current Tokate version: 0.3.5, shared workflow commit: " + oldCommit)
+        Check.Contains(preview.Error, "New Tokate version: " + version + ", shared workflow commit: " + newCommit)
+        Check.Contains(preview.Error, "Compare shared workflows: " + compareUrl)
+        Check.Contains(preview.Error, "New release: " + releaseUrl)
+        Check.That(
+            preview.Error.IndexOf("New release:") < preview.Error.IndexOf("Proposed complete file:"),
+            "Pin review followed the file preview"
+        )
+        Check.That(!File.Exists(output), "Review preview wrote a workflow")
+        Flow.ResetTraffic()
+        let json = Flow.Call(
+            []string{"coordinator-setup", "owner/project", "--output", output, "--yes", "--json"},
+            owner: true,
+            traffic: true
+        )
+        Flow.Traffic(9, 0, 0, 0, json)
+        let data = Check.Json(json.Output)["data"] ?? throw Exception("Missing setup data")
+        Check.That(Check.Text(data["current_version"]) == "0.3.5", "JSON lost the current version")
+        Check.That(Check.Text(data["new_version"]) == version, "JSON lost the new version")
+        Check.That(Check.Text(data["current_commit"]) == oldCommit, "JSON lost the current commit")
+        Check.That(Check.Text(data["new_commit"]) == newCommit, "JSON lost the new commit")
+        Check.That(Check.Text(data["compare_url"]) == compareUrl, "JSON lost the workflow comparison")
+        Check.That(Check.Text(data["release_url"]) == releaseUrl, "JSON lost the release link")
+        Check.That(File.ReadAllText(output) == yaml, "Review changed the proposed workflow")
+        Check.That(File.ReadAllText(workflow) == current, "Setup updated the installed pin")
+        File.Delete(output)
+        File.WriteAllText(workflow, current.Replace(oldCommit, "main"))
+        Flow.Commit("Install malformed coordinator pin")
+        Check.Contains(Flow.Call(args, 1, owner: true).Error, "missing or malformed")
+        Check.That(!File.Exists(output), "Malformed current pin generated a workflow")
     }
 
     internal func TokateExecution() {
