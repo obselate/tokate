@@ -226,7 +226,40 @@ internal partial class NativeFlow : NativeFixture {
         )
         flow.NoInference()
         flow.NoPr()
+        ExecutionFailures()
         EventDelimiters()
+    }
+
+    private func ExecutionFailures() {
+        using let flow = NativeFlow(Binary)
+        flow.Initialize()
+        flow.Approve()
+        let run = flow.Claim()
+        using let baseline = FixtureSnapshot(flow.Temp.Root)
+        for mode in[]string{"empty", "index_skip", "workflow", "incomplete_turn", "verification_fail"} {
+            baseline.Restore()
+            flow.Mode(mode)
+            let code = mode == "verification_fail" ? "verification_failed": (
+                mode == "incomplete_turn" ? "inference_failed": "invalid_state"
+            )
+            let result = flow.Call([]string{"work", "--run", run, "--json"}, 1)
+            let value = Check.Envelope(result, "work", "error", code)
+            let message = mode == "empty" ? "No changes returned. No PR will be opened.": (
+                mode == "index_skip" ? "Candidate index contains assume-unchanged or skip-worktree flags": (
+                    mode == "workflow" ? "Contribution changes protected owner configuration": (
+                        mode == "incomplete_turn" ? "Codex did not produce a completed turn and report": "Owner verification failed"
+                    )
+                )
+            )
+            Check.That(value["next_actions"]?.AsArray().Count > 0, "Execution failure lost its recovery action")
+            let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            Check.That(Check.Text(saved["state"]) == "failed", "Execution failure was not saved")
+            Check.Contains(Check.Text(saved["error"]), message)
+            flow.Reload()
+            Check.That(Check.Text(flow.State["exec_count"]) == "1", "Execution failure repeated inference")
+            flow.NoPr()
+        }
+        Console.WriteLine("PASS execution failures retain stable codes, messages, saved outcomes and recovery actions")
     }
 
     private func EventDelimiters() {
@@ -236,6 +269,7 @@ internal partial class NativeFlow : NativeFixture {
             String('\n', 1024 * 1024) + started + "\n \t\r\n" + completed + "\n\n",
             "\r\n" + started + "\r\n\r\n" + completed + "\r\n",
             started + "\n" + completed.Replace(",\"usage\"", "\r,\"usage\"") + "\n",
+            started + "\n" + "{\"type\":\"turn.completed\",\"usage\":[]}",
             started + "\r" + completed
         }
         for i in 0 ... streams.Length {
@@ -246,7 +280,7 @@ internal partial class NativeFlow : NativeFixture {
             flow.Reload()
             flow.State["event_stream"] = JsonValue.Create(streams[i])
             flow.Save()
-            let valid = i < streams.Length - 1
+            let valid = i < streams.Length - 2
             let result = flow.Call([]string{"work", "--run", run, "--json"}, valid ? 0: 1)
             Check.Envelope(result, "work", valid ? "ok": "error", valid ? "": "inference_failed")
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))

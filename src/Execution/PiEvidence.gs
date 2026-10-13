@@ -11,94 +11,108 @@ internal class PiEvidence {
             string,
             Object?
         ] {
-            var started bool
-            var settled bool
-            var lastStop = ""
-            var report = ""
-            var input int64
-            var cached int64
-            var generated int64
+            try {
+                var started bool
+                var settled bool
+                var lastStop = ""
+                var report = ""
+                var input int64
+                var cached int64
+                var generated int64
 
-            for line in output.Split('\n') {
-                if String.IsNullOrWhiteSpace(line) {
-                    continue
-                }
-
-                let item = RequestData.Parse(line, 4 * 1024 * 1024)
-                let kind = J.Text(item, "type")
-
-                if settled &&
-                    (
-                    kind == "agent_start" ||
-                        kind == "turn_start" ||
-                        kind == "message_start" ||
-                        kind == "message_end" ||
-                        kind == "agent_settled"
-                ) {
-                    throw Exception("Pi emitted events after its settled result")
-                }
-
-                if kind == "agent_start" {
-                    started = true
-                } else if kind == "message_end" && J.Text(J.Get(item, "message"), "role") == "assistant" {
-                    let message = J.Get(item, "message")
-                    if !started || J.Text(message, "model") != model || J.Text(message, "provider") != provider {
-                        throw Exception("Pi response differs from the selected model or provider")
+                for line in output.Split('\n') {
+                    if String.IsNullOrWhiteSpace(line) {
+                        continue
                     }
 
-                    let responseModel = J.Get(message, "responseModel")
-                    if responseModel.ValueKind == JsonValueKind.String && responseModel.GetString() != model {
-                        throw Exception("Pi reported a different response model")
+                    let item = RequestData.Parse(line, 4 * 1024 * 1024)
+                    let kind = J.Text(item, "type")
+
+                    if settled &&
+                        (
+                        kind == "agent_start" ||
+                            kind == "turn_start" ||
+                            kind == "message_start" ||
+                            kind == "message_end" ||
+                            kind == "agent_settled"
+                    ) {
+                        throw ExecutionFailure.Create("inference_failed", "Pi emitted events after its settled result")
                     }
 
-                    lastStop = J.Text(message, "stopReason")
-                    report = ""
-
-                    for part in J.Items(J.Get(message, "content")) {
-                        if J.Text(part, "type") == "text" {
-                            report += J.Text(part, "text")
+                    if kind == "agent_start" {
+                        started = true
+                    } else if kind == "message_end" && J.Text(J.Get(item, "message"), "role") == "assistant" {
+                        let message = J.Get(item, "message")
+                        if !started || J.Text(message, "model") != model || J.Text(message, "provider") != provider {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "Pi response differs from the selected model or provider"
+                            )
                         }
-                    }
 
-                    let usage = J.Get(message, "usage")
-                    input = HarnessUsage.Count(usage, "input", input, "Pi")
-                    cached = HarnessUsage.Count(usage, "cacheRead", cached, "Pi")
-                    generated = HarnessUsage.Count(usage, "output", generated, "Pi")
-                } else if kind == "compaction_end" {
-                    let usage = J.Get(J.Get(item, "result"), "usage")
-                    if usage.ValueKind == JsonValueKind.Object {
+                        let responseModel = J.Get(message, "responseModel")
+                        if responseModel.ValueKind == JsonValueKind.String && responseModel.GetString() != model {
+                            throw ExecutionFailure.Create("inference_failed", "Pi reported a different response model")
+                        }
+
+                        lastStop = J.Text(message, "stopReason")
+                        report = ""
+
+                        for part in J.Items(J.Get(message, "content")) {
+                            if J.Text(part, "type") == "text" {
+                                report += J.Text(part, "text")
+                            }
+                        }
+
+                        let usage = J.Get(message, "usage")
                         input = HarnessUsage.Count(usage, "input", input, "Pi")
                         cached = HarnessUsage.Count(usage, "cacheRead", cached, "Pi")
                         generated = HarnessUsage.Count(usage, "output", generated, "Pi")
-                    }
-                } else if kind == "agent_settled" {
-                    if lastStop == "length" {
-                        throw Exception(
-                            "Pi response reached its configured output length limit; inspect the saved partial work"
-                        )
-                    }
+                    } else if kind == "compaction_end" {
+                        let usage = J.Get(J.Get(item, "result"), "usage")
+                        if usage.ValueKind == JsonValueKind.Object {
+                            input = HarnessUsage.Count(usage, "input", input, "Pi")
+                            cached = HarnessUsage.Count(usage, "cacheRead", cached, "Pi")
+                            generated = HarnessUsage.Count(usage, "output", generated, "Pi")
+                        }
+                    } else if kind == "agent_settled" {
+                        if lastStop == "length" {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "Pi response reached its configured output length limit; inspect the saved partial work"
+                            )
+                        }
 
-                    if !started || J.Get(item, "aborted")
-                        .ValueKind != JsonValueKind.False ||
-                        lastStop != "stop" ||
-                        String.IsNullOrWhiteSpace(report) {
-                        throw Exception("Pi did not return a completed response within the donor's allowance")
-                    }
+                        if !started || J.Get(item, "aborted")
+                            .ValueKind != JsonValueKind.False ||
+                            lastStop != "stop" ||
+                            String
+                            .IsNullOrWhiteSpace(report) {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "Pi did not return a completed response within the donor's allowance"
+                            )
+                        }
 
-                    settled = true
+                        settled = true
+                    }
                 }
-            }
 
-            if !settled {
-                throw Exception("Pi did not report a settled run")
-            }
+                if !settled {
+                    throw ExecutionFailure.Create("inference_failed", "Pi did not report a settled run")
+                }
 
-            File.WriteAllText(Path.Combine(directory, "report.md"), report)
+                File.WriteAllText(Path.Combine(directory, "report.md"), report)
 
-            return map[string, Object?]{
-                "input_tokens": input,
-                "cached_input_tokens": cached,
-                "output_tokens": generated
+                return map[string, Object?]{
+                    "input_tokens": input,
+                    "cached_input_tokens": cached,
+                    "output_tokens": generated
+                }
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "inference_failed")
             }
         }
     }
@@ -113,11 +127,11 @@ internal class HarnessUsage {
             if number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out count) ||
                 count < 0 ||
                 count > 9007199254740991 {
-                throw Exception("Invalid harness-reported " + harness + " usage")
+                throw ExecutionFailure.Create("inference_failed", "Invalid harness-reported " + harness + " usage")
             }
 
             if total > 9007199254740991 - count {
-                throw Exception(harness + " usage exceeds its safe integer range")
+                throw ExecutionFailure.Create("inference_failed", harness + " usage exceeds its safe integer range")
             }
 
             return total + count

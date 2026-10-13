@@ -22,7 +22,7 @@ internal class Contribution {
             run.Fields["failure_reason"] = "candidate_invalid"
 
             if !run.Flag("unlimited") && seconds - reserve <= elapsed {
-                throw Exception("Runtime allowance exhausted")
+                throw ExecutionFailure.Create("command_failed", "Runtime allowance exhausted")
             }
 
             let coding = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds - reserve - elapsed)
@@ -36,14 +36,17 @@ internal class Contribution {
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
 
                 if coding.Git(checkout, "status", "--porcelain") == "" {
-                    throw Exception("No changes returned. No PR will be opened.")
+                    throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
                 }
 
                 run.Fields["failure_reason"] = "public_summary_invalid"
 
                 try {
                     PublicSummary.Capture(directory, checkout, run)
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is IOException ||
+                    error is UnauthorizedAccessException ||
+                    error is JsonException {
                     run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
                     throw error
                 }
@@ -58,16 +61,10 @@ internal class Contribution {
                     File.WriteAllText(candidatePath, candidate)
                 }
 
-                ProtectedPaths.Local(
-                    checkout,
-                    J.Get(record, "policy"),
-                    J.Get(record, "approval"),
-                    run.Text("base"),
-                    budget: coding
-                )
+                CheckPaths(checkout, record, run, budget: coding)
 
                 if File.ReadAllText(candidatePath) != candidate {
-                    throw Exception("Saved candidate patch changed")
+                    throw ExecutionFailure.Create("invalid_state", "Saved candidate patch changed")
                 }
 
                 coding.Remaining()
@@ -129,16 +126,10 @@ internal class Contribution {
             using let progress = TerminalProgress("Verified candidate validation", total)
             let patch = Snapshot(checkout, run, total)
 
-            ProtectedPaths.Local(
-                checkout,
-                J.Get(record, "policy"),
-                J.Get(record, "approval"),
-                run.Text("base"),
-                budget: total
-            )
+            CheckPaths(checkout, record, run, budget: total)
 
             if patch != candidate {
-                throw Exception("Verification changed the saved patch")
+                throw ExecutionFailure.Create("invalid_state", "Verification changed the saved patch")
             }
 
             File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
@@ -152,12 +143,33 @@ internal class Contribution {
             run.Save(directory)
         }
 
+        internal func CheckPaths(
+            checkout string,
+            record JsonElement,
+            run Data,
+            head string = "",
+            budget RuntimeBudget? = nil
+        ) {
+            try {
+                ProtectedPaths.Local(
+                    checkout,
+                    J.Get(record, "policy"),
+                    J.Get(record, "approval"),
+                    run.Text("base"),
+                    head,
+                    budget
+                )
+            } catch (error Exception) when error.GetType() == typeof(Exception) {
+                throw ExecutionFailure.From(error, "invalid_state")
+            }
+        }
+
         internal func Snapshot(checkout string, run Data, budget RuntimeBudget) string {
             Verification.Candidate(checkout, budget)
             let head = budget.Git(checkout, "rev-parse", "HEAD")
 
             if head != ContributionHandoff.StartHead(run) {
-                throw Exception("Agent changed Git history")
+                throw ExecutionFailure.Create("invalid_state", "Agent changed Git history")
             }
 
             budget.Git(checkout, "add", "-A")
@@ -165,7 +177,7 @@ internal class Contribution {
 
             let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")}, budget)
             if patch == "" {
-                throw Exception("No changes returned. No PR will be opened.")
+                throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
             }
 
             return patch

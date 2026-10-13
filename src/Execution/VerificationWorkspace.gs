@@ -55,6 +55,8 @@ internal class VerificationWorkspace : IDisposable {
         internal func Create(directory string, budget RuntimeBudget) VerificationWorkspace {
             let workspace = VerificationWorkspace(directory, budget)
 
+            var ready bool
+
             try {
                 let result = Commands.Run(
                     LocalPaths.NeedSystemTool("cp", directory),
@@ -69,20 +71,25 @@ internal class VerificationWorkspace : IDisposable {
                     seconds: 86400,
                     isolated: true,
                     cancellation: workspace.CopyCancellation,
-                    budget: budget
+                    budget: budget,
+                    failureCode: "verification_failed"
                 )
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Cannot copy the exact verification candidate: " + result.Error)
+                    throw ExecutionFailure.Create(
+                        "verification_failed",
+                        "Cannot copy the exact verification candidate: " + result.Error
+                    )
                 }
 
                 Verification.Validate(workspace.Checkout, budget)
                 workspace.CheckCancellation()
 
+                ready = true
                 return workspace
-            } catch (error Exception) {
-                workspace.Dispose()
-
-                throw error
+            } finally {
+                if !ready {
+                    workspace.Dispose()
+                }
             }
         }
     }

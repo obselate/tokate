@@ -3,6 +3,7 @@ package Tokate
 import Gsharp.Concurrency
 import System
 import System.Collections.Generic
+import System.ComponentModel
 import System.Diagnostics
 import System.IO
 import System.Runtime.InteropServices
@@ -38,7 +39,7 @@ internal class CommandLines {
         if !Oversize && Line.Length > 0 {
             try {
                 Observe.Invoke(Line.ToString())
-            } catch (error Exception) { }
+            } catch (error JsonException) { }
         }
 
         Line.Clear()
@@ -151,7 +152,7 @@ internal class RuntimeBudget {
 
         let remaining = Math.Floor(Seconds * 1000.0 - Timer.Elapsed.TotalMilliseconds)
         if remaining < 1 {
-            throw Exception("Runtime allowance exhausted")
+            throw ExecutionFailure.Create("command_failed", "Runtime allowance exhausted")
         }
 
         return Convert.ToInt32(remaining)
@@ -169,10 +170,13 @@ internal class RuntimeBudget {
 
             if args.Get("unlimited") == "true" {
                 if reserve < 1 || reserve != seconds {
-                    throw Exception("Unlimited coding requires a separate positive verification budget")
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Unlimited coding requires a separate positive verification budget"
+                    )
                 }
             } else if reserve >= seconds {
-                throw Exception("--verify-time must be shorter than --time")
+                throw ExecutionFailure.Create("invalid_state", "--verify-time must be shorter than --time")
             }
 
             return reserve
@@ -184,7 +188,7 @@ internal class RuntimeBudget {
             if unlimited.ValueKind != JsonValueKind.Undefined &&
                 unlimited.ValueKind != JsonValueKind.True &&
                 unlimited.ValueKind != JsonValueKind.False {
-                throw Exception("Invalid saved unlimited coding choice")
+                throw ExecutionFailure.Create("invalid_state", "Invalid saved unlimited coding choice")
             }
 
             if run.Flag("unlimited") &&
@@ -194,7 +198,10 @@ internal class RuntimeBudget {
                 ) < 1 ||
                     run.Number("verification_reserve") != run.Number("seconds")
             ) {
-                throw Exception("Unlimited coding requires managed v2 work and a separate positive verification budget")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Unlimited coding requires managed v2 work and a separate positive verification budget"
+                )
             }
 
             let field = J.Get(run.Element(), "verification_reserve")
@@ -205,7 +212,7 @@ internal class RuntimeBudget {
                     reserve < 1 ||
                     (run.Flag("unlimited") ? reserve != run.Number("seconds"): reserve >= run.Number("seconds"))
             ) {
-                throw Exception("Invalid saved verification reserve")
+                throw ExecutionFailure.Create("invalid_state", "Invalid saved verification reserve")
             }
         }
 
@@ -228,26 +235,31 @@ internal class Commands {
         internal func InterruptedResult(error Exception) CommandResult? -> switch error {
             case interrupted is CommandInterrupted: interrupted.Result
             case interrupted is CommandInputInterrupted: interrupted.Result
+            case failure is CliFailure: failure.Data["command_result"] as CommandResult
             default: nil
         }
 
         internal func Capture(path string) FileStream? {
-            if path == "" {
-                return nil
-            }
-
-            LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
-
-            return FileStream(
-                path,
-                FileStreamOptions{
-                    Mode: FileMode.CreateNew,
-                    Access: FileAccess.Write,
-                    Share: FileShare.Read,
-                    BufferSize: 1,
-                    UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+            try {
+                if path == "" {
+                    return nil
                 }
-            )
+
+                LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
+
+                return FileStream(
+                    path,
+                    FileStreamOptions{
+                        Mode: FileMode.CreateNew,
+                        Access: FileAccess.Write,
+                        Share: FileShare.Read,
+                        BufferSize: 1,
+                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+                    }
+                )
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw ExecutionFailure.From(error, "command_failed")
+            }
         }
 
         internal func Read(
@@ -297,14 +309,23 @@ internal class Commands {
                         if writer != nil && result.Failure == nil {
                             try {
                                 writer.Write(buffer, 0, retained)
-                            } catch (error Exception) {
+                            } catch (error Exception) when error is IOException ||
+                                error is UnauthorizedAccessException ||
+                                error is EncoderFallbackException ||
+                                error is ArgumentOutOfRangeException limitError &&
+                                limitError.ParamName == "value" {
                                 result.Failure = error
                                 failed <- error
                             }
                         }
                     }
                 }
-            } catch (error Exception) {
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is DecoderFallbackException ||
+                error is EncoderFallbackException ||
+                error is ArgumentOutOfRangeException limitError &&
+                limitError.ParamName == "value" {
                 result.Failure = error
                 failed <- error
             }
@@ -331,12 +352,12 @@ internal class Commands {
                 if input != nil {
                     writer.Write(input)
                 }
-            } catch (error Exception) {
+            } catch (error IOException) {
                 failure = error
             } finally {
                 try {
                     writer.Close()
-                } catch (error Exception) {
+                } catch (error IOException) {
                     if failure == nil {
                         failure = error
                     }
@@ -351,9 +372,14 @@ internal class Commands {
             var failure Exception? = nil
 
             try {
-                process = Process.Start(info) ?? throw Exception("Cannot start " + info.ArgumentList[0])
-            } catch (error Exception) {
-                failure = error
+                process = Process.Start(info) ?? throw ExecutionFailure.Create(
+                    "command_failed",
+                    "Cannot start " + info.ArgumentList[0]
+                )
+            } catch (error Exception) when error is CliFailure ||
+                error is Win32Exception ||
+                error is InvalidOperationException {
+                failure = ExecutionFailure.From(error)
             }
 
             started <- process
@@ -361,8 +387,8 @@ internal class Commands {
             if let child = process {
                 try {
                     child.WaitForExit()
-                } catch (error Exception) {
-                    failure = error
+                } catch (error Exception) when error is Win32Exception || error is InvalidOperationException {
+                    failure = ExecutionFailure.From(error)
                 }
             }
 
@@ -385,7 +411,8 @@ internal class Commands {
             errorPath string = "",
             budget RuntimeBudget? = nil,
             outputLine Action[string]? = nil,
-            errorLine Action[string]? = nil
+            errorLine Action[string]? = nil,
+            failureCode string = "command_failed"
         ) CommandResult {
             let info = ProcessStartInfo(isolated ? LocalPaths.NeedSystemTool("setsid", cwd): "setsid")
             info.ArgumentList.Add("--wait")
@@ -486,7 +513,7 @@ internal class Commands {
             if let signal = cancellation {
                 select {
                     case <- signal {
-                        throw Exception("Command cancelled: " + exe)
+                        throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
                     }
                     default { }
                 }
@@ -513,7 +540,10 @@ internal class Commands {
             let launched = <-started
             if launched == nil {
                 let failure = <-exited
-                throw failure ?? Exception("Cannot start " + exe)
+                if let error = failure {
+                    throw ExecutionFailure.From(error, failureCode)
+                }
+                throw ExecutionFailure.Create(failureCode, "Cannot start " + exe)
             }
 
             using let process = launched
@@ -556,7 +586,7 @@ internal class Commands {
 
                 while !inputDone || !outputDone || !errorDone || !exitDone {
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw Exception("Runtime limit reached for " + exe)
+                        throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
                     }
 
                     var failure Exception? = nil
@@ -586,22 +616,22 @@ internal class Commands {
                             throw error
                         }
                         case <- cancelled {
-                            throw Exception("Command cancelled: " + exe)
+                            throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
                         }
                         case <- deadline {
-                            throw Exception("Runtime limit reached for " + exe)
+                            throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
                         }
                     }
 
                     select {
                         case <- cancelled {
-                            throw Exception("Command cancelled: " + exe)
+                            throw ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
                         }
                         default { }
                     }
 
                     if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw Exception("Runtime limit reached for " + exe)
+                        throw ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
                     }
 
                     if let error = failure {
@@ -610,7 +640,13 @@ internal class Commands {
                 }
 
                 result.Code = process.ExitCode
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is DecoderFallbackException ||
+                error is InvalidOperationException ||
+                error is ArgumentOutOfRangeException limitError &&
+                limitError.ParamName == "value" {
                 terminal = error
             } finally {
                 if let handler = onCancel {
@@ -655,13 +691,13 @@ internal class Commands {
             if terminal == nil {
                 select {
                     case <- cancelled {
-                        terminal = Exception("Command cancelled: " + exe)
+                        terminal = ExecutionFailure.Create(failureCode, "Command cancelled: " + exe)
                     }
                     default { }
                 }
 
                 if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                    terminal = Exception("Runtime limit reached for " + exe)
+                    terminal = ExecutionFailure.Create(failureCode, "Runtime limit reached for " + exe)
                 }
             }
 
@@ -671,14 +707,14 @@ internal class Commands {
                 result.Code = nil
 
                 if !ready {
-                    throw error
+                    throw ExecutionFailure.From(error, failureCode)
                 }
 
                 if error is IOException io && inputFailed {
-                    throw CommandInputInterrupted(io, result)
+                    throw ExecutionFailure.From(CommandInputInterrupted(io, result), failureCode)
                 }
 
-                throw CommandInterrupted(error, result)
+                throw ExecutionFailure.From(CommandInterrupted(error, result), failureCode)
             }
 
             if result.Code != 0 {
@@ -763,7 +799,11 @@ internal class Commands {
 
         internal func GitOutput(result CommandResult) string {
             if result.Code != 0 {
-                throw Exception("git failed: " + result.Error + result.Output)
+                throw CliFailure(
+                    "command_failed",
+                    "git failed: " + result.Error + result.Output,
+                    summary: PublicOutput.Message("command_failed")
+                )
             }
 
             return result.Output.Trim()
@@ -775,13 +815,18 @@ internal class Commands {
                 if result.Code != 0 || result.Truncated || result.ReadFailed || Encoding.UTF8.GetByteCount(
                     result.Output
                 ) > 32 * 1024 * 1024 {
-                    throw Exception("Cannot read complete Git path evidence: " + result.Error)
+                    throw CliFailure(
+                        "command_failed",
+                        "Cannot read complete Git path evidence: " + result.Error,
+                        summary: PublicOutput.Message("command_failed")
+                    )
                 }
 
                 return result.Output
-            } catch (error CommandInterrupted) {
-                if error.Result.ReadFailed && error.InnerException is DecoderFallbackException {
-                    throw Exception("Cannot read complete Git path evidence", error)
+            } catch (error CliFailure) {
+                if (InterruptedResult(error)?.ReadFailed ?? false) &&
+                    error.Data["command_cause"] is DecoderFallbackException {
+                    throw ExecutionFailure.Create("command_failed", "Cannot read complete Git path evidence")
                 }
 
                 throw error

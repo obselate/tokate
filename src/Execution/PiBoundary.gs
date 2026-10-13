@@ -17,7 +17,8 @@ internal class PiBoundary {
                 uri.Query != "" ||
                 uri.Fragment != "" ||
                 uri.AbsolutePath != "/v1" {
-                throw Exception(
+                throw ExecutionFailure.Create(
+                    "invalid_state",
                     "Pi requires an explicit no-auth HTTP loopback base URL ending in /v1; endpoint details remain private"
                 )
             }
@@ -32,61 +33,71 @@ internal class PiBoundary {
             endpoint string,
             budget RuntimeBudget? = nil
         ) JsonElement {
-            let storage = Directory.CreateDirectory(
-                Path.Combine("/tmp", "tokate-pi-model-" + Guid.NewGuid().ToString("N")),
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
-
             try {
-                let script = Path.Combine(storage.FullName, "model.mjs")
-
-                File.WriteAllText(script, ApplicationInfo.Resource("pi-model.mjs"))
-
-                let args = List[string]{
-                    "--map-current-user",
-                    "--net",
-                    "--",
-                    LocalPaths.NeedSystemTool("env"),
-                    "-i",
-                    "PATH=" + NixRuntime.SearchPath(NixRuntime.Tools("", []string{node}).ToArray()),
-                    "LANG=C.UTF-8",
-                    "PI_OFFLINE=1"
-                }
-
-                for key in[]string{"HOME", "PI_CODING_AGENT_DIR"} {
-                    if let value = Environment.GetEnvironmentVariable(key) {
-                        args.Add(key + "=" + value)
-                    }
-                }
-
-                args.AddRange([]string{node, "--experimental-import-meta-resolve", script, root, model})
-                let result = Commands.Run(
-                    LocalPaths.NeedSystemTool("unshare"),
-                    args.ToArray(),
-                    storage.FullName,
-                    input: endpoint,
-                    seconds: 30,
-                    isolated: true,
-                    budget: budget
+                let storage = Directory.CreateDirectory(
+                    Path.Combine("/tmp", "tokate-pi-model-" + Guid.NewGuid().ToString("N")),
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
                 )
-                if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception(
-                        "Pi requires one configured local model at the selected endpoint; no inference started"
+
+                try {
+                    let script = Path.Combine(storage.FullName, "model.mjs")
+
+                    File.WriteAllText(script, ApplicationInfo.Resource("pi-model.mjs"))
+
+                    let args = List[string]{
+                        "--map-current-user",
+                        "--net",
+                        "--",
+                        LocalPaths.NeedSystemTool("env"),
+                        "-i",
+                        "PATH=" + NixRuntime.SearchPath(NixRuntime.Tools("", []string{node}).ToArray()),
+                        "LANG=C.UTF-8",
+                        "PI_OFFLINE=1"
+                    }
+
+                    for key in[]string{"HOME", "PI_CODING_AGENT_DIR"} {
+                        if let value = Environment.GetEnvironmentVariable(key) {
+                            args.Add(key + "=" + value)
+                        }
+                    }
+
+                    args.AddRange([]string{node, "--experimental-import-meta-resolve", script, root, model})
+                    let result = Commands.Run(
+                        LocalPaths.NeedSystemTool("unshare"),
+                        args.ToArray(),
+                        storage.FullName,
+                        input: endpoint,
+                        seconds: 30,
+                        isolated: true,
+                        budget: budget
                     )
+                    if result.Code != 0 || result.Truncated || result.ReadFailed {
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Pi requires one configured local model at the selected endpoint; no inference started"
+                        )
+                    }
+
+                    let limits = RequestData.Parse(result.Output.Trim(), 4096)
+                    RequestData.Keys(limits, "provider,contextWindow,maxTokens,reasoning,efforts")
+                    let contextWindow = J.Number(limits, "contextWindow")
+                    let maxTokens = J.Number(limits, "maxTokens")
+
+                    if contextWindow < 1 || maxTokens < 1 || maxTokens > contextWindow {
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Pi configured model limits are invalid; no inference started"
+                        )
+                    }
+
+                    return limits
+                } finally {
+                    Directory.Delete(storage.FullName, true)
                 }
-
-                let limits = RequestData.Parse(result.Output.Trim(), 4096)
-                RequestData.Keys(limits, "provider,contextWindow,maxTokens,reasoning,efforts")
-                let contextWindow = J.Number(limits, "contextWindow")
-                let maxTokens = J.Number(limits, "maxTokens")
-
-                if contextWindow < 1 || maxTokens < 1 || maxTokens > contextWindow {
-                    throw Exception("Pi configured model limits are invalid; no inference started")
-                }
-
-                return limits
-            } finally {
-                Directory.Delete(storage.FullName, true)
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
         }
 
@@ -97,7 +108,8 @@ internal class PiBoundary {
                 }
             }
 
-            throw Exception(
+            throw ExecutionFailure.Create(
+                "invalid_state",
                 "Pi does not support the selected reasoning effort for this configured model; choose a supported level before starting"
             )
         }
@@ -115,22 +127,34 @@ internal class PiBoundary {
         }
 
         internal func Probe(root string, node string, budget RuntimeBudget? = nil) JsonElement {
-            let packageRoot = Path.Combine(root, "@earendil-works/pi-coding-agent")
-            let metadata = RequestData.FileData(Path.Combine(packageRoot, "package.json"), 128 * 1024)
-            let entry = J.Text(J.Get(metadata, "bin"), "pi")
-            let cli = Path.GetFullPath(Path.Combine(packageRoot, entry))
+            try {
+                let packageRoot = Path.Combine(root, "@earendil-works/pi-coding-agent")
+                let metadata = RequestData.FileData(Path.Combine(packageRoot, "package.json"), 128 * 1024)
+                let entry = J.Text(J.Get(metadata, "bin"), "pi")
+                let cli = Path.GetFullPath(Path.Combine(packageRoot, entry))
 
-            if entry == "" || !LocalPaths.Within(cli, packageRoot) || !File.Exists(cli) {
-                throw Exception("The installed Pi package does not provide its CLI entrypoint")
+                if entry == "" || !LocalPaths.Within(cli, packageRoot) || !File.Exists(cli) {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "The installed Pi package does not provide its CLI entrypoint"
+                    )
+                }
+
+                let version = Version(root, node, []string{cli, "--version"}, budget)
+                let runtime = Version(root, node, []string{"--version"}, budget)
+                if version != J.Text(metadata, "version") || !runtime.StartsWith("v") {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Pi CLI or Node version differs from its installed package"
+                    )
+                }
+
+                return J.Parse(J.Write(map[string, Object?]{"type": "pi.probe", "version": version, "node": runtime}))
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
-
-            let version = Version(root, node, []string{cli, "--version"}, budget)
-            let runtime = Version(root, node, []string{"--version"}, budget)
-            if version != J.Text(metadata, "version") || !runtime.StartsWith("v") {
-                throw Exception("Pi CLI or Node version differs from its installed package")
-            }
-
-            return J.Parse(J.Write(map[string, Object?]{"type": "pi.probe", "version": version, "node": runtime}))
         }
 
         private func Version(root string, node string, arguments[]string, budget RuntimeBudget?) string {

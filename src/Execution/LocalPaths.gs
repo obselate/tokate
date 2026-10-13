@@ -8,17 +8,24 @@ internal class LocalPaths {
         internal func Musl() bool -> File.Exists("/lib/ld-musl-x86_64.so.1")
 
         internal func RuntimePath(value string) string {
-            if value.Length > 4096 || !Path.IsPathFullyQualified(value) {
-                throw Exception("Runtime overrides require bounded absolute paths")
-            }
-
-            for character in value {
-                if Char.IsControl(character) {
-                    throw Exception("Invalid runtime path")
+            try {
+                if value.Length > 4096 || !Path.IsPathFullyQualified(value) {
+                    throw ExecutionFailure.Create(
+                        "invalid_arguments",
+                        "Runtime overrides require bounded absolute paths"
+                    )
                 }
-            }
 
-            return Path.GetFullPath(value)
+                for character in value {
+                    if Char.IsControl(character) {
+                        throw ExecutionFailure.Create("invalid_arguments", "Invalid runtime path")
+                    }
+                }
+
+                return Path.GetFullPath(value)
+            } catch (error ArgumentException) {
+                throw ExecutionFailure.From(error, "invalid_arguments")
+            }
         }
 
         internal func Executable(path string) bool {
@@ -56,7 +63,7 @@ internal class LocalPaths {
 
             try {
                 return !Within(CanonicalPath(path), checkout)
-            } catch (error IOException) { } catch (error UnauthorizedAccessException) { }
+            } catch (error CliFailure) when error.Code == "invalid_state" { }
 
             return false
         }
@@ -237,39 +244,54 @@ internal class LocalPaths {
         }
 
         internal func DirectoryPath(path string) string {
-            let absolute = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))
-            var current = Path.GetPathRoot(absolute) ?? "/"
+            try {
+                let absolute = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))
+                var current = Path.GetPathRoot(absolute) ?? "/"
 
-            for part in absolute.Substring(current.Length).Split(Path.DirectorySeparatorChar) {
-                current = Path.Combine(current, part)
+                for part in absolute.Substring(current.Length).Split(Path.DirectorySeparatorChar) {
+                    current = Path.Combine(current, part)
 
-                if FileInfo(current).LinkTarget != nil || !Directory.Exists(current) {
-                    throw Exception("Verification requires real directories without checkout/Git symlinks: " + current)
+                    if FileInfo(current).LinkTarget != nil || !Directory.Exists(current) {
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Verification requires real directories without checkout/Git symlinks: " + current
+                        )
+                    }
                 }
-            }
 
-            return absolute
+                return absolute
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is ArgumentException {
+                throw ExecutionFailure.From(error, "invalid_state")
+            }
         }
 
         internal func CanonicalPath(path string, depth int32 = 0) string {
-            if depth > 40 {
-                throw Exception("Too many executable path symlinks")
-            }
-
-            let absolute = Path.GetFullPath(path)
-            var result = Path.GetPathRoot(absolute) ?? "/"
-
-            for part in absolute.Substring(result.Length).Split(Path.DirectorySeparatorChar) {
-                let candidate = Path.Combine(result, part)
-
-                if let link = File.ResolveLinkTarget(candidate, true) {
-                    result = CanonicalPath(link.FullName, depth + 1)
-                } else {
-                    result = candidate
+            try {
+                if depth > 40 {
+                    throw ExecutionFailure.Create("invalid_state", "Too many executable path symlinks")
                 }
-            }
 
-            return result
+                let absolute = Path.GetFullPath(path)
+                var result = Path.GetPathRoot(absolute) ?? "/"
+
+                for part in absolute.Substring(result.Length).Split(Path.DirectorySeparatorChar) {
+                    let candidate = Path.Combine(result, part)
+
+                    if let link = File.ResolveLinkTarget(candidate, true) {
+                        result = CanonicalPath(link.FullName, depth + 1)
+                    } else {
+                        result = candidate
+                    }
+                }
+
+                return result
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is ArgumentException {
+                throw ExecutionFailure.From(error, "invalid_state")
+            }
         }
     }
 }

@@ -58,7 +58,8 @@ internal class PiHarness {
                     }
 
                     if nodes.Count != 1 {
-                        throw Exception(
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
                             "Select --node explicitly; the Pi Nix closure does not identify one Node runtime."
                         )
                     }
@@ -80,7 +81,8 @@ internal class PiHarness {
 
             let markerPath = Path.Combine(agent, "install/managed-install.json")
             if !File.Exists(markerPath) && FileInfo(markerPath).LinkTarget == nil {
-                throw Exception(
+                throw ExecutionFailure.Create(
+                    "missing_tools",
                     "Cannot locate the Pi SDK from this launcher. Select its installed node_modules directory with --pi-root."
                 )
             }
@@ -88,7 +90,7 @@ internal class PiHarness {
             let install = LocalPaths.DirectoryPath(Path.Combine(agent, "install"))
             let versionPath = Path.Combine(install, "current-version")
             if FileInfo(markerPath).LinkTarget != nil || FileInfo(versionPath).LinkTarget != nil {
-                throw Exception("Pi installation metadata must be regular files")
+                throw ExecutionFailure.Create("invalid_state", "Pi installation metadata must be regular files")
             }
 
             let marker = RequestData.FileData(markerPath, 16384)
@@ -101,17 +103,20 @@ internal class PiHarness {
             ) != "releases-v1" ||
                 (J.Text(entrypoint, "type") != "script" && J.Text(entrypoint, "type") != "symlink") ||
                 !Path.IsPathFullyQualified(entryPath) || LocalPaths.CanonicalPath(entryPath) != cli {
-                throw Exception("Unsupported Pi installation metadata; provide --pi-root and --node explicitly")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Unsupported Pi installation metadata; provide --pi-root and --node explicitly"
+                )
             }
 
             if FileInfo(versionPath).Length < 1 || FileInfo(versionPath).Length > 128 {
-                throw Exception("Invalid managed Pi version file")
+                throw ExecutionFailure.Create("invalid_state", "Invalid managed Pi version file")
             }
 
             let version = File.ReadAllText(versionPath)
             if !Regex.IsMatch(version, "^[A-Za-z0-9._+-]+\\r?\\n?\\z") || version.Trim() == "." ||
                 version.Trim() == ".." {
-                throw Exception("Invalid managed Pi version file")
+                throw ExecutionFailure.Create("invalid_state", "Invalid managed Pi version file")
             }
 
             if args.Get("node") == "" {
@@ -133,71 +138,98 @@ internal class PiHarness {
         }
 
         internal func Runtime(args Args) {
-            if !OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64 {
-                throw Exception("Managed pi requires Linux x64; no host fallback")
-            }
-
-            if args.Get("harness-path") != "" && !CliExecutable(LocalPaths.RuntimePath(args.Need("harness-path"))) {
-                throw Exception("The selected Pi executable is missing or not executable; check --harness-path")
-            }
-
-            var root = args.Get("pi-root")
-            if root == "" {
-                let executable = LocalPaths.Harness("pi", args.Get("harness-path"))
-                if executable == "" {
-                    throw Exception("Install pi or supply --pi-root pointing to its existing node_modules directory")
+            try {
+                if !OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64 {
+                    throw ExecutionFailure.Create("missing_tools", "Managed pi requires Linux x64; no host fallback")
                 }
 
-                if !CliExecutable(executable) {
-                    throw Exception("The selected Pi executable is missing or not executable; check --harness-path")
+                if args.Get("harness-path") != "" && !CliExecutable(LocalPaths.RuntimePath(args.Need("harness-path"))) {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "The selected Pi executable is missing or not executable; check --harness-path"
+                    )
                 }
 
-                let cli = LocalPaths.CanonicalPath(executable)
-                let installedPackage = Directory.GetParent(cli)?.Parent?.Parent?.FullName ?? ""
-                root = cli == Path.Combine(installedPackage, "dist/bundle/cli.js") && Path.GetFileName(
-                    installedPackage
-                ) == "pi-coding-agent" &&
-                    Path.GetFileName(Path.GetDirectoryName(installedPackage) ?? "") == "@earendil-works" ?
-                Path.GetDirectoryName(Path.GetDirectoryName(installedPackage) ?? "") ?? "":
-                ManagedRuntime(cli, args)
+                var root = args.Get("pi-root")
+                if root == "" {
+                    let executable = LocalPaths.Harness("pi", args.Get("harness-path"))
+                    if executable == "" {
+                        throw ExecutionFailure.Create(
+                            "missing_tools",
+                            "Install pi or supply --pi-root pointing to its existing node_modules directory"
+                        )
+                    }
+
+                    if !CliExecutable(executable) {
+                        throw ExecutionFailure.Create(
+                            "missing_tools",
+                            "The selected Pi executable is missing or not executable; check --harness-path"
+                        )
+                    }
+
+                    let cli = LocalPaths.CanonicalPath(executable)
+                    let installedPackage = Directory.GetParent(cli)?.Parent?.Parent?.FullName ?? ""
+                    root = cli == Path.Combine(installedPackage, "dist/bundle/cli.js") && Path.GetFileName(
+                        installedPackage
+                    ) == "pi-coding-agent" &&
+                        Path.GetFileName(Path.GetDirectoryName(installedPackage) ?? "") == "@earendil-works" ?
+                    Path.GetDirectoryName(Path.GetDirectoryName(installedPackage) ?? "") ?? "":
+                    ManagedRuntime(cli, args)
+                }
+
+                root = LocalPaths.DirectoryPath(root)
+                if Path.GetFileName(root) != "node_modules" {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "--pi-root must be an existing node_modules directory, not donor settings"
+                    )
+                }
+
+                let packagePath = Path.Combine(root, "@earendil-works/pi-coding-agent")
+                LocalPaths.DirectoryPath(packagePath)
+                let metadata = RequestData.FileData(Path.Combine(packagePath, "package.json"), 128 * 1024)
+                if J.Text(metadata, "name") != "@earendil-works/pi-coding-agent" || J.Text(metadata, "version") == "" ||
+                    !File
+                    .Exists(Path.Combine(packagePath, "dist/index.js")) {
+                    throw ExecutionFailure.Create("missing_tools", "The installed pi SDK package layout is required")
+                }
+
+                let node = LocalPaths.CanonicalPath(
+                    args.Get("node") == "" ? LocalPaths.FindTrusted("node"): args.Need("node")
+                )
+                if !File.Exists(node) || !Path.IsPathFullyQualified(node) {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "An existing Node runtime is required; Tokate never installs one"
+                    )
+                }
+
+                args.Values["--pi-root"] = root
+                args.Values["--node"] = node
+
+                let entry = J.Text(J.Get(metadata, "bin"), "pi")
+                let executable = Path.GetFullPath(Path.Combine(packagePath, entry))
+                if entry == "" || !LocalPaths.Within(executable, packagePath) || !File.Exists(executable) {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "The installed Pi package does not provide its CLI entrypoint"
+                    )
+                }
+
+                args.Values["--harness-path"] = executable
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
-
-            root = LocalPaths.DirectoryPath(root)
-            if Path.GetFileName(root) != "node_modules" {
-                throw Exception("--pi-root must be an existing node_modules directory, not donor settings")
-            }
-
-            let packagePath = Path.Combine(root, "@earendil-works/pi-coding-agent")
-            LocalPaths.DirectoryPath(packagePath)
-            let metadata = RequestData.FileData(Path.Combine(packagePath, "package.json"), 128 * 1024)
-            if J.Text(metadata, "name") != "@earendil-works/pi-coding-agent" || J.Text(metadata, "version") == "" ||
-                !File
-                .Exists(Path.Combine(packagePath, "dist/index.js")) {
-                throw Exception("The installed pi SDK package layout is required")
-            }
-
-            let node = LocalPaths.CanonicalPath(
-                args.Get("node") == "" ? LocalPaths.FindTrusted("node"): args.Need("node")
-            )
-            if !File.Exists(node) || !Path.IsPathFullyQualified(node) {
-                throw Exception("An existing Node runtime is required; Tokate never installs one")
-            }
-
-            args.Values["--pi-root"] = root
-            args.Values["--node"] = node
-
-            let entry = J.Text(J.Get(metadata, "bin"), "pi")
-            let executable = Path.GetFullPath(Path.Combine(packagePath, entry))
-            if entry == "" || !LocalPaths.Within(executable, packagePath) || !File.Exists(executable) {
-                throw Exception("The installed Pi package does not provide its CLI entrypoint")
-            }
-
-            args.Values["--harness-path"] = executable
         }
 
         internal func Select(args Args, policy Policy, source string) JsonElement {
             if args.Need("provider") != "local-chat-completions" {
-                throw Exception("Unsupported pi provider; only local-chat-completions is managed")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Unsupported pi provider; only local-chat-completions is managed"
+                )
             }
 
             let model = RequestData.ModelIdentifier(args.Need("model"))
@@ -207,7 +239,10 @@ internal class PiHarness {
             let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
 
             if args.Get("availability") == "unavailable" {
-                throw Exception("Selected model is donor-reported unavailable; no retry or fallback")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Selected model is donor-reported unavailable; no retry or fallback"
+                )
             }
 
             Runtime(args)
@@ -258,13 +293,13 @@ internal class PiHarness {
 
             Runtime(args)
             if args.Need("pi-root") != run.Text("pi_root") || args.Need("node") != run.Text("pi_node") {
-                throw Exception("Saved pi runtime changed; no substitution")
+                throw ExecutionFailure.Create("invalid_state", "Saved pi runtime changed; no substitution")
             }
         }
 
         internal func Execute(directory string, run Data, record JsonElement, prompt string) {
             if run.Number("version") != 2 || run.Text("source") != "tokate" || run.Number("preparation_version") != 1 {
-                throw Exception("Managed pi requires a prepared version-2 contribution")
+                throw ExecutionFailure.Create("invalid_state", "Managed pi requires a prepared version-2 contribution")
             }
 
             let timer = Stopwatch.StartNew()
@@ -355,7 +390,8 @@ internal class PiHarness {
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
                         budget: coding,
-                        outputLine: activity
+                        outputLine: activity,
+                        failureCode: "inference_failed"
                     )
                 }
 
@@ -364,7 +400,10 @@ internal class PiHarness {
                 run.Fields["inference_exit_code"] = result.Code
 
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Pi did not complete; inspect private captured evidence. No new run was started")
+                    throw ExecutionFailure.Create(
+                        "inference_failed",
+                        "Pi did not complete; inspect private captured evidence. No new run was started"
+                    )
                 }
 
                 let usage = PiEvidence.Completed(
@@ -394,7 +433,10 @@ internal class PiHarness {
                     run.Number("seconds"),
                     run.Number("verification_reserve")
                 )
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 if run.Text("failure_stage") == "inference" {
                     if let result = Commands.InterruptedResult(error) {
                         run.Fields["failure_reason"] = "inference_interrupted"
@@ -408,7 +450,7 @@ internal class PiHarness {
 
                 run.Save(directory)
 
-                throw error
+                throw ExecutionFailure.From(error)
             }
         }
     }

@@ -13,7 +13,7 @@ internal class Verification {
             let commands = J.Items(J.Get(J.Get(record, "policy"), "verification"))
 
             if checks.Count == 0 || checks.Count != commands.Count {
-                throw Exception("Missing independent verification results")
+                throw ExecutionFailure.Create("verification_failed", "Missing independent verification results")
             }
 
             for i in 0 ... checks.Count {
@@ -25,11 +25,11 @@ internal class Verification {
                 if (state != "" && state != "completed") ||
                     exitCode.ValueKind != JsonValueKind.Number ||
                     !exitCode.TryGetInt32(out code) || code != 0 {
-                    throw Exception("Owner verification did not pass")
+                    throw ExecutionFailure.Create("verification_failed", "Owner verification did not pass")
                 }
 
                 if J.Write(J.Get(check, "command")) != J.Write(commands[i]) {
-                    throw Exception("Owner verification did not pass")
+                    throw ExecutionFailure.Create("verification_failed", "Owner verification did not pass")
                 }
             }
 
@@ -41,7 +41,7 @@ internal class Verification {
                 budget?.Remaining()
 
                 if FileInfo(entry).LinkTarget != nil {
-                    throw Exception("Verification refuses Git symlinks: " + entry)
+                    throw ExecutionFailure.Create("invalid_state", "Verification refuses Git symlinks: " + entry)
                 }
 
                 if Directory.Exists(entry) {
@@ -55,13 +55,19 @@ internal class Verification {
 
             for root in[]string{"/home", "/run", "/var", "/tmp"} {
                 if checkout == root {
-                    throw Exception("Unsupported verification checkout layout: " + checkout)
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Unsupported verification checkout layout: " + checkout
+                    )
                 }
             }
 
             for root in[]string{"/usr", "/bin", "/sbin", "/lib", "/lib64", "/etc", "/dev", "/proc", "/sys", "/nix"} {
                 if checkout == "/" || checkout == root || checkout.StartsWith(root + "/") {
-                    throw Exception("Unsupported verification checkout layout: " + checkout)
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Unsupported verification checkout layout: " + checkout
+                    )
                 }
             }
 
@@ -70,7 +76,10 @@ internal class Verification {
 
             for file in[]string{"commondir", "objects/info/alternates", "objects/info/http-alternates", "info/grafts"} {
                 if File.Exists(Path.Combine(git, file)) || Directory.Exists(Path.Combine(git, file)) {
-                    throw Exception("Verification requires self-contained Git metadata: " + file)
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Verification requires self-contained Git metadata: " + file
+                    )
                 }
             }
 
@@ -88,7 +97,8 @@ internal class Verification {
 
             for entry in evidence.Split('\0') {
                 if entry != "" && (Char.IsLower(entry[0]) || entry[0] == 'S') {
-                    throw Exception(
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
                         "Candidate index contains assume-unchanged or skip-worktree flags; inspect before continuing"
                     )
                 }
@@ -109,7 +119,10 @@ internal class Verification {
             let root = LocalPaths.DirectoryPath(storage)
 
             if root == checkout || root.StartsWith(checkout + "/") {
-                throw Exception("Verification evidence must be outside the checkout")
+                throw ExecutionFailure.Create(
+                    "verification_failed",
+                    "Verification evidence must be outside the checkout"
+                )
             }
 
             let attempt = Path.Combine(root, "verification-" + Guid.NewGuid().ToString("N"))
@@ -136,7 +149,7 @@ internal class Verification {
 
             try {
                 if seconds < 1 {
-                    throw Exception("Runtime budget exhausted before verification")
+                    throw ExecutionFailure.Create("verification_failed", "Runtime budget exhausted before verification")
                 }
 
                 let words = List[string]()
@@ -154,7 +167,10 @@ internal class Verification {
                 File.WriteAllText(record, J.Write(results))
 
                 return result
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 check.Remove("exit_code")
                 check["state"] = "failed"
                 check["failure"] = error.Message
@@ -166,7 +182,7 @@ internal class Verification {
 
                 File.WriteAllText(record, J.Write(results))
 
-                throw error
+                throw ExecutionFailure.From(error, "verification_failed")
             }
         }
 
@@ -188,7 +204,7 @@ internal class Verification {
             let checkout = Validate(directory, budget)
 
             if command.Length == 0 {
-                throw Exception("Verification commands must be argv arrays")
+                throw ExecutionFailure.Create("verification_failed", "Verification commands must be argv arrays")
             }
 
             for path in[]string{outputPath, errorPath} {
@@ -196,7 +212,10 @@ internal class Verification {
                     let parent = LocalPaths.DirectoryPath(Path.GetDirectoryName(Path.GetFullPath(path)) ?? "/")
 
                     if parent == checkout || parent.StartsWith(checkout + "/") {
-                        throw Exception("Verification evidence must be outside the checkout")
+                        throw ExecutionFailure.Create(
+                            "verification_failed",
+                            "Verification evidence must be outside the checkout"
+                        )
                     }
                 }
             }
@@ -240,13 +259,20 @@ internal class Verification {
                     errorPath: errorPath,
                     budget: budget,
                     outputLine: outputLine,
-                    errorLine: errorLine
+                    errorLine: errorLine,
+                    failureCode: "verification_failed"
                 )
 
                 select {
                     case <- cancellation {
                         result.Code = nil
-                        throw CommandInterrupted(Exception("Verification cancelled"), result)
+                        throw ExecutionFailure.From(
+                            CommandInterrupted(
+                                ExecutionFailure.Create("verification_failed", "Verification cancelled"),
+                                result
+                            ),
+                            "verification_failed"
+                        )
                     }
                     default { }
                 }

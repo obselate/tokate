@@ -13,80 +13,96 @@ internal class OmpEvidence {
             string,
             Object?
         ] {
-            var started bool
-            var settled bool
-            var lastStop = ""
-            var report = ""
-            var input int64
-            var cached int64
-            var generated int64
+            try {
+                var started bool
+                var settled bool
+                var lastStop = ""
+                var report = ""
+                var input int64
+                var cached int64
+                var generated int64
 
-            for line in output.Split('\n') {
-                if String.IsNullOrWhiteSpace(line) {
-                    continue
-                }
-
-                let item = RequestData.Parse(line, 32 * 1024 * 1024)
-                let kind = J.Text(item, "type")
-
-                if settled &&
-                    (
-                    kind == "agent_start" || kind == "turn_start" || kind.StartsWith(
-                        "tool_execution_",
-                        StringComparison.Ordinal
-                    ) ||
-                        (kind == "message_start" || kind == "message_update" || kind == "message_end") &&
-                        J.Text(J.Get(item, "message"), "role") != "custom"
-                ) {
-                    throw Exception("OMP emitted events after its terminal result")
-                }
-
-                if kind == "agent_start" {
-                    started = true
-                } else if kind == "message_end" && J.Text(J.Get(item, "message"), "role") == "assistant" {
-                    let message = J.Get(item, "message")
-                    if !started || J.Text(message, "model") != model || J.Text(message, "provider") != provider {
-                        throw Exception("OMP response differs from the selected model or provider")
+                for line in output.Split('\n') {
+                    if String.IsNullOrWhiteSpace(line) {
+                        continue
                     }
 
-                    lastStop = J.Text(message, "stopReason")
-                    report = ""
+                    let item = RequestData.Parse(line, 32 * 1024 * 1024)
+                    let kind = J.Text(item, "type")
 
-                    for part in J.Items(J.Get(message, "content")) {
-                        if J.Text(part, "type") == "text" {
-                            report += J.Text(part, "text")
-                        }
-                    }
-
-                    let usage = J.Get(message, "usage")
-                    input = HarnessUsage.Count(usage, "input", input, "OMP")
-                    cached = HarnessUsage.Count(usage, "cacheRead", cached, "OMP")
-                    generated = HarnessUsage.Count(usage, "output", generated, "OMP")
-                } else if kind == "agent_end" && J.Get(item, "isTerminal").ValueKind != JsonValueKind.False {
-                    if lastStop == "length" {
-                        throw Exception(
-                            "OMP response reached its configured output length limit; inspect the saved partial work"
+                    if settled &&
+                        (
+                        kind == "agent_start" || kind == "turn_start" || kind.StartsWith(
+                            "tool_execution_",
+                            StringComparison.Ordinal
+                        ) ||
+                            (kind == "message_start" || kind == "message_update" || kind == "message_end") &&
+                            J.Text(J.Get(item, "message"), "role") != "custom"
+                    ) {
+                        throw ExecutionFailure.Create(
+                            "inference_failed",
+                            "OMP emitted events after its terminal result"
                         )
                     }
 
-                    if !started || lastStop != "stop" || String.IsNullOrWhiteSpace(report) {
-                        throw Exception("OMP did not return a completed response within the donor's allowance")
+                    if kind == "agent_start" {
+                        started = true
+                    } else if kind == "message_end" && J.Text(J.Get(item, "message"), "role") == "assistant" {
+                        let message = J.Get(item, "message")
+                        if !started || J.Text(message, "model") != model || J.Text(message, "provider") != provider {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "OMP response differs from the selected model or provider"
+                            )
+                        }
+
+                        lastStop = J.Text(message, "stopReason")
+                        report = ""
+
+                        for part in J.Items(J.Get(message, "content")) {
+                            if J.Text(part, "type") == "text" {
+                                report += J.Text(part, "text")
+                            }
+                        }
+
+                        let usage = J.Get(message, "usage")
+                        input = HarnessUsage.Count(usage, "input", input, "OMP")
+                        cached = HarnessUsage.Count(usage, "cacheRead", cached, "OMP")
+                        generated = HarnessUsage.Count(usage, "output", generated, "OMP")
+                    } else if kind == "agent_end" && J.Get(item, "isTerminal").ValueKind != JsonValueKind.False {
+                        if lastStop == "length" {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "OMP response reached its configured output length limit; inspect the saved partial work"
+                            )
+                        }
+
+                        if !started || lastStop != "stop" || String.IsNullOrWhiteSpace(report) {
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
+                                "OMP did not return a completed response within the donor's allowance"
+                            )
+                        }
+
+                        settled = true
                     }
-
-                    settled = true
                 }
-            }
 
-            if !settled {
-                throw Exception("OMP did not report a terminal result")
-            }
+                if !settled {
+                    throw ExecutionFailure.Create("inference_failed", "OMP did not report a terminal result")
+                }
 
-            File.WriteAllText(Path.Combine(directory, "report.md"), report)
+                File.WriteAllText(Path.Combine(directory, "report.md"), report)
 
-            return map[string, Object?]{
-                "input_tokens": input,
-                "cached_input_tokens": cached,
-                "output_tokens": generated
+                return map[string, Object?]{
+                    "input_tokens": input,
+                    "cached_input_tokens": cached,
+                    "output_tokens": generated
+                }
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "inference_failed")
             }
         }
 
@@ -103,7 +119,7 @@ internal class OmpEvidence {
                     if J.Text(message, "role") == "assistant" && J.Text(message, "errorMessage") != "" {
                         reason = J.Text(message, "errorMessage")
                     }
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure || error is JsonException {
                     continue
                 }
             }
