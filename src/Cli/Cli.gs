@@ -15,7 +15,7 @@ internal class CliOption(name string, value string, description string, choices 
 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
-        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files; no inference"
+        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
@@ -546,7 +546,7 @@ internal class Cli {
                 "Preview a shared workflow entry using verified matching release assets; no inference.",
                 "[OWNER/REPO] --output FILE",
                 "coordinator-setup owner/project --output coordinator.yml",
-                effects: "local_read local_write github_read",
+                effects: "local_read local_write github_read github_write",
                 target: "repo",
                 group: "more"
             ),

@@ -1475,7 +1475,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let archive = Path.Combine(Flow.Bin, "release.tar.gz")
         Flow.ResetTraffic()
         let initial = Flow.Call(args, owner: true, traffic: true)
-        Flow.Traffic(9, 0, 0, 0, initial)
+        Flow.Traffic(10, 0, 0, 0, initial)
         Check.That(!initial.Error.Contains("Compare shared workflows:"), "New setup reported a current pin")
         let yaml = File.ReadAllText(output)
         Check.Contains(yaml, "issues:\n    types: [labeled]\n")
@@ -1500,6 +1500,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Commit("Install old coordinator pin")
         let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
         let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + version
+        let shared = "obselate/tokate/.github/workflows/tokate-shared.yml@"
+        let unrelated = "actions/checkout@*"
+        let selected = Check.Map(
+            "github_owned_allowed",
+            true,
+            "verified_allowed",
+            false,
+            "patterns_allowed",
+            JsonArray(JsonValue.Create(unrelated), JsonValue.Create(shared + oldCommit))
+        )
+        Flow.Reload()
+        Flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
+        Flow.State["selected_actions"] = selected.DeepClone()
+        Flow.State["allowlist_setup"] = JsonValue.Create(true)
+        Flow.Save()
         Flow.ResetTraffic()
         let preview = Flow.Call(
             []string{"coordinator-setup", "owner/project", "--output", output, "--non-interactive"},
@@ -1516,13 +1531,18 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Pin review followed the file preview"
         )
         Check.That(!File.Exists(output), "Review preview wrote a workflow")
+        Flow.Reload()
+        Check.That(
+            Flow.State["selected_actions"]?.ToJsonString() == selected.ToJsonString(),
+            "Preview changed the allowlist"
+        )
         Flow.ResetTraffic()
         let json = Flow.Call(
             []string{"coordinator-setup", "owner/project", "--output", output, "--yes", "--json"},
             owner: true,
             traffic: true
         )
-        Flow.Traffic(9, 0, 0, 0, json)
+        Flow.Traffic(11, 1, 0, 0, json)
         let data = Check.Json(json.Output)["data"] ?? throw Exception("Missing setup data")
         Check.That(Check.Text(data["current_version"]) == "0.3.5", "JSON lost the current version")
         Check.That(Check.Text(data["new_version"]) == version, "JSON lost the new version")
@@ -1530,8 +1550,52 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(Check.Text(data["new_commit"]) == newCommit, "JSON lost the new commit")
         Check.That(Check.Text(data["compare_url"]) == compareUrl, "JSON lost the workflow comparison")
         Check.That(Check.Text(data["release_url"]) == releaseUrl, "JSON lost the release link")
+        Check.Contains(Check.Text(data["actions_allowlist"]), "Updated the Actions allowlist")
+        let updated = selected.DeepClone()
+        updated["patterns_allowed"] = JsonArray(JsonValue.Create(unrelated), JsonValue.Create(shared + newCommit))
+        Check.That(
+            Flow.State["selected_actions"]?.ToJsonString() == updated.ToJsonString(),
+            "Setup failed to replace only the old workflow entry"
+        )
         Check.That(File.ReadAllText(output) == yaml, "Review changed the proposed workflow")
         Check.That(File.ReadAllText(workflow) == current, "Setup updated the installed pin")
+        for mode in[]string{"denied", "wildcard", "blocked", "missing"} {
+            File.Delete(output)
+            let settings = selected.DeepClone()
+            if mode == "wildcard" || mode == "blocked" {
+                settings["patterns_allowed"] = JsonArray(JsonValue.Create(unrelated), JsonValue.Create(shared + "*"))
+                if mode == "blocked" {
+                    settings["patterns_allowed"]?.AsArray().Add(JsonValue.Create("!" + shared + "*") as JsonNode)
+                }
+            } else if mode == "missing" {
+                settings["patterns_allowed"] = JsonArray(JsonValue.Create(unrelated))
+            }
+            Flow.Reload()
+            Flow.State["selected_actions"] = settings.DeepClone()
+            Flow.State["allowlist_write_denied"] = JsonValue.Create(mode == "denied")
+            Flow.Save()
+            Flow.ResetTraffic()
+            let result = Flow.Call(args, owner: true, traffic: true)
+            Flow.Traffic(11, mode == "denied" || mode == "missing" ? 1: 0, 0, 0, result)
+            Check.That(File.ReadAllText(output) == yaml, "Allowlist handling lost the pinned workflow")
+            if mode == "missing" {
+                settings["patterns_allowed"]?.AsArray().Add(JsonValue.Create(shared + newCommit) as JsonNode)
+                Check.Contains(result.Output, "Updated the Actions allowlist")
+            } else if mode == "denied" || mode == "blocked" {
+                Check.Contains(result.Output, "Settings > Actions > General > Actions permissions")
+                Check.Contains(result.Output, "add " + shared + newCommit)
+                Check.Contains(
+                    result.Output,
+                    mode == "denied" ? "Could not update": "Remove the blocking exclusion !" + shared + "*"
+                )
+            } else {
+                Check.Contains(result.Output, "Actions permits " + shared + newCommit)
+            }
+            Check.That(
+                Flow.State["selected_actions"]?.ToJsonString() == settings.ToJsonString(),
+                "Setup changed unrelated Actions permissions"
+            )
+        }
         File.Delete(output)
         File.WriteAllText(workflow, current.Replace(oldCommit, "main"))
         Flow.Commit("Install malformed coordinator pin")

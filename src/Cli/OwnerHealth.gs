@@ -166,10 +166,9 @@ internal class OwnerHealth {
                         let value = pattern.GetString() ?? ""
                         patterns.Add(value)
                         let deny = value.StartsWith("!")
-                        let matches = pin != "" && Regex.IsMatch(
-                            "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin,
-                            "^" + Regex.Escape(deny ? value.Substring(1): value).Replace("\\*", ".*") + "$",
-                            RegexOptions.IgnoreCase
+                        let matches = pin != "" && CoordinatorSetup.WorkflowMatches(
+                            deny ? value.Substring(1): value,
+                            "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
                         )
                         blocked = blocked || (deny && matches)
                         permitted = permitted || (!deny && matches)
