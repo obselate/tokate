@@ -164,6 +164,8 @@ internal class Positionals {
                     }
 
                     args.Values["--" + word] = "true"
+                } else if args.Get("owner") == "true" {
+                    Repo(args, word)
                 } else if args.Get("harness") != "" {
                     throw Exception("Unexpected argument: " + word)
                 } else {

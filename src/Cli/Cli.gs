@@ -398,12 +398,12 @@ internal class Cli {
             ),
             CliCommand(
                 "doctor",
-                "auth,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "repo,auth,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
                 "",
-                "Check prerequisites; --fix offers confirmed setup; no inference.",
-                "[owner | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
+                "Check prerequisites or owner repository health; repository checks are read-only; no inference.",
+                "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
                 "doctor",
-                effects: "local_read local_write",
+                effects: "local_read local_write github_read",
                 target: "doctor",
                 group: "setup"
             ),
@@ -767,7 +767,10 @@ internal class Cli {
 
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
 
-            case "doctor": []string{"owner|managed|external|HARNESS", "HARNESS (after managed)"}
+            case "doctor": []string{
+                "owner|managed|external|HARNESS",
+                "OWNER/REPO (after owner) or HARNESS (after managed)"
+            }
             default: switch command.Target {
                 case "issue": []string{"ISSUE"}
 
@@ -1243,6 +1246,11 @@ internal class Cli {
             }
 
             if args.Command == "doctor" {
+                if args.Get("repo") != "" &&
+                    (args.Get("owner") != "true" || args.Get("fix") == "true" || args.Get("set-default") == "true") {
+                    throw Exception("Repository diagnostics require doctor owner and are read-only")
+                }
+
                 if args.Get("set-default") == "true" && args.Get("harness") == "" &&
                     (args.Get("json") == "true" || !DonorSelection.Interactive(args)) {
                     throw Exception("Name the harness when setting a default noninteractively")

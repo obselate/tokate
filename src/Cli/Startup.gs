@@ -463,6 +463,10 @@ internal class Startup {
         }
 
         internal func Doctor(options Args) int32 {
+            if options.Get("owner") == "true" && options.Get("repo") != "" {
+                return OwnerHealth.Run(options)
+            }
+
             if options.Get("managed") == "true" && options.Get("harness") == "" {
                 let saved = DonorDefaults.Read()
 
