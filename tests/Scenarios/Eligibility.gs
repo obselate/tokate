@@ -97,8 +97,17 @@ internal class EligibilityChecks {
                     state["approval_id"] = JsonValue.Create(Check.FixtureDigest(approval))
                     test.RewriteState(state)
                 }
-                Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
+                let initial = Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
                 if mode != "open" {
+                    Check.Contains(initial.Error, "Eligibility mode: trusted. Missing donor trust and issue grant.")
+                    Check.Contains(initial.Error, "The owner must run: tokate access grant donor owner/project#1")
+                    Check.Contains(initial.Error, "tokate access trust donor owner/project")
+                    for command in[]string{"claim", "work"} {
+                        Check.Contains(
+                            test.Flow.Call([]string{command, "owner/project#1", "--time", "1s"}, 1).Error,
+                            "The owner must run: tokate access grant donor owner/project#1"
+                        )
+                    }
                     Claim(test, 1)
                 }
                 Access(test, "trust")
@@ -111,7 +120,11 @@ internal class EligibilityChecks {
                 Access(test, "grant", issue: "1")
                 Access(test, "check", issue: "1", owner: false)
                 Access(test, "deny")
-                Access(test, "check", issue: "1", code: 1, owner: false)
+                let denied = Access(test, "check", issue: "1", code: 1, owner: false)
+                Check.Contains(
+                    denied.Error,
+                    "Donor is denied. The owner must run: tokate access restore donor owner/project"
+                )
                 Claim(test, 1)
                 Access(test, "restore")
                 Access(test, "remove", issue: "1")
@@ -182,7 +195,10 @@ internal class EligibilityChecks {
                 test.Flow.Save()
                 Access(test, "deny")
                 test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
-                test.Flow.Call([]string{"submit", "--run", run}, 1)
+                Check.Contains(
+                    test.Flow.Call([]string{"submit", "--run", run}, 1).Error,
+                    "Donor is denied. The owner must run: tokate access restore donor owner/project"
+                )
                 test.Coordinate(test.Event(publish), 1)
                 test.Flow.NoInference()
             }
@@ -199,7 +215,12 @@ internal class EligibilityChecks {
                 let saved = File.ReadAllText(Path.Combine(run, "run.json"))
                 let state = Check.Text(test.State()["sha"])
                 Access(test, operation, issue: operation == "remove" ? "1": "")
-                test.Flow.Call([]string{"work", "--run", run}, 1)
+                let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
+                Check.Contains(
+                    refused.Error,
+                    operation == "deny" ? "Donor is denied. The owner must run: tokate access restore donor owner/project":
+                    "Missing donor trust and issue grant. The owner must run: tokate access grant donor owner/project#1"
+                )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == saved,
                     "Eligibility failure rewrote saved work"
@@ -234,11 +255,30 @@ internal class EligibilityChecks {
             let run = test.Prepare("tokate")
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
-            for fault in[]string{"missing", "unavailable", "repo", "actor", "malformed", "task", "policy"} {
+            for fault in[]string{
+                "missing",
+                "unavailable",
+                "repo",
+                "actor",
+                "malformed",
+                "task",
+                "policy",
+                "approval_missing",
+                "revoked",
+                "label",
+                "template"
+            } {
                 baseline.Restore()
                 test.Flow.Reload()
                 if fault == "missing" {
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+                } else if fault == "approval_missing" {
+                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/contributions/1")
+                } else if fault == "revoked" {
+                    test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                } else if fault == "template" {
+                    File.AppendAllText(Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"), "Changed template\n")
+                    test.Flow.Commit("Owner changes PR template")
                 } else if fault == "malformed" {
                     let blob = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/heads/tokate/access", blob)
@@ -268,11 +308,41 @@ internal class EligibilityChecks {
                         test.Flow.State["viewer_id"] = JsonValue.Create("123")
                     } else {
                         let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
-                        issue["title"] = JsonValue.Create("Changed task")
+                        if fault == "label" {
+                            issue["labels"] = JsonArray()
+                        } else {
+                            issue["title"] = JsonValue.Create("Changed task")
+                        }
                     }
                     test.Flow.Save()
                 }
-                test.Flow.Call([]string{"work", "--run", run}, 1)
+                let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
+                if fault == "missing" {
+                    Check.Contains(refused.Error, "Eligibility mode: open. Donor access record is missing.")
+                    Check.Contains(refused.Error, "The owner must run: tokate access init owner/project")
+                } else if fault == "task" {
+                    Check.Contains(
+                        refused.Error,
+                        "Issue text changed since approval. The owner must run: tokate approve owner/project#1"
+                    )
+                } else if fault == "policy" {
+                    Check.Contains(refused.Error, "Eligibility mode: trusted. Missing donor trust and issue grant.")
+                } else if fault == "approval_missing" {
+                    Check.Contains(
+                        refused.Error,
+                        "Issue is not approved. Approval record is missing. The owner must run: tokate approve owner/project#1"
+                    )
+                } else if fault == "revoked" || fault == "label" {
+                    Check.Contains(
+                        refused.Error,
+                        "Issue approval is revoked or its approval label is missing. The owner must run: tokate approve owner/project#1"
+                    )
+                } else if fault == "template" {
+                    Check.Contains(
+                        refused.Error,
+                        "PR template changed. The owner must run: tokate approve owner/project#1"
+                    )
+                }
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == saved,
                     "Unknown authority rewrote saved work"

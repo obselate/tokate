@@ -165,7 +165,11 @@ internal class Decree {
                 approved,
                 "sha256"
             ) {
-                throw CliFailure("stale_approval", "DECREE.md changed; fresh owner approval is required")
+                throw CoordinationState.ApprovalFailure(
+                    repo,
+                    J.Number(approval, "issue"),
+                    "DECREE.md changed; fresh owner approval is required."
+                )
             }
         }
 

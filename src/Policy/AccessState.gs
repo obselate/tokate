@@ -9,7 +9,9 @@ internal class AccessState {
     internal var RepoId int64
     internal let Members List[JsonElement] = List[JsonElement]()
 
-    internal func Allows(actor int64, mode string, issue int32 = 0) bool {
+    internal func Allows(actor int64, mode string, issue int32 = 0) bool -> Refusal(actor, mode, issue) == ""
+
+    private func Refusal(actor int64, mode string, issue int32) string {
         var trusted bool
         var denied bool
         var granted bool
@@ -25,7 +27,15 @@ internal class AccessState {
             }
         }
 
-        return !denied && (mode == "open" || (mode == "trusted" && (trusted || granted)))
+        if denied {
+            return "Donor is denied."
+        }
+
+        if mode == "open" || (mode == "trusted" && (trusted || granted)) {
+            return ""
+        }
+
+        return "Missing donor trust and issue grant."
     }
 
     internal func Value() JsonElement -> J.Parse(
@@ -174,8 +184,6 @@ internal class AccessState {
                 "eligible": false,
                 "authority": "unknown"
             }
-            let recovery = []string{"tokate", "access", "check", repo + "#" + issue.ToString(), "--json"}
-
             try {
                 let id = RepositoryIdentity.PositiveId(actor)
                 let info = GitHub.Api("repos/" + repo)
@@ -185,8 +193,18 @@ internal class AccessState {
                     throw Exception("Task repository numeric identity changed")
                 }
 
-                let access = Load(repo, repoId)
                 let mode = Mode(policy)
+                let access = Load(repo, repoId, missing: true)
+                if access.Sha == "" {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Eligibility mode: " +
+                            mode +
+                            ". Donor access record is missing. The owner must run: tokate access init " +
+                            repo,
+                        []string{"tokate", "access", "init", repo}
+                    )
+                }
                 let allowed = access.Allows(id, mode, issue)
 
                 PublicOutput.ResultData = map[string, Object?]{
@@ -199,10 +217,22 @@ internal class AccessState {
                 }
 
                 if !allowed {
+                    let donor = RepositoryIdentity.Login(J.Text(GitHub.Api("user/" + id.ToString()), "login"))
+                    let reason = access.Refusal(id, mode, issue)
+                    let command = reason == "Donor is denied." ?
+                    []string{"tokate", "access", "restore", donor, repo}:
+                    []string{"tokate", "access", "grant", donor, repo + "#" + issue.ToString()}
+                    let alternative = reason == "Donor is denied." ? "":
+                    " Or grant trust for all issues: tokate access trust " + donor + " " + repo + "."
                     throw CliFailure(
                         "invalid_state",
-                        "Current donor access does not permit this task. The owner must restore access or grant the required membership.",
-                        recovery
+                        "Eligibility mode: " + mode + ". " + reason + " The owner must run: " + String.Join(
+                            " ",
+                            command
+                        ) +
+                            "." +
+                            alternative,
+                        command
                     )
                 }
             } catch (error CliFailure) {
@@ -219,8 +249,9 @@ internal class AccessState {
 
                 throw CliFailure(
                     "invalid_state",
-                    "Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.",
-                    recovery
+                    "Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding. The owner must run: tokate access list " +
+                        repo,
+                    []string{"tokate", "access", "list", repo}
                 )
             }
         }

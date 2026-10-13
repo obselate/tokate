@@ -176,7 +176,7 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
 | `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the linked failure and re-process the request after fixing its cause. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
 | `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the pinned shared workflow in Actions settings, then re-process the request. |
-| `Approval revoked or task changed` | Owner: `tokate approve 42` |
+| `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by `Approval no longer matches current task fields.` or `PR template changed.` and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
 | `Selected model is donor-reported unavailable. No retry or fallback.` | `tokate select OWNER/REPO` |
@@ -190,6 +190,9 @@ Formatting, eligibility and descriptive policy edits keep approvals valid. Curre
 eligibility still controls donor access. Task-field or PR-template changes need
 fresh owner approval. After the version 3 release upgrade, approvals made with the
 old whole-text digest become stale once. Use the owner command shown by status.
+Refusals name changed task fields when the approved policy can be read and its
+task digest matches. Otherwise they state that previous task fields are unavailable
+or use a legacy digest. Issue text and PR-template changes are named separately.
 
 Model and effort permissions apply to the exact harness/provider pair. Use `tokate policy OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
 
@@ -234,8 +237,12 @@ Approve a fork workflow only after diff review. For a stale PR, refresh `tokate 
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Current donor access does not permit this task. The owner must restore access or grant the required membership.` | Donor: `tokate access request 42 --trust`. Owner: `tokate access trust DONOR` for all tasks, or `tokate access grant DONOR 42` for one issue. If the donor was denied: `tokate access restore DONOR`. |
-| `Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.` | Owner: `tokate access`. If it says access is absent, the `tokate/access` branch was never created or was deleted, and all trust and grants are gone: `tokate access init`, then trust or grant each donor again. If GitHub is unreachable: wait, then run the donor command again. |
+| `Donor access record is missing.` after the eligibility mode | Owner: run the named `tokate access init OWNER/REPO` command, then restore trust or issue grants. |
+| `Missing donor trust and issue grant.` after the eligibility mode | Owner: run the named `tokate access grant DONOR OWNER/REPO#42` command for one issue, or `tokate access trust DONOR OWNER/REPO` for all issues. |
+| `Donor is denied.` after the eligibility mode | Owner: run the named `tokate access restore DONOR OWNER/REPO` command. In trusted mode the donor still needs trust or an issue grant. |
+| `Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.` followed by the owner command | Owner: run the named `tokate access list OWNER/REPO` command and inspect the access authority. |
+| `Issue is not approved.` or `Issue approval is revoked or its approval label is missing.` | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
+| `Issue text changed since approval.` | Owner: review the changed issue, then run the named `tokate approve OWNER/REPO#42` command. |
 
 An access request does not grant eligibility. In `trusted` mode, the owner must trust the donor or grant the issue. In `open` mode, anyone not denied is eligible. Version 2 `manual` is read as `trusted`.
 

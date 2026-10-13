@@ -244,7 +244,7 @@ The local update does not change the repository pin. See [donors](donors.md), [a
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
 | `GitHub settings were not changed` | `tokate init OWNER/REPO` |
-| `Approval revoked or task changed` | Owner: `tokate approve 42` |
+| `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by a task-field or template reason and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks 10 --watch` |
 | `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | `gh pr view 10 --web` |
