@@ -224,6 +224,13 @@ func Dispatch(options Args) int32 {
         Startup.Check(options)
     }
 
+    if options.Command == "claim" ||
+        options.Command == "work" ||
+        options.Command == "submit" ||
+        options.Command == "status" {
+        OwnerHealth.WarnCoordinator(options)
+    }
+
     switch options.Command {
         case "doctor" {
             return Startup.Doctor(options)

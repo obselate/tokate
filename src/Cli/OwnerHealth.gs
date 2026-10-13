@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Text.Json
 import System.Text.RegularExpressions
 
@@ -52,16 +53,12 @@ internal class OwnerHealth {
             "coordinator",
             async () -> {
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
-                let member = Regex.Matches(
-                    yaml,
-                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
-                )
+                let pinnedVersion = MemberVersion(yaml)
                 let uses = Regex.Matches(
                     yaml,
                     "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
                 )
-                let configured = member.Count == 1 && uses.Count == 1
-                let pinnedVersion = member.Count == 1 ? member[0].Groups[1].Value: ""
+                let configured = pinnedVersion != "" && uses.Count == 1
                 pin = uses.Count == 1 ? uses[0].Groups[1].Value: ""
                 let matches = configured && pinnedVersion == version
                 let command = []string{"tokate", "coordinator-setup", repo, "--output", "tokate-coordinator.yml"}
@@ -99,15 +96,10 @@ internal class OwnerHealth {
                     return
                 }
                 let tag = J.Text(release, "tag_name")
-                var latest Version
-                var current Version
-                if !tag.StartsWith("v") || !Version.TryParse(tag.Substring(1), out latest) || !Version.TryParse(
-                    version,
-                    out current
-                ) {
+                if !tag.StartsWith("v") {
                     throw Exception("Invalid stable release version")
                 }
-                let newer = latest > current
+                let newer = Older(version, tag.Substring(1))
                 Add(
                     "release",
                     newer ? "warning": "ok",
@@ -391,6 +383,51 @@ internal class OwnerHealth {
     }
 
     shared {
+        private func MemberVersion(yaml string) string {
+            let members = Regex.Matches(
+                yaml,
+                "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
+            )
+            return members.Count == 1 ? members[0].Groups[1].Value: ""
+        }
+
+        private func Older(version string, other string) bool {
+            var current Version
+            var latest Version
+            if !Version.TryParse(version, out current) || !Version.TryParse(other, out latest) {
+                throw Exception("Invalid stable release version")
+            }
+            return current < latest
+        }
+
+        internal func WarnCoordinator(args Args) {
+            try {
+                let repo = RepositoryIdentity.Repo(
+                    args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Text("repo"):
+                    args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
+                )
+                let pinned = MemberVersion(
+                    GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)
+                )
+                let version = ApplicationInfo.Version()
+                if pinned != "" && Older(pinned, version) {
+                    Terminal.Message(
+                        "Warning: Repository coordinator " +
+                            pinned +
+                            " is older than CLI " +
+                            version +
+                            ". Owner: review and install the entry from: tokate coordinator-setup " +
+                            repo +
+                            " --output tokate-coordinator.yml.",
+                        "yellow",
+                        true
+                    )
+                }
+            } catch (error Exception) {
+                Terminal.Message("Warning: Repository coordinator version could not be checked.", "yellow", true)
+            }
+        }
+
         internal func Run(args Args) int32 {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let health = OwnerHealth()
