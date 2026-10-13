@@ -193,6 +193,11 @@ internal class CliDiscovery {
             )
             Publish(flow, original)
             flow.Approve()
+            let staleApproval = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            Check.Contains(staleApproval.Error, "tokate approve owner/project#2")
+            Check.That(!staleApproval.Error.Contains("Task fields changed."), "Unchanged init reported task changes")
+            Check.That(!staleApproval.Error.Contains("Approvals stay valid."), "Unchanged init hid stale approval")
+            flow.Call([]string{"approve", "owner/project#2"}, owner: true)
             let unchangedTasks = flow.Call(
                 []string{
                     "init",
