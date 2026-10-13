@@ -245,7 +245,7 @@ internal class CliDiscovery {
                     "--models",
                     "{\"model-a\":[\"low\",\"high\"],\"model-b\":[\"absent\"]}",
                     "--eligibility",
-                    "manual",
+                    "open",
                     "--base-branch",
                     "release",
                     "--max-time",
@@ -319,6 +319,12 @@ internal class CliDiscovery {
                 "Managed selection removed external permissions"
             )
             let beforeInvalidTool = File.ReadAllText(policyPath)
+            flow.Call(
+                []string{"init", "owner/project", "--path", root, "--eligibility", "manual", "--non-interactive"},
+                1,
+                true
+            )
+            Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Removed eligibility mode changed policy")
             toolArgs[5] = "claude/"
             flow.Call(toolArgs.ToArray(), 1, true)
             Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Invalid tool pair changed policy")
@@ -334,6 +340,7 @@ internal class CliDiscovery {
             )
             let legacy = Check.Json(original)
             legacy["version"] = JsonValue.Create(2)
+            legacy["eligibility"] = JsonValue.Create("manual")
             legacy["model_policy"] = JsonValue.Create("whitelist")
             legacy["models"] = Check.Json("{\"model-a\":[\"high\"]}")
             legacy["allowed_tools"] = Check.Json(
@@ -344,12 +351,12 @@ internal class CliDiscovery {
             flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             let migrated = Check.Json(File.ReadAllText(policyPath))
             Check.That(
-                Check.Text(migrated["version"]) == "3" &&
+                Check.Text(migrated["version"]) == "3" && Check.Text(migrated["eligibility"]) == "trusted" &&
                     migrated["models"] == nil &&
                     migrated["model_policy"] == nil &&
                     migrated["allowed_tools"]?[0]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString() &&
                     migrated["allowed_tools"]?[1]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString(),
-                "Version 2 migration changed model permissions"
+                "Version 2 migration changed model permissions or lost trusted eligibility"
             )
             Publish(flow, File.ReadAllText(policyPath))
             let routes = "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"claude-opus-5-5\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
@@ -374,7 +381,7 @@ internal class CliDiscovery {
                     "--allowed-tools",
                     routes,
                     "--eligibility",
-                    "manual",
+                    "open",
                     "--plain"
                 },
                 flow.Temp,
@@ -467,6 +474,9 @@ internal class CliDiscovery {
                 "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n4\n1\n?\n1\n"
             )
             Check.Success(terminal)
+            Check.Contains(terminal.Output, "Trusted donors or donors granted this issue")
+            Check.Contains(terminal.Output, "Anyone you have not denied")
+            Check.That(!terminal.Output.Contains("Choose each time"), "Setup offered removed eligibility mode")
             Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
             Check.Contains(terminal.Output, "which Tokate runs on donor work before it opens a PR.")
             Check.Contains(
@@ -732,7 +742,7 @@ internal class CliDiscovery {
                     "--allowed-tools",
                     "claude/anthropic,aider/openrouter",
                     "--eligibility",
-                    "manual",
+                    "open",
                     "--base-branch",
                     "release",
                     "--max-time",
@@ -779,7 +789,7 @@ internal class CliDiscovery {
                         configured["model_policy"] == nil &&
                         configured["models"] == nil &&
                         configured["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\"]}" &&
-                        Check.Text(configured["eligibility"]) == "manual" && Check.Text(
+                        Check.Text(configured["eligibility"]) == "open" && Check.Text(
                         configured["target_branch"]
                     ) == "release" &&
                         Check.Text(configured["max_seconds"]) == "1200" && Check.Text(

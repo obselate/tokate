@@ -370,6 +370,11 @@ internal partial class NativeFlow : NativeFixture {
             original.AsObject().Remove(field)
         }
 
+        original["eligibility"] = JsonValue.Create("manual")
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Removed version 3 eligibility mode")
+        Reject([]string{"policy", "owner/project"}, "eligibility trusted or open")
+        original["eligibility"] = JsonValue.Create("trusted")
         File.WriteAllText(path, original.ToJsonString())
         Commit("Valid per-tool policy")
         let projected = Check.Envelope(Call([]string{"policy", "owner/project", "--json"}), "policy", "ok")

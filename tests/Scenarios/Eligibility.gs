@@ -30,11 +30,22 @@ internal class EligibilityChecks {
             return test.Flow.Call(args.ToArray(), code, owner, traffic)
         }
 
-        private func Policy(test CoordinationFixture, mode string) {
+        private func Policy(test CoordinationFixture, mode string, version int32 = 0) {
             let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
             policy["approval_scope"] = JsonValue.Create("task")
             policy["eligibility"] = JsonValue.Create(mode)
+            if version != 0 {
+                policy["version"] = JsonValue.Create(version)
+            }
+            if version == 3 {
+                for tool in policy["allowed_tools"]?.AsArray() ?? JsonArray() {
+                    let entry = tool ?? throw Exception("Missing tool")
+                    entry["models"] = policy["models"]?.DeepClone()
+                }
+                policy.AsObject().Remove("models")
+                policy.AsObject().Remove("model_policy")
+            }
             let text = policy.ToJsonString()
             if File.ReadAllText(path) != text {
                 File.WriteAllText(path, text)
@@ -42,9 +53,9 @@ internal class EligibilityChecks {
             }
         }
 
-        private func Setup(test CoordinationFixture, mode string) {
+        private func Setup(test CoordinationFixture, mode string, version int32 = 0) {
             Access(test, "init")
-            Policy(test, mode)
+            Policy(test, mode, version)
             test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             File.WriteAllText(
                 test.Tools,
@@ -68,21 +79,35 @@ internal class EligibilityChecks {
         }
 
         private func Modes(binary string) {
-            for mode in[]string{"open", "trusted", "manual"} {
+            for configuration in[]string{"2 open", "2 trusted", "2 manual", "3 open", "3 trusted"} {
+                let parts = configuration.Split(' ')
+                let version = Int32.Parse(parts[0])
+                let mode = parts[1]
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
-                Setup(test, mode)
+                Setup(test, mode, version)
+                let state = test.State()["state"] ?? throw Exception("Missing state")
+                let approval = state["approval"] ?? throw Exception("Missing approval")
+                Check.That(
+                    Check.Text(approval["eligibility"]) == (mode == "manual" ? "trusted": mode),
+                    "Approval did not use the current eligibility semantics"
+                )
+                if mode == "manual" {
+                    approval["eligibility"] = JsonValue.Create("manual")
+                    state["approval_id"] = JsonValue.Create(Check.FixtureDigest(approval))
+                    test.RewriteState(state)
+                }
                 Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
                 if mode != "open" {
                     Claim(test, 1)
                 }
                 Access(test, "trust")
-                Access(test, "check", issue: "1", code: mode == "manual" ? 1: 0, owner: false)
-                if mode == "manual" {
-                    Claim(test, 1)
-                }
+                Access(test, "check", issue: "1", owner: false)
+                using let trusted = FixtureSnapshot(test.Flow.Temp.Root)
+                Claim(test)
+                trusted.Restore()
                 Access(test, "grant", issue: "2")
-                Access(test, "check", issue: "1", code: mode == "manual" ? 1: 0, owner: false)
+                Access(test, "check", issue: "1", owner: false)
                 Access(test, "grant", issue: "1")
                 Access(test, "check", issue: "1", owner: false)
                 Access(test, "deny")
@@ -90,7 +115,7 @@ internal class EligibilityChecks {
                 Claim(test, 1)
                 Access(test, "restore")
                 Access(test, "remove", issue: "1")
-                Access(test, "check", issue: "1", code: mode == "manual" ? 1: 0, owner: false)
+                Access(test, "check", issue: "1", owner: false)
                 Access(test, "untrust")
                 Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
                 Access(test, "grant", donor: "renamed", issue: "1")
@@ -99,6 +124,13 @@ internal class EligibilityChecks {
                 }
                 let request = Claim(test)
                 let run = test.Prepare()
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(
+                    Check.Text(saved["policy_hash"]) == Check.Hash(
+                        Path.Combine(test.Flow.Upstream, ".github/tokate.json")
+                    ),
+                    "Saved run changed the original policy hash"
+                )
                 let commit = test.Candidate(request)
                 test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
                 test.Flow.Call([]string{"submit", "--run", run})
@@ -124,7 +156,7 @@ internal class EligibilityChecks {
             for operation in[]string{"remove", "untrust", "deny"} {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
-                Setup(test, operation == "untrust" ? "trusted": "manual")
+                Setup(test, "trusted")
                 Access(test, operation == "untrust" ? "trust": "grant", issue: operation == "untrust" ? "": "1")
                 let claim = Claim(test)
                 let run = test.Prepare("tokate")
@@ -144,7 +176,7 @@ internal class EligibilityChecks {
             }
             using let publication = CoordinationFixture(binary)
             publication.Initialize(approve: false)
-            Setup(publication, "manual")
+            Setup(publication, "trusted")
             Access(publication, "grant", issue: "1")
             let request = Claim(publication)
             let run = publication.Prepare()
@@ -175,7 +207,7 @@ internal class EligibilityChecks {
                     let blob = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/heads/tokate/access", blob)
                 } else if fault == "policy" {
-                    Policy(test, "manual")
+                    Policy(test, "trusted")
                 } else {
                     test.Flow.Reload()
                     if fault == "unavailable" {

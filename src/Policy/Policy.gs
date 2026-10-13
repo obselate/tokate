@@ -74,9 +74,13 @@ internal class Policy {
 
         RequestData.Parse(text, 1024 * 1024)
         Eligibility = J.Text(Value, "eligibility")
-        let eligible = Eligibility == "open" || Eligibility == "trusted" || Eligibility == "manual"
+        let eligible = Eligibility == "open" || Eligibility == "trusted" || (version == 2 && Eligibility == "manual")
         if eligibilityFields != 1 || scopeFields != 1 || J.Text(Value, "approval_scope") != "task" || !eligible {
-            throw Exception("Policy requires approval_scope task and eligibility open, trusted or manual")
+            throw Exception("Policy requires approval_scope task and eligibility trusted or open")
+        }
+
+        if Eligibility == "manual" {
+            Eligibility = "trusted"
         }
 
         let models = J.Get(Value, "models")
@@ -229,6 +233,7 @@ internal class Policy {
         }
 
         fields["version"] = 3
+        fields["eligibility"] = Eligibility
         fields["allowed_tools"] = Tools
         return J.Parse(J.Write(fields))
     }

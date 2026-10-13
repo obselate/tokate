@@ -119,12 +119,7 @@ internal class Cli {
                 "TOOLS",
                 "Tool names keep external and OMP permissions; exact harness/provider pairs or a JSON array with per-tool models replace the list"
             ),
-            CliOption(
-                "eligibility",
-                "MODE",
-                "Task eligibility; new repositories default to trusted",
-                "open trusted manual"
-            ),
+            CliOption("eligibility", "MODE", "Task eligibility; new repositories default to trusted", "trusted open"),
             CliOption("verification", "JSON", "Existing project verification commands as JSON argv arrays"),
             CliOption("required-checks", "JSON", "Required GitHub check names as a JSON array"),
             CliOption("reservation-time", "TIME", "Reservation lifetime from 5m to 7d"),
