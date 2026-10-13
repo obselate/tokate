@@ -75,14 +75,19 @@ For other distributions, use the [.NET system dependencies](https://learn.micros
 
 | Tier | Checks and time |
 | --- | --- |
-| PR fast gate, no arguments | Builds, then runs 13 end-to-end and security selectors in parallel. Allow about 2 minutes locally with a warm build. The PR CI target is under 5 minutes. Required PR check: `verify`. |
+| PR fast gate, no arguments | Builds, then runs 13 end-to-end and security selectors in parallel. Required PR check: `verify`. |
 | Selector | Builds, then runs the selected checks. No match is an error. |
-| Nightly and pre-release | Full suite and native harness proofs. CI runs nightly on `main`, on manual runs with `full: true`, and on integration pushes. Allow about 18 minutes in CI. Run `--full` locally before release. |
-| Alpine and Nix | Platform build, packaging and runtime proofs. Run nightly, manually, on `main` and integration pushes, and on PRs that change their platform inputs. Allow about 5 minutes each in CI. These are not required PR checks. |
+| Nightly and pre-release | Full suite and native harness proofs. CI runs nightly on `main`, on manual runs with `full: true`, and on integration pushes. Run `--full` locally before release. |
+| Alpine and Nix | Platform build, packaging and runtime proofs. Run nightly, manually, on `main` and integration pushes. PRs run them only for their listed platform inputs. Source-only and docs-only PRs do not run them. These are not required PR checks. |
 
 The fast gate covers `CrossAccountFlow`, `CanonicalSubmit`, `VerificationNetwork`, protected paths, `ReceiptEvidence`, `CoordinatorPermissions`, `LabelApprovalPermissions`, `LeaseFencing`, `PublicationRevocation`, `ClaimRecovery`, correction `ProtectedAndExact`, amendment `ReceiptAuthority`, and continuation `ImportBoundary`.
 
-Harness proofs use deterministic local responses and actual harness versions. They do not measure model quality, account entitlement or allowance. A red nightly blocks merges.
+The platform filters are in [Alpine CI](../.github/workflows/alpine.yml) and
+[Nix CI](../.github/workflows/nix.yml). Both include SDK, project, lock, installer
+and license files. Alpine adds its scripts, packaging and native proof script.
+Nix adds its flake, `nix/` files and Nix scripts.
+
+Harness proofs use deterministic local responses and actual harness versions. They do not measure model quality, account entitlement or allowance.
 
 Find selectors in [the test entry point](https://github.com/obselate/tokate/blob/main/tests/Dispatch/Main.gs). CI supports focused selectors and full validation.
 

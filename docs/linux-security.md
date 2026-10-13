@@ -67,11 +67,11 @@ See [Ubuntu's AppArmor guidance](https://documentation.ubuntu.com/security/secur
 
 Ask an administrator to repair the named host policy before you repeat the check.
 
-| Symptom (exact message text) | Do (exact command) |
+| Symptom (message text) | Do (exact command) |
 | --- | --- |
 | `Required tools are missing or failed diagnostics. Run doctor.` | `tokate doctor managed --fix` |
 | `User namespaces are disabled. Ask an administrator to review the host or container namespace policy.` | `tokate doctor managed --json` |
 | `Namespace startup was denied while AppArmor namespace restrictions are enabled. Ask an administrator to review the relevant AppArmor denials.` | `tokate doctor managed --json` |
 | `Namespace startup failed. Ask an administrator to review kernel support, namespace limits and host or container security policy.` | `tokate doctor managed --json` |
 | `Managed sandbox isolation probe failed. Check native Codex sandbox support and permission profiles. Tokate does not change security settings.` | `tokate doctor codex --json` |
-| `Pinned SDK/MSBuild startup failed. Install the global.json SDK in a standard system path; home-directory tools are unavailable.` | `tokate doctor codex --json` |
+| `Pinned SDK/MSBuild startup failed.` | Install the `global.json` SDK in a standard system path. Home-directory tools are unavailable. Then run `tokate doctor codex --json`. |

@@ -44,8 +44,8 @@ This proof uses a real installed OMP executable with a local synthetic provider.
 
 ## If something fails
 
-| Symptom (exact message text) | Do (exact command) |
+| Symptom (message text) | Do (exact command) |
 | --- | --- |
 | `Unknown OMP proof case` | `python3 scripts/omp-proof.py --omp ~/.local/bin/omp --case stop` |
-| `The real OMP executable is required; this probe never installs it` | `tokate doctor omp --json` |
+| `The real OMP executable is required` | `tokate doctor omp --json` |
 | `OMP requested another model` | `python3 scripts/omp-proof.py --omp ~/.local/bin/omp --case stop` |

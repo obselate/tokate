@@ -42,9 +42,9 @@ Configuration follows [Claude's CLI](https://code.claude.com/docs/en/cli-referen
 
 ## If something fails
 
-| Symptom (exact message text) | Do (exact command) |
+| Symptom (message text) | Do (exact command) |
 | --- | --- |
-| `Linux bubblewrap is required; no fallback` | `tokate doctor claude --json` |
+| `Linux bubblewrap is required` | `tokate doctor claude --json` |
 | `Official native artifact checksum or size mismatch` | `python3 scripts/claude-download.py --output /tmp/claude` |
 | `Native proof requires an explicit Claude model/effort in the repository policy` | `${EDITOR:-vi} .github/tokate.json` |
-| `Native Claude proof failed; do not publish managed support` | `tokate doctor claude --json` |
+| `Native Claude proof failed` | `tokate doctor claude --json` |

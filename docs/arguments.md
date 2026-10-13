@@ -1,6 +1,6 @@
 # Positional arguments
 
-Use this command reference for Tokate 0.4.7. Put the target after the command.
+Use this command reference for current main. Put the target after the command.
 
 1. Show all command metadata.
 
@@ -41,19 +41,20 @@ Use this command reference for Tokate 0.4.7. Put the target after the command.
 | `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
 | `verify` | `tokate verify PR` | Check a receipt against owner approval. |
 | `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
-| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [HARNESS] [options]` | Check prerequisites. `--fix` offers setup. |
+| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` offers prerequisite setup. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
 | `update` | `tokate update` | Install the latest stable release. |
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
 | `select` | `tokate select [OWNER/REPO] [NAME] [options]` | Select a tool and model under owner policy. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
 | `recover` | `tokate recover RUN [--commit SHA --time TIME] [--tools FILE] [--summary FILE]` | Prepare or verify a correction to completed work. |
+| `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
 | `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Resume publication or verify and publish a new correction with `--time`. |
 | `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
 | `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
 | `authorize-sync` | `tokate authorize-sync PR --commit SHA --upstream SHA` | Grant synchronization for exact commits. |
 | `revoke-sync` | `tokate revoke-sync [OWNER/REPO] --grant SHA` | Revoke a synchronization grant. |
-| `coordinator-setup` | `tokate coordinator-setup [OWNER/REPO] --output FILE` | Generate a matching pinned workflow entry. |
+| `coordinator-setup` | `tokate coordinator-setup [OWNER/REPO] --output FILE [--yes]` | Preview matching pins and workflow. Apply the file and Actions allowlist with confirmation. |
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |
@@ -64,7 +65,7 @@ Use this command reference for Tokate 0.4.7. Put the target after the command.
 | `prepare` | `tokate prepare --run DIR` | Resume recorded preparation. |
 | `admit` | `tokate admit [OWNER/REPO] --event FILE` | Owner workflow: close unauthorized PRs. |
 | `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: update state and publish accepted requests. |
-| `claude-capabilities` | `tokate claude-capabilities` | Check native Claude interfaces and personal login. |
+| `claude-capabilities` | `tokate claude-capabilities --claude FILE --model MODEL --effort EFFORT` | Check native Claude interfaces and personal login. |
 
 ## Issue and run names
 
@@ -81,7 +82,9 @@ Use this command reference for Tokate 0.4.7. Put the target after the command.
 
 For a `RUN` command, bare `42` selects the newest saved attempt. Use `42-1` to select attempt 1.
 
-`status 42` reads issue state. `status 42-1` reads the saved attempt offline.
+`status 42` reads issue state. `status 42-1` reads the saved attempt.
+For supported time-limit failures, saved status also reads GitHub authority to
+offer continuation. Other saved status reads are offline.
 
 `checks 10` uses a saved run when that PR has exactly one saved run. Use `checks 42-1` to select an attempt explicitly.
 

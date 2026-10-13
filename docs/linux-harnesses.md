@@ -27,7 +27,7 @@ Install a coding tool before you donate work. Tokate itself does not need npm, B
 
 | Harness | Official installation | Managed work requirements |
 | --- | --- | --- |
-| Codex | [Native installation](https://learn.chatgpt.com/docs/config-file/environment-variables) | Native Linux x64 executable and your ChatGPT login. npm and Bun layouts are also supported. |
+| Codex | [Native installer](https://chatgpt.com/codex/install.sh) | Native Linux x64 executable and your ChatGPT login. npm and Bun layouts are also supported. |
 | Claude Code | [Native setup](https://code.claude.com/docs/en/setup) | Native Linux x64 executable, your personal Pro or Max login, bubblewrap and socat. |
 | Pi | [Pi installer](https://pi.dev/install.sh) | Pi SDK, Node and a configured local model endpoint. npm, Bun and Nix layouts are also supported. |
 | OMP | [OMP installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh) | Existing OMP providers and at least one listed model. OMP has no sandbox. |

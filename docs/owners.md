@@ -1,6 +1,6 @@
 # Accept donations
 
-Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work before merge.
+Set up a repository for current main. Approve tasks, then review donated work before merge.
 
 Check an existing repository with `tokate doctor owner OWNER/REPO` or add `--json` for structured results.
 It reads the coordinator pin, latest release, Actions settings, policy, access record,
@@ -84,6 +84,10 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
 | Test command works on Linux from a clean clone | Run your test command from the repository root. |
 | No tracked build output | Keep generated build files out of Git. |
 
+Init checks the pinned shared workflow against Actions settings. A problem or an
+unavailable settings read produces a warning with a repair step. It does not block
+local file generation. Fix the setting before donors submit requests.
+
 | Who can contribute? | Access |
 | --- | --- |
 | **Trusted people** | Trusted donors or donors with an issue grant. Newcomers request access first. |
@@ -115,13 +119,12 @@ Update the coordinator pin before committing a version 3 policy. An older
 coordinator rejects version 3. Follow the update steps below, then run `tokate init`
 to migrate and re-approve open tasks after the policy is merged.
 
-## Version 3 release notes
+## Approval compatibility
 
-Approvals now bind canonical task fields after version 2 conversion. Existing
-approvals with the old whole-text digest become stale once after upgrade.
-Re-approve open tasks. Version 2 receipts and saved runs still verify under current
-approval authority. PRs published and runs saved before the upgrade no longer verify
-or resume, and re-approval does not restore them.
+Main binds approvals to canonical task fields after version 2 conversion.
+Old whole-text approvals become stale once. Re-approve open tasks.
+Version 2 policy remains readable. Old receipts and saved runs must still match
+current approval authority. Re-approval does not restore an old approval identity.
 
 ## Approve an issue and donor
 
@@ -160,6 +163,12 @@ or resume, and re-approval does not restore them.
    ```
 
 10. If **Replace approval** appears, select **Re-approve** only to replace the current approval. Select **Cancel** to keep it.
+
+You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
+that the label sender has write, maintain or admin permission, then records approval.
+It keeps the previous non-revoked target branch, or uses the default branch.
+An unauthorized label is removed. An already valid approval is kept.
+Use `tokate approve` to choose another target or explicitly replace a reservation.
 
 Access requests grant no access. Explicit denial blocks every access mode.
 
@@ -232,7 +241,7 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
    tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
    ```
 
-   The command prints the old and new pins. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Preview without `--yes` changes no files or settings.
+   The command prints the old and new versions and pins, a comparison URL, a release URL and the proposed file. Review them before applying. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Noninteractive preview without `--yes` changes no files or settings. Interactive setup asks before applying.
 
    In Settings > Actions > General > Actions permissions, the pattern `obselate/tokate/.github/workflows/tokate-shared.yml@*` survives pin updates. The workflow itself stays pinned to an exact commit. An exact allowlist commit needs an update with each pin. Blocking exclusions, disabled Actions and organization restrictions need owner review. Setup does not remove exclusions or enable Actions.
 

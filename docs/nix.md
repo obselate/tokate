@@ -9,11 +9,7 @@ Use Nix to install Tokate on x86_64 Linux. Nix owns upgrades, rollback and remov
    experimental-features = nix-command flakes
    ```
 
-3. On NixOS, use this system setting instead.
-
-   ```nix
-   nix.settings.experimental-features = [ "nix-command" "flakes" ];
-   ```
+3. On NixOS, enable the same features with the `nix.settings.experimental-features` system option.
 
 4. Install Tokate.
 

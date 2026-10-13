@@ -1,6 +1,6 @@
 # Donate work
 
-Use your GitHub account and coding tool to work on an approved issue. Tokate 0.4.7 runs your tool, checks the result and requests a draft PR.
+Use your GitHub account and coding tool to work on an approved issue. Current main runs your tool, checks the result and requests a draft PR.
 
 ## Set up
 
@@ -67,7 +67,7 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
     tokate submit 42-1
     ```
 
-13. If it prints `Submit pending. Run the same command again`, run the same command once more.
+13. If submission is pending, inspect `tokate status 42-1` before repeating the same submit command.
 
 Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO` to pick an approved issue.
 

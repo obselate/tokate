@@ -82,7 +82,7 @@ The shared workflow checks the archive with `sha256sum -c -` before it extracts 
 | Control | Effect |
 | --- | --- |
 | Caller `permissions: {}` | No default token permissions. |
-| Caller job permissions | Cap access at `contents: write`, `issues: read` and `pull-requests: write`. |
+| Caller job permissions | Cap access at `contents: write`, `issues: write` and `pull-requests: write`. |
 | Coordinator and admission | Do not check out or execute donor code. |
 | Ordinary fork CI | Keep it read-only and free of secrets. |
 | Installer checksum and version checks | Detect corruption, not a compromised release account. |
