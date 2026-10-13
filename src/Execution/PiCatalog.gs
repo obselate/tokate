@@ -29,11 +29,14 @@ internal class PiCatalog {
                     budget: budget
                 )
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Endpoint metadata unavailable")
+                    throw ExecutionFailure.Create("endpoint_unavailable", "Endpoint metadata unavailable")
                 }
 
                 return Identity(RequestData.Parse(result.Output, 1024 * 1024), model)
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 throw CliFailure("endpoint_unavailable", PublicOutput.Message("endpoint_unavailable"))
             } finally {
                 Directory.Delete(storage.FullName, true)
@@ -45,12 +48,12 @@ internal class PiCatalog {
             if catalog.ValueKind != JsonValueKind.Object ||
                 list.ValueKind != JsonValueKind.Array ||
                 list.GetArrayLength() > 4096 {
-                throw Exception("Invalid model list")
+                throw ExecutionFailure.Create("endpoint_unavailable", "Invalid model list")
             }
 
             let kind = J.Get(catalog, "object")
             if kind.ValueKind != JsonValueKind.Undefined && J.Text(catalog, "object") != "list" {
-                throw Exception("Invalid model list type")
+                throw ExecutionFailure.Create("endpoint_unavailable", "Invalid model list type")
             }
 
             let seen = HashSet[string](StringComparer.Ordinal)
@@ -60,7 +63,7 @@ internal class PiCatalog {
                 let id = RequestData.ModelIdentifier(J.Text(entry, "id"))
 
                 if id != id.Trim() || !seen.Add(id) {
-                    throw Exception("Invalid or duplicate model id")
+                    throw ExecutionFailure.Create("endpoint_unavailable", "Invalid or duplicate model id")
                 }
 
                 if id == model {
@@ -73,7 +76,7 @@ internal class PiCatalog {
             }
 
             if selected.ValueKind != JsonValueKind.Object {
-                throw Exception("Selected model not advertised")
+                throw ExecutionFailure.Create("endpoint_unavailable", "Selected model not advertised")
             }
 
             let result = map[string, Object?]{"advertised_model": model}
@@ -99,7 +102,7 @@ internal class PiCatalog {
                 )
 
                 if !valid {
-                    throw Exception("Invalid model identity")
+                    throw ExecutionFailure.Create("endpoint_unavailable", "Invalid model identity")
                 }
 
                 result[name] = field
@@ -123,7 +126,7 @@ internal class PiCatalog {
                 if field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out value) ||
                     value <= 0 ||
                     (result.ValueKind != JsonValueKind.Undefined && context != value) {
-                    throw Exception("Invalid model identity")
+                    throw ExecutionFailure.Create("endpoint_unavailable", "Invalid model identity")
                 }
 
                 result = field

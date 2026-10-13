@@ -3,6 +3,7 @@ package Tokate
 import Gsharp.Concurrency
 import System
 import System.Collections.Generic
+import System.ComponentModel
 import System.Diagnostics
 import System.IO
 import System.Runtime.InteropServices
@@ -38,7 +39,7 @@ internal class CommandLines {
         if !Oversize && Line.Length > 0 {
             try {
                 Observe.Invoke(Line.ToString())
-            } catch (error Exception) { }
+            } catch (error JsonException) { }
         }
 
         Line.Clear()
@@ -151,7 +152,7 @@ internal class RuntimeBudget {
 
         let remaining = Math.Floor(Seconds * 1000.0 - Timer.Elapsed.TotalMilliseconds)
         if remaining < 1 {
-            throw Exception("Runtime allowance exhausted")
+            throw ExecutionFailure.Create("command_failed", "Runtime allowance exhausted")
         }
 
         return Convert.ToInt32(remaining)
@@ -169,10 +170,13 @@ internal class RuntimeBudget {
 
             if args.Get("unlimited") == "true" {
                 if reserve < 1 || reserve != seconds {
-                    throw Exception("Unlimited coding requires a separate positive verification budget")
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Unlimited coding requires a separate positive verification budget"
+                    )
                 }
             } else if reserve >= seconds {
-                throw Exception("--verify-time must be shorter than --time")
+                throw ExecutionFailure.Create("invalid_state", "--verify-time must be shorter than --time")
             }
 
             return reserve
@@ -184,7 +188,7 @@ internal class RuntimeBudget {
             if unlimited.ValueKind != JsonValueKind.Undefined &&
                 unlimited.ValueKind != JsonValueKind.True &&
                 unlimited.ValueKind != JsonValueKind.False {
-                throw Exception("Invalid saved unlimited coding choice")
+                throw ExecutionFailure.Create("invalid_state", "Invalid saved unlimited coding choice")
             }
 
             if run.Flag("unlimited") &&
@@ -194,7 +198,10 @@ internal class RuntimeBudget {
                 ) < 1 ||
                     run.Number("verification_reserve") != run.Number("seconds")
             ) {
-                throw Exception("Unlimited coding requires managed v2 work and a separate positive verification budget")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Unlimited coding requires managed v2 work and a separate positive verification budget"
+                )
             }
 
             let field = J.Get(run.Element(), "verification_reserve")
@@ -205,7 +212,7 @@ internal class RuntimeBudget {
                     reserve < 1 ||
                     (run.Flag("unlimited") ? reserve != run.Number("seconds"): reserve >= run.Number("seconds"))
             ) {
-                throw Exception("Invalid saved verification reserve")
+                throw ExecutionFailure.Create("invalid_state", "Invalid saved verification reserve")
             }
         }
 
@@ -228,6 +235,7 @@ internal class Commands {
         internal func InterruptedResult(error Exception) CommandResult? -> switch error {
             case interrupted is CommandInterrupted: interrupted.Result
             case interrupted is CommandInputInterrupted: interrupted.Result
+            case failure is CliFailure: failure.Data["command_result"] as CommandResult
             default: nil
         }
 
@@ -297,14 +305,23 @@ internal class Commands {
                         if writer != nil && result.Failure == nil {
                             try {
                                 writer.Write(buffer, 0, retained)
-                            } catch (error Exception) {
+                            } catch (error Exception) when error is IOException ||
+                                error is UnauthorizedAccessException ||
+                                error is EncoderFallbackException ||
+                                error is ArgumentOutOfRangeException limitError &&
+                                limitError.ParamName == "value" {
                                 result.Failure = error
                                 failed <- error
                             }
                         }
                     }
                 }
-            } catch (error Exception) {
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is DecoderFallbackException ||
+                error is EncoderFallbackException ||
+                error is ArgumentOutOfRangeException limitError &&
+                limitError.ParamName == "value" {
                 result.Failure = error
                 failed <- error
             }
@@ -331,12 +348,12 @@ internal class Commands {
                 if input != nil {
                     writer.Write(input)
                 }
-            } catch (error Exception) {
+            } catch (error IOException) {
                 failure = error
             } finally {
                 try {
                     writer.Close()
-                } catch (error Exception) {
+                } catch (error IOException) {
                     if failure == nil {
                         failure = error
                     }
@@ -352,7 +369,9 @@ internal class Commands {
 
             try {
                 process = Process.Start(info) ?? throw Exception("Cannot start " + info.ArgumentList[0])
-            } catch (error Exception) {
+            } catch (error Exception) when error is Win32Exception ||
+                error is InvalidOperationException ||
+                error.GetType() == typeof(Exception) {
                 failure = error
             }
 
@@ -361,7 +380,7 @@ internal class Commands {
             if let child = process {
                 try {
                     child.WaitForExit()
-                } catch (error Exception) {
+                } catch (error Exception) when error is Win32Exception || error is InvalidOperationException {
                     failure = error
                 }
             }
@@ -610,7 +629,13 @@ internal class Commands {
                 }
 
                 result.Code = process.ExitCode
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is DecoderFallbackException ||
+                error is InvalidOperationException ||
+                error is ArgumentOutOfRangeException limitError &&
+                limitError.ParamName == "value" {
                 terminal = error
             } finally {
                 if let handler = onCancel {

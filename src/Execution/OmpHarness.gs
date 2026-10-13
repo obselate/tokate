@@ -37,7 +37,10 @@ internal class OmpHarness {
             policy.ValidateOmp(provider, model, effort, 1)
 
             if args.Get("availability") == "unavailable" {
-                throw Exception("Selected model is donor-reported unavailable; no retry or fallback")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Selected model is donor-reported unavailable; no retry or fallback"
+                )
             }
 
             let runtime = OmpRuntime.Runtime(args)
@@ -68,19 +71,19 @@ internal class OmpHarness {
         internal func ValidateSaved(run Data, policy Policy) {
             policy.ValidateOmp(run.Text("provider"), run.Text("model"), run.Text("effort"), run.Number("seconds"))
             if !Path.IsPathFullyQualified(run.Text("harness_path")) {
-                throw Exception("Saved OMP run requires its original executable")
+                throw ExecutionFailure.Create("invalid_state", "Saved OMP run requires its original executable")
             }
 
             let args = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
             OmpRuntime.Runtime(args)
             if args.Need("harness-path") != run.Text("harness_path") {
-                throw Exception("Saved OMP runtime changed; no substitution")
+                throw ExecutionFailure.Create("invalid_state", "Saved OMP runtime changed; no substitution")
             }
         }
 
         internal func Execute(directory string, run Data, record JsonElement, prompt string) {
             if run.Number("version") != 2 || run.Text("source") != "tokate" || run.Number("preparation_version") != 1 {
-                throw Exception("Managed OMP requires a prepared version-2 contribution")
+                throw ExecutionFailure.Create("invalid_state", "Managed OMP requires a prepared version-2 contribution")
             }
 
             let timer = Stopwatch.StartNew()
@@ -91,7 +94,7 @@ internal class OmpHarness {
             let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
             let runtime = OmpRuntime.Runtime(options, coding)
             if options.Need("harness-path") != run.Text("harness_path") {
-                throw Exception("Saved OMP runtime changed; no substitution")
+                throw ExecutionFailure.Create("invalid_state", "Saved OMP runtime changed; no substitution")
             }
 
             let limits = OmpRuntime.Model(run.Text("harness_path"), run.Text("provider"), run.Text("model"), coding)
@@ -180,7 +183,8 @@ internal class OmpHarness {
 
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     let reason = OmpEvidence.Failure(result.Output)
-                    throw Exception(
+                    throw ExecutionFailure.Create(
+                        "inference_failed",
                         (reason == "" ? "OMP did not complete": "OMP did not complete: " + reason) +
                             "; inspect private captured evidence. No new run was started"
                     )
@@ -208,7 +212,12 @@ internal class OmpHarness {
                     run.Number("seconds"),
                     run.Number("verification_reserve")
                 )
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 if run.Text("failure_stage") == "inference" {
                     if let result = Commands.InterruptedResult(error) {
                         run.Fields["failure_reason"] = "inference_interrupted"
@@ -222,7 +231,7 @@ internal class OmpHarness {
 
                 run.Save(directory)
 
-                throw error
+                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
             }
         }
     }

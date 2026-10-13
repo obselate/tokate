@@ -12,7 +12,10 @@ internal class ClaudeHarness {
     shared {
         internal func Select(args Args, policy Policy, source string) JsonElement {
             if args.Need("provider") != "anthropic" || !policy.AllowsTool("claude", "anthropic") {
-                throw Exception("Claude/anthropic is not allowed by the repository policy; no inference started.")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Claude/anthropic is not allowed by the repository policy; no inference started."
+                )
             }
 
             let model = args.Need("model")
@@ -21,11 +24,17 @@ internal class ClaudeHarness {
             policy.Validate("claude", "anthropic", model, effort, 1)
 
             if !ClaudeCode.Pair(model, effort) {
-                throw Exception("Unsupported native Claude model/effort pair; no inference started.")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Unsupported native Claude model/effort pair; no inference started."
+                )
             }
 
             if args.Get("availability") == "unavailable" {
-                throw Exception("Selected model is donor-reported unavailable; no retry or fallback")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Selected model is donor-reported unavailable; no retry or fallback"
+                )
             }
 
             let runtime = ClaudeCode.Runtime(args)
@@ -56,7 +65,10 @@ internal class ClaudeHarness {
             if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
                 run.Text("harness_path")
             ) {
-                throw Exception("Saved Claude run requires its original native-login profile and executable")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Saved Claude run requires its original native-login profile and executable"
+                )
             }
         }
 
@@ -103,7 +115,7 @@ internal class ClaudeHarness {
             if options.Need("harness-path") != run.Text("harness_path") || options.Need("claude-profile") != run.Text(
                 "claude_profile"
             ) {
-                throw Exception("Saved Claude runtime changed; no substitution")
+                throw ExecutionFailure.Create("invalid_state", "Saved Claude runtime changed; no substitution")
             }
 
             let checkout = Path.Combine(directory, "checkout")
@@ -174,7 +186,10 @@ internal class ClaudeHarness {
 
                 let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), directory)
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Claude did not complete; inspect private captured evidence. No retry or fallback")
+                    throw ExecutionFailure.Create(
+                        "inference_failed",
+                        "Claude did not complete; inspect private captured evidence. No retry or fallback"
+                    )
                 }
 
                 let models = J.Get(reports, "model_usage")
@@ -187,7 +202,8 @@ internal class ClaudeHarness {
                             "anthropic",
                             used.Name
                         ) {
-                            throw Exception(
+                            throw ExecutionFailure.Create(
+                                "inference_failed",
                                 "Claude used " +
                                     used.Name +
                                     ", which the repository policy does not allow. Remove it from your Claude subagent or model settings."
@@ -223,7 +239,12 @@ internal class ClaudeHarness {
                     run.Number("seconds"),
                     run.Number("verification_reserve")
                 )
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 if run.Text("failure_stage") == "inference" {
                     if let result = Commands.InterruptedResult(error) {
                         run.Fields["failure_reason"] = "inference_interrupted"
@@ -237,7 +258,7 @@ internal class ClaudeHarness {
 
                 run.Save(directory)
 
-                throw error
+                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
             }
         }
     }

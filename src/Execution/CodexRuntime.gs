@@ -17,67 +17,80 @@ func RuntimeMetadataOpen(path string, flags int32) int32;
 internal class CodexRuntime {
     shared {
         internal func Capabilities(path string = "") Dictionary[string, HashSet[string]] {
-            let executable = CodexRuntime.Resolve(path)
-            let home = Path.Combine(Path.GetTempPath(), "tokate-models-" + Guid.NewGuid().ToString("N"))
-
-            Directory.CreateDirectory(home, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
-
             try {
-                let prefix = List[string]{
-                    "-i",
-                    "PATH=" + NixRuntime.SearchPath(NixRuntime.Tools("", []string{executable}).ToArray()),
-                    "HOME=" + home,
-                    "CODEX_HOME=" + home,
-                    executable
-                }
+                let executable = CodexRuntime.Resolve(path)
+                let home = Path.Combine(Path.GetTempPath(), "tokate-models-" + Guid.NewGuid().ToString("N"))
 
-                let help = List[string](prefix)
-                help.AddRange([]string{"exec", "--help"})
-                let controls = Commands.Run(
-                    LocalPaths.NeedSystemTool("env"),
-                    help.ToArray(),
+                Directory.CreateDirectory(
                     home,
-                    seconds: 10,
-                    isolated: true
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
                 )
 
-                for flag in[]string{"--model", "--config"} {
-                    if controls.Code != 0 || !controls.Output.Contains(flag) {
-                        throw Exception(
-                            "Native Codex does not expose the required explicit controls; no compatible pair"
+                try {
+                    let prefix = List[string]{
+                        "-i",
+                        "PATH=" + NixRuntime.SearchPath(NixRuntime.Tools("", []string{executable}).ToArray()),
+                        "HOME=" + home,
+                        "CODEX_HOME=" + home,
+                        executable
+                    }
+
+                    let help = List[string](prefix)
+                    help.AddRange([]string{"exec", "--help"})
+                    let controls = Commands.Run(
+                        LocalPaths.NeedSystemTool("env"),
+                        help.ToArray(),
+                        home,
+                        seconds: 10,
+                        isolated: true
+                    )
+
+                    for flag in[]string{"--model", "--config"} {
+                        if controls.Code != 0 || !controls.Output.Contains(flag) {
+                            throw ExecutionFailure.Create(
+                                "verification_failed",
+                                "Native Codex does not expose the required explicit controls; no compatible pair"
+                            )
+                        }
+                    }
+
+                    let catalog = List[string](prefix)
+                    catalog.AddRange([]string{"debug", "models", "--bundled"})
+                    let result = Commands.Run(
+                        LocalPaths.NeedSystemTool("env"),
+                        catalog.ToArray(),
+                        home,
+                        seconds: 10,
+                        isolated: true
+                    )
+                    if result.Code != 0 {
+                        throw ExecutionFailure.Create(
+                            "verification_failed",
+                            "Cannot verify offline Codex model/effort capabilities; availability is unknown"
                         )
                     }
-                }
 
-                let catalog = List[string](prefix)
-                catalog.AddRange([]string{"debug", "models", "--bundled"})
-                let result = Commands.Run(
-                    LocalPaths.NeedSystemTool("env"),
-                    catalog.ToArray(),
-                    home,
-                    seconds: 10,
-                    isolated: true
-                )
-                if result.Code != 0 {
-                    throw Exception("Cannot verify offline Codex model/effort capabilities; availability is unknown")
-                }
+                    let models = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
+                    let value = RequestData.Parse(result.Output, 4 * 1024 * 1024)
 
-                let models = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
-                let value = RequestData.Parse(result.Output, 4 * 1024 * 1024)
+                    for model in J.Items(J.Get(value, "models")) {
+                        let efforts = HashSet[string](StringComparer.Ordinal)
 
-                for model in J.Items(J.Get(value, "models")) {
-                    let efforts = HashSet[string](StringComparer.Ordinal)
+                        for level in J.Items(J.Get(model, "supported_reasoning_levels")) {
+                            efforts.Add(J.Text(level, "effort"))
+                        }
 
-                    for level in J.Items(J.Get(model, "supported_reasoning_levels")) {
-                        efforts.Add(J.Text(level, "effort"))
+                        models[J.Text(model, "slug")] = efforts
                     }
 
-                    models[J.Text(model, "slug")] = efforts
+                    return models
+                } finally {
+                    Directory.Delete(home, true)
                 }
-
-                return models
-            } finally {
-                Directory.Delete(home, true)
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
         }
 
@@ -87,7 +100,10 @@ internal class CodexRuntime {
             if RuntimeMetadataStat(-100, path, 256, 1, status) != 0 ||
                 (BitConverter.ToUInt32(status, 0) & 1) == 0 ||
                 (BitConverter.ToUInt16(status, 28) & 61440) != kind {
-                throw Exception("Managed runtime requires regular files and unlinked metadata directories")
+                throw ExecutionFailure.Create(
+                    "verification_failed",
+                    "Managed runtime requires regular files and unlinked metadata directories"
+                )
             }
         }
 
@@ -103,19 +119,19 @@ internal class CodexRuntime {
 
             let descriptor = RuntimeMetadataOpen(path, 131072 | 2048 | 524288)
             if descriptor < 0 {
-                throw Exception("Cannot safely open package metadata")
+                throw ExecutionFailure.Create("verification_failed", "Cannot safely open package metadata")
             }
 
             using let handle = SafeFileHandle(IntPtr(descriptor), true)
             using let file = FileStream(handle, FileAccess.Read)
             if !file.CanSeek {
-                throw Exception("Package metadata must be a regular file")
+                throw ExecutionFailure.Create("verification_failed", "Package metadata must be a regular file")
             }
 
             using let reader = BinaryReader(file)
             let bytes = reader.ReadBytes(65537)
             if bytes.Length > 65536 {
-                throw Exception("Package metadata exceeds its byte limit")
+                throw ExecutionFailure.Create("verification_failed", "Package metadata exceeds its byte limit")
             }
 
             return RequestData.Parse(Encoding.UTF8.GetString(bytes), 65536)
@@ -143,41 +159,47 @@ internal class CodexRuntime {
         }
 
         internal func Bubblewrap(executable string) string {
-            let root = Directory.GetParent(executable)?.Parent?.FullName ?? ""
-            let manifest = Path.Combine(root, "codex-package.json")
-            if !File.Exists(manifest) && FileInfo(manifest).LinkTarget == nil {
-                return ""
-            }
+            try {
+                let root = Directory.GetParent(executable)?.Parent?.FullName ?? ""
+                let manifest = Path.Combine(root, "codex-package.json")
+                if !File.Exists(manifest) && FileInfo(manifest).LinkTarget == nil {
+                    return ""
+                }
 
-            let metadata = Metadata(manifest)
-            if J.Number(metadata, "layoutVersion") != 1 || J.Text(metadata, "variant") != "codex" || J.Text(
-                metadata,
-                "entrypoint"
-            ) != "bin/codex" ||
-                J.Text(metadata, "resourcesDir") != "codex-resources" || J.Text(metadata, "version") == "" ||
-                (
-                J.Text(metadata, "target") != "x86_64-unknown-linux-musl" && J.Text(
+                let metadata = Metadata(manifest)
+                if J.Number(metadata, "layoutVersion") != 1 || J.Text(metadata, "variant") != "codex" || J.Text(
                     metadata,
-                    "target"
-                ) != "x86_64-unknown-linux-gnu"
-            ) ||
-                executable != Path
-                .Combine(root, "bin/codex") {
-                throw CliFailure(
-                    "verification_failed",
-                    "Unsupported standalone Codex package layout. Repair the selected installation."
-                )
-            }
+                    "entrypoint"
+                ) != "bin/codex" ||
+                    J.Text(metadata, "resourcesDir") != "codex-resources" || J.Text(metadata, "version") == "" ||
+                    (
+                    J.Text(metadata, "target") != "x86_64-unknown-linux-musl" && J.Text(
+                        metadata,
+                        "target"
+                    ) != "x86_64-unknown-linux-gnu"
+                ) ||
+                    executable != Path
+                    .Combine(root, "bin/codex") {
+                    throw CliFailure(
+                        "verification_failed",
+                        "Unsupported standalone Codex package layout. Repair the selected installation."
+                    )
+                }
 
-            let bubblewrap = Path.Combine(root, "codex-resources/bwrap")
-            if !Native(bubblewrap) {
-                throw CliFailure(
-                    "verification_failed",
-                    "The selected Codex package has no executable native bubblewrap resource. Repair that installation."
-                )
-            }
+                let bubblewrap = Path.Combine(root, "codex-resources/bwrap")
+                if !Native(bubblewrap) {
+                    throw CliFailure(
+                        "verification_failed",
+                        "The selected Codex package has no executable native bubblewrap resource. Repair that installation."
+                    )
+                }
 
-            return bubblewrap
+                return bubblewrap
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
+            }
         }
 
         internal func Resolve(path string = "") string {
@@ -195,7 +217,7 @@ internal class CodexRuntime {
                 let bin = Path.GetDirectoryName(executable) ?? ""
                 let root = Path.GetDirectoryName(bin) ?? ""
                 if Path.GetFileName(executable) != "codex.js" || Path.GetFileName(bin) != "bin" {
-                    throw Exception("Unsupported launcher")
+                    throw ExecutionFailure.Create("verification_failed", "Unsupported launcher")
                 }
 
                 let manifest = Metadata(Path.Combine(root, "package.json"))
@@ -207,7 +229,7 @@ internal class CodexRuntime {
                     version == "" ||
                     J.Text(J.Get(manifest, "optionalDependencies"), "@openai/codex-linux-x64") !=
                 "npm:@openai/codex@" + version + "-linux-x64" {
-                    throw Exception("Unsupported package metadata")
+                    throw ExecutionFailure.Create("verification_failed", "Unsupported package metadata")
                 }
 
                 let nested = Path.Combine(root, "node_modules/@openai/codex-linux-x64")
@@ -216,18 +238,21 @@ internal class CodexRuntime {
                 let metadata = Metadata(Path.Combine(platform, "package.json"))
                 if J.Text(metadata, "name") != "@openai/codex" || J.Text(metadata, "version") != version +
                     "-linux-x64" {
-                    throw Exception("Unsupported platform package")
+                    throw ExecutionFailure.Create("verification_failed", "Unsupported platform package")
                 }
 
                 let native = LocalPaths.CanonicalPath(
                     Path.Combine(platform, "vendor/x86_64-unknown-linux-musl/bin/codex")
                 )
                 if !Native(native) {
-                    throw Exception("Missing native executable")
+                    throw ExecutionFailure.Create("verification_failed", "Missing native executable")
                 }
 
                 return native
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
                 throw CliFailure(
                     "verification_failed",
                     "Unsupported managed Codex runtime layout: requires an executable Linux x64 native binary or @openai/codex bin/codex.js with its matching nested (or sibling) @openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex. No launcher is run to discover runtime files; no inference started."

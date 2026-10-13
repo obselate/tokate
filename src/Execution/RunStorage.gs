@@ -13,8 +13,10 @@ internal class RunStorage {
         internal func ControlPaths(directory string) {
             try {
                 LocalPaths.DirectoryPath(directory)
-            } catch (error Exception) {
-                throw Exception(error.Message + "; saved run directory: " + directory, error)
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException {
+                throw ExecutionFailure.Create("invalid_state", error.Message + "; saved run directory: " + directory)
             }
 
             for name in[]string{".lock", "run.json", "run.json.tmp", "claim.posting.json"} {
@@ -87,7 +89,8 @@ internal class RunStorage {
                     if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
                         PublicOutput.RunDirectory = row.Location
                         if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
-                            throw Exception(
+                            throw ExecutionFailure.Create(
+                                "invalid_state",
                                 "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
                                     []string{"tokate", "pause", "--run", row.Location}
                                 ) +
@@ -98,7 +101,10 @@ internal class RunStorage {
                                     " for the continuation command with the current state SHA. No files were overwritten."
                             )
                         }
-                        throw Exception("Saved contribution already exists; inspect it instead of overwriting")
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Saved contribution already exists; inspect it instead of overwriting"
+                        )
                     }
 
                     if row.Matches(repo, issue) {
@@ -124,7 +130,10 @@ internal class RunStorage {
             for path in[]string{directory, Path.Combine(root, id)} {
                 if Directory.Exists(path) || File.Exists(path) || FileInfo(path).LinkTarget != nil {
                     PublicOutput.RunDirectory = path
-                    throw Exception("Saved contribution already exists; inspect it instead of overwriting")
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Saved contribution already exists; inspect it instead of overwriting"
+                    )
                 }
             }
 
@@ -146,7 +155,7 @@ internal class RunStorage {
 
             try {
                 repo = RepositoryInput.Local()
-            } catch (error Exception) { }
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) { }
 
             let saved = SavedRuns(Roots(), 128, listingRepo: repo)
 

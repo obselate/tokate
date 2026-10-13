@@ -123,7 +123,10 @@ internal class SavedRuns {
 
                         for key in[]string{"id", "repo", "donor", "model", "state"} {
                             if J.Text(value, key).Length > 256 {
-                                throw Exception("Saved contribution metadata is too long")
+                                throw ExecutionFailure.Create(
+                                    "invalid_state",
+                                    "Saved contribution metadata is too long"
+                                )
                             }
                         }
 
@@ -132,7 +135,10 @@ internal class SavedRuns {
                             "state"
                         ) == "" {
                             reason = "Unsupported version or incomplete saved contribution."
-                            throw Exception("Unsupported or incomplete saved contribution")
+                            throw ExecutionFailure.Create(
+                                "invalid_state",
+                                "Unsupported or incomplete saved contribution"
+                            )
                         }
 
                         let row = SavedRun(directory, value, root == RunStorage.Root())
@@ -141,7 +147,10 @@ internal class SavedRuns {
                         if row.Number == 0 {
                             legacy.Add(row)
                         }
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                        error is IOException ||
+                        error is UnauthorizedAccessException ||
+                        error is JsonException {
                         Skipped++
 
                         if SkippedEntries.Count < 128 {
@@ -151,7 +160,9 @@ internal class SavedRuns {
                         }
                     }
                 }
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException {
                 Skipped++
 
                 if SkippedEntries.Count < 128 {

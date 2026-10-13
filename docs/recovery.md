@@ -176,7 +176,7 @@ See [donors](donors.md), [owners](owners.md) and [argument names](arguments.md).
 
 Messages with `DIR` below contain your actual run path. Use that path in the command.
 
-For Contributions and Publication commands, match `error.code` in `--json` output and the symptom below.
+For Contributions, Publication and Execution commands, match `error.code` in `--json` output and the symptom below.
 Keep saved work and inspect current state before any explicit next action.
 
 | Code | Symptom (message text or failure) | Do |
@@ -208,6 +208,23 @@ Correction publication keeps the underlying code when its message starts with `p
 | `command_failed` | `Uncertain request write; no unique canonical evidence. No POST retry made.` | Inspect remote comments and coordination state before resuming the same saved intent. No automatic POST retry is made. |
 | `command_failed` | `Cannot read workflow runs awaiting approval`, `Cannot read workflow runs for this head` or bounded history exceeded | Inspect incomplete CI evidence before acceptance. Missing evidence is not success. |
 | `command_failed` | Original evidence could not be captured or corrected remote commit is missing after push | Preserve saved evidence and inspect file access or remote state before an explicit next action. |
+
+### Execution failure codes
+
+Execution keeps saved failure stages, interruption evidence and verification results.
+
+| Code | Symptom (message text or failure) | Do |
+| --- | --- | --- |
+| `invalid_state` | `This destination attempt already started execution`, changed saved runtime, malformed installation metadata or invalid external history | Inspect `tokate status --run DIR --json`. Keep the original runtime and saved evidence. Do not start inference again in that attempt. |
+| `invalid_state` | `No changes returned. No PR will be opened.`, changed candidate, unsafe saved paths or protected owner content changes | Inspect the checkout and saved evidence before explicit recovery or fresh preparation. |
+| `invalid_arguments` | `Runtime overrides require bounded absolute paths` or `Invalid runtime path` | Supply a valid absolute runtime path before starting work. |
+| `missing_tools` | Missing executable, unsupported native runtime or failed native capability checks | Repair the selected installation, then run `tokate doctor managed`. No inference has started. |
+| `authentication_required` | Codex login or Claude native authentication did not confirm the required account | Sign in with the selected harness and original account before work. |
+| `inference_failed` | Failed, incomplete, conflicting or truncated harness output, or coding cancelled or timed out | Inspect `tokate status --run DIR --json` and private capture evidence. Preserve partial work before fresh preparation with an explicit budget. |
+| `verification_failed` | Missing independent results, unsafe runtime layout, owner checks failed, or verification cancelled or timed out | Inspect saved verification results before an explicit correction or amendment. |
+| `endpoint_unavailable` | Pi endpoint metadata is unavailable, malformed or does not advertise the selected model | Inspect the configured local service and exact model before fresh preparation. |
+| `stale_approval` | `Preserved external authority changed` | Preserve external history and inspect current owner authority before further work. |
+| `command_failed` | `Runtime allowance exhausted` or run storage could not be read or written | Inspect saved state and private command evidence before any explicit next action. |
 
 ### Setup
 
