@@ -10,15 +10,83 @@ internal class Coordinator {
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
+        }
+
+        internal func RecoverRequest(args Args) {
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let number = args.Number("issue")
+            let info = RepositoryAccess.RequireOwner(repo)
+            let owner = RepositoryIdentity.Login(J.Text(GitHub.Api("user"), "login"))
+            let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString())
+            if J.Number(issue, "number") != number {
+                throw Exception("Canonical issue identity changed")
+            }
+            let state = CoordinationState.Load(repo, number).Value()
+            let requests = List[JsonElement]()
+
+            for page in 1 ... 11 {
+                let comments = GitHub.Api(
+                    "repos/" + repo + "/issues/" + number.ToString() + "/comments?per_page=100&page=" + page.ToString()
+                )
+
+                if comments.ValueKind != JsonValueKind.Array {
+                    throw Exception("Malformed canonical issue comments")
+                }
+
+                for comment in comments.EnumerateArray() {
+                    if J.Text(comment, "body").StartsWith("/tokate ", StringComparison.Ordinal) {
+                        requests.Add(comment)
+                    }
+                }
+
+                if comments.GetArrayLength() < 100 {
+                    break
+                }
+
+                if page == 10 {
+                    throw Exception("Request comment inspection exceeded its bounded page limit")
+                }
+            }
+
+            var index = requests.Count - 1
+            while index >= 0 {
+                let comment = requests[index]
+                let request = RequestData.CommentData(J.Text(comment, "body"))
+                RequestData.Request(request)
+                if RequestData.Recorded(state, J.Get(J.Get(comment, "user"), "id"), request).ValueKind ==
+                JsonValueKind.Undefined {
+                    Terminal.Step("Recovering request as " + owner)
+                    Process(
+                        repo,
+                        J.Parse(
+                            J.Write(
+                                map[string, Object?]{
+                                    "action": "created",
+                                    "repository": info,
+                                    "issue": issue,
+                                    "comment": comment
+                                }
+                            )
+                        ),
+                        "issue_comment",
+                        recover: true
+                    )
+                    return
+                }
+                index--
+            }
+
+            throw Exception("No unprocessed request comment found; recorded requests cannot be recovered")
+        }
+
+        private func Process(repo string, event JsonElement, eventName string, recover bool = false) {
             let eventComment = J.Get(event, "comment")
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
             let failure = "Expected a created issue_comment /tokate request"
 
-            if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") != "issue_comment" || J.Text(
-                event,
-                "action"
-            ) != "created" {
+            if eventName != "issue_comment" || J.Text(event, "action") != "created" {
                 throw Exception(failure)
             }
 
@@ -77,6 +145,10 @@ internal class Coordinator {
 
             for old in outcomes {
                 if J.Text(old, "uuid") == J.Text(request, "uuid") {
+                    if recover {
+                        throw Exception("Request is already recorded; recovery refused")
+                    }
+
                     if J.Text(old, "binding") != binding {
                         throw Exception("UUID replay changed actor or request contents")
                     }

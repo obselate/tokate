@@ -274,6 +274,10 @@ func Dispatch(options Args) int32 {
             Coordinator.Run(options)
         }
 
+        case "recover-request" {
+            Coordinator.RecoverRequest(options)
+        }
+
         case "admit" {
             Admission.Run(options)
         }

@@ -474,6 +474,17 @@ internal class Cli {
                 group: "more"
             ),
             CliCommand(
+                "recover-request",
+                "",
+                "repo,issue",
+                "Owner: process the latest unprocessed request with the installed coordinator and current login.",
+                "ISSUE",
+                "recover-request 42",
+                effects: "local_read github_read github_write",
+                target: "issue",
+                group: "more"
+            ),
+            CliCommand(
                 "amend",
                 "run,commit,time,tools,sync,summary,resume",
                 "run",

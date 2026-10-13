@@ -1297,6 +1297,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func InterruptedWrite() {
+        let recovery = []string{"recover-request", "owner/project#1"}
+        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "recorded requests cannot be recovered")
+        Event(ClaimRequest())
+        Flow.Reload()
+        let comments = Flow.State["comments"] ?? throw Exception("Missing comments")
+        for index in 0 ... 100 {
+            Comment++
+            comments[Comment.ToString()] = Check.Map("id", Comment, "body", "Ordinary issue comment")
+        }
+        Flow.Save()
         let request = ClaimRequest()
         let path = Event(request)
         Flow.Mode("interrupted_state_write")
@@ -1315,8 +1325,25 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(attempts == 2, "Failed ref update did not stop after one retry")
         Check.That(State()["state"]?["reservation"] == nil, "Interrupted write acquired a claim")
         Flow.Mode("")
+        Check.Contains(Flow.Call(recovery, 1).Error, "Repository write permission is required")
+        Flow.Reload()
+        let changed = Check.Json(File.ReadAllText(path))["comment"] ?? throw Exception("Missing comment")
+        changed["body"] = JsonValue.Create("/tokate {}")
+        Flow.State["canonical_comment_override"] = changed.DeepClone()
+        Flow.Save()
+        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "identity changed")
+        Check.That(State()["state"]?["reservation"] == nil, "Refused recovery acquired a claim")
+        Flow.Reload()
+        Flow.State.AsObject().Remove("canonical_comment_override")
+        Flow.Save()
         Flow.Faults("repos/owner/project/git/refs/heads/tokate/contributions/1", Check.Json("[{\"status\":500}]"))
-        Coordinate(path)
+        Flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+        let recovered = Flow.Call([]string{"recover-request", "owner/project#1", "--json"}, owner: true)
+        Check.That(
+            Check.Text(Check.Json(recovered.Output)["data"]?["reservation"]) == Check.Text(request["uuid"]),
+            "Recovery did not return the latest request outcome"
+        )
+        Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
         Flow.Reload()
         attempts = 0
         var inspected bool
@@ -1338,6 +1365,20 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let revision = Check.Text(State()["sha"])
         Coordinate(path)
         Check.That(Check.Text(State()["sha"]) == revision, "Interrupted-write replay repeated its effect")
+        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "Stale state or approval")
+        Flow.Reload()
+        Flow.State["comments"] = Check.Map(Comment.ToString(), Check.Json(File.ReadAllText(path))["comment"])
+        Flow.Save()
+        Event(request)
+        Flow.ResetTraffic()
+        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "recorded requests cannot be recovered")
+        Flow.Reload()
+        for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            Check.That(Check.Text(call["method"]) == "GET", "Recorded recovery repeated a write")
+        }
+        Check.That(Check.Text(State()["sha"]) == revision, "Recovery changed a recorded request")
+        Flow.NoInference()
+        Flow.NoPr()
     }
 
     internal func PublicationRevocation() {
