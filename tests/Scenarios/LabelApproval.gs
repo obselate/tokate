@@ -151,6 +151,22 @@ internal partial class CoordinationFlow {
             )
             test.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
             test.Claim()
+            test.Flow.Git("-C", test.Flow.Upstream, "branch", "release/next")
+            test.Flow.Call(
+                []string{"approve", "owner/project#1", "--base-branch", "release/next", "--yes", "--non-interactive"},
+                owner: true
+            )
+            let selected = test.State()
+            test.Coordinate(test.LabelEvent())
+            let labeled = test.State()
+            Check.That(
+                Check.FixtureDigest(labeled) == Check.FixtureDigest(selected),
+                "Label event changed a CLI approval with a selected base branch"
+            )
+            Check.That(
+                Check.Text(labeled["state"]?["approval"]?["base_branch"]) == "release/next",
+                "Label event replaced the selected base branch"
+            )
             test.Flow.NoPr()
             test.Flow.NoInference()
             test.Flow.AutomationAttribution()
