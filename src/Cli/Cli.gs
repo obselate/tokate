@@ -16,6 +16,7 @@ internal class CliOption(name string, value string, description string, choices 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
+        case "yes" when command == "donate": "Consent to every task in this repository with the selected tool and time limits"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
@@ -26,7 +27,7 @@ internal class CliOption(name string, value string, description string, choices 
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
         case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
         case "time" when(
-            command == "work" || command == "claim"
+            command == "work" || command == "claim" || command == "donate"
         ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
         case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
@@ -137,6 +138,12 @@ internal class Cli {
                 "BRANCH",
                 "Owner-selected target; default: upstream default branch (prompt on a terminal)"
             ),
+            CliOption(
+                "total",
+                "TIME",
+                "Stop starting tasks when the per-task budget exceeds the remaining total; absent runs until stopped"
+            ),
+            CliOption("profile", "NAME", "Saved donor profile"),
             CliOption("model", "MODEL", "Owner-approved model"),
             CliOption(
                 "effort",
@@ -220,6 +227,17 @@ internal class Cli {
         }
 
         internal let Commands[]CliCommand = []CliCommand{
+            CliCommand(
+                "donate",
+                "harness,provider,model,effort,profile,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,fork,runs",
+                "repo,time",
+                "Donate approved tasks until stopped or the total time expires. One confirmation authorizes every task within the selected limits.",
+                "OWNER/REPO --time PER_TASK [--total TOTAL] [options]\n       stop",
+                "donate owner/project --time 1h --profile default --yes",
+                effects: "local_read local_write github_read github_write inference",
+                target: "repo",
+                group: "donate"
+            ),
             CliCommand(
                 "work",
                 "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from",
@@ -711,7 +729,8 @@ internal class Cli {
             return row[b.Length]
         }
 
-        internal func Words(command string) string -> command == "defaults" ? "set show remove list use":
+        internal func Words(command string) string -> command == "donate" ? "stop":
+        command == "defaults" ? "set show remove list use":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
         command == "doctor" ? "owner managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
@@ -764,6 +783,8 @@ internal class Cli {
         }
 
         internal func Positional(command CliCommand)[]string -> switch command.Name {
+            case "donate": []string{"OWNER/REPO|stop"}
+
             case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME"}
 
             case "claim": []string{"ISSUE|OWNER/REPO", "NAME"}
@@ -1211,6 +1232,27 @@ internal class Cli {
 
         internal func Validate(args Args, guided bool = false) {
             let command = Find(args.Command)
+
+            if args.Command == "donate" && !args.Help {
+                if args.Subject == "stop" {
+                    for key in args.Values.Keys {
+                        if !Global(key) {
+                            throw Exception("donate stop takes only global options")
+                        }
+                    }
+                    return
+                }
+                args.Number("seconds")
+                if args.Get("total") != "" {
+                    args.Number("total")
+                }
+                if !DonorSelection.Interactive(args) && args.Get("yes") != "true" {
+                    throw CliFailure(
+                        "confirmation_required",
+                        "Noninteractive donate requires --yes before any claim or inference"
+                    )
+                }
+            }
 
             if args.Command == "approve" {
                 if args.Get("issue") != "" && args.Get("title") + args.Get("body") + args.Get("body-file") != "" {

@@ -228,6 +228,30 @@ internal class ContributionPreparation {
             run.Fields["branch"] = "tokate/v2-" + run.Text("id")
         }
 
+        internal func Available(repo string, issue int32, viewer JsonElement, state CoordinationState) JsonElement {
+            let record = state.Check(
+                repo,
+                issue,
+                RepositoryIdentity.Login(J.Text(viewer, "login")),
+                J.Get(viewer, "id")
+            )
+
+            let reservation = J.Get(state.Value(), "reservation")
+
+            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
+            }
+
+            if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
+                throw CliFailure("stale_approval", "Legacy lease reacquisition requires fresh owner approval")
+            }
+
+            Overlaps.RequireDependencies(repo, issue)
+
+            return record
+        }
+
         internal func Acquire(args Args) string {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let info = GitHub.Api("repos/" + repo)
@@ -244,22 +268,8 @@ internal class ContributionPreparation {
 
             let issue = args.Number("issue")
             let viewer = GitHub.Api("user")
-            let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
             let state = CoordinationState.Load(repo, issue)
-            let record = state.Check(repo, issue, donor, J.Get(viewer, "id"))
-
-            let reservation = J.Get(state.Value(), "reservation")
-
-            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
-            }
-
-            if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
-                throw CliFailure("stale_approval", "Legacy lease reacquisition requires fresh owner approval")
-            }
-
-            Overlaps.RequireDependencies(repo, issue)
+            let record = Available(repo, issue, viewer, state)
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
@@ -302,7 +312,7 @@ internal class ContributionPreparation {
             return Pending(directory, run, args)
         }
 
-        internal func ResumePending(directory string, args Args) string {
+        internal func ResumePending(directory string, args Args, seconds int32 = 30) string {
             PublicOutput.RunDirectory = directory
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
@@ -316,7 +326,7 @@ internal class ContributionPreparation {
                 return directory
             }
 
-            return Pending(directory, run, args)
+            return Pending(directory, run, args, seconds)
         }
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
@@ -415,7 +425,7 @@ internal class ContributionPreparation {
             }
         }
 
-        private func Pending(directory string, run Data, args Args) string {
+        private func Pending(directory string, run Data, args Args, seconds int32 = 30) string {
             let viewer = GitHub.Api("user")
             let repo = RepositoryIdentity.Repo(run.Text("repo"))
             let issue = run.Number("issue")
@@ -444,7 +454,7 @@ internal class ContributionPreparation {
                 J.Get(run.Element(), "donor_id")
             )
 
-            ApiTransport.BeginDeadline(30)
+            ApiTransport.BeginDeadline(seconds)
 
             var accepted CoordinationState? = nil
 

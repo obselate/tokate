@@ -166,7 +166,7 @@ internal class DonationView {
         internal func Active() bool -> Current != nil
 
         internal func Start() bool {
-            if !WizardScreen.Available() {
+            if Donate.Active || !WizardScreen.Available() {
                 return false
             }
 
