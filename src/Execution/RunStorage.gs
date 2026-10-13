@@ -86,6 +86,18 @@ internal class RunStorage {
                 for row in saved.Rows {
                     if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
                         PublicOutput.RunDirectory = row.Location
+                        if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
+                            throw Exception(
+                                "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
+                                    []string{"tokate", "pause", "--run", row.Location}
+                                ) +
+                                    ", then " +
+                                    Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
+                                    ". Wait for each coordinator acceptance, then run " +
+                                    Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
+                                    " for the continuation command with the current state SHA. No files were overwritten."
+                            )
+                        }
                         throw Exception("Saved contribution already exists; inspect it instead of overwriting")
                     }
 

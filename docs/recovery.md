@@ -124,34 +124,51 @@ Target movement alone does not fail checks. Synchronize only when GitHub reports
 
 ## Continue stopped work
 
-1. Inspect the stopped run and current issue authority.
+For a managed run stopped with `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget.
+
+1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command with its current state SHA.
 
    ```sh
    tokate status --run PRIOR_RUN_DIR --json
-   tokate coordination OWNER/REPO#42
    ```
 
-2. Establish a fresh active attempt through the coordinator lease transition shown by status.
-3. Prepare from the stopped run with the original tool and a new budget.
+2. If the stopped attempt is still active, pause it. Wait for coordinator acceptance. If pending, inspect status and run the same pause command after acceptance to record the outcome.
 
    ```sh
-   tokate prepare OWNER/REPO#42 PROFILE --state CURRENT_STATE_SHA --source tokate \
-     --continue-from PRIOR_RUN_DIR --time 1h --verify-time 20m --yes
+   tokate pause --run PRIOR_RUN_DIR
+   tokate status --run PRIOR_RUN_DIR --json
    ```
 
-4. Run the fresh attempt.
+3. Resume the paused lease to get a fresh attempt. Wait for coordinator acceptance. If pending, inspect status and run the same resume command after acceptance to record the outcome.
 
    ```sh
-   tokate work 42 --yes
+   tokate resume --run PRIOR_RUN_DIR
+   tokate status --run PRIOR_RUN_DIR --json
    ```
 
-5. Publish the new verified attempt.
+4. Use the continuation command from this last status read. Keep its exact `--state`, `--continue-from` and original tool and fork options. Change only the new budget to `--time 2h --verify-time 20m`. For an original Codex selection of `gpt-6.1-sol` with high effort, the complete command is below. Use the `--fork` value from status for `SAVED_HEAD_REPO`.
 
    ```sh
-   tokate submit 42
+   tokate prepare OWNER/REPO#42 --state CURRENT_STATE_SHA --source tokate \
+     --harness codex --provider openai --model gpt-6.1-sol --effort high \
+     --continue-from PRIOR_RUN_DIR --fork SAVED_HEAD_REPO --time 2h --verify-time 20m --yes
+   ```
+
+5. Use the new run directory printed by preparation to run the fresh attempt.
+
+   ```sh
+   tokate work --run NEW_RUN_DIR --yes
+   ```
+
+6. Publish the new verified attempt.
+
+   ```sh
+   tokate submit --run NEW_RUN_DIR
    ```
 
 Continuation accepts stopped, unpublished managed work from the same donor under unchanged approval. Pi keeps its original model, runtime and endpoint.
+
+If preparation says `Saved contribution already exists`, use the saved directory and pause/resume commands in the refusal. Do not delete or overwrite that run.
 
 See [donors](donors.md), [owners](owners.md) and [argument names](arguments.md). The [public summary format](../AGENTS.md#write-public-pr-summaries) defines `SUMMARY_FILE`.
 
