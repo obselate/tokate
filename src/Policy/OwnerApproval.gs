@@ -72,7 +72,7 @@ internal class OwnerApproval {
             )
                 .GetArrayLength() == 0
 
-            let template = PrBody.Template(repo, authorityBase, policy)
+            let template = PrBody.Template(repo, authorityBase)
             PrBody.ValidateTemplate(template)
 
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))

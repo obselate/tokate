@@ -943,6 +943,7 @@ internal class OwnerSetup {
                 Terminal.Message(protectionNote)
             }
 
+            let affected = ApprovalImpact(repo, upstream, policy)
             SetupPath(root, ".github/tokate.json")
             SetupPath(root, Path.GetRelativePath(root, workflow))
 
@@ -995,12 +996,20 @@ internal class OwnerSetup {
             )
 
             let changed = before != text || oldWorkflow == ""
-            if upstream != "" && RequestData.Canonical(J.Parse(upstream)) != RequestData.Canonical(policy.Value) {
+            let taskChanged = upstream != "" && Policy(upstream).Digest != policy.Digest
+            if taskChanged {
                 Terminal.Message(
-                    "Policy changes stale all existing approvals and claims; the owner must approve again. Eligibility revocation separately blocks new work and publication immediately.",
+                    "Task fields changed. Re-approve these issues after the policy change is merged: " +
+                        (affected.Count == 0 ? "none": String.Join(", ", affected)),
                     "yellow",
                     true
                 )
+
+                for issue in affected {
+                    Terminal.Message("tokate approve " + repo + "#" + issue.ToString(), "yellow", true)
+                }
+            } else if upstream != "" {
+                Terminal.Message("Task fields are unchanged. Approvals stay valid.", "cyan", true)
             }
 
             Terminal.Message(
@@ -1010,8 +1019,52 @@ internal class OwnerSetup {
                 "applied": changed,
                 "file_count": File.Exists(template) ? 3: 2,
                 "policy_changed": before != text,
-                "workflow_changed": oldWorkflow == ""
+                "workflow_changed": oldWorkflow == "",
+                "task_fields_changed": taskChanged,
+                "approvals_to_renew": affected
             }
+        }
+
+        private func ApprovalImpact(repo string, upstream string, policy Policy) List[int32] {
+            let affected = List[int32]()
+            if upstream == "" || Policy(upstream).Digest == policy.Digest {
+                return affected
+            }
+
+            var page = 1
+            while true {
+                let issues = GitHub.Api(
+                    "repos/" + repo + "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" + page.ToString()
+                )
+                if issues.ValueKind != JsonValueKind.Array {
+                    throw Exception("Cannot list approved issues before policy setup")
+                }
+
+                for issue in J.Items(issues) {
+                    if J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined || !GitHub.HasLabel(issue) {
+                        continue
+                    }
+
+                    let number = J.Number(issue, "number")
+                    let state = CoordinationState.Load(repo, number, true).Value()
+                    let approval = J.Get(state, "approval")
+                    if !J.Bool(state, "revoked") && approval.ValueKind == JsonValueKind.Object && J.Text(
+                        approval,
+                        "policy_hash"
+                    ) != policy.Digest {
+                        affected.Add(number)
+                    }
+                }
+
+                if issues.GetArrayLength() < 100 {
+                    break
+                }
+
+                page++
+            }
+
+            affected.Sort()
+            return affected
         }
 
         private func Pretty(value JsonElement) string {

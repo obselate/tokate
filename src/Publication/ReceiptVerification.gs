@@ -395,7 +395,13 @@ internal class ReceiptVerification {
                 )
             }
 
-            AccessState.Check(repo, J.Number(receipt, "issue"), approval, J.Get(contribution, "actor"))
+            AccessState.Check(
+                repo,
+                J.Number(receipt, "issue"),
+                approval,
+                J.Get(contribution, "actor"),
+                J.Get(record, "policy")
+            )
 
             let run = Data()
 

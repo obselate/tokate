@@ -165,7 +165,7 @@ internal class AccessState {
             return result
         }
 
-        internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement) {
+        internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement, policy JsonElement) {
             Task(approval)
 
             PublicOutput.ResultData = map[string, Object?]{
@@ -186,7 +186,7 @@ internal class AccessState {
                 }
 
                 let access = Load(repo, repoId)
-                let mode = Mode(approval)
+                let mode = Mode(policy)
                 let allowed = access.Allows(id, mode, issue)
 
                 PublicOutput.ResultData = map[string, Object?]{

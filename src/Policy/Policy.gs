@@ -14,7 +14,6 @@ internal class Policy {
 
     internal init(text string) {
         Value = J.Parse(text)
-        Digest = Data.Hash(text)
         let version = J.Number(Value, "version")
         if version != 2 && version != 3 {
             throw Exception("Unsupported policy version; use version 2 or 3")
@@ -192,6 +191,19 @@ internal class Policy {
         }
 
         Tools = J.Parse(J.Write(converted))
+        let task = map[string, Object?]{
+            "verification": J.Get(Value, "verification"),
+            "required_checks": J.Get(Value, "required_checks"),
+            "protected_paths": J.Items(J.Get(Value, "protected_paths")),
+            "allowed_tools": Tools,
+            "max_seconds": maxSeconds,
+            "allow_unlimited": J.Bool(Value, "allow_unlimited"),
+            "reservation_seconds": reservation.ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
+                Value,
+                "reservation_seconds"
+            )
+        }
+        Digest = Data.Hash(RequestData.Canonical(J.Parse(J.Write(task))))
     }
 
     private func ValidateModels(models JsonElement) {

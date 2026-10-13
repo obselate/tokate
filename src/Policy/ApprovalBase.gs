@@ -52,15 +52,19 @@ internal class ApprovalBase {
 
             let current = GitHub.Branch(repo, branch)
             let policy = Policy.Load(repo, current)
-            let template = PrBody.Template(repo, current, policy)
+            let template = PrBody.Template(repo, current)
 
-            if policy.Digest != J.Text(approval, "policy_hash") || Data.Hash(template) != J.Text(
-                approval,
-                "template_hash"
-            ) {
+            let taskChanged = policy.Digest != J.Text(approval, "policy_hash")
+            if taskChanged || Data.Hash(template) != J.Text(approval, "template_hash") {
+                let issue = repo + "#" + J.Number(approval, "issue").ToString()
+                let reason = taskChanged ? "Approval no longer matches current task fields.": "PR template changed."
                 throw CliFailure(
                     "stale_approval",
-                    "Repository policy or template changed. The owner must approve again."
+                    "Repository policy or template changed. The owner must approve again. " +
+                        reason +
+                        " Run: tokate approve " +
+                        issue,
+                    []string{"tokate", "approve", issue}
                 )
             }
 

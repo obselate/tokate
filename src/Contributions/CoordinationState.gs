@@ -93,7 +93,7 @@ internal class CoordinationState {
         let record = CheckApproval(repo, issue)
         let approval = J.Get(record, "approval")
 
-        AccessState.Check(repo, issue, approval, actor)
+        AccessState.Check(repo, issue, approval, actor, J.Get(record, "policy"))
 
         return record
     }
@@ -111,12 +111,6 @@ internal class CoordinationState {
         }
 
         let configuration = ApprovalBase.Check(repo, approval, quiet)
-        let mode = configuration.Item1.Eligibility
-
-        if AccessState.Mode(approval) != mode {
-            throw CliFailure("stale_approval", "Task eligibility declaration differs from current policy")
-        }
-
         return J.Parse(
             J.Write(
                 map[string, Object?]{

@@ -123,7 +123,11 @@ internal class Correction {
                 let pinned = J.Parse(File.ReadAllText(Path.Combine(archive, "approval.json")))
 
                 for key in[]string{"approval", "policy", "template"} {
-                    if RequestData.Canonical(J.Get(pinned, key)) != RequestData.Canonical(J.Get(record, key)) {
+                    let previous = J.Get(pinned, key)
+                    let current = J.Get(record, key)
+                    let same = key == "policy" ? Policy(J.Write(previous)).Digest == Policy(J.Write(current)).Digest:
+                    RequestData.Same(previous, current)
+                    if !same {
                         throw CliFailure("stale_approval", "Original approval, policy or template changed")
                     }
                 }

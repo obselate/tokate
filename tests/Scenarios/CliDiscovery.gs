@@ -154,7 +154,15 @@ internal class CliDiscovery {
             flow.Reload()
             flow.State["hosted_workflow"] = JsonValue.Create(true)
             flow.Save()
+            flow.Approve()
+            flow.Call(
+                []string{"approve", "owner/project", "--title", "Second task", "--body", "Another task"},
+                owner: true
+            )
             let created = flow.Call(args, owner: true)
+            Check.Contains(created.Error, "Re-approve these issues after the policy change is merged: 1, 2")
+            Check.Contains(created.Error, "tokate approve owner/project#1")
+            Check.Contains(created.Error, "tokate approve owner/project#2")
             Check.Contains(created.Error, "Added ")
             Check.Contains(created.Output, "Commit and push")
             Check.Contains(created.Error, "contents write")
@@ -183,6 +191,30 @@ internal class CliDiscovery {
                 !yaml.Contains("run:") && !yaml.Contains("checkout") && yaml.Split('\n').Length < 25,
                 "Setup copied runtime code"
             )
+            Publish(flow, original)
+            flow.Approve()
+            let unchangedTasks = flow.Call(
+                []string{
+                    "init",
+                    "--path",
+                    root,
+                    "--eligibility",
+                    "open",
+                    "--pr-text",
+                    "Owner notes",
+                    "--non-interactive"
+                },
+                owner: true
+            )
+            Check.Contains(unchangedTasks.Error, "Approvals stay valid.")
+            Check.That(!unchangedTasks.Error.Contains("tokate approve"), "Nontask init asked for new approvals")
+            Publish(flow, File.ReadAllText(policyPath))
+            let current = Check.Envelope(flow.Call([]string{"status", "owner/project#1", "--json"}), "status", "ok")
+            Check.That(
+                Check.Text(current["data"]?["work"]?[0]?["approval_status"]) == "current",
+                "Nontask init revoked approval"
+            )
+            File.WriteAllText(policyPath, original)
             Publish(flow, original)
             let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
             Check.Contains(repeated.Output, "nothing to commit")

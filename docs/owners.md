@@ -110,6 +110,13 @@ Update the coordinator pin before committing a version 3 policy. An older
 coordinator rejects version 3. Follow the update steps below, then run `tokate init`
 to migrate and re-approve open tasks after the policy is merged.
 
+## Version 3 release notes
+
+Approvals now bind canonical task fields after version 2 conversion. Existing
+approvals with the old whole-text digest become stale once after upgrade.
+Re-approve open tasks. Version 2 receipts and saved runs still verify under current
+approval authority. The three version 3 slices ship in one release.
+
 ## Approve an issue and donor
 
 1. Inspect access requests.
@@ -150,7 +157,13 @@ to migrate and re-approve open tasks after the policy is merged.
 
 Access requests grant no access. Explicit denial blocks every access mode.
 
-Issue, policy or PR-template changes need fresh approval.
+Issue, task-field or PR-template changes need fresh approval. Task fields are
+verification commands, required checks, protected paths, tools and their models,
+runtime and unlimited-coding limits, and reservation duration. Formatting,
+eligibility, target-branch defaults and descriptive text keep approvals valid.
+Current eligibility still controls claims, work and publication. `tokate init`
+lists affected approved issues and the commands to run after the change is merged.
+`tokate status 42` reports stale task fields and the owner approval command.
 
 Tokate keeps its records in `tokate/` branches of your repository. Keep them.
 
@@ -231,6 +244,6 @@ The local update does not change the repository pin. See [donors](donors.md), [a
 | --- | --- |
 | `GitHub settings were not changed` | `tokate init OWNER/REPO` |
 | `Approval revoked or task changed` | Owner: `tokate approve 42` |
-| `Repository policy or template changed. The owner must approve again.` | Owner: `tokate approve 42` |
+| `Repository policy or template changed. The owner must approve again.` followed by a task-field or template reason and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks 10 --watch` |
 | `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | `gh pr view 10 --web` |

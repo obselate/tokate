@@ -27,7 +27,7 @@ internal class PrBody {
             }
         }
 
-        internal func Template(repo string, revision string, policy Policy) string {
+        internal func Template(repo string, revision string) string {
             let custom = GitHub.Api(
                 "repos/" + repo + "/contents/.github/tokate-pr.md?ref=" + Uri.EscapeDataString(revision),
                 missing: true
@@ -44,12 +44,14 @@ internal class PrBody {
                 ValidateTemplate(text)
             }
 
-            return text + (J.Text(policy.Value, "pr_text") == "" ? "": "\n\n{{pr_text}}\n")
+            return text
         }
 
         internal func Render(template string, values Dictionary[string, string], policy JsonElement) string {
             values["pr_text"] = J.Text(policy, "pr_text")
-            return Regex.Replace(template, "\\{\\{([a-z_]+)\\}\\}", (match Match) -> values[match.Groups[1].Value])
+            let text = template +
+                (values["pr_text"] != "" && !template.Contains("{{pr_text}}") ? "\n\n{{pr_text}}\n": "")
+            return Regex.Replace(text, "\\{\\{([a-z_]+)\\}\\}", (match Match) -> values[match.Groups[1].Value])
         }
 
         internal func CoordinatedReport(metadata JsonElement) string {
