@@ -18,7 +18,7 @@ internal class ClaudeHarness {
             let model = args.Need("model")
             let effort = args.Need("effort")
 
-            policy.Validate(model, effort, 1)
+            policy.Validate("claude", "anthropic", model, effort, 1)
 
             if !ClaudeCode.Pair(model, effort) {
                 throw Exception("Unsupported native Claude model/effort pair; no inference started.")
@@ -51,7 +51,7 @@ internal class ClaudeHarness {
 
         internal func ValidateSaved(run Data, policy Policy) {
             policy.ValidateTools(J.Get(run.Element(), "tools"), "tokate")
-            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"))
+            policy.Validate("claude", "anthropic", run.Text("model"), run.Text("effort"), run.Number("seconds"))
 
             if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
                 run.Text("harness_path")
@@ -113,7 +113,7 @@ internal class ClaudeHarness {
                 run.Text("model"),
                 run.Text("effort"),
                 run.Text("claude_profile"),
-                policy.AllowedModels(ClaudeCode.ModelPattern)
+                policy.AllowedModels("claude", "anthropic", ClaudeCode.ModelPattern)
             )
 
             args.AddRange(invocation)
@@ -182,7 +182,11 @@ internal class ClaudeHarness {
                     for used in models.EnumerateObject() {
                         let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
 
-                        if !policy.AllowsModel(name) && !policy.AllowsModel(used.Name) {
+                        if !policy.AllowsModel("claude", "anthropic", name) && !policy.AllowsModel(
+                            "claude",
+                            "anthropic",
+                            used.Name
+                        ) {
                             throw Exception(
                                 "Claude used " +
                                     used.Name +

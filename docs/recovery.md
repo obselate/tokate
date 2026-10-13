@@ -171,6 +171,8 @@ Messages with `DIR` below contain your actual run path. Use that path in the com
 
 For a pending claim, run the same saved command again. If the Tokate workflow failed, the owner reruns that failed workflow in GitHub Actions first.
 
+Model and effort permissions apply to the exact harness/provider pair. Use `tokate policy OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
+
 For a provider capacity error, inspect the saved run before selecting a different model. Tokate has no automatic retry or fallback.
 
 ### Verification
@@ -223,4 +225,4 @@ An access request does not grant eligibility. The owner must trust or grant the 
 | `Running binary does not match the released archive member` | `tokate update` |
 | `Release archive checksum mismatch` | `tokate update` |
 
-After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator).
+After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator). Update the pin before committing a version 3 policy. Older coordinators reject version 3. Version 2 receipts and saved runs remain readable.

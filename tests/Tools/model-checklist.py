@@ -157,13 +157,13 @@ for cancelled in (False, True):
         with open(os.path.join(path, ".github", "tokate.json")) as file:
             policy = json.load(file)
         assert policy["reservation_seconds"] == 600, policy["reservation_seconds"]
-        models = policy["models"]
+        models = policy["allowed_tools"][0]["models"]
         assert models == {
             "gpt-6.1-sol": ["high"], local_model: ["absent"], "remote-model": ["absent"],
         }, models
         assert policy["allowed_tools"] == [
-            {"harness": "codex", "provider": "openai"},
-            {"harness": "pi", "provider": "local-chat-completions"},
+            {"harness": "codex", "provider": "openai", "models": models},
+            {"harness": "pi", "provider": "local-chat-completions", "models": models},
         ], policy["allowed_tools"]
     finally:
         try:

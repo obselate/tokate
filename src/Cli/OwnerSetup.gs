@@ -44,8 +44,6 @@ internal class OwnerSetup {
 
             for field in[]string{
                 "eligibility",
-                "model_policy",
-                "models",
                 "verification",
                 "required_checks",
                 "max_seconds",
@@ -57,9 +55,7 @@ internal class OwnerSetup {
             } {
                 let item = J.Get(value, field)
 
-                if field == "models" && J.Text(value, "model_policy") != "whitelist" ||
-                    field == "close_message" &&
-                    item.ValueKind == JsonValueKind.Undefined {
+                if field == "close_message" && item.ValueKind == JsonValueKind.Undefined {
                     continue
                 }
 
@@ -71,8 +67,6 @@ internal class OwnerSetup {
 
                 let label = switch field {
                     case "eligibility": "Access   "
-                    case "model_policy": "Models   "
-                    case "models": "Allowed models   "
                     case "verification": "Checks   "
                     case "required_checks": "Required checks   "
                     case "max_seconds": "Limit    "
@@ -94,28 +88,38 @@ internal class OwnerSetup {
                                     entry[1].ToString() == "-c" ? entry[2].ToString(): Terminal.Command(entry)
                             )
                         } else {
-                            items.Add(
-                                switch J.Text(entry, "harness") {
-                                    case "codex": "Codex (Subscription)"
-                                    case "claude": "Claude Code (Subscription)"
-                                    case "pi": "Pi (Local)"
-                                    case "omp": "OMP (" + J.Text(entry, "provider") + ")"
-                                    default: J.Text(entry, "harness")
+                            let models = J.Get(entry, "models")
+                            let allowed = List[string]()
+                            if models.ValueKind == JsonValueKind.Object {
+                                for model in models.EnumerateObject() {
+                                    let efforts = List[string]()
+                                    for effort in J.Items(model.Value) {
+                                        efforts.Add(effort.GetString() ?? "")
+                                    }
+
+                                    allowed.Add(model.Name + " / " + String.Join(", ", efforts))
                                 }
+                            }
+
+                            items.Add(
+                                (
+                                    switch J.Text(entry, "harness") {
+                                        case "codex": "Codex (Subscription)"
+                                        case "claude": "Claude Code (Subscription)"
+                                        case "pi": "Pi (Local)"
+                                        case "omp": "OMP (" + J.Text(entry, "provider") + ")"
+                                        default: J.Text(entry, "harness") + " (" + J.Text(entry, "provider") + ")"
+                                    }
+                                ) +
+                                    ": " +
+                                    (
+                                    models.ValueKind == JsonValueKind.Undefined ? "any model": String.Join(
+                                        ", ",
+                                        allowed
+                                    )
+                                )
                             )
                         }
-                    }
-
-                    text = String.Join(", ", items)
-                } else if field == "models" && item.ValueKind == JsonValueKind.Object {
-                    for entry in item.EnumerateObject() {
-                        let efforts = List[string]()
-
-                        for effort in entry.Value.EnumerateArray() {
-                            efforts.Add(effort.GetString() ?? "")
-                        }
-
-                        items.Add(entry.Name + " / " + String.Join(", ", efforts))
                     }
 
                     text = String.Join(", ", items)
@@ -187,6 +191,11 @@ internal class OwnerSetup {
                 return
             }
 
+            if requested.TrimStart().StartsWith("[", StringComparison.Ordinal) {
+                fields["allowed_tools"] = RequestData.Parse(requested)
+                return
+            }
+
             let selected = HashSet[string](StringComparer.Ordinal)
             let tools = List[Object]()
 
@@ -213,11 +222,69 @@ internal class OwnerSetup {
                 }
 
                 if selected.Add(harness + "/" + provider) {
-                    tools.Add(map[string, Object?]{"harness": harness, "provider": provider})
+                    var pair = J.Parse(J.Write(map[string, Object?]{"harness": harness, "provider": provider}))
+                    for tool in J.Items(J.Get(value, "allowed_tools")) {
+                        if J.Text(tool, "harness") == harness && J.Text(tool, "provider") == provider {
+                            pair = tool
+                            break
+                        }
+                    }
+
+                    tools.Add(pair)
                 }
             }
 
             fields["allowed_tools"] = tools
+        }
+
+        private func SetModels(fields map[string, Object?], mode string, models JsonElement, selected int32 = -1) {
+            let tools = List[Object]()
+            let entries = J.Items(J.Get(J.Parse(J.Write(fields)), "allowed_tools"))
+            for i in 0 ... entries.Count {
+                let pair = map[string, Object?]{}
+                for field in entries[i].EnumerateObject() {
+                    if field.Name != "models" || (selected >= 0 && i != selected) {
+                        pair[field.Name] = field.Value
+                    }
+                }
+
+                if (selected < 0 || i == selected) && mode == "whitelist" {
+                    pair["models"] = models
+                }
+
+                tools.Add(pair)
+            }
+
+            fields["allowed_tools"] = tools
+        }
+
+        private func GuideModels(fields map[string, Object?]) {
+            let entries = J.Items(J.Get(J.Parse(J.Write(fields)), "allowed_tools"))
+            let labels = List[string]()
+            for entry in entries {
+                labels.Add(J.Text(entry, "harness") + "/" + J.Text(entry, "provider"))
+            }
+
+            let selected = entries.Count == 1 ? 0: WizardScreen.Choose(
+                "Allowed models",
+                "Choose the tool whose models you want to edit.",
+                labels.ToArray(),
+                "Model permissions apply only to this harness and provider."
+            ) - 1
+            let current = J.Get(entries[selected], "models")
+            let restriction = WizardScreen.Choose(
+                "Allowed models",
+                labels[selected] + "\nChoose how much control you want over the coding model.",
+                []string{"Any supported model", "Choose allowed models"},
+                "Choose whether donors may use any supported model or only models you select for this tool.",
+                current.ValueKind == JsonValueKind.Object ? 2: 1
+            )
+            SetModels(
+                fields,
+                restriction == 1 ? "unrestricted": "whitelist",
+                restriction == 1 ? JsonElement{}: RequestData.Parse(ModelChecklist().Run()),
+                selected
+            )
         }
 
         private func Guide(args Args, fields map[string, Object?], root string) {
@@ -243,18 +310,13 @@ internal class OwnerSetup {
                 ]
             }
 
-            let restriction = args.Get("model-policy") != "" ?
-            (args.Get("model-policy") == "unrestricted" ? 1: 2): WizardScreen.Choose(
-                "Allowed models",
-                "Choose how much control you want over the coding model.",
-                []string{"Any supported model", "Choose allowed models"},
-                "Choose whether donors may use any supported model or only models you select. A whitelist gives you more control.",
-                J.Text(initial, "model_policy") == "unrestricted" ? 1: J.Get(initial, "models")
-                    .ValueKind == JsonValueKind.Object ? 2: 0
-            )
-            args.Values["--model-policy"] = restriction == 1 ? "unrestricted": "whitelist"
-            if restriction == 2 && J.Get(initial, "models").ValueKind != JsonValueKind.Object {
-                fields["models"] = RequestData.Parse(ModelChecklist().Run())
+            if args.Get("model-policy") != "" {
+                let mode = args.Need("model-policy")
+                if mode == "whitelist" && args.Get("models") == "" {
+                    SetModels(fields, mode, RequestData.Parse(ModelChecklist().Run()))
+                }
+            } else if !args.Get("allowed-tools").TrimStart().StartsWith("[", StringComparison.Ordinal) {
+                GuideModels(fields)
             }
 
             var edit = ""
@@ -430,7 +492,6 @@ internal class OwnerSetup {
                 }
 
                 edit = ""
-                fields["model_policy"] = args.Need("model-policy")
 
                 let value = J.Parse(J.Write(fields))
                 let action = WizardScreen.Choose(
@@ -514,16 +575,7 @@ internal class OwnerSetup {
                 }
 
                 if action == 3 {
-                    let mode = WizardScreen.Choose(
-                        "Allowed models",
-                        "Choose your model policy.",
-                        []string{"Any supported model", "Choose allowed models"},
-                        "Choose whether donors may use any supported model or only models you select. A whitelist gives you more control."
-                    )
-                    args.Values["--model-policy"] = mode == 1 ? "unrestricted": "whitelist"
-                    if mode == 2 {
-                        fields["models"] = RequestData.Parse(ModelChecklist().Run())
-                    }
+                    GuideModels(fields)
                 }
 
                 if action == 4 {
@@ -717,28 +769,35 @@ internal class OwnerSetup {
             if upstream != "" {
                 existing = Policy(upstream)
 
-                for field in existing.Value.EnumerateObject() {
+                for field in existing.Version3().EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
             } else {
-                fields["version"] = 2
+                fields["version"] = 3
                 fields["approval_scope"] = "task"
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = []Object{map[string, Object?]{"harness": "codex", "provider": "openai"}}
                 fields["max_seconds"] = 3600
             }
 
-            let mode = args.Get("model-policy", existing?.ModelPolicy ?? "")
-
-            if mode != "" && (existing == nil || args.Get("model-policy") != "") {
-                fields["model_policy"] = mode
-            }
-
-            if args.Get("models") != "" {
-                fields["models"] = RequestData.Parse(args.Get("models"))
-            }
-
             Tools(args, fields)
+
+            let mode = args.Get("model-policy")
+            if mode != "" && mode != "unrestricted" && mode != "whitelist" {
+                throw Exception("Choose --model-policy unrestricted or whitelist")
+            }
+
+            if mode == "unrestricted" && args.Get("models") != "" {
+                throw Exception("Unrestricted models excludes --models")
+            }
+
+            if args.Get("models") != "" && mode != "whitelist" {
+                throw Exception("Whitelist setup requires --model-policy whitelist")
+            }
+
+            if mode == "unrestricted" || args.Get("models") != "" {
+                SetModels(fields, mode, mode == "unrestricted" ? JsonElement{}: RequestData.Parse(args.Get("models")))
+            }
 
             let value = J.Parse(J.Write(fields))
 
@@ -783,25 +842,15 @@ internal class OwnerSetup {
 
             if foreground {
                 Guide(args, fields, root)
-                fields["model_policy"] = args.Need("model-policy")
-            }
-
-            let selected = args.Get("model-policy", existing?.ModelPolicy ?? "")
-
-            if selected != "unrestricted" && selected != "whitelist" {
-                throw Exception(
-                    "Choose --model-policy unrestricted or whitelist; no model restriction is selected silently"
-                )
-            }
-
-            if selected == "unrestricted" {
-                if args.Get("models") != "" {
-                    throw Exception("Unrestricted models excludes --models")
-                }
-
-                fields.Remove("models")
-            } else if !fields.ContainsKey("models") {
+            } else if mode == "whitelist" && args.Get("models") == "" {
                 throw Exception("Whitelist setup requires --models JSON")
+            } else if existing == nil &&
+                mode == "" &&
+                !args
+                .Get("allowed-tools")
+                .TrimStart()
+                .StartsWith("[", StringComparison.Ordinal) {
+                throw Exception("Choose --model-policy unrestricted or whitelist, or per-tool --allowed-tools JSON")
             }
 
             let candidate = J.Write(fields)
@@ -962,7 +1011,7 @@ internal class OwnerSetup {
                 "file_count": File.Exists(template) ? 3: 2,
                 "policy_changed": before != text,
                 "workflow_changed": oldWorkflow == "",
-                "model_policy": policy.ModelPolicy
+                "policy_version": 3
             }
         }
 

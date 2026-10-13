@@ -23,6 +23,10 @@ Do not infer support for another platform, forge or harness.
 Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
 repository. Preserve existing checks and customization. Review the generated policy
 and pinned workflow, verify configuration, and commit it before approving tasks.
+Setup writes version 3 with models and efforts inside each allowed tool. A tool
+without models allows any model. Version 2 remains readable with its original
+model permissions. Update the coordinator pin before committing a version 3 policy.
+Older coordinators reject version 3. Use per-tool model choices in owner setup.
 Initialize access once, approve the issue, then trust the donor or grant that issue.
 Never grant access merely because someone requested it. In `manual` eligibility,
 trust has no effect. Grant each issue with `tokate access grant LOGIN N`.

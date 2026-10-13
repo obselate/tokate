@@ -168,7 +168,10 @@ internal class CliDiscovery {
                 "New setup did not default to task-scoped trusted access"
             )
             Check.That(
-                policy["models"] == nil && Check.Text(policy["model_policy"]) == "unrestricted",
+                Check.Text(policy["version"]) == "3" &&
+                    policy["models"] == nil &&
+                    policy["model_policy"] == nil &&
+                    policy["allowed_tools"]?[0]?["models"] == nil,
                 "Unrestricted setup silently restricted models"
             )
             Check.That(
@@ -329,6 +332,63 @@ internal class CliDiscovery {
                 !File.Exists(Path.Combine(obsolete, ".github/tokate.json")),
                 "Unsupported GitHub policy was rewritten"
             )
+            let legacy = Check.Json(original)
+            legacy["version"] = JsonValue.Create(2)
+            legacy["model_policy"] = JsonValue.Create("whitelist")
+            legacy["models"] = Check.Json("{\"model-a\":[\"high\"]}")
+            legacy["allowed_tools"] = Check.Json(
+                "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
+            )
+            Publish(flow, legacy.ToJsonString())
+            File.WriteAllText(policyPath, legacy.ToJsonString())
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            let migrated = Check.Json(File.ReadAllText(policyPath))
+            Check.That(
+                Check.Text(migrated["version"]) == "3" &&
+                    migrated["models"] == nil &&
+                    migrated["model_policy"] == nil &&
+                    migrated["allowed_tools"]?[0]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString() &&
+                    migrated["allowed_tools"]?[1]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString(),
+                "Version 2 migration changed model permissions"
+            )
+            Publish(flow, File.ReadAllText(policyPath))
+            let routes = "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"claude-opus-5-5\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
+            flow.Call(
+                []string{"init", "owner/project", "--path", root, "--allowed-tools", routes, "--non-interactive"},
+                owner: true
+            )
+            let routed = File.ReadAllText(policyPath)
+            Check.That(Check.Json(routed)["allowed_tools"]?.ToJsonString() == routes, "Init lost per-tool model maps")
+            Publish(flow, routed)
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            Check.That(File.ReadAllText(policyPath) == routed, "Repeat changed per-tool models")
+            let modelEditToken = flow.Temp.Env["GH_TOKEN"]
+            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            let perTool = TestTerminal.Pty(
+                binary,
+                []string{
+                    "init",
+                    "owner/project",
+                    "--path",
+                    root,
+                    "--allowed-tools",
+                    routes,
+                    "--eligibility",
+                    "manual",
+                    "--plain"
+                },
+                flow.Temp,
+                80,
+                "3\n2\n2\nadd\nmodel-b\nhigh\n\n1\n2\n"
+            )
+            flow.Temp.Env["GH_TOKEN"] = modelEditToken
+            Check.Success(perTool)
+            let edited = Check.Json(File.ReadAllText(policyPath))
+            Check.That(
+                edited["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"claude-opus-5-5\":[\"high\"]}" &&
+                    edited["allowed_tools"]?[1]?["models"]?["model-b"]?.ToJsonString() == "[\"high\"]",
+                "Guided model editing changed another tool or lost the selected pair"
+            )
             Publish(flow, nil)
             let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
             Checkout(flow, interactiveRoot)
@@ -480,7 +540,9 @@ internal class CliDiscovery {
                 "Interactive setup did not accept times with units"
             )
             Check.That(
-                selected["models"]?["model-a"]?.ToJsonString() == "[\"high\",\"xhigh\"]" &&
+                Check.Text(selected["version"]) == "3" &&
+                    selected["models"] == nil &&
+                    selected["allowed_tools"]?[0]?["models"] == nil &&
                     selected["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]" &&
                     selected["required_checks"]?.ToJsonString() == "[\"verify\",\"build\"]",
                 "Interactive setup lost selected models, commands or check names"
@@ -680,7 +742,8 @@ internal class CliDiscovery {
                 TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "1\n": "")
                 Check.Success(options)
                 if flag == "" {
-                    Check.Contains(options.Output, "Claude Code (Subscription), aider")
+                    Check.Contains(options.Output, "Claude Code (Subscription): model-a / high")
+                    Check.Contains(options.Output, "aider (openrouter): model-a / high")
                     Check.That(!options.Output.Contains('{'), "Setup result showed raw explicit configuration")
                 }
                 Check.That(
@@ -698,18 +761,20 @@ internal class CliDiscovery {
                 )
                 let configured = Check.Json(File.ReadAllText(Path.Combine(optionRoot, ".github/tokate.json")))
                 Check.That(
-                    Check.Text(configured["model_policy"]) == "whitelist" &&
-                        configured["models"]?.ToJsonString() == "{\"model-a\":[\"high\"]}" && Check.Text(
-                        configured["eligibility"]
-                    ) == "manual" &&
-                        Check.Text(configured["target_branch"]) == "release" && Check.Text(
-                        configured["max_seconds"]
-                    ) == "1200" &&
-                        Check.Text(configured["reservation_seconds"]) == "1800" &&
+                    Check.Text(configured["version"]) == "3" &&
+                        configured["model_policy"] == nil &&
+                        configured["models"] == nil &&
+                        configured["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\"]}" &&
+                        Check.Text(configured["eligibility"]) == "manual" && Check.Text(
+                        configured["target_branch"]
+                    ) == "release" &&
+                        Check.Text(configured["max_seconds"]) == "1200" && Check.Text(
+                        configured["reservation_seconds"]
+                    ) == "1800" &&
                         configured["verification"]?.ToJsonString() == "[[\"/usr/bin/true\"]]" &&
                         configured["required_checks"]?.ToJsonString() == "[\"verify\"]" &&
                         configured["allowed_tools"]?.ToJsonString() ==
-                    "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]" &&
+                    "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"model-a\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\",\"models\":{\"model-a\":[\"high\"]}}]" &&
                         Check.Text(configured["pr_text"]) == "Option notes" && Check.Text(
                         configured["close_message"]
                     ) == "Request access.",
@@ -771,7 +836,10 @@ internal class CliDiscovery {
                 Check.Text(guidedPolicy["max_seconds"]) == "600" && Check.Text(
                     guidedPolicy["eligibility"]
                 ) == "trusted" &&
-                    Check.Text(guidedPolicy["model_policy"]) == "unrestricted" &&
+                    Check.Text(guidedPolicy["version"]) == "3" &&
+                    guidedPolicy["model_policy"] == nil &&
+                    guidedPolicy["models"] == nil &&
+                    guidedPolicy["allowed_tools"]?[0]?["models"] == nil &&
                     guidedPolicy["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]",
                 "Accepted owner workflow changed the reviewed policy"
             )

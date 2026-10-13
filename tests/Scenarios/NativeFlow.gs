@@ -330,6 +330,61 @@ internal partial class NativeFlow : NativeFixture {
             Commit("Malformed model policy fixture")
             Reject([]string{"policy", "owner/project"}, fixture[1])
         }
+        original["version"] = JsonValue.Create(3)
+        for invalid in[]string{
+            "null",
+            "true",
+            "[]",
+            "\"model\"",
+            "{}",
+            "{\"bad model\":[\"high\"]}",
+            "{\"model\":[]}",
+            "{\"model\":[null]}",
+            "{\"model\":[\"invalid\"]}",
+            "{\"model\":[\"high\"],\"model\":[\"low\"]}"
+        } {
+            original["allowed_tools"] = Check.Json(
+                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":" + invalid + "}]"
+            )
+            File.WriteAllText(path, original.ToJsonString())
+            Commit("Malformed per-tool models")
+            Call([]string{"policy", "owner/project"}, 1)
+            NoInference()
+            NoPr()
+        }
+
+        original["allowed_tools"] = Check.Json(
+            "[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"codex\",\"provider\":\"openai\"}]"
+        )
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Duplicate tool route")
+        Reject([]string{"policy", "owner/project"}, "Duplicate allowed tool")
+        original["allowed_tools"] = Check.Json(
+            "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt-6.1-sol\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"models\":{\"gpt-6-sol\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]"
+        )
+        for field in[]string{"models", "model_policy"} {
+            original[field] = field == "models" ? Check.Json("{}"): JsonValue.Create("unrestricted")
+            File.WriteAllText(path, original.ToJsonString())
+            Commit("Removed top-level model field")
+            Reject([]string{"policy", "owner/project"}, "Version 3 uses models inside allowed_tools")
+            original.AsObject().Remove(field)
+        }
+
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Valid per-tool policy")
+        let projected = Check.Envelope(Call([]string{"policy", "owner/project", "--json"}), "policy", "ok")
+        let policy = projected["data"]?["policy"] ?? throw Exception("Missing projected policy")
+        Check.That(
+            Check.Text(policy["version"]) == "3" &&
+                policy["models"] == nil &&
+                policy["model_policy"] == nil &&
+                policy["allowed_tools"]?[0]?["models"]?["gpt-6.1-sol"]?.ToJsonString() == "[\"high\"]" &&
+                policy["allowed_tools"]?[2]?["models"] == nil,
+            "Policy output lost per-tool permissions"
+        )
+        Call([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"})
+        Reject([]string{"select", "owner/project", "--model", "gpt-6-sol", "--effort", "high"}, "Model/effort pair")
+        Reject([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "low"}, "Model/effort pair")
     }
 
     internal func MissingFork() {

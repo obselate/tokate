@@ -448,7 +448,7 @@ internal class ClaudeCode {
                 throw Exception("Claude/anthropic is not allowed by the repository policy; no inference started.")
             }
 
-            policy.Validate(model, effort, 1)
+            policy.Validate("claude", "anthropic", model, effort, 1)
 
             if !Pair(model, effort) {
                 throw Exception("Unsupported native Claude model/effort pair; no inference started.")
@@ -470,7 +470,7 @@ internal class ClaudeCode {
                     model,
                     effort,
                     args.Need("claude-profile"),
-                    policy.AllowedModels(ModelPattern)
+                    policy.AllowedModels("claude", "anthropic", ModelPattern)
                 ),
                 "environment_controls": environment,
                 "managed_execution_enabled": true,

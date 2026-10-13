@@ -139,13 +139,55 @@ internal class PublicOutput {
             )
             result["close_message"] = Policy.CloseMessage(value)
 
-            let mode = J.Text(value, "model_policy")
+            if J.Number(value, "version") == 2 {
+                let mode = J.Text(value, "model_policy")
+                result["model_policy"] = mode == "" ? "whitelist": mode
+                for field in PolicyModels(J.Get(value, "models")) {
+                    result[field.Key] = field.Value
+                }
+            }
 
-            result["model_policy"] = mode == "" ? "whitelist": mode
+            for key in[]string{"verification", "required_checks", "protected_paths"} {
+                let items = J.Items(J.Get(value, key))
+                let rows = List[Object]()
 
+                for i in 0 ... Math.Min(64, items.Count) {
+                    rows.Add(items[i])
+                }
+
+                result[key] = rows
+                result[key + "_count"] = items.Count
+                Truncated = Truncated || items.Count > 64
+            }
+
+            let tools = J.Get(value, "allowed_tools")
+
+            if tools.ValueKind == JsonValueKind.Array {
+                let retained = List[Object]()
+                let entries = J.Items(tools)
+                for i in 0 ... Math.Min(64, entries.Count) {
+                    let tool = J.Select(entries[i], "harness,provider")
+                    if J.Number(value, "version") == 3 && J.Get(entries[i], "models")
+                        .ValueKind == JsonValueKind.Object {
+                        for field in PolicyModels(J.Get(entries[i], "models")) {
+                            tool[field.Key] = field.Value
+                        }
+                    }
+
+                    retained.Add(tool)
+                }
+
+                result["allowed_tools"] = retained
+                result["allowed_tools_count"] = entries.Count
+                Truncated = Truncated || entries.Count > 64
+            }
+
+            return result
+        }
+
+        private func PolicyModels(source JsonElement) Dictionary[string, Object?] {
             let models = map[string, Object?]{}
             let effortCounts = map[string, Object?]{}
-            let source = J.Get(value, "models")
             var count int32
 
             if source.ValueKind == JsonValueKind.Object {
@@ -168,29 +210,9 @@ internal class PublicOutput {
             }
 
             Truncated = Truncated || count > 64
-            result["models"] = models
+            let result = map[string, Object?]{"models": models}
             result["model_count"] = count
             result["model_effort_counts"] = effortCounts
-
-            for key in[]string{"verification", "required_checks", "protected_paths"} {
-                let items = J.Items(J.Get(value, key))
-                let rows = List[Object]()
-
-                for i in 0 ... Math.Min(64, items.Count) {
-                    rows.Add(items[i])
-                }
-
-                result[key] = rows
-                result[key + "_count"] = items.Count
-                Truncated = Truncated || items.Count > 64
-            }
-
-            let tools = J.Get(value, "allowed_tools")
-
-            if tools.ValueKind == JsonValueKind.Array {
-                result["allowed_tools"] = Rows(tools, "harness,provider")
-                result["allowed_tools_count"] = J.Count(tools)
-            }
 
             return result
         }
