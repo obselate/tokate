@@ -110,7 +110,7 @@ internal class RepositoryIdentityChecks {
             flow.Reload()
             flow.State["repository_folders"] = Check.Json("{\"owner/other\":\"other\"}")
             flow.Save()
-            Check.Envelope(flow.Call(WorkArgs(flow, "owner/other"), 1), "work", "error", "command_failed")
+            Check.Envelope(flow.Call(WorkArgs(flow, "owner/other"), 1), "work", "error", "invalid_state")
             flow.NoInference()
             let claimed = Check.Envelope(flow.Acquire(WorkArgs(flow, "owner/project", "claim")), "claim", "ok")
             let run = Check.Text(claimed["data"]?["run"])
