@@ -288,7 +288,7 @@ internal class OwnerSetup {
             )
         }
 
-        private func Guide(args Args, fields map[string, Object?], root string) {
+        private func Guide(args Args, fields map[string, Object?], root string, notice string) {
             let repo = args.Need("repo")
             let initial = J.Parse(J.Write(fields))
 
@@ -496,7 +496,7 @@ internal class OwnerSetup {
                 let value = J.Parse(J.Write(fields))
                 let action = WizardScreen.Choose(
                     "Review project setup",
-                    repo + "\n\n" + Report(value),
+                    repo + "\n\n" + Report(value) + (notice == "" ? "": "\n\n" + notice),
                     []string{
                         "Create policy files",
                         "Change checks, times or PR settings",
@@ -676,27 +676,20 @@ internal class OwnerSetup {
                 !Console.IsInputRedirected
             let oldWorkflow = File.Exists(workflow) ? File.ReadAllText(workflow): ""
             let yaml = oldWorkflow == "" ? CoordinatorSetup.Resolve(): oldWorkflow
-            let health = OwnerHealth()
-            health.Inspect(repo, info, actionsOnly: true, workflow: yaml)
+            let uses = Regex.Matches(
+                yaml,
+                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+            )
             let problems = List[string]()
-            for check in health.Checks {
+            for check in OwnerHealth().InspectActions(repo, uses.Count == 1 ? uses[0].Groups[1].Value: "") {
                 let row = check as Dictionary[string, Object?]
                 if row != nil && row["status"] as string == "problem" {
                     problems.Add(row["message"] as string ?? "")
                 }
             }
-            if problems.Count > 0 {
-                let message = String.Join("\n\n", problems)
-                if foreground {
-                    WizardScreen.Choose(
-                        "GitHub Actions settings",
-                        message,
-                        []string{"Cancel"},
-                        "Change the listed settings in GitHub, then run init again.",
-                        selected: 1
-                    )
-                }
-                throw CliFailure("command_failed", message)
+            let notice = String.Join("\n\n", problems)
+            if notice != "" && !foreground {
+                Terminal.Message(notice, "yellow", true)
             }
             let permissionsPath = "repos/" + repo + "/actions/permissions/workflow"
             let permissions = GitHub.Api(permissionsPath)
@@ -872,7 +865,7 @@ internal class OwnerSetup {
             }
 
             if foreground {
-                Guide(args, fields, root)
+                Guide(args, fields, root, notice)
             } else if mode == "whitelist" && args.Get("models") == "" {
                 throw Exception("Whitelist setup requires --models JSON")
             } else if existing == nil &&

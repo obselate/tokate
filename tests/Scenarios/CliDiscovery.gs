@@ -179,12 +179,10 @@ internal class CliDiscovery {
                 flow.State["selected_actions"] = Check.Map("patterns_allowed", patterns)
                 flow.Save()
                 flow.ResetTraffic()
-                let blocked = flow.Call(args, 1, true)
-                Check.Contains(blocked.Error, "Settings > Actions > General > Actions permissions")
-                Check.Contains(
-                    blocked.Error,
-                    setting == "disabled" ? "Enable Actions": sharedWorkflow + String('a', 40)
-                )
+                let warned = flow.Call(args, owner: true)
+                Check.Contains(warned.Output, "Commit and push")
+                Check.Contains(warned.Error, "Settings > Actions > General > Actions permissions")
+                Check.Contains(warned.Error, setting == "disabled" ? "Enable Actions": sharedWorkflow + String('a', 40))
                 flow.Reload()
                 var permissionsReads int32
                 var selectedReads int32
@@ -205,32 +203,49 @@ internal class CliDiscovery {
                 if setting == "stale" {
                     let jsonArgs = List[string](args)
                     jsonArgs.Add("--json")
-                    let report = Check.Envelope(
-                        flow.Call(jsonArgs.ToArray(), 1, true),
-                        "init",
-                        "error",
-                        "command_failed"
-                    )
-                    Check.Contains(report.ToJsonString(), sharedWorkflow + String('a', 40))
+                    Directory.Delete(github, true)
+                    let json = flow.Call(jsonArgs.ToArray(), owner: true)
+                    let report = Check.Envelope(json, "init", "ok")
+                    Check.That(Check.Text(report["data"]?["applied"]) == "true", "Actions warning prevented JSON setup")
+                    Check.Contains(json.Error, "Settings > Actions > General > Actions permissions")
+                    Check.Contains(json.Error, sharedWorkflow + String('a', 40))
+                    Directory.Delete(github, true)
                     let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
                     env["GH_TOKEN"] = "fixture-owner"
                     let screen = TestProcess.Run(
                         "/usr/bin/script",
-                        []string{"-q", "-e", "-c", "'" + binary + "' init --path '" + root + "' --plain", "/dev/null"},
+                        []string{
+                            "-q",
+                            "-e",
+                            "-c",
+                            "'" +
+                                binary +
+                                "' init --path '" +
+                                root +
+                                "' --plain --model-policy unrestricted --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'",
+                            "/dev/null"
+                        },
                         env,
-                        "\n"
+                        "\n1\n2\n"
                     )
-                    Check.That(screen.Code == 1, screen.Output + screen.Error)
-                    Check.Contains(screen.Output, "GitHub Actions settings")
+                    Check.Success(screen)
+                    Check.Contains(screen.Output, "Review project setup")
                     Check.Contains(screen.Output, "Settings > Actions > General > Actions permissions")
                     Check.Contains(screen.Output, sharedWorkflow + String('a', 40))
-                    Check.That(!screen.Output.Contains("Who can contribute?"), "Blocked Actions reached policy setup")
+                    Check.Contains(screen.Output, "Who can contribute?")
+                    Check.Contains(screen.Output, "Commit and push")
                 }
-                Check.That(!Directory.Exists(github), "Blocked Actions wrote setup files")
+                Check.That(
+                    File.Exists(Path.Combine(github, "tokate.json")) && File.Exists(
+                        Path.Combine(github, "workflows/tokate-coordinator.yml")
+                    ),
+                    "Actions warning prevented setup files"
+                )
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(call["method"]) == "GET", "Init changed blocked Actions settings")
                 }
+                Directory.Delete(github, true)
             }
             flow.State["selected_actions"] = Check.Map(
                 "patterns_allowed",
@@ -307,12 +322,12 @@ internal class CliDiscovery {
             )
             File.WriteAllText(workflowPath, yaml.Replace(String('a', 40), String('c', 40)))
             Check.Contains(
-                flow.Call([]string{"init", "--path", root, "--non-interactive"}, 1, true).Error,
+                flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true).Error,
                 sharedWorkflow + String('c', 40)
             )
             Check.That(
                 File.ReadAllText(workflowPath) == yaml.Replace(String('a', 40), String('c', 40)),
-                "Blocked Actions changed an existing workflow"
+                "Actions warning changed an existing workflow"
             )
             File.WriteAllText(workflowPath, yaml)
             flow.Reload()
