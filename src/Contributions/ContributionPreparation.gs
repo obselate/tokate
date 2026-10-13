@@ -472,16 +472,7 @@ internal class ContributionPreparation {
 
                     ApiTransport.PollWait()
                 }
-            } catch (error ApiDeadlineException) {
-                Terminal.Message(
-                    "Claim pending. Run: " +
-                        directory +
-                        "; resume explicitly with " +
-                        (run.Text("source") == "tokate" ? "work --run DIR or ": "") +
-                        "prepare --run DIR. If the Tokate workflow failed: " +
-                        ApiTransport.MutationRecovery
-                )
-            } finally {
+            } catch (error ApiDeadlineException) { } finally {
                 ApiTransport.EndDeadline()
             }
 
@@ -503,6 +494,18 @@ internal class ContributionPreparation {
                 Terminal.Message("Prepared contribution. Run: " + directory)
             } else {
                 PublicOutput.ResultData = PublicOutput.RunSummary(directory)
+                if let guidance = Submission.PendingWorkflow(directory, run) {
+                    Terminal.Message(guidance["action"]?.ToString() ?? "")
+                    return directory
+                }
+                Terminal.Message(
+                    "Claim pending. Run: " +
+                        directory +
+                        "; resume explicitly with " +
+                        (run.Text("source") == "tokate" ? "work --run DIR or ": "") +
+                        "prepare --run DIR. If the Tokate workflow failed: " +
+                        ApiTransport.MutationRecovery
+                )
                 if run.Text("source") == "tokate" {
                     PublicOutput.Actions.Add([]string{"tokate", "work", "--run", directory, "--json"})
                 }

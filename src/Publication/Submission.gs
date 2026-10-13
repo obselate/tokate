@@ -154,9 +154,14 @@ internal class Submission {
         }
 
         internal func Posted(repo string, issue int32, actor JsonElement, request JsonElement) bool {
+            return Comment(repo, issue, actor, request).ValueKind != JsonValueKind.Undefined
+        }
+
+        internal func Comment(repo string, issue int32, actor JsonElement, request JsonElement) JsonElement {
             RepositoryIdentity.PositiveId(actor)
 
             var count int32
+            var found JsonElement
 
             for page in 1 ... 21 {
                 let response = GitHub.Api(
@@ -217,6 +222,7 @@ internal class Submission {
                     }
 
                     count++
+                    found = canonical
                 }
 
                 if response.GetArrayLength() < 100 {
@@ -224,11 +230,99 @@ internal class Submission {
                         throw CliFailure("invalid_state", "Ambiguous duplicate request comments")
                     }
 
-                    return count == 1
+                    return found
                 }
             }
 
             throw CliFailure("invalid_state", "Request comment inspection exceeded its bounded history; no write made")
+        }
+
+        private let WorkflowGuidance Dictionary[string, Dictionary[string, Object?]?] = Dictionary[
+            string,
+            Dictionary[string, Object?]?
+        ]()
+
+        internal func ResetWorkflow() -> WorkflowGuidance.Clear()
+
+        internal func PendingWorkflow(directory string, run Data) Dictionary[string, Object?]? {
+            let claim = run.Text("state") == "claim_pending"
+            let path = Path.Combine(directory, "request.json")
+            if run.Number("pr") != 0 || (!claim && (run.Text("publication_uuid") == "" || !File.Exists(path))) {
+                return nil
+            }
+            let request = claim ? J.Get(run.Element(), "claim_request"): RequestData.FileData(path, 8192)
+            let key = run.Text("repo") + ":" + J.Text(request, "uuid")
+            var guidance Dictionary[string, Object?]?
+            if WorkflowGuidance.TryGetValue(key, out guidance) {
+                return guidance
+            }
+            WorkflowGuidance[key] = nil
+            try {
+                let repo = "repos/" + run.Text("repo")
+                let comment = Comment(run.Text("repo"), run.Number("issue"), J.Get(run.Element(), "donor_id"), request)
+                let created = J.Text(comment, "created_at")
+                if created == "" {
+                    return nil
+                }
+                let runs = GitHub.Api(
+                    repo +
+                        "/actions/workflows/tokate-coordinator.yml/runs?event=issue_comment&actor=" +
+                        Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
+                        "&created=" +
+                        Uri.EscapeDataString(">=" + created) + "&per_page=10"
+                )
+                var earliest JsonElement
+                var first = ""
+                for candidate in J.Items(J.Get(runs, "workflow_runs")) {
+                    let time = J.Text(candidate, "created_at")
+                    if String.CompareOrdinal(time, created) >= 0 &&
+                        (first == "" || String.CompareOrdinal(time, first) < 0) {
+                        earliest = candidate
+                        first = time
+                    }
+                }
+                var message = ""
+                let conclusion = J.Text(earliest, "conclusion")
+                let failed = conclusion == "failure" || conclusion == "startup_failure"
+                if conclusion == "startup_failure" {
+                    message = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
+                } else if conclusion == "failure" {
+                    message = "Tokate workflow failed."
+                    let checks = GitHub.Api(
+                        repo + "/check-suites/" + J.Get(earliest, "check_suite_id").ToString() +
+                            "/check-runs?per_page=100"
+                    )
+                    for check in J.Items(J.Get(checks, "check_runs")) {
+                        let annotations = GitHub.Api(
+                            repo + "/check-runs/" + J.Get(check, "id").ToString() + "/annotations?per_page=100"
+                        )
+                        for annotation in J.Items(annotations) {
+                            if J.Text(annotation, "annotation_level") == "failure" {
+                                let text = J.Text(annotation, "message")
+                                message += " " + text.Substring(0, Math.Min(text.Length, 1024))
+                                break
+                            }
+                        }
+                        if message != "Tokate workflow failed." {
+                            break
+                        }
+                    }
+                } else if J.Text(earliest, "status") == "queued" || J.Text(earliest, "status") == "in_progress" {
+                    message = "Tokate coordinator is still running."
+                }
+                if message != "" {
+                    guidance = map[string, Object?]{
+                        "role": failed ? "owner": "wait",
+                        "action": message + " " + J.Text(earliest, "html_url") +
+                            (failed ? " " + ApiTransport.MutationRecovery: ""),
+                        "command": []string{}
+                    }
+                    WorkflowGuidance[key] = guidance
+                }
+                return guidance
+            } catch (error Exception) {
+                return nil
+            }
         }
 
         internal func Request(args Args) {

@@ -611,9 +611,15 @@ internal partial class Fixture {
             }
             return Answer(State["check_runs"] ?? Check.Map("total_count", runs.Count, "check_runs", runs))
         }
-        if tail.StartsWith("actions/runs?") {
+        if tail.StartsWith("actions/runs?") || tail.StartsWith("actions/workflows/tokate-coordinator.yml/runs?") {
             let runs = State["workflow_runs"]?.AsArray() ?? JsonArray()
             return Answer(Check.Map("total_count", runs.Count, "workflow_runs", CommentPage(runs)))
+        }
+        if tail.StartsWith("check-suites/") && tail.Contains("/check-runs?") {
+            return Answer(Check.Map("check_runs", State["coordinator_checks"] ?? JsonArray()))
+        }
+        if tail.StartsWith("check-runs/") && tail.Contains("/annotations?") {
+            return Answer(State["coordinator_annotations"] ?? JsonArray())
         }
         if tail.StartsWith("commits/") && tail.Contains("/status?") {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))
@@ -738,6 +744,8 @@ internal partial class Fixture {
                 let comment = Check.Map(
                     "id",
                     100 + count,
+                    "created_at",
+                    "2026-10-12T00:00:00Z",
                     "body",
                     Check.Text(body["body"]),
                     "user",
