@@ -115,7 +115,8 @@ to migrate and re-approve open tasks after the policy is merged.
 Approvals now bind canonical task fields after version 2 conversion. Existing
 approvals with the old whole-text digest become stale once after upgrade.
 Re-approve open tasks. Version 2 receipts and saved runs still verify under current
-approval authority. The three version 3 slices ship in one release.
+approval authority. PRs published and runs saved before the upgrade no longer verify
+or resume, and re-approval does not restore them.
 
 ## Approve an issue and donor
 

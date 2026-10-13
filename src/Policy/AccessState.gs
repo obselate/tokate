@@ -87,8 +87,8 @@ internal class AccessState {
     }
 
     shared {
-        internal func Mode(approval JsonElement) string {
-            let mode = J.Text(approval, "eligibility")
+        internal func Mode(policy JsonElement) string {
+            let mode = J.Text(policy, "eligibility")
             return mode == "manual" ? "trusted": mode
         }
 

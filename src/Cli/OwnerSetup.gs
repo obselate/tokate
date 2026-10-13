@@ -996,11 +996,14 @@ internal class OwnerSetup {
             )
 
             let changed = before != text || oldWorkflow == ""
-            let taskChanged = upstream != "" && Policy(upstream).Digest != policy.Digest
+            let taskChanged = existing != nil && existing.Digest != policy.Digest
             if taskChanged {
+                Terminal.Message("Task fields changed.", "yellow", true)
+            }
+
+            if affected.Count > 0 {
                 Terminal.Message(
-                    "Task fields changed. Re-approve these issues after the policy change is merged: " +
-                        (affected.Count == 0 ? "none": String.Join(", ", affected)),
+                    "Re-approve these issues after the policy change is merged: " + String.Join(", ", affected),
                     "yellow",
                     true
                 )
@@ -1009,7 +1012,7 @@ internal class OwnerSetup {
                     Terminal.Message("tokate approve " + repo + "#" + issue.ToString(), "yellow", true)
                 }
             } else if upstream != "" {
-                Terminal.Message("Task fields are unchanged. Approvals stay valid.", "cyan", true)
+                Terminal.Message("Approvals stay valid.", "cyan", true)
             }
 
             Terminal.Message(
@@ -1027,7 +1030,7 @@ internal class OwnerSetup {
 
         private func ApprovalImpact(repo string, upstream string, policy Policy) List[int32] {
             let affected = List[int32]()
-            if upstream == "" || Policy(upstream).Digest == policy.Digest {
+            if upstream == "" {
                 return affected
             }
 

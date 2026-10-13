@@ -39,9 +39,9 @@ unlimited-coding limits, and reservation duration. Eligibility, formatting and
 descriptive edits keep approvals valid. Current eligibility still controls access.
 Init lists affected issues and approval commands. Re-approve them after merge.
 Old whole-text approvals become stale once after the version 3 release upgrade.
-Status names the owner command when task fields no longer match. After a
-coordinator pin change, confirm that Actions
-permits `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
+Status names the owner command when task fields no longer match. After a coordinator
+pin change, confirm that Actions permits
+`obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
 Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
 open PRs from them. Deleting `tokate/access` removes all trust and grants.
