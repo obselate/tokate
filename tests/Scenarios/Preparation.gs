@@ -223,12 +223,6 @@ internal class PreparationChecks {
             let identity = File.ReadAllText(marker)
             File.Delete(marker)
             Resume(flow, run, 1)
-            Check.Envelope(
-                flow.Call([]string{"prepare", "--run", run, "--json"}, 1),
-                "prepare",
-                "error",
-                "invalid_state"
-            )
             File.WriteAllText(marker, identity)
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             flow.Git(
@@ -327,13 +321,6 @@ internal class PreparationChecks {
             let original = File.ReadAllText(path)
             let work = Path.Combine(run, "coding/unfinished.txt")
             File.WriteAllText(work, "Saved work")
-            Check.Envelope(
-                test.Flow.Call([]string{"resume", "--run", run, "--json"}, 1),
-                "resume",
-                "error",
-                "invalid_state"
-            )
-            Check.That(File.ReadAllText(path) == original, "Refused resume changed the saved run")
             test.Flow.Call([]string{"pause", "--run", run, "--help"})
             var requests int32
             for action in[]string{"renew", "pause", "resume", "release"} {

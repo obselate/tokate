@@ -30,7 +30,7 @@ internal class RequestData {
                 Unique(value)
                 return value
             } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message)
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
         }
 

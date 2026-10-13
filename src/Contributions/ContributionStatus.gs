@@ -19,13 +19,10 @@ internal class ContributionStatus {
         try {
             await read()
             return true
-        } catch (error CliFailure) {
-            return Unavailable(target, part, error)
-        } catch (error JsonException) {
-            return Unavailable(target, part, error)
-        } catch (error ApiDeadlineException) {
-            return Unavailable(target, part, error)
-        } catch (error Exception) when error.GetType() == typeof(Exception) {
+        } catch (error Exception) when error is CliFailure ||
+            error is JsonException ||
+            error is ApiDeadlineException ||
+            error.GetType() == typeof(Exception) {
             return Unavailable(target, part, error)
         }
     }
@@ -208,11 +205,9 @@ internal class ContributionStatus {
                     let holder = RepositoryIdentity.PositiveId(J.Get(reservation, "actor"))
                     row["holder_eligible"] = Access?.Allows(holder, mode, issue) == true
                 }
-            } catch (error CliFailure) {
-                Unavailable(row, "eligibility", error)
-            } catch (error JsonException) {
-                Unavailable(row, "eligibility", error)
-            } catch (error Exception) when error.GetType() == typeof(Exception) {
+            } catch (error Exception) when error is CliFailure || error is JsonException || error.GetType() == typeof(
+                Exception
+            ) {
                 Unavailable(row, "eligibility", error)
             }
         }
@@ -440,9 +435,9 @@ internal class ContributionStatus {
                 draft["receipt"] = J.Get(receipt, "incomplete")
                     .ValueKind == JsonValueKind.True ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
             }
-        } catch (error CliFailure) { } catch (error JsonException) { } catch (
-            error Exception
-        ) when error.GetType() == typeof(Exception) { }
+        } catch (error Exception) when error is CliFailure || error is JsonException || error.GetType() == typeof(
+            Exception
+        ) { }
 
         if policy.ValueKind == JsonValueKind.Object {
             Observe(draft, "checks", async () -> CheckHead(repo, sha, policy, draft))
@@ -757,8 +752,7 @@ internal class ContributionStatus {
             }
 
             for item in drafts {
-                let draft = item as Dictionary[string, Object?] ??
-                    throw InvalidOperationException("Invalid status draft")
+                let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
 
                 if Text(draft, "state") == "closed" {
                     continue
@@ -841,7 +835,7 @@ internal class ContributionStatus {
         }
 
         for item in drafts {
-            let draft = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status draft")
+            let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
 
             if Text(draft, "state") != "closed" {
                 continue
@@ -960,7 +954,7 @@ internal class ContributionStatus {
                 async () -> {
                     Result["requests_truncated"] = AccessState.Pending(
                         repo,
-                        Access ?? throw InvalidOperationException("Missing access"),
+                        Access ?? throw Exception("Missing access"),
                         pending,
                         issue,
                         bounded: true
@@ -1043,8 +1037,7 @@ internal class ContributionStatus {
                         Result["requests_status"] = "stale"
 
                         for item in Work {
-                            let row = item as Dictionary[string, Object?] ??
-                                throw InvalidOperationException("Invalid status work")
+                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
 
                             row["eligibility_status"] = "stale"
                             row["state"] = "stale_remote_data"
@@ -1062,7 +1055,7 @@ internal class ContributionStatus {
         var stale = Text(Result, "access_status") == "stale"
 
         for item in Work {
-            let row = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status work")
+            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
             stale = stale || Text(row, "remote_status") == "stale" || Text(row, "state") == "stale_remote_data"
         }
 
@@ -1080,11 +1073,10 @@ internal class ContributionStatus {
         Result["work_observed"] = Work.Count
 
         for item in Work {
-            let row = item as Dictionary[string, Object?] ?? throw InvalidOperationException("Invalid status row")
+            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
             if row.ContainsKey("drafts") && row["drafts"] is List[Object]drafts {
                 for item in drafts {
-                    let draft = item as Dictionary[string, Object?] ??
-                        throw InvalidOperationException("Invalid status draft")
+                    let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
 
                     if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
                         draft["checks_observed"] = checks.Count
@@ -1113,17 +1105,15 @@ internal class ContributionStatus {
 
             try {
                 status.Read(args)
-            } catch (error CliFailure) {
-                status.Failure = status.Failure ?? error
-            } catch (error JsonException) {
+            } catch (error Exception) when error is CliFailure ||
+                error is JsonException ||
+                error is ApiDeadlineException ||
+                error.GetType() == typeof(Exception) {
                 status.Failure = status.Failure ??
-                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
-            } catch (error ApiDeadlineException) {
-                status.Failure = status.Failure ??
-                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
-            } catch (error Exception) when error.GetType() == typeof(Exception) {
-                status.Failure = status.Failure ??
-                    CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                    (
+                    error as CliFailure ??
+                        CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                )
             }
 
             if status.Failure != nil {
@@ -1157,8 +1147,7 @@ internal class ContributionStatus {
                         PublicOutput
                         .RunSummary(latest.Location).TryGetValue("next", out next) {
                         for item in status.Work {
-                            let row = item as Dictionary[string, Object?] ??
-                                throw InvalidOperationException("Invalid status work")
+                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
                             if status.Text(row, "state") == "claim_accepted" &&
                                 row["reservation"] is Dictionary[string, Object?]reservation &&
                                 status.Text(reservation, "actor") == J.Get(latest.Value, "donor_id").ToString() {

@@ -186,7 +186,7 @@ Keep saved work and inspect current state before any explicit next action.
 | `invalid_state` | `Ambiguous or incomplete fork discovery` or `Incomplete fork discovery after 60 seconds` | Select `--fork DONOR/NAME` explicitly in a fresh preparation. |
 | `invalid_state` | Malformed coordination data, unsafe continuation paths or changed capture evidence | Preserve the run and inspect the indicated data. Do not edit authority or evidence to bypass validation. |
 | `stale_approval` | `Saved run has stale coordination authority`, `Handoff source or approval changed` or `Synchronization target moved` | Inspect `tokate status --run DIR --json`. The owner must review changed authority or issue a fresh exact synchronization grant. |
-| `stale_approval` | `Selected upstream repository identity changed` or `Saved fork repository identity changed` | Inspect the original repository and fork before further work. |
+| `stale_approval` | `Saved fork repository identity changed` | Inspect the original repository and fork before further work. |
 | `authentication_required` | `Active GitHub account differs from the saved donor` | Use the original donor account and inspect `tokate status --run DIR --json`. |
 | `command_failed` | Required remote evidence could not be read or saved data could not be written | Inspect partial status and the remote or file access failure before an explicit next action. |
 

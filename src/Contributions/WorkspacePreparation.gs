@@ -381,18 +381,11 @@ internal class WorkspacePreparation {
                 run.Fields["fork_creation_attempted"] = true
                 run.Save(directory)
 
-                var created JsonElement
                 try {
-                    created = GitHub.Api(
+                    let created = GitHub.Api(
                         "repos/" + run.Text("repo") + "/forks",
                         map[string, Object?]{"name": head.Split('/')[1]}
                     )
-                } catch (error CliFailure) {
-                    run.Fields["fork_creation_error"] = error.Message
-                    run.Save(directory)
-                }
-
-                if created.ValueKind != JsonValueKind.Undefined {
                     RepositoryAccess.ValidateRepository(
                         run.Text("repo"),
                         head,
@@ -403,6 +396,9 @@ internal class WorkspacePreparation {
 
                     run.Fields["preparation_head_id"] = RepositoryIdentity.PositiveId(J.Get(created, "id"))
 
+                    run.Save(directory)
+                } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
+                    run.Fields["fork_creation_error"] = error.Message
                     run.Save(directory)
                 }
             }
@@ -632,22 +628,10 @@ internal class WorkspacePreparation {
                 ): checkout
 
                 Owned(source, run)
-            } catch (error CliFailure) {
-                throw CliFailure(
-                    "invalid_state",
-                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
-                )
-            } catch (error IOException) {
-                throw CliFailure(
-                    "invalid_state",
-                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
-                )
-            } catch (error UnauthorizedAccessException) {
-                throw CliFailure(
-                    "invalid_state",
-                    "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."
-                )
-            } catch (error Exception) when error.GetType() == typeof(Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error.GetType() == typeof(Exception) {
                 throw CliFailure(
                     "invalid_state",
                     "Unidentified isolated checkout; inspect its preparation marker and use its original saved run. Workspace preserved."

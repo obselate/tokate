@@ -96,9 +96,10 @@ internal class AttemptContinuation {
                         Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
                         ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before preparation."
                 }
-            } catch (error CliFailure) { } catch (error JsonException) { } catch (
-                error ApiDeadlineException
-            ) { } catch (error Exception) when error.GetType() == typeof(Exception) { }
+            } catch (error Exception) when error is CliFailure ||
+                error is JsonException ||
+                error is ApiDeadlineException ||
+                error.GetType() == typeof(Exception) { }
 
             return next
         }
