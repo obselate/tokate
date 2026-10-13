@@ -28,9 +28,6 @@ internal class OwnerHealth {
             }
         }
         Checks.Add(row)
-        if !PublicOutput.Enabled {
-            Console.WriteLine(Terminal.Clean(name + ": " + status + " - " + message.Replace('\n', ' ')))
-        }
     }
 
     private suspend func Read(name string, read async () -> void) {
@@ -129,73 +126,7 @@ internal class OwnerHealth {
         )
         let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
-        Read(
-            "actions",
-            async () -> {
-                let permissions = GitHub.Api("repos/" + repo + "/actions/permissions")
-                let enabled = J.Bool(permissions, "enabled")
-                let allowed = J.Text(permissions, "allowed_actions")
-                Add(
-                    "actions",
-                    enabled ? "ok": "problem",
-                    "Actions " +
-                        (enabled ? "enabled": "disabled") +
-                        ", allowed_actions " +
-                        allowed +
-                        "." +
-                        (enabled ? "": " Enable Actions in " + settings + " > Actions permissions."),
-                    J.Select(permissions, "enabled,allowed_actions"),
-                    enabled ? []string{}: openSettings
-                )
-                if !enabled {
-                    return
-                }
-                var permitted = allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
-                var blocked bool
-                let patterns = List[string]()
-                if allowed == "selected" {
-                    let selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
-                    let values = J.Get(selected, "patterns_allowed")
-                    if values.ValueKind != JsonValueKind.Array {
-                        throw Exception("Invalid selected Actions patterns")
-                    }
-                    for pattern in J.Items(values) {
-                        if pattern.ValueKind != JsonValueKind.String {
-                            throw Exception("Invalid selected Actions pattern")
-                        }
-                        let value = pattern.GetString() ?? ""
-                        patterns.Add(value)
-                        let deny = value.StartsWith("!")
-                        let matches = pin != "" && Regex.IsMatch(
-                            "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin,
-                            "^" + Regex.Escape(deny ? value.Substring(1): value).Replace("\\*", ".*") + "$",
-                            RegexOptions.IgnoreCase
-                        )
-                        blocked = blocked || (deny && matches)
-                        permitted = permitted || (!deny && matches)
-                    }
-                }
-                permitted = permitted && !blocked
-                Add(
-                    "workflow_allowlist",
-                    pin == "" ? "warning": permitted ? "ok": "problem",
-                    pin == "" ? "Pinned workflow is unknown. Repair the coordinator entry before checking its allowlist.": "Pinned shared workflow " +
-                        (
-                        permitted ? "permitted.": "blocked. In " +
-                            settings +
-                            " > Actions permissions, allow obselate/tokate/.github/workflows/tokate-shared.yml@" +
-                            pin +
-                            "."
-                    ),
-                    map[string, Object?]{
-                        "pin": pin,
-                        "patterns_allowed": patterns,
-                        "permitted": pin == "" ? nil: permitted
-                    },
-                    pin != "" && !permitted ? openSettings: []string{}
-                )
-            }
-        )
+        InspectActions(repo, pin)
         Read(
             "workflow_permissions",
             async () -> {
@@ -387,12 +318,100 @@ internal class OwnerHealth {
         )
     }
 
+    internal func InspectActions(repo string, pin string) List[Object] {
+        let settings = "Settings > Actions > General"
+        let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
+        Read(
+            "actions",
+            async () -> {
+                let permissions = GitHub.Api("repos/" + repo + "/actions/permissions")
+                let enabled = J.Bool(permissions, "enabled")
+                let allowed = J.Text(permissions, "allowed_actions")
+                Add(
+                    "actions",
+                    enabled ? "ok": "problem",
+                    "Actions " +
+                        (enabled ? "enabled": "disabled") +
+                        ", allowed_actions " +
+                        allowed +
+                        "." +
+                        (enabled ? "": " Enable Actions in " + settings + " > Actions permissions."),
+                    J.Select(permissions, "enabled,allowed_actions"),
+                    enabled ? []string{}: openSettings
+                )
+                if !enabled {
+                    return
+                }
+                var permitted = allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
+                var blocked bool
+                let patterns = List[string]()
+                if allowed == "selected" {
+                    let selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
+                    let values = J.Get(selected, "patterns_allowed")
+                    if values.ValueKind != JsonValueKind.Array {
+                        throw Exception("Invalid selected Actions patterns")
+                    }
+                    for pattern in J.Items(values) {
+                        if pattern.ValueKind != JsonValueKind.String {
+                            throw Exception("Invalid selected Actions pattern")
+                        }
+                        let value = pattern.GetString() ?? ""
+                        patterns.Add(value)
+                        let deny = value.StartsWith("!")
+                        let matches = pin != "" && CoordinatorSetup.WorkflowMatches(
+                            deny ? value.Substring(1): value,
+                            "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
+                        )
+                        blocked = blocked || (deny && matches)
+                        permitted = permitted || (!deny && matches)
+                    }
+                }
+                permitted = permitted && !blocked
+                Add(
+                    "workflow_allowlist",
+                    pin == "" ? "warning": permitted ? "ok": "problem",
+                    pin == "" ? "Pinned workflow is unknown. Repair the coordinator entry before checking its allowlist.": "Pinned shared workflow " +
+                        (
+                        permitted ? "permitted.": "blocked. In " +
+                            settings +
+                            " > Actions permissions, allow obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                            pin +
+                            "."
+                    ),
+                    map[string, Object?]{
+                        "pin": pin,
+                        "patterns_allowed": patterns,
+                        "permitted": pin == "" ? nil: permitted
+                    },
+                    pin != "" && !permitted ? openSettings: []string{}
+                )
+            }
+        )
+        return Checks
+    }
+
     shared {
         internal func Run(args Args) int32 {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let health = OwnerHealth()
             PublicOutput.ResultData = map[string, Object?]{"scope": "owner", "repo": repo, "checks": health.Checks}
             health.Inspect(repo, GitHub.Api("repos/" + repo))
+            if !PublicOutput.Enabled {
+                for check in health.Checks {
+                    guard let row = check as Dictionary[string, Object?] else {
+                        continue
+                    }
+                    Console.WriteLine(
+                        Terminal.Clean(
+                            (row["check"] as string ?? "") +
+                                ": " +
+                                (row["status"] as string ?? "") +
+                                " - " +
+                                (row["message"] as string ?? "").Replace('\n', ' ')
+                        )
+                    )
+                }
+            }
             if let failure = health.Failure {
                 throw failure
             }
