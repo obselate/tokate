@@ -211,7 +211,7 @@ internal class TargetBranches {
                 1
             )
             if change != "deleted" {
-                Check.Contains(result.Error, "approve again")
+                Check.Contains(result.Error, "The owner must run: tokate approve owner/project#1")
             }
             Check.That(
                 File.ReadAllText(Path.Combine(run, "run.json")) == saved,
