@@ -9,15 +9,15 @@ import System.Text.RegularExpressions
 internal class Policy {
     internal var Value JsonElement
     internal var Digest string = ""
-    internal var ModelPolicy string = "whitelist"
+    internal var Tools JsonElement
     internal var Eligibility string = ""
 
     internal init(text string) {
         Value = J.Parse(text)
         Digest = Data.Hash(text)
         let version = J.Number(Value, "version")
-        if version != 2 {
-            throw Exception("Unsupported policy version; use the current version-2 policy")
+        if version != 2 && version != 3 {
+            throw Exception("Unsupported policy version; use version 2 or 3")
         }
 
         for key in[]string{"pr_text", "close_message", "target_branch"} {
@@ -79,65 +79,34 @@ internal class Policy {
             throw Exception("Policy requires approval_scope task and eligibility open, trusted or manual")
         }
 
-        var modes int32
-        var modelMaps int32
-
-        for field in Value.EnumerateObject() {
-            if field.Name == "model_policy" {
-                modes++
-                let mode = field.Value
-                if modes > 1 ||
-                    mode.ValueKind != JsonValueKind.String ||
-                    (mode.GetString() != "whitelist" && mode.GetString() != "unrestricted") {
-                    throw Exception("model_policy must be exactly whitelist or unrestricted, without duplicates")
-                }
-
-                ModelPolicy = mode.GetString() ?? ""
-            }
-
-            if field.Name == "models" {
-                modelMaps++
-            }
-        }
-
         let models = J.Get(Value, "models")
-        if modes > 0 && modelMaps > 1 {
-            throw Exception("Explicit model policy cannot contain duplicate models fields")
-        }
-
-        if ModelPolicy == "unrestricted" {
-            if models.ValueKind != JsonValueKind.Undefined &&
-                (models.ValueKind != JsonValueKind.Object || models.EnumerateObject().MoveNext()) {
-                throw Exception("Unrestricted model policy requires omitted models or an empty object")
+        let mode = J.Get(Value, "model_policy")
+        let unrestricted = J.Text(Value, "model_policy") == "unrestricted"
+        if version == 3 {
+            if models.ValueKind != JsonValueKind.Undefined || mode.ValueKind != JsonValueKind.Undefined {
+                throw Exception("Version 3 uses models inside allowed_tools, without top-level models or model_policy")
             }
-        } else if models.ValueKind != JsonValueKind.Object {
-            throw Exception("Policy models must map model names to effort arrays")
-        }
+        } else {
+            if mode.ValueKind != JsonValueKind.Undefined &&
+                (
+                mode.ValueKind != JsonValueKind.String ||
+                    (mode.GetString() != "whitelist" && mode.GetString() != "unrestricted")
+            ) {
+                throw Exception("model_policy must be exactly whitelist or unrestricted, without duplicates")
+            }
 
-        var count int32
-        if models.ValueKind == JsonValueKind.Object {
-            for model in models.EnumerateObject() {
-                if !Regex.IsMatch(model.Name, RequestData.ModelPattern) {
-                    throw Exception("Invalid model name")
+            if unrestricted {
+                if models.ValueKind != JsonValueKind.Undefined &&
+                    (models.ValueKind != JsonValueKind.Object || models.EnumerateObject().MoveNext()) {
+                    throw Exception("Unrestricted model policy requires omitted models or an empty object")
                 }
-
-                let efforts = J.Items(model.Value)
-                if efforts.Count == 0 {
-                    throw Exception("Each model needs allowed efforts")
-                }
-
-                for effort in efforts {
-                    if effort.ValueKind != JsonValueKind.String || !ValidEffort(effort.GetString() ?? "") {
-                        throw Exception("Invalid reasoning effort")
-                    }
-                }
-
-                count++
+            } else {
+                ValidateModels(models)
             }
         }
 
         let maxSeconds = J.Number(Value, "max_seconds")
-        if (ModelPolicy == "whitelist" && count == 0) || maxSeconds < 1 || maxSeconds > 86400 {
+        if maxSeconds < 1 || maxSeconds > 86400 {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
 
@@ -187,15 +156,97 @@ internal class Policy {
 
         let allowedTools = J.Items(J.Get(Value, "allowed_tools"))
         if allowedTools.Count == 0 {
-            throw Exception("Version 2 requires allowed_tools harness/provider pairs")
+            throw Exception("Policy requires allowed_tools harness/provider pairs")
         }
 
+        let converted = List[Object]()
+        let pairs = HashSet[string](StringComparer.Ordinal)
         for tool in allowedTools {
             if J.Text(tool, "harness") == "" || J.Text(tool, "provider") == "" {
                 throw Exception("Each allowed tool needs harness and provider")
             }
+
+            if version == 3 {
+                if !pairs.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider")) {
+                    throw Exception("Duplicate allowed tool harness/provider pair")
+                }
+
+                let toolModels = J.Get(tool, "models")
+                if toolModels.ValueKind != JsonValueKind.Undefined {
+                    ValidateModels(toolModels)
+                }
+
+                converted.Add(tool)
+            } else {
+                let pair = J.Select(tool, "harness,provider")
+                if !unrestricted {
+                    pair["models"] = models
+                }
+
+                converted.Add(pair)
+            }
+        }
+
+        Tools = J.Parse(J.Write(converted))
+    }
+
+    private func ValidateModels(models JsonElement) {
+        if models.ValueKind != JsonValueKind.Object {
+            throw Exception("Policy models must map model names to effort arrays")
+        }
+
+        var count int32
+        for model in models.EnumerateObject() {
+            if !Regex.IsMatch(model.Name, RequestData.ModelPattern) {
+                throw Exception("Invalid model name")
+            }
+
+            let efforts = J.Items(model.Value)
+            if efforts.Count == 0 {
+                throw Exception("Each model needs allowed efforts")
+            }
+
+            for effort in efforts {
+                if effort.ValueKind != JsonValueKind.String || !ValidEffort(effort.GetString() ?? "") {
+                    throw Exception("Invalid reasoning effort")
+                }
+            }
+
+            count++
+        }
+
+        if count == 0 {
+            throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
     }
+
+    internal func Version3() JsonElement {
+        let fields = map[string, Object?]{}
+        for field in Value.EnumerateObject() {
+            if field.Name != "models" && field.Name != "model_policy" {
+                fields[field.Name] = field.Value
+            }
+        }
+
+        fields["version"] = 3
+        fields["allowed_tools"] = Tools
+        return J.Parse(J.Write(fields))
+    }
+
+    internal func ToolModels(harness string, provider string) JsonElement {
+        for tool in J.Items(Tools) {
+            if J.Text(tool, "harness") == harness && J.Text(tool, "provider") == provider {
+                return J.Get(tool, "models")
+            }
+        }
+
+        return JsonElement{}
+    }
+
+    internal func Unrestricted(harness string, provider string) bool -> AllowsTool(harness, provider) && ToolModels(
+        harness,
+        provider
+    ).ValueKind == JsonValueKind.Undefined
 
     private func ValidEffort(effort string) bool {
         if Array.IndexOf("off minimal low medium high xhigh max ultra".Split(' '), effort) >= 0 {
@@ -210,15 +261,15 @@ internal class Policy {
             return false
         }
 
-        return J.Get(Value, "model_policy").ValueKind == JsonValueKind.String
+        return J.Number(Value, "version") == 3 || J.Get(Value, "model_policy").ValueKind == JsonValueKind.String
     }
 
-    internal func Allows(model string, effort string) bool {
-        if ModelPolicy == "unrestricted" {
+    internal func Allows(harness string, provider string, model string, effort string) bool {
+        if Unrestricted(harness, provider) {
             return true
         }
 
-        for item in J.Items(J.Get(J.Get(Value, "models"), model)) {
+        for item in J.Items(J.Get(ToolModels(harness, provider), model)) {
             if item.GetString() == effort {
                 return true
             }
@@ -227,19 +278,16 @@ internal class Policy {
         return false
     }
 
-    internal func AllowsModel(model string) bool -> ModelPolicy == "unrestricted" || J.Get(
-        J.Get(Value, "models"),
-        model
-    )
-        .ValueKind == JsonValueKind.Array
+    internal func AllowsModel(harness string, provider string, model string) bool ->
+    Unrestricted(harness, provider) || J.Get(ToolModels(harness, provider), model).ValueKind == JsonValueKind.Array
 
-    internal func AllowedModels(pattern string) List[string]? {
-        if ModelPolicy == "unrestricted" {
+    internal func AllowedModels(harness string, provider string, pattern string) List[string]? {
+        if Unrestricted(harness, provider) {
             return nil
         }
 
         let models = List[string]()
-        let entries = J.Get(Value, "models")
+        let entries = ToolModels(harness, provider)
         if entries.ValueKind == JsonValueKind.Object {
             for entry in entries.EnumerateObject() {
                 if Regex.IsMatch(entry.Name, pattern) {
@@ -260,7 +308,14 @@ internal class Policy {
         model != "unknown" &&
         effort != "unknown"
 
-    internal func Validate(model string, effort string, seconds int32, external bool = false) {
+    internal func Validate(
+        harness string,
+        provider string,
+        model string,
+        effort string,
+        seconds int32,
+        external bool = false
+    ) {
         if !Regex.IsMatch(model, external ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$") ||
             !ValidEffort(effort) {
             throw Exception("Invalid model name or reasoning effort")
@@ -270,7 +325,7 @@ internal class Policy {
             throw Exception("Tokate-managed execution requires a known model and supported effort control")
         }
 
-        if !Allows(model, effort) {
+        if !Allows(harness, provider, model, effort) {
             throw Exception("Model/effort pair is not allowed by the repository policy")
         }
 
@@ -285,9 +340,9 @@ internal class Policy {
             effort == "unknown" ||
             effort == "ultra" ||
             model == "unknown" ||
-            !Allows(model, effort) {
+            !Allows("pi", "local-chat-completions", model, effort) {
             throw Exception(
-                "Managed pi requires version 2, exact pi/local-chat-completions permission, an exact model and allowed reasoning effort"
+                "Managed pi requires exact pi/local-chat-completions permission, an exact model and allowed reasoning effort"
             )
         }
 
@@ -303,9 +358,9 @@ internal class Policy {
             effort == "unknown" ||
             effort == "ultra" ||
             model == "unknown" ||
-            !Allows(model, effort) {
+            !Allows("omp", provider, model, effort) {
             throw Exception(
-                "Managed OMP requires version 2, exact omp/" +
+                "Managed OMP requires exact omp/" +
                     provider +
                     " permission, an exact model and allowed reasoning effort"
             )
@@ -327,7 +382,7 @@ internal class Policy {
     internal func ValidateTools(tools JsonElement, source string = "external") {
         let declarations = J.Items(tools)
         if declarations.Count == 0 {
-            throw Exception("Version 2 needs a nonempty tool declaration")
+            throw Exception("Policy needs a nonempty tool declaration")
         }
 
         if source != "external" && source != "tokate" {
@@ -372,7 +427,14 @@ internal class Policy {
             } else if source == "tokate" && J.Text(tool, "harness") == "omp" {
                 ValidateOmp(J.Text(tool, "provider"), J.Text(tool, "model"), J.Text(tool, "effort"), 1)
             } else {
-                Validate(J.Text(tool, "model"), J.Text(tool, "effort"), 1, source == "external")
+                Validate(
+                    J.Text(tool, "harness"),
+                    J.Text(tool, "provider"),
+                    J.Text(tool, "model"),
+                    J.Text(tool, "effort"),
+                    1,
+                    source == "external"
+                )
             }
         }
     }
@@ -380,7 +442,7 @@ internal class Policy {
     internal func Providers(harness string) List[string] {
         let providers = List[string]()
 
-        for pair in J.Items(J.Get(Value, "allowed_tools")) {
+        for pair in J.Items(Tools) {
             if J.Text(pair, "harness") == harness && !providers.Contains(J.Text(pair, "provider")) {
                 providers.Add(J.Text(pair, "provider"))
             }
@@ -390,7 +452,7 @@ internal class Policy {
     }
 
     internal func AllowsTool(harness string, provider string) bool {
-        for pair in J.Items(J.Get(Value, "allowed_tools")) {
+        for pair in J.Items(Tools) {
             if J.Text(pair, "harness") == harness && J.Text(pair, "provider") == provider {
                 return true
             }

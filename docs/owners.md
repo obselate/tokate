@@ -43,8 +43,8 @@ Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work be
 7. On **Target branch**, press Enter to keep the default branch.
 8. On **GitHub Actions settings**, review the listed changes. Select **Apply** to make them or **Cancel** to stop setup.
 9. On **Who can contribute?**, select one access mode from the table below.
-10. On **Allowed models**, select **Any supported model** or **Choose allowed models**.
-11. In the model checklist, select the exact models and reasoning levels. Use Space to select, Enter to accept, or F2 to add a model.
+10. On **Allowed models**, select a tool if asked, then **Any supported model** or **Choose allowed models**.
+11. In the model checklist, select the exact models and reasoning levels for that tool. Use Space to select, Enter to accept, or F2 to add a model.
 12. On **Verification commands**, enter one test command at a time. Press Enter on a blank prompt to finish.
 13. Use repository-relative paths in each command. Tokate runs each command with `/bin/sh -c` from the repository root.
 14. On **Required GitHub checks**, select a check or enter exact CI check names separated by commas. Use real names from CI that already ran on the target branch.
@@ -86,6 +86,27 @@ Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work be
 | **Choose each time** | Donors with an issue grant. You approve each donor. |
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
+
+## Model permissions
+
+Setup writes policy version 3. Each `allowed_tools` entry may contain a `models`
+map from exact model names to effort arrays. Omit `models` to allow any model for
+that harness/provider pair. Version 3 has no top-level `models` or `model_policy`.
+
+```json
+{"harness": "claude", "provider": "anthropic", "models": {"claude-sonnet-5-5": ["high"]}}
+```
+
+Use **Review allowed models** to edit one tool. For noninteractive setup, pass the
+complete tool array with `--allowed-tools JSON`. The `--model-policy whitelist --models JSON` shortcut copies the same map to each selected tool.
+
+Version 2 remains readable. Its whitelist applies to every tool. Unrestricted
+version 2 allows any model for each tool. Existing receipts and saved runs keep
+these rules.
+
+Update the coordinator pin before committing a version 3 policy. An older
+coordinator rejects version 3. Follow the update steps below, then run `tokate init`
+to migrate and re-approve open tasks after the policy is merged.
 
 ## Approve an issue and donor
 

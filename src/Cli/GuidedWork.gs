@@ -91,7 +91,14 @@ internal class GuidedWork {
 
         private func Eligible(value JsonElement, policy Policy) bool ->
         DonorSelection.Supported(value) &&
-            (J.Text(value, "model") == "" || policy.Allows(J.Text(value, "model"), J.Text(value, "effort"))) &&
+            (
+            J.Text(value, "model") == "" || policy.Allows(
+                J.Text(value, "harness"),
+                J.Text(value, "provider"),
+                J.Text(value, "model"),
+                J.Text(value, "effort")
+            )
+        ) &&
             (policy.AllowsTool(J.Text(value, "harness"), J.Text(value, "provider")))
 
         internal func Profile(args Args, policy Policy) {
@@ -195,7 +202,7 @@ internal class GuidedWork {
 
                 labels.Clear()
 
-                if policy.ModelPolicy == "unrestricted" {
+                if policy.Unrestricted("claude", "anthropic") {
                     args.Values["--model"] = WizardScreen.Read(
                         "Claude Code model",
                         "Choose the exact model identifier.",
@@ -209,7 +216,7 @@ internal class GuidedWork {
                         help: "Choose an effort supported by your model. Use the lowest level that gives you enough reasoning time."
                     )
                 } else {
-                    for model in J.Get(policy.Value, "models").EnumerateObject() {
+                    for model in policy.ToolModels("claude", "anthropic").EnumerateObject() {
                         for level in J.Items(model.Value) {
                             let effort = level.GetString() ?? ""
                             if ClaudeCode.Pair(model.Name, effort) {
@@ -250,7 +257,9 @@ internal class GuidedWork {
 
                 try {
                     for entry in J.Items(J.Get(PiCatalog.Read(args.Need("node"), "", endpoint), "data")) {
-                        models.Add(J.Text(entry, "id"))
+                        if policy.AllowsModel("pi", "local-chat-completions", J.Text(entry, "id")) {
+                            models.Add(J.Text(entry, "id"))
+                        }
                     }
                 } catch (error CliFailure) { }
 
@@ -286,7 +295,7 @@ internal class GuidedWork {
 
                 for level in J.Items(J.Get(settings, "efforts")) {
                     let effort = level.GetString() ?? ""
-                    if policy.Allows(args.Need("model"), effort) {
+                    if policy.Allows("pi", "local-chat-completions", args.Need("model"), effort) {
                         efforts.Add(effort)
                     }
                 }
@@ -312,12 +321,16 @@ internal class GuidedWork {
 
                 labels.Clear()
 
-                if policy.ModelPolicy == "unrestricted" {
+                if policy.Providers("omp").Exists(provider -> policy.Unrestricted("omp", provider)) {
                     let selectors = List[string]()
 
                     try {
                         for entry in OmpRuntime.Models(args.Need("harness-path")) {
-                            if J.Text(entry, "kind") == "chat" && policy.AllowsTool("omp", J.Text(entry, "provider")) {
+                            if J.Text(entry, "kind") == "chat" && policy.AllowsModel(
+                                "omp",
+                                J.Text(entry, "provider"),
+                                J.Text(entry, "id")
+                            ) {
                                 selectors.Add(J.Text(entry, "selector"))
                             }
                         }
@@ -358,6 +371,15 @@ internal class GuidedWork {
                     )
 
                     for level in J.Items(J.Get(settings, "efforts")) {
+                        if !policy.Allows(
+                            "omp",
+                            selector.Substring(0, split),
+                            selector.Substring(split + 1),
+                            level.GetString() ?? ""
+                        ) {
+                            continue
+                        }
+
                         providers.Add(selector.Substring(0, split))
                         models.Add(selector.Substring(split + 1))
                         efforts.Add(level.GetString() ?? "")
@@ -372,7 +394,7 @@ internal class GuidedWork {
                         }
 
                         for effort in OmpRuntime.Efforts(entry) {
-                            if policy.Allows(J.Text(entry, "id"), effort) {
+                            if policy.Allows("omp", J.Text(entry, "provider"), J.Text(entry, "id"), effort) {
                                 providers.Add(J.Text(entry, "provider"))
                                 models.Add(J.Text(entry, "id"))
                                 efforts.Add(effort)
@@ -405,7 +427,7 @@ internal class GuidedWork {
 
                 for entry in CodexRuntime.Capabilities(args.Get("harness-path")) {
                     for effort in entry.Value {
-                        if policy.Allows(entry.Key, effort) {
+                        if policy.Allows("codex", "openai", entry.Key, effort) {
                             models.Add(entry.Key)
                             efforts.Add(effort)
                             labels.Add("OpenAI | Codex | Subscription | " + entry.Key + " / " + effort)

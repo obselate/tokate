@@ -112,12 +112,12 @@ internal class Cli {
             CliOption(
                 "models",
                 "JSON",
-                "Whitelist map of exact models to effort arrays; absent declares no effort control"
+                "Map of models to effort arrays copied to each selected tool; absent declares no effort control"
             ),
             CliOption(
                 "allowed-tools",
                 "TOOLS",
-                "Managed codex,claude,pi keeps external and OMP permissions; exact harness/provider pairs such as omp/openrouter replace the list"
+                "Tool names keep external and OMP permissions; exact harness/provider pairs or a JSON array with per-tool models replace the list"
             ),
             CliOption(
                 "eligibility",

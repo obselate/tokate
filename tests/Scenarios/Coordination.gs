@@ -118,54 +118,84 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
 
         internal func ModelPolicyModes(binary string) {
-            for mode in[]string{"whitelist", "unrestricted"} {
-                using let test = CoordinationFlow(binary)
-                test.Initialize(approve: false)
-                test.Flow.SetModelPolicy(mode, mode == "unrestricted" ? "omit": "")
-                test.Flow.Approve()
-                test.Claim()
-                let original = Check.Json(File.ReadAllText(test.Tools))
-                for index in 0 ... original.AsArray().Count {
-                    let changed = original.DeepClone()
-                    let tool = changed[index] ?? throw Exception("Missing declared tool")
-                    for field in[]string{"model", "effort", "harness", "provider"} {
-                        let value = tool[field]?.DeepClone()
-                        tool[field] = JsonValue.Create(field == "effort" ? "invalid": "unlisted-value")
-                        File.WriteAllText(test.Tools, changed.ToJsonString())
-                        if mode == "unrestricted" && field == "model" {
-                            continue
+            for version in[]int32{2, 3} {
+                for mode in[]string{"whitelist", "unrestricted"} {
+                    using let test = CoordinationFlow(binary)
+                    test.Initialize(approve: false)
+                    test.Flow.SetModelPolicy(mode, mode == "unrestricted" ? "omit": "")
+                    if version == 3 {
+                        let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
+                        let policy = Check.Json(File.ReadAllText(path))
+                        policy["version"] = JsonValue.Create(3)
+                        policy.AsObject().Remove("models")
+                        policy.AsObject().Remove("model_policy")
+                        if mode == "whitelist" {
+                            let pairs = policy["allowed_tools"] ?? throw Exception("Missing allowed tools")
+                            let codex = pairs[0] ?? throw Exception("Missing Codex tool")
+                            let claude = pairs[1] ?? throw Exception("Missing Claude tool")
+                            codex["models"] = Check.Json("{\"gpt-6.1-sol\":[\"high\",\"unknown\"]}")
+                            claude["models"] = Check.Json("{\"claude-sonnet-4-6\":[\"high\",\"unknown\"]}")
                         }
-                        test.Prepare(code: 1)
-                        tool[field] = value
+
+                        File.WriteAllText(path, policy.ToJsonString())
+                        test.Flow.Commit("Owner selects per-tool models")
                     }
-                }
-                File.WriteAllText(test.Tools, original.ToJsonString())
-                let fork = Path.Combine(test.Flow.Bin, "fork")
-                let branches = test.Flow.Git("-C", fork, "show-ref", "--heads")
-                test.Prepare(code: 1, seconds: "3601")
-                Check.That(
-                    !Directory.Exists(Path.Combine(test.Flow.Temp.Root, "runs")),
-                    "Forbidden budget created a saved run"
-                )
-                test.Flow.Reload()
-                Check.That(
-                    test.Flow.State["fork_creations"] == nil && test.Flow.Git(
-                        "-C",
-                        fork,
-                        "show-ref",
-                        "--heads"
-                    ) == branches,
-                    "Forbidden budget created a fork or changed a branch"
-                )
-                test.Prepare("tokate", 1)
-                if mode == "unrestricted" {
-                    let first = original[0] ?? throw Exception("Missing first tool")
-                    let second = original[1] ?? throw Exception("Missing second tool")
-                    first["model"] = JsonValue.Create("unlisted-claude-model")
-                    second["model"] = JsonValue.Create("unlisted-codex-model")
+
+                    test.Flow.Approve()
+                    test.Claim()
+                    let original = Check.Json(File.ReadAllText(test.Tools))
+                    for index in 0 ... original.AsArray().Count {
+                        let changed = original.DeepClone()
+                        let tool = changed[index] ?? throw Exception("Missing declared tool")
+                        for field in[]string{"model", "effort", "harness", "provider"} {
+                            let value = tool[field]?.DeepClone()
+                            tool[field] = JsonValue.Create(field == "effort" ? "invalid": "unlisted-value")
+                            File.WriteAllText(test.Tools, changed.ToJsonString())
+                            if mode == "unrestricted" && field == "model" {
+                                continue
+                            }
+                            test.Prepare(code: 1)
+                            tool[field] = value
+                        }
+                    }
+                    if version == 3 && mode == "whitelist" {
+                        for index in 0 ... original.AsArray().Count {
+                            let changed = original.DeepClone()
+                            let tool = changed[index] ?? throw Exception("Missing declared tool")
+                            tool["model"] = original[1 - index]?["model"]?.DeepClone()
+                            File.WriteAllText(test.Tools, changed.ToJsonString())
+                            test.Prepare(code: 1)
+                        }
+                    }
+
                     File.WriteAllText(test.Tools, original.ToJsonString())
+                    let fork = Path.Combine(test.Flow.Bin, "fork")
+                    let branches = test.Flow.Git("-C", fork, "show-ref", "--heads")
+                    test.Prepare(code: 1, seconds: "3601")
+                    Check.That(
+                        !Directory.Exists(Path.Combine(test.Flow.Temp.Root, "runs")),
+                        "Forbidden budget created a saved run"
+                    )
+                    test.Flow.Reload()
+                    Check.That(
+                        test.Flow.State["fork_creations"] == nil && test.Flow.Git(
+                            "-C",
+                            fork,
+                            "show-ref",
+                            "--heads"
+                        ) == branches,
+                        "Forbidden budget created a fork or changed a branch"
+                    )
+                    test.Prepare("tokate", 1)
+                    if mode == "unrestricted" {
+                        let first = original[0] ?? throw Exception("Missing first tool")
+                        let second = original[1] ?? throw Exception("Missing second tool")
+                        first["model"] = JsonValue.Create("unlisted-claude-model")
+                        second["model"] = JsonValue.Create("unlisted-codex-model")
+                        File.WriteAllText(test.Tools, original.ToJsonString())
+                    }
+                    test.ExternalPublicationAfterClaim()
                 }
-                test.ExternalPublicationAfterClaim()
             }
         }
 
@@ -233,56 +263,82 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
 
         internal func ManagedModelPolicy(binary string) {
-            for mode in[]string{"whitelist", "unrestricted"} {
-                using let test = CoordinationFlow(binary)
-                test.Initialize(approve: false)
-                test.Flow.SetModelPolicy(
-                    mode,
-                    mode == "unrestricted" ? "{}":
-                    "{\"gpt-6-sol\":[\"high\",\"unknown\",\"absent\"]}"
-                )
-                test.Flow.Approve()
-                test.Claim()
-                let tools = Check.Json(
-                    "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6-sol\",\"effort\":\"absent\"}]"
-                )
-                let declaration = tools[0] ?? throw Exception("Missing tool")
-                File.WriteAllText(test.Tools, tools.ToJsonString())
-                test.Prepare("tokate", 1)
-                declaration["effort"] = JsonValue.Create("unknown")
-                File.WriteAllText(test.Tools, tools.ToJsonString())
-                test.Prepare("tokate", 1)
-                declaration["effort"] = JsonValue.Create("high")
-                File.WriteAllText(test.Tools, tools.ToJsonString())
-                let run = test.Prepare("tokate")
-                let path = Path.Combine(run, "run.json")
-                let original = File.ReadAllText(path)
-                let changed = Check.Json(original)
-                changed["effort"] = JsonValue.Create("absent")
-                let savedTool = changed["tools"]?[0] ?? throw Exception("Missing saved tool")
-                savedTool["effort"] = JsonValue.Create("absent")
-                File.WriteAllText(path, changed.ToJsonString())
-                test.Flow.Call([]string{"work", "--run", run}, 1)
-                test.Flow.NoInference()
-                File.WriteAllText(path, original)
-                test.Flow.Call([]string{"work", "--run", run})
-                test.Flow.Call([]string{"submit", "--run", run})
-                let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
-                let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
-                requestedTool["effort"] = JsonValue.Create("absent")
-                test.Coordinate(test.Event(request), 1)
-                test.Flow.NoPr()
-                requestedTool["effort"] = JsonValue.Create("high")
-                test.Coordinate(test.Event(request))
-                test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                test.ReceiptRefusal(0, "effort", "absent")
-                test.Flow.Reload()
-                Check.That(
-                    Check.Text(test.Flow.State["requested_model"]) == "gpt-6-sol" && Check.Text(
-                        test.Flow.State["requested_effort"]
-                    ) == "model_reasoning_effort=\"high\"",
-                    "Managed declaration silently changed"
-                )
+            for version in[]int32{2, 3} {
+                for mode in[]string{"whitelist", "unrestricted"} {
+                    using let test = CoordinationFlow(binary)
+                    test.Initialize(approve: false)
+                    test.Flow.SetModelPolicy(
+                        mode,
+                        mode == "unrestricted" ? "{}":
+                        "{\"gpt-6-sol\":[\"high\",\"unknown\",\"absent\"]}"
+                    )
+                    if version == 3 {
+                        let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
+                        let policy = Check.Json(File.ReadAllText(policyPath))
+                        let models = policy["models"]?.DeepClone()
+                        policy["version"] = JsonValue.Create(3)
+                        policy.AsObject().Remove("models")
+                        policy.AsObject().Remove("model_policy")
+                        let codex = policy["allowed_tools"]?[0] ?? throw Exception("Missing Codex permission")
+                        let claude = policy["allowed_tools"]?[1] ?? throw Exception("Missing Claude permission")
+                        if mode == "whitelist" {
+                            codex["models"] = models
+                        }
+
+                        claude["models"] = Check.Json("{\"gpt-6.1-sol\":[\"high\"]}")
+                        File.WriteAllText(policyPath, policy.ToJsonString())
+                        test.Flow.Commit("Owner sets managed per-tool model permissions")
+                        if mode == "whitelist" {
+                            test.Flow.Reject(
+                                []string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
+                                "Model/effort pair"
+                            )
+                        }
+                    }
+
+                    test.Flow.Approve()
+                    test.Claim()
+                    let tools = Check.Json(
+                        "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6-sol\",\"effort\":\"absent\"}]"
+                    )
+                    let declaration = tools[0] ?? throw Exception("Missing tool")
+                    File.WriteAllText(test.Tools, tools.ToJsonString())
+                    test.Prepare("tokate", 1)
+                    declaration["effort"] = JsonValue.Create("unknown")
+                    File.WriteAllText(test.Tools, tools.ToJsonString())
+                    test.Prepare("tokate", 1)
+                    declaration["effort"] = JsonValue.Create("high")
+                    File.WriteAllText(test.Tools, tools.ToJsonString())
+                    let run = test.Prepare("tokate")
+                    let path = Path.Combine(run, "run.json")
+                    let original = File.ReadAllText(path)
+                    let changed = Check.Json(original)
+                    changed["effort"] = JsonValue.Create("absent")
+                    let savedTool = changed["tools"]?[0] ?? throw Exception("Missing saved tool")
+                    savedTool["effort"] = JsonValue.Create("absent")
+                    File.WriteAllText(path, changed.ToJsonString())
+                    test.Flow.Call([]string{"work", "--run", run}, 1)
+                    test.Flow.NoInference()
+                    File.WriteAllText(path, original)
+                    test.Flow.Call([]string{"work", "--run", run})
+                    test.Flow.Call([]string{"submit", "--run", run})
+                    let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
+                    let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
+                    requestedTool["effort"] = JsonValue.Create("absent")
+                    test.Coordinate(test.Event(request), 1)
+                    test.Flow.NoPr()
+                    requestedTool["effort"] = JsonValue.Create("high")
+                    test.Coordinate(test.Event(request))
+                    test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    test.ReceiptRefusal(0, "effort", "absent")
+                    test.Flow.Reload()
+                    Check.That(
+                        Check.Text(test.Flow.State["requested_model"]) == "gpt-6-sol" && Check.Text(
+                            test.Flow.State["requested_effort"]
+                        ) == "model_reasoning_effort=\"high\"",
+                        "Managed declaration silently changed"
+                    )
+                }
             }
         }
 
@@ -1367,7 +1423,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
         let declared = metadata["tools"]?.DeepClone() ?? throw Exception("Missing declared tools")
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
-        let unrestricted = Check.Text(Check.Json(File.ReadAllText(policyPath))["model_policy"]) == "unrestricted"
+        let ownerPolicy = Check.Json(File.ReadAllText(policyPath))
+        let version3 = Check.Text(ownerPolicy["version"]) == "3"
+        let unrestricted = version3 ? ownerPolicy["allowed_tools"]?[0]?["models"] == nil:
+        Check.Text(ownerPolicy["model_policy"]) == "unrestricted"
         for index in 0 ... declared.AsArray().Count {
             let tools = declared.DeepClone()
             let tool = tools[index] ?? throw Exception("Missing declared tool")
@@ -1376,6 +1435,17 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Coordinate(Event(request), 1)
             Flow.NoPr()
         }
+        if version3 && !unrestricted {
+            for index in 0 ... declared.AsArray().Count {
+                let tools = declared.DeepClone()
+                let tool = tools[index] ?? throw Exception("Missing declared tool")
+                tool["model"] = declared[1 - index]?["model"]?.DeepClone()
+                metadata["tools"] = tools
+                Check.Contains(Coordinate(Event(request), 1).Error, "Model/effort pair")
+                Flow.NoPr()
+            }
+        }
+
         metadata["tools"] = declared.DeepClone()
         let source = Check.Text(metadata["source"])
         metadata["source"] = JsonValue.Create("tokate")
@@ -1387,15 +1457,33 @@ internal partial class CoordinationFlow : CoordinationFixture {
         for index in 0 ... declared.AsArray().Count {
             ReceiptRefusal(index, unrestricted ? "effort": "model", unrestricted ? "invalid": "disallowed-model")
         }
+        if version3 && !unrestricted {
+            for index in 0 ... declared.AsArray().Count {
+                ReceiptRefusal(index, "model", Check.Text(declared[1 - index]?["model"]))
+            }
+        }
+
         let published = State()
         let saved = File.ReadAllText(Path.Combine(run, "run.json"))
         Flow.Reload()
         let pulls = Flow.State["pulls"]?.ToJsonString() ?? ""
-        Flow.SetModelPolicy(
-            unrestricted ? "whitelist": "unrestricted",
-            unrestricted ?
-            "{\"gpt-6.1-sol\":[\"high\"]}": "omit"
-        )
+        if version3 {
+            let pair = ownerPolicy["allowed_tools"]?[0] ?? throw Exception("Missing allowed tool")
+            if unrestricted {
+                pair["models"] = Check.Json("{\"gpt-6.1-sol\":[\"high\"]}")
+            } else {
+                pair.AsObject().Remove("models")
+            }
+
+            File.WriteAllText(policyPath, ownerPolicy.ToJsonString())
+            Flow.Commit("Owner changes tool models")
+        } else {
+            Flow.SetModelPolicy(
+                unrestricted ? "whitelist": "unrestricted",
+                unrestricted ?
+                "{\"gpt-6.1-sol\":[\"high\"]}": "omit"
+            )
+        }
         Check.Contains(
             Flow.Call([]string{"submit", "--run", run}, 1).Error,
             "Repository policy or template changed. The owner must approve again."

@@ -495,6 +495,37 @@ internal class EligibilityChecks {
             Claim(test, 1)
             test.Flow.NoInference()
             test.Flow.NoPr()
+            using let routes = CoordinationFixture(binary)
+            routes.Initialize(approve: false)
+            let routePath = Path.Combine(routes.Flow.Upstream, ".github/tokate.json")
+            let routePolicy = Check.Json(File.ReadAllText(routePath))
+            routePolicy["version"] = JsonValue.Create(3)
+            routePolicy.AsObject().Remove("models")
+            routePolicy["allowed_tools"] = Check.Json(
+                "[{\"harness\":\"omp\",\"provider\":\"openai\",\"models\":{\"expensive\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"models\":{\"cheap\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]"
+            )
+            File.WriteAllText(routePath, routePolicy.ToJsonString())
+            routes.Flow.Commit("Owner sets exact provider model routes")
+            Setup(routes, "open")
+            Claim(routes)
+            File.WriteAllText(
+                routes.Tools,
+                "[{\"harness\":\"omp\",\"provider\":\"openrouter\",\"model\":\"expensive\",\"effort\":\"high\"}]"
+            )
+            routes.Prepare(code: 1)
+            Check.That(
+                !Directory.Exists(Path.Combine(routes.Flow.Temp.Root, "runs")),
+                "Rejected model route created work"
+            )
+            File.WriteAllText(
+                routes.Tools,
+                "[{\"harness\":\"omp\",\"provider\":\"openai\",\"model\":\"expensive\",\"effort\":\"high\"},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"model\":\"cheap\",\"effort\":\"high\"},{\"harness\":\"aider\",\"provider\":\"openrouter\",\"model\":\"another-model\",\"effort\":\"absent\"}]"
+            )
+            let routeRun = routes.Prepare()
+            let savedRoutes = Check.Json(File.ReadAllText(Path.Combine(routeRun, "run.json")))
+            Check.That(savedRoutes["tools"]?.AsArray().Count == 3, "Mixed model permissions lost a declaration")
+            routes.Flow.NoInference()
+            routes.Flow.NoPr()
         }
 
         private func Presentation(binary string) {

@@ -192,7 +192,10 @@ internal class DonorSelection {
                 }
 
                 for candidateEffort in entry.Value {
-                    if policy.Allows(entry.Key, candidateEffort) && policy.ManagedPair(entry.Key, candidateEffort) {
+                    if policy.Allows("codex", "openai", entry.Key, candidateEffort) && policy.ManagedPair(
+                        entry.Key,
+                        candidateEffort
+                    ) {
                         choices[entry.Key + " / " + candidateEffort] = J.Parse(
                             J.Write(map[string, Object?]{"model": entry.Key, "effort": candidateEffort})
                         )
@@ -213,7 +216,7 @@ internal class DonorSelection {
 
                     if !policy.ManagedPair(model, effort) {
                         rejection = "Tokate-managed execution requires a known model and supported effort control."
-                    } else if !policy.Allows(model, effort) {
+                    } else if !policy.Allows("codex", "openai", model, effort) {
                         rejection = "Model/effort pair is not allowed by the repository policy."
                     } else if !capabilities.TryGetValue(model, out supported) || !supported.Contains(effort) {
                         rejection = "Model/effort capability is not advertised by the offline native Codex catalog; availability is unknown."
@@ -263,7 +266,7 @@ internal class DonorSelection {
                 availability = "unknown"
             }
 
-            policy.Validate(model, effort, 1)
+            policy.Validate("codex", "openai", model, effort, 1)
 
             return J.Parse(
                 J.Write(
@@ -409,7 +412,7 @@ internal class DonorSelection {
                 throw Exception(failure)
             }
 
-            policy.Validate(run.Text("model"), run.Text("effort"), run.Number("seconds"))
+            policy.Validate("codex", "openai", run.Text("model"), run.Text("effort"), run.Number("seconds"))
 
             let capabilities = CodexRuntime.Capabilities(run.Text("harness_path"))
             var supported HashSet[string]
