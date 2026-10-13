@@ -28,8 +28,10 @@ without models allows any model. Version 2 remains readable with its original
 model permissions. Update the coordinator pin before committing a version 3 policy.
 Older coordinators reject version 3. Use per-tool model choices in owner setup.
 Initialize access once, approve the issue, then trust the donor or grant that issue.
-Never grant access merely because someone requested it. In `manual` eligibility,
-trust has no effect. Grant each issue with `tokate access grant LOGIN N`.
+Never grant access merely because someone requested it. In `trusted` eligibility,
+trusted donors and donors granted the issue may claim. With no trusted donors,
+grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
+may claim. Version 2 `manual` is read as `trusted`. Version 3 has no `manual` mode.
 
 A change to the policy or template revokes existing approvals. Re-approve open tasks
 after the change is merged. After a coordinator pin change, confirm that Actions

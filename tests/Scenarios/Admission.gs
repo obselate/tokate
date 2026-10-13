@@ -130,7 +130,7 @@ internal class AdmissionChecks {
         }
 
         private func Authority(binary string) {
-            for mode in[]string{"open", "trusted", "manual"} {
+            for mode in[]string{"open", "trusted"} {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 Setup(test, mode)
@@ -140,16 +140,16 @@ internal class AdmissionChecks {
                 Admit(test, mode == "open" ? "open": "closed")
                 Access(test, "trust")
                 Pull(test, "<!-- tokate-receipt:{\"repo\":\"other/project\",\"issue\":1,\"donor\":\"owner\"} -->")
-                Admit(test, mode == "manual" ? "closed": "open")
+                Admit(test, "open")
                 Access(test, "grant", "1")
                 Pull(test, "Fixes #1\nIncomplete draft without a receipt or verification")
                 Admit(test, "open")
                 Target(test, "other")
-                Admit(test, mode == "manual" ? "closed": "open", action: "edited")
+                Admit(test, "open", action: "edited")
                 Pull(test, "Fixes #1\nIncomplete draft without a receipt or verification")
                 Admit(test, "open")
                 Pull(test, "Fixes #2")
-                Admit(test, mode == "manual" ? "closed": "open")
+                Admit(test, "open")
                 Access(test, "deny")
                 Pull(test, "Fixes #1")
                 Admit(test, "closed")
@@ -173,7 +173,7 @@ internal class AdmissionChecks {
         private func Coordinator(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
-            Setup(test, "manual")
+            Setup(test, "trusted")
             Access(test, "grant", "1")
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
@@ -277,7 +277,7 @@ internal class AdmissionChecks {
             Access(test, "trust")
             let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let trusted = Check.Json(File.ReadAllText(policyPath))
-            trusted["eligibility"] = JsonValue.Create("trusted")
+            trusted["max_seconds"] = JsonValue.Create(1800)
             File.WriteAllText(policyPath, trusted.ToJsonString())
             test.Flow.Commit("Current global trust independent of stale issue claims")
             Admit(test, "open", action: "edited")

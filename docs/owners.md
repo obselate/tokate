@@ -83,7 +83,9 @@ Set up a repository for Tokate 0.4.7. Approve tasks, then review donated work be
 | --- | --- |
 | **Trusted people** | Trusted donors or donors with an issue grant. Newcomers request access first. |
 | **Anyone eligible** | Authenticated GitHub users who are not denied. |
-| **Choose each time** | Donors with an issue grant. You approve each donor. |
+
+With no trusted donors, **Trusted people** requires an issue grant for each donor.
+Version 2 `manual` eligibility is read as `trusted`. Version 3 accepts only `trusted` and `open`.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 

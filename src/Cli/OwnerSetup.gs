@@ -293,7 +293,7 @@ internal class OwnerSetup {
             let initial = J.Parse(J.Write(fields))
 
             if args.Get("eligibility") == "" && J.Text(initial, "approval_scope") == "task" {
-                let modes = []string{"trusted", "open", "manual"}
+                let modes = []string{"trusted", "open"}
                 let current = Array.IndexOf(modes, J.Text(initial, "eligibility")) + 1
 
                 fields["eligibility"] = modes[
@@ -301,11 +301,10 @@ internal class OwnerSetup {
                         "Who can contribute?",
                         repo + "\nApprove the task once. Choose who may claim it.",
                         []string{
-                            "Trusted people   Newcomers request access first",
-                            "Anyone eligible  Anyone meeting your policy may claim",
-                            "Choose each time Approve each donor yourself"
+                            "Trusted people   Trusted donors or donors granted this issue",
+                            "Anyone eligible  Anyone you have not denied"
                         },
-                        "Choose who may claim an approved task. \"Trusted people\" limits claims to trusted donors. \"Anyone eligible\" accepts any GitHub user you have not denied. \"Choose each time\" asks you to approve each donor.",
+                        "Choose who may claim an approved task. \"Trusted people\" accepts trusted donors or donors granted this issue. \"Anyone eligible\" accepts any GitHub user you have not denied.",
                         current
                     ) - 1
                 ]

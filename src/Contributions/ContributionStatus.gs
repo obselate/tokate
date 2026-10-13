@@ -174,7 +174,7 @@ internal class ContributionStatus {
 
                 let actor = RepositoryIdentity.PositiveId(J.Get(Viewer, "id"))
                 let donor = RepositoryIdentity.Login(J.Text(Viewer, "login"))
-                let mode = J.Text(approval, "eligibility")
+                let mode = AccessState.Mode(approval)
                 let eligible = Access?.Allows(actor, mode, issue) == true
                 row["eligibility_status"] = eligible ? "eligible": "access_waiting"
                 row["eligibility_scope"] = "viewer"
@@ -690,7 +690,7 @@ internal class ContributionStatus {
                     next = Next(
                         "donor",
                         "Request owner review for the required donor access.",
-                        J.Text(approval, "eligibility") == "trusted" ? []string{
+                        AccessState.Mode(approval) == "trusted" ? []string{
                             "tokate",
                             "access",
                             "request",

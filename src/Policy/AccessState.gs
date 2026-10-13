@@ -25,7 +25,7 @@ internal class AccessState {
             }
         }
 
-        return !denied && (mode == "open" || granted || (mode == "trusted" && trusted))
+        return !denied && (mode == "open" || (mode == "trusted" && (trusted || granted)))
     }
 
     internal func Value() JsonElement -> J.Parse(
@@ -87,13 +87,18 @@ internal class AccessState {
     }
 
     shared {
+        internal func Mode(approval JsonElement) string {
+            let mode = J.Text(approval, "eligibility")
+            return mode == "manual" ? "trusted": mode
+        }
+
         internal func Task(approval JsonElement) bool {
             RequestData.Parse(J.Write(approval), 1024 * 1024)
-            let eligibility = J.Text(approval, "eligibility")
+            let eligibility = Mode(approval)
             let donor = J.Get(approval, "donor")
 
             if J.Number(approval, "version") != 2 || J.Text(approval, "approval_scope") != "task" ||
-                (eligibility != "open" && eligibility != "trusted" && eligibility != "manual") ||
+                (eligibility != "open" && eligibility != "trusted") ||
                 donor.ValueKind != JsonValueKind.Undefined {
                 throw CliFailure("stale_approval", "Malformed or contradictory task eligibility approval")
             }
@@ -181,7 +186,7 @@ internal class AccessState {
                 }
 
                 let access = Load(repo, repoId)
-                let mode = J.Text(approval, "eligibility")
+                let mode = Mode(approval)
                 let allowed = access.Allows(id, mode, issue)
 
                 PublicOutput.ResultData = map[string, Object?]{

@@ -113,7 +113,7 @@ internal class CoordinationState {
         let configuration = ApprovalBase.Check(repo, approval, quiet)
         let mode = configuration.Item1.Eligibility
 
-        if J.Text(approval, "eligibility") != mode {
+        if AccessState.Mode(approval) != mode {
             throw CliFailure("stale_approval", "Task eligibility declaration differs from current policy")
         }
 
