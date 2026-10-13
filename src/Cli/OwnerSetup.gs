@@ -683,7 +683,9 @@ internal class OwnerSetup {
                 let settings = List[string]()
 
                 if !events {
-                    settings.Add("Actions event policy allowing issue_comment, pull_request_target and workflow_call")
+                    settings.Add(
+                        "Actions event policy allowing issues, issue_comment, pull_request_target and workflow_call"
+                    )
                 }
 
                 if !pullRequests {
@@ -710,7 +712,12 @@ internal class OwnerSetup {
                         map[string, Object?]{
                             "type": "restrict_action_events",
                             "parameters": map[string, Object?]{
-                                "allowed_events": []string{"issue_comment", "pull_request_target", "workflow_call"}
+                                "allowed_events": []string{
+                                    "issues",
+                                    "issue_comment",
+                                    "pull_request_target",
+                                    "workflow_call"
+                                }
                             }
                         }
                     }
@@ -725,7 +732,7 @@ internal class OwnerSetup {
 
                 if !events {
                     changes.Add(
-                        "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for " +
+                        "Create the Actions policy \"Tokate coordinator events\" that allows issues, issue_comment, pull_request_target and workflow_call for " +
                             Path.GetRelativePath(root, workflow)
                     )
                 }
@@ -983,7 +990,7 @@ internal class OwnerSetup {
                 true
             )
             Terminal.Message(
-                oldWorkflow == "" ? "Workflow permissions: contents write for coordination refs, issues read for canonical requests, pull-requests write for draft publication; no secrets inheritance or checkout.": "Existing owner workflow is preserved. Review wiring and permissions against a pinned workflow: tokate coordinator-setup " +
+                oldWorkflow == "" ? "Workflow permissions: contents write for coordination refs, issues write for label approval and canonical requests, pull-requests write for draft publication; no secrets inheritance or checkout.": "Existing owner workflow is preserved. Review wiring and permissions against a pinned workflow: tokate coordinator-setup " +
                     repo +
                     " --output tokate-coordinator.yml.",
                 "cyan",

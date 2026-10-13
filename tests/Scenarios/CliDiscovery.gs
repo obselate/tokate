@@ -486,7 +486,7 @@ internal class CliDiscovery {
             Check.Contains(declined.Output, "Choose Apply only if you want Tokate to make these changes.")
             Check.Contains(
                 declined.Output,
-                "Create the Actions policy \"Tokate coordinator events\" that allows issue_comment, pull_request_target and workflow_call for .github/workflows/tokate-coordinator.yml"
+                "Create the Actions policy \"Tokate coordinator events\" that allows issues, issue_comment, pull_request_target and workflow_call for .github/workflows/tokate-coordinator.yml"
             )
             Check.Contains(
                 declined.Output,
@@ -564,7 +564,7 @@ internal class CliDiscovery {
                 ),
                 "rules",
                 Check.Json(
-                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
                 )
             )
             Check.That(

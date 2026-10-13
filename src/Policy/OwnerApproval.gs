@@ -58,25 +58,11 @@ internal class OwnerApproval {
 
             let info = RepositoryAccess.RequireOwner(repo)
             var issue = number == 0 ? default(JsonElement): GitHub.Issue(repo, number)
-            let authority = J.Text(info, "default_branch")
-            let authorityBase = GitHub.Branch(repo, authority)
-            let policy = Policy.Load(repo, authorityBase)
-            let configuredTarget = J.Text(policy.Value, "target_branch")
-            let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
-            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
-
-            AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
-
+            let approval = Capture(args, info, issue)
             let firstApproval = !PublicOutput.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
             )
                 .GetArrayLength() == 0
-
-            let template = PrBody.Template(repo, authorityBase)
-            PrBody.ValidateTemplate(template)
-
-            let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
-            let decree = Decree.CaptureTree(repo, RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha")))
 
             if number == 0 {
                 issue = GitHub.Api("repos/" + repo + "/issues", map[string, Object?]{"title": title, "body": body})
@@ -91,10 +77,6 @@ internal class OwnerApproval {
                 Terminal.Message(J.Text(issue, "html_url"))
             }
 
-            Terminal.Step(
-                "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
-            )
-
             let label = GitHub.Api("repos/" + repo + "/labels/tokate%3Aapproved", missing: true)
 
             if label.ValueKind == JsonValueKind.Undefined {
@@ -108,27 +90,9 @@ internal class OwnerApproval {
                 )
             }
 
-            CoordinationState.Approve(
-                repo,
-                number,
-                map[string, Object?]{
-                    "version": 2,
-                    "repo": repo,
-                    "repo_id": RepositoryIdentity.PositiveId(J.Get(info, "id")),
-                    "issue": number,
-                    "approval_scope": "task",
-                    "eligibility": policy.Eligibility,
-                    "issue_hash": GitHub.Fingerprint(issue),
-                    "policy_hash": policy.Digest,
-                    "template_hash": Data.Hash(template),
-                    "base": revision,
-                    "base_branch": branch,
-                    "decree": decree,
-                    "authority_branch": authority,
-                    "nonce": Guid.NewGuid().ToString("N")
-                },
-                args.Get("yes") == "true"
-            )
+            approval["issue"] = number
+            approval["issue_hash"] = GitHub.Fingerprint(issue)
+            CoordinationState.Approve(repo, number, approval, args.Get("yes") == "true")
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
@@ -147,6 +111,45 @@ internal class OwnerApproval {
                 Terminal.Message(
                     "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
                 )
+            }
+        }
+
+        internal func Capture(args Args, info JsonElement, issue JsonElement) Dictionary[string, Object?] {
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let authority = J.Text(info, "default_branch")
+            let authorityBase = GitHub.Branch(repo, authority)
+            let policy = Policy.Load(repo, authorityBase)
+            let configuredTarget = J.Text(policy.Value, "target_branch")
+            let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
+            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+
+            AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
+
+            let template = PrBody.Template(repo, authorityBase)
+            PrBody.ValidateTemplate(template)
+
+            let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
+            let decree = Decree.CaptureTree(repo, RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha")))
+
+            Terminal.Step(
+                "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
+            )
+
+            return map[string, Object?]{
+                "version": 2,
+                "repo": repo,
+                "repo_id": RepositoryIdentity.PositiveId(J.Get(info, "id")),
+                "issue": J.Number(issue, "number"),
+                "approval_scope": "task",
+                "eligibility": policy.Eligibility,
+                "issue_hash": GitHub.Fingerprint(issue),
+                "policy_hash": policy.Digest,
+                "template_hash": Data.Hash(template),
+                "base": revision,
+                "base_branch": branch,
+                "decree": decree,
+                "authority_branch": authority,
+                "nonce": Guid.NewGuid().ToString("N")
             }
         }
 
