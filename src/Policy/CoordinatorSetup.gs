@@ -93,11 +93,11 @@ internal class CoordinatorSetup {
                         allowed.Add(event.GetString() ?? "")
                     }
 
-                    if !allowed.Contains("issue_comment") || !allowed.Contains("pull_request_target") ||
-                        !allowed
-                        .Contains("workflow_call") {
+                    if !allowed.IsSupersetOf(
+                        []string{"issues", "issue_comment", "pull_request_target", "workflow_call"}
+                    ) {
                         throw Exception(
-                            "Actions event policy blocks Tokate. The owner must allow issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
+                            "Actions event policy blocks Tokate. The owner must allow issues, issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
                         )
                     }
 
@@ -107,7 +107,7 @@ internal class CoordinatorSetup {
 
             if !configured && required {
                 throw Exception(
-                    "Explicit Actions event policy required before admission setup. Allow issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
+                    "Explicit Actions event policy required before admission setup. Allow issues, issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
                 )
             }
 
@@ -293,8 +293,8 @@ internal class CoordinatorSetup {
                     )
                 }
 
-                return "name: Tokate\non:\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
-                    "    permissions:\n      contents: write\n      issues: read\n      pull-requests: write\n" +
+                return "name: Tokate\non:\n  issues:\n    types: [labeled]\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
+                    "    permissions:\n      contents: write\n      issues: write\n      pull-requests: write\n" +
                     "    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
                     commit +
                     "\n" +

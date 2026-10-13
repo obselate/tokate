@@ -424,7 +424,7 @@ internal class AdmissionChecks {
                 ),
                 "rules",
                 Check.Json(
-                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
                 )
             )
             setup.Flow.Save()

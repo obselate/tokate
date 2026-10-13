@@ -1403,6 +1403,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
             1,
             owner: true
         )
+        Flow.Reload()
+        Flow.State["actions_policy"] = Check.Map(
+            "enforcement",
+            "active",
+            "rules",
+            Check.Json(
+                "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+            )
+        )
+        Flow.Save()
+        Check.Contains(Flow.Call(args, 1, owner: true).Error, "must allow issues")
+        Check.That(!File.Exists(output), "Old event policy generated a workflow")
+        Flow.Reload()
+        Flow.State["actions_policy"] = nil
+        Flow.Save()
         Flow.ReleaseReady(hosted: false)
         Check.Contains(Flow.Call(args, 1, owner: true).Error, "Bootstrap required")
         Check.That(!File.Exists(output), "Bootstrap failure wrote an unusable workflow")
@@ -1415,6 +1430,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let archive = Path.Combine(Flow.Bin, "release.tar.gz")
         Flow.Call(args, owner: true)
         let yaml = File.ReadAllText(output)
+        Check.Contains(yaml, "issues:\n    types: [labeled]\n")
+        Check.Contains(yaml, "issues: write\n")
         Check.Contains(yaml, "https://api.github.com/repos/obselate/tokate/releases/assets/41")
         Check.Contains(yaml, Check.Hash(archive))
         Check.Contains(yaml, bundle + "/tokate")

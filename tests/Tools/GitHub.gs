@@ -311,7 +311,7 @@ internal partial class Fixture {
                     "active",
                     "rules",
                     Check.Json(
-                        "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+                        "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
                     )
                 )
             )
@@ -319,7 +319,7 @@ internal partial class Fixture {
         if tail.StartsWith("collaborators/") && tail.EndsWith("/permission") {
             let login = tail.Split('/')[1]
             return Answer(
-                Check.Map(
+                State["collaborator_permissions"]?[login] ?? Check.Map(
                     "permission",
                     login == "owner" ? "admin": "read",
                     "user",
@@ -837,8 +837,16 @@ internal partial class Fixture {
                         labels.Add(Check.Map("name", Check.Text(label)))
                     }
                     issue["labels"] = labels
-                } else if method == "DELETE" {
-                    issue["labels"] = JsonArray()
+                } else if method == "DELETE" && tail.Contains("/labels/") {
+                    let labels = issue["labels"]?.AsArray() ?? JsonArray()
+                    let name = Uri.UnescapeDataString(tail.Substring(tail.LastIndexOf('/') + 1))
+                    var i = labels.Count - 1
+                    while i >= 0 {
+                        if Check.Text(labels[i]?["name"]) == name {
+                            labels.RemoveAt(i)
+                        }
+                        i--
+                    }
                 }
             }
             return Answer(issue)

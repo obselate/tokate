@@ -7,9 +7,98 @@ import System.Text.RegularExpressions
 
 internal class Coordinator {
     shared {
+        private func ApproveLabel(repo string, event JsonElement) {
+            let eventIssue = J.Get(event, "issue")
+            let eventRepository = J.Get(event, "repository")
+
+            if J.Text(event, "action") != "labeled" || J.Text(J.Get(event, "label"), "name") != "tokate:approved" ||
+                J
+                .Get(eventIssue, "pull_request").ValueKind != JsonValueKind.Undefined {
+                throw Exception("Expected an issues labeled tokate:approved event for an issue")
+            }
+
+            if !RepositoryIdentity.SameRepo(J.Text(eventRepository, "full_name"), repo) {
+                throw Exception("Event repository does not match coordinator repository")
+            }
+
+            let info = GitHub.Api("repos/" + repo)
+            let number = J.Number(eventIssue, "number")
+            if number < 1 || RepositoryIdentity.PositiveId(J.Get(eventRepository, "id")) !=
+            RepositoryIdentity.PositiveId(J.Get(info, "id")) {
+                throw Exception("Label event repository or issue identity changed")
+            }
+
+            let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString())
+            if J.Number(issue, "number") != number || RepositoryIdentity.PositiveId(J.Get(eventIssue, "id")) !=
+            RepositoryIdentity.PositiveId(J.Get(issue, "id")) || J.Get(issue, "pull_request")
+                .ValueKind != JsonValueKind.Undefined {
+                throw Exception("Label event issue identity changed")
+            }
+
+            if !GitHub.HasLabel(issue) {
+                Terminal.Message("Approval label is no longer present.")
+                return
+            }
+
+            let sender = J.Get(event, "sender")
+            let actor = RepositoryIdentity.PositiveId(J.Get(sender, "id"))
+            let login = RepositoryIdentity.Login(J.Text(sender, "login"))
+            let permission = GitHub.Api("repos/" + repo + "/collaborators/" + login + "/permission")
+            let user = J.Get(permission, "user")
+            if RepositoryIdentity.PositiveId(J.Get(user, "id")) != actor || !String.Equals(
+                J.Text(user, "login"),
+                login,
+                StringComparison.OrdinalIgnoreCase
+            ) {
+                throw Exception("Label sender identity changed")
+            }
+
+            let level = J.Text(permission, "permission")
+            if level != "write" && level != "maintain" && level != "admin" {
+                GitHub.Api(
+                    "repos/" + repo + "/issues/" + number.ToString() + "/labels/tokate%3Aapproved",
+                    method: "DELETE"
+                )
+                GitHub.Api(
+                    "repos/" + repo + "/issues/" + number.ToString() + "/comments",
+                    map[string, Object?]{
+                        "body": "The tokate:approved label was removed. Approval requires repository write, maintain or admin permission."
+                    }
+                )
+                Terminal.Message("Approval label removed because the sender lacks repository write permission.")
+                return
+            }
+
+            if J.Text(issue, "state") != "open" {
+                throw Exception("Choose an open issue")
+            }
+
+            let args = Args([]string{"approve", repo + "#" + number.ToString(), "--non-interactive"})
+            let approval = OwnerApproval.Capture(args, info, issue)
+            let state = CoordinationState.Load(repo, number, true).Value()
+            let previous = J.Get(state, "approval")
+            approval["nonce"] = J.Text(previous, "nonce")
+            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && RequestData.Canonical(
+                J.Parse(J.Write(approval))
+            ) ==
+            RequestData.Canonical(previous) {
+                Terminal.Message("Issue approval is already current.")
+                return
+            }
+
+            approval["nonce"] = Guid.NewGuid().ToString("N")
+            CoordinationState.Approve(repo, number, approval, true)
+            Terminal.Message("Issue approved from the tokate:approved label.")
+        }
+
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
+                ApproveLabel(repo, event)
+                return
+            }
+
             let eventComment = J.Get(event, "comment")
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
