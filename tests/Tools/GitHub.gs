@@ -288,6 +288,14 @@ internal partial class Fixture {
             return Answer(State["actions_permissions"] ?? Check.Map("enabled", true, "allowed_actions", "all"))
         }
         if tail == "actions/permissions/selected-actions" {
+            if method == "PUT" {
+                Check.That(Check.Text(State["allowlist_setup"]) == "true", "Health check changed the allowlist")
+                if Check.Text(State["allowlist_write_denied"]) == "true" {
+                    return Response(403)
+                }
+                State["selected_actions"] = body.DeepClone()
+                return Response(204)
+            }
             Check.That(method == "GET", "Health check changed the allowlist")
             return Answer(State["selected_actions"] ?? Check.Map("patterns_allowed", JsonArray()))
         }
