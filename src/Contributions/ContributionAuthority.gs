@@ -64,7 +64,10 @@ internal class ContributionAuthority {
 
             if run.Text("source") == "tokate" &&
                 (run.Text("model") != J.Text(tools[0], "model") || run.Text("effort") != J.Text(tools[0], "effort")) {
-                throw Exception("Saved execution differs from the declared tool; no model substitution is allowed")
+                throw CliFailure(
+                    "stale_approval",
+                    "Saved execution differs from the declared tool; no model substitution is allowed"
+                )
             }
 
             RepositoryIdentity.Repo(run.Text("head_repo"))

@@ -36,27 +36,27 @@ internal class ContinuationImport {
             LocalPaths.DirectoryPath(directory)
 
             if !File.Exists(Path.Combine(directory, ".lock")) {
-                throw Exception("Unsupported source lease state; source is preserved")
+                throw CliFailure("invalid_state", "Unsupported source lease state; source is preserved")
             }
 
             try {
                 return RunStorage.Lease(directory)
             } catch (error IOException) {
-                throw Exception(
-                    "Source attempt is active or leased; stop it and explicitly retry this command after its lease is released",
-                    error
+                throw CliFailure(
+                    "invalid_state",
+                    "Source attempt is active or leased; stop it and explicitly retry this command after its lease is released"
                 )
             }
         }
 
         private func PathName(path string) {
             if path.Length == 0 || path.Length > 1024 || path.Contains('\\') || path.StartsWith('/') {
-                throw Exception("Unsafe continuation path")
+                throw CliFailure("invalid_state", "Unsafe continuation path")
             }
 
             for character in path {
                 if Char.IsControl(character) {
-                    throw Exception("Unsafe continuation path")
+                    throw CliFailure("invalid_state", "Unsafe continuation path")
                 }
             }
 
@@ -66,7 +66,7 @@ internal class ContinuationImport {
                     StringComparison.OrdinalIgnoreCase
                 ) ||
                     part.Contains(':') {
-                    throw Exception("Unsafe continuation path")
+                    throw CliFailure("invalid_state", "Unsafe continuation path")
                 }
             }
         }
@@ -169,7 +169,10 @@ internal class ContinuationImport {
             let descriptor = OpenAt(-100, Path.GetFullPath(directory), 589824, resolve: 4)
 
             if descriptor < 0 {
-                throw Exception("Continuation requires contained file access and real directories: " + directory)
+                throw CliFailure(
+                    "invalid_state",
+                    "Continuation requires contained file access and real directories: " + directory
+                )
             }
 
             return SafeFileHandle(IntPtr(descriptor), true)
@@ -182,7 +185,7 @@ internal class ContinuationImport {
                 if ContinuationStat(handle.DangerousGetHandle().ToInt32(), stat) != 0 ||
                     (Marshal.ReadInt32(stat, 24) & 61440) != 32768 ||
                     Marshal.ReadInt64(stat, 16) != 1 {
-                    throw Exception("Continuation requires regular files without links: " + path)
+                    throw CliFailure("invalid_state", "Continuation requires regular files without links: " + path)
                 }
             } finally {
                 Marshal.FreeHGlobal(stat)
@@ -196,17 +199,20 @@ internal class ContinuationImport {
             let descriptor = OpenAt(root.DangerousGetHandle().ToInt32(), path, 526336)
 
             if descriptor < 0 {
-                throw Exception("Cannot safely read continuation file: " + path)
+                throw CliFailure("invalid_state", "Cannot safely read continuation file: " + path)
             }
 
             let handle = SafeFileHandle(IntPtr(descriptor), true)
 
+            var retained = false
             try {
                 Regular(handle, path)
+                retained = true
                 return handle
-            } catch (error Exception) {
-                handle.Dispose()
-                throw error
+            } finally {
+                if !retained {
+                    handle.Dispose()
+                }
             }
         }
 
@@ -215,7 +221,7 @@ internal class ContinuationImport {
             using let input = FileStream(handle, FileAccess.Read)
 
             if !input.CanSeek || input.Length > limit {
-                throw Exception("Continuation file exceeds bounded regular-file capture: " + path)
+                throw CliFailure("invalid_state", "Continuation file exceeds bounded regular-file capture: " + path)
             }
 
             using let output = MemoryStream()
@@ -226,7 +232,7 @@ internal class ContinuationImport {
                 count = input.Read(buffer, 0, Math.Min(buffer.Length, limit - Convert.ToInt32(output.Length) + 1))
             ) > 0 {
                 if output.Length + count > limit {
-                    throw Exception("Continuation capture exceeds byte limit")
+                    throw CliFailure("invalid_state", "Continuation capture exceeds byte limit")
                 }
 
                 output.Write(buffer, 0, count)
@@ -235,13 +241,18 @@ internal class ContinuationImport {
             return output.ToArray()
         }
 
-        internal func Metadata(directory string) string -> UTF8Encoding(false, true).GetString(
-            Bytes(directory, "run.json", 1024 * 1024)
-        )
+        internal func Metadata(directory string) string {
+            try {
+                return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", 1024 * 1024))
+            } catch (error DecoderFallbackException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
+        }
 
         private func Parent(directory string, path string) SafeFileHandle {
             var current = Root(directory)
 
+            var retained = false
             try {
                 for part in path.Split('/', StringSplitOptions.RemoveEmptyEntries) {
                     var descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, 589824)
@@ -249,24 +260,26 @@ internal class ContinuationImport {
                     if descriptor < 0 && Marshal.GetLastWin32Error() == 2 {
                         if ContinuationMkdirAt(current.DangerousGetHandle().ToInt32(), part, 493) != 0 &&
                             Marshal.GetLastWin32Error() != 17 {
-                            throw Exception("Cannot create contained import directory: " + path)
+                            throw CliFailure("invalid_state", "Cannot create contained import directory: " + path)
                         }
 
                         descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, 589824)
                     }
 
                     if descriptor < 0 {
-                        throw Exception("Unsafe import directory: " + path)
+                        throw CliFailure("invalid_state", "Unsafe import directory: " + path)
                     }
 
                     current.Dispose()
                     current = SafeFileHandle(IntPtr(descriptor), true)
                 }
 
+                retained = true
                 return current
-            } catch (error Exception) {
-                current.Dispose()
-                throw error
+            } finally {
+                if !retained {
+                    current.Dispose()
+                }
             }
         }
 
@@ -277,7 +290,7 @@ internal class ContinuationImport {
                     return false
                 }
 
-                throw Exception("Unsafe continuation control or target file: " + path)
+                throw CliFailure("invalid_state", "Unsafe continuation control or target file: " + path)
             }
 
             using let handle = SafeFileHandle(IntPtr(descriptor), true)
@@ -288,7 +301,7 @@ internal class ContinuationImport {
 
         private func Remove(directory int32, path string) {
             if Present(directory, path) && ContinuationUnlinkAt(directory, path, 0) != 0 {
-                throw Exception("Cannot remove contained continuation file: " + path)
+                throw CliFailure("invalid_state", "Cannot remove contained continuation file: " + path)
             }
         }
 
@@ -296,7 +309,7 @@ internal class ContinuationImport {
             let descriptor = OpenAt(directory, path, 526529, mode)
 
             if descriptor < 0 {
-                throw Exception("Cannot create contained continuation file: " + path)
+                throw CliFailure("invalid_state", "Cannot create contained continuation file: " + path)
             }
 
             using let handle = SafeFileHandle(IntPtr(descriptor), true)
@@ -307,7 +320,15 @@ internal class ContinuationImport {
             output.Write(bytes, 0, bytes.Length)
 
             if ContinuationMode(descriptor, mode) != 0 {
-                throw Exception("Cannot set contained continuation file mode: " + path)
+                throw CliFailure("invalid_state", "Cannot set contained continuation file mode: " + path)
+            }
+        }
+
+        private func Content(value string)[]byte {
+            try {
+                return Convert.FromBase64String(value)
+            } catch (error FormatException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
         }
 
@@ -333,12 +354,12 @@ internal class ContinuationImport {
             let control = root.DangerousGetHandle().ToInt32()
             let mode uint32 = J.Text(entry, "mode") == "100755" ? 493: 420
 
-            WriteFile(control, "continuation-write.tmp", Convert.FromBase64String(J.Text(entry, "content")), mode)
+            WriteFile(control, "continuation-write.tmp", Content(J.Text(entry, "content")), mode)
 
             Present(target, name)
 
             if ContinuationRenameAt(control, "continuation-write.tmp", target, name) != 0 {
-                throw Exception("Cannot replace contained import target: " + path)
+                throw CliFailure("invalid_state", "Cannot replace contained import target: " + path)
             }
 
             run.Fields.Remove("continuation_pending")
@@ -362,7 +383,7 @@ internal class ContinuationImport {
             depth int32 = 0
         ) {
             if depth > 64 || visited.Count > 100000 {
-                throw Exception("Continuation inventory exceeds bounded path count or depth")
+                throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count or depth")
             }
 
             for entry in Directory.EnumerateFileSystemEntries(Path.Combine(root, relative)) {
@@ -376,11 +397,11 @@ internal class ContinuationImport {
                 PathName(path)
 
                 if !visited.Add(path) || visited.Count > 100000 {
-                    throw Exception("Continuation inventory exceeds bounded path count")
+                    throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count")
                 }
 
                 if FileInfo(entry).LinkTarget != nil {
-                    throw Exception("Continuation refuses symbolic links: " + path)
+                    throw CliFailure("invalid_state", "Continuation refuses symbolic links: " + path)
                 }
 
                 if Directory.Exists(entry) {
@@ -394,7 +415,7 @@ internal class ContinuationImport {
 
         private func Paths(output string)[]string {
             if output != "" && !output.EndsWith("\0", StringComparison.Ordinal) {
-                throw Exception("Incomplete continuation Git path evidence")
+                throw CliFailure("invalid_state", "Incomplete continuation Git path evidence")
             }
 
             return output.Split('\0', StringSplitOptions.RemoveEmptyEntries)
@@ -414,7 +435,10 @@ internal class ContinuationImport {
                         .Value
                         .StartsWith("100755 blob ")
                 ) {
-                    throw Exception("Unsupported generated, linked or submodule path in approved base: " + entry.Key)
+                    throw CliFailure(
+                        "invalid_state",
+                        "Unsupported generated, linked or submodule path in approved base: " + entry.Key
+                    )
                 }
             }
 
@@ -432,7 +456,7 @@ internal class ContinuationImport {
                     fields[0] + " blob " + RepositoryIdentity.CommitSha(fields[1])
                 ) ||
                     Excluded(path) {
-                    throw Exception("Ambiguous or unsupported continuation index")
+                    throw CliFailure("invalid_state", "Ambiguous or unsupported continuation index")
                 }
             }
 
@@ -445,7 +469,10 @@ internal class ContinuationImport {
                 let wasDirectory = entry.Value.StartsWith("040000 tree ")
                 let isDirectory = visited.Contains(entry.Key) && !files.Contains(entry.Key)
                 if visited.Contains(entry.Key) && wasDirectory != isDirectory {
-                    throw Exception("Continuation does not support file/directory replacement: " + entry.Key)
+                    throw CliFailure(
+                        "invalid_state",
+                        "Continuation does not support file/directory replacement: " + entry.Key
+                    )
                 }
             }
 
@@ -486,7 +513,7 @@ internal class ContinuationImport {
             }
 
             if changed.Count > 1000 {
-                throw Exception("Continuation exceeds 1000 changed paths")
+                throw CliFailure("invalid_state", "Continuation exceeds 1000 changed paths")
             }
 
             let entries = List[Object]()
@@ -499,7 +526,10 @@ internal class ContinuationImport {
                 PathName(path)
 
                 if Excluded(path) {
-                    throw Exception("Tracked generated or credential path changes cannot be imported: " + path)
+                    throw CliFailure(
+                        "invalid_state",
+                        "Tracked generated or credential path changes cannot be imported: " + path
+                    )
                 }
 
                 var mode = "deleted"
@@ -524,13 +554,16 @@ internal class ContinuationImport {
                 let hasOriginal = baseline.TryGetValue(path, out original)
 
                 if hasOriginal && original.StartsWith("040000 tree ") {
-                    throw Exception("Continuation does not support file/directory replacement: " + path)
+                    throw CliFailure(
+                        "invalid_state",
+                        "Continuation does not support file/directory replacement: " + path
+                    )
                 }
 
                 let current = mode == "deleted" ? "": mode + " blob " + blob
 
                 if (hasStaged ? staged: "") != (hasOriginal ? original: "") && (hasStaged ? staged: "") != current {
-                    throw Exception("Staged and available file evidence disagree: " + path)
+                    throw CliFailure("invalid_state", "Staged and available file evidence disagree: " + path)
                 }
 
                 if hasOriginal && original == current {
@@ -559,7 +592,7 @@ internal class ContinuationImport {
                 let path = Path.Combine(directory, name)
 
                 if FileInfo(path).LinkTarget != nil {
-                    throw Exception("Source evidence must not be linked")
+                    throw CliFailure("invalid_state", "Source evidence must not be linked")
                 }
 
                 result[name] = File.Exists(path) ? Convert.ToHexString(SHA256.HashData(Bytes(directory, name)))
@@ -580,7 +613,8 @@ internal class ContinuationImport {
                 AttemptContinuation.Provenance(source),
                 J.Get(run.Element(), "continuation")
             ) {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Source metadata or attribution changed since explicit preparation; source is preserved"
                 )
             }
@@ -592,7 +626,7 @@ internal class ContinuationImport {
                 entries,
                 Scan(Path.Combine(sourceDirectory, "checkout"), source, record, true)
             ) {
-                throw Exception("Source changed during capture; source is preserved")
+                throw CliFailure("invalid_state", "Source changed during capture; source is preserved")
             }
 
             let path = Path.Combine(directory, "continuation.json")
@@ -608,7 +642,8 @@ internal class ContinuationImport {
 
             if File.Exists(path) {
                 if Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024)) != manifest {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "Interrupted capture differs from source; inspect this saved preparation, no new reservation is created"
                     )
                 }
@@ -621,7 +656,10 @@ internal class ContinuationImport {
 
                 if Present(control, "continuation.json") ||
                     ContinuationRenameAt(control, "continuation.json.tmp", control, "continuation.json") != 0 {
-                    throw Exception("Capture manifest changed during preparation; inspect this saved run")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Capture manifest changed during preparation; inspect this saved run"
+                    )
                 }
             }
 
@@ -636,16 +674,24 @@ internal class ContinuationImport {
             let text = Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024))
 
             if Data.Hash(text) != run.Text("continuation_manifest_sha256") {
-                throw Exception("Captured continuation manifest changed; inspect the original preparation")
+                throw CliFailure(
+                    "invalid_state",
+                    "Captured continuation manifest changed; inspect the original preparation"
+                )
             }
 
-            let manifest = J.Parse(text)
+            var manifest JsonElement
+            try {
+                manifest = J.Parse(text)
+            } catch (error JsonException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
 
             if J.Number(manifest, "version") != 1 || !RequestData.Same(
                 J.Get(manifest, "predecessor"),
                 J.Get(run.Element(), "continuation")
             ) {
-                throw Exception("Continuation predecessor evidence changed")
+                throw CliFailure("invalid_state", "Continuation predecessor evidence changed")
             }
 
             let paths = HashSet[string](StringComparer.Ordinal)
@@ -656,11 +702,11 @@ internal class ContinuationImport {
                 PathName(path)
 
                 if !paths.Add(path) || paths.Count > 1000 || Excluded(path) {
-                    throw Exception("Unsafe or ambiguous captured continuation paths")
+                    throw CliFailure("invalid_state", "Unsafe or ambiguous captured continuation paths")
                 }
 
                 let mode = J.Text(entry, "mode")
-                let bytes = Convert.FromBase64String(J.Text(entry, "content"))
+                let bytes = Content(J.Text(entry, "content"))
                 total += bytes.Length
 
                 if total > Limit ||
@@ -671,7 +717,7 @@ internal class ContinuationImport {
                         "blob"
                     )
                 ) {
-                    throw Exception("Inconsistent captured continuation content")
+                    throw CliFailure("invalid_state", "Inconsistent captured continuation content")
                 }
             }
 
@@ -686,7 +732,7 @@ internal class ContinuationImport {
             let staged = Commands.GitResult(checkout, []string{"diff", "--cached", "--quiet", run.Text("base"), "--"})
 
             if staged.Code != 0 || staged.Truncated || staged.ReadFailed {
-                throw Exception("Import target index differs from the approved base")
+                throw CliFailure("invalid_state", "Import target index differs from the approved base")
             }
 
             let actual = Scan(checkout, run, record, false)
@@ -694,7 +740,8 @@ internal class ContinuationImport {
 
             if !allowPartial {
                 if !RequestData.Same(actual, expected) {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "Imported edits differ from their captured manifest; inspect this preparation before inference"
                     )
                 }
@@ -708,7 +755,8 @@ internal class ContinuationImport {
                 for entry in J.Items(actual) {
                     var value string
                     if !allowed.TryGetValue(J.Text(entry, "path"), out value) || value != RequestData.Canonical(entry) {
-                        throw Exception(
+                        throw CliFailure(
+                            "invalid_state",
                             "Interrupted import has dirty or unrelated edits; inspect this saved preparation"
                         )
                     }
@@ -740,7 +788,8 @@ internal class ContinuationImport {
                 }
 
                 if !known {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_state",
                         "Interrupted import has unidentified pending content; inspect this saved preparation"
                     )
                 }
@@ -748,7 +797,7 @@ internal class ContinuationImport {
                 Remove(control, "continuation-write.tmp")
                 run.Fields.Remove("continuation_pending")
             } else if Present(control, "continuation-write.tmp") {
-                throw Exception("Unidentified import temporary file; inspect this saved preparation")
+                throw CliFailure("invalid_state", "Unidentified import temporary file; inspect this saved preparation")
             }
 
             run.Fields["continuation_phase"] = "importing"
@@ -783,7 +832,10 @@ internal class ContinuationImport {
             ) ||
                 !RequestData
                 .Same(Evidence(directory), J.Get(manifest, "evidence")) {
-                throw Exception("Source evidence changed since continuation capture; preserved import cannot resume")
+                throw CliFailure(
+                    "invalid_state",
+                    "Source evidence changed since continuation capture; preserved import cannot resume"
+                )
             }
         }
     }

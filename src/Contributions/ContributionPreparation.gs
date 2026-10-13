@@ -45,7 +45,7 @@ internal class ContributionPreparation {
 
             if args.Get("continue-from") != "" {
                 if run.Text("source") != "tokate" || run.Text("attempt") == "" {
-                    throw Exception("Continuation requires a managed v2 fresh active attempt")
+                    throw CliFailure("invalid_state", "Continuation requires a managed v2 fresh active attempt")
                 }
 
                 let sourceDirectory = LocalPaths.DirectoryPath(args.Need("continue-from"))
@@ -92,7 +92,7 @@ internal class ContributionPreparation {
             let policy = Policy(J.Write(J.Get(record, "policy")))
 
             if source != "external" && source != "tokate" {
-                throw Exception("source must be external or tokate")
+                throw CliFailure("invalid_state", "source must be external or tokate")
             }
 
             var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(args.Need("tools"), 8192)
@@ -111,7 +111,8 @@ internal class ContributionPreparation {
 
                     for key in[]string{"harness", "provider", "model", "effort"} {
                         if args.Get(key) != "" && args.Get(key) != J.Text(declared, key) {
-                            throw Exception(
+                            throw CliFailure(
+                                "invalid_state",
                                 "Explicit selection conflicts with declared tool; no model substitution is allowed"
                             )
                         }
@@ -140,7 +141,8 @@ internal class ContributionPreparation {
             }
 
             if J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object && args.Get("from-pr") == "" {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "Published work is preserved; saved-checkout continuation remains unsupported until #14"
                 )
             }
@@ -234,7 +236,8 @@ internal class ContributionPreparation {
             let policy = Policy.Load(repo, revision)
 
             if args.Get("continue-from") != "" {
-                throw Exception(
+                throw CliFailure(
+                    "invalid_state",
                     "For stopped v2 work, explicitly acquire a fresh attempt then use prepare --continue-from with its current --state; no claim was posted"
                 )
             }

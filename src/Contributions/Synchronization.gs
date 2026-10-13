@@ -22,16 +22,16 @@ internal class Synchronization {
             if baseCommit != base || mergeBase != base || J.Get(value, "behind_by")
                 .ValueKind != JsonValueKind.Number ||
                 J.Number(value, "behind_by") != 0 {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             let status = J.Text(value, "status")
             if base == head {
                 if status != "identical" {
-                    throw Exception(failure)
+                    throw CliFailure("invalid_state", failure)
                 }
             } else if status != "ahead" || commits.Count == 0 || J.Text(commits[commits.Count - 1], "sha") != head {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
         }
 
@@ -43,7 +43,7 @@ internal class Synchronization {
             }
 
             if history.ValueKind != JsonValueKind.Array || history.GetArrayLength() > 64 {
-                throw Exception("Invalid or excessive synchronization history")
+                throw CliFailure("invalid_state", "Invalid or excessive synchronization history")
             }
 
             for item in J.Items(history) {
@@ -72,7 +72,7 @@ internal class Synchronization {
 
             for item in J.Items(history) {
                 if J.Text(item, "grant") == grant {
-                    throw Exception("Synchronization grant already appears in history")
+                    throw CliFailure("invalid_state", "Synchronization grant already appears in history")
                 }
 
                 items.Add(item)
@@ -95,8 +95,8 @@ internal class Synchronization {
 
         private func Numeric(value JsonElement) {
             var id int64
-            if !value.TryGetInt64(out id) || id < 1 {
-                throw Exception("Synchronization requires a numeric repository identity")
+            if value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out id) || id < 1 {
+                throw CliFailure("invalid_state", "Synchronization requires a numeric repository identity")
             }
         }
 
@@ -116,25 +116,25 @@ internal class Synchronization {
             let failure = "Invalid owner synchronization grant"
 
             if J.Number(value, "version") != 1 || !Guid.TryParseExact(J.Text(value, "id"), "D", out id) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if !RepositoryIdentity.SameRepo(J.Text(value, "repo"), repo) {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if J.Number(value, "issue") < 1 || J.Number(value, "pr") < 1 {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             if approvalVersion != 2 || J.Get(value, "receipt").ValueKind != JsonValueKind.Object {
-                throw Exception(failure)
+                throw CliFailure("invalid_state", failure)
             }
 
             Numeric(J.Get(value, "repository_id"))
 
             if !Regex.IsMatch(J.Text(value, "approval"), "^[0-9a-f]{64}$") {
-                throw Exception("Invalid original synchronization approval identity")
+                throw CliFailure("invalid_state", "Invalid original synchronization approval identity")
             }
 
             RepositoryIdentity.CommitSha(J.Text(value, "base"))
@@ -159,7 +159,10 @@ internal class Synchronization {
                 "sha"
             ) != grant ||
                 J.Text(object, "type") != "commit" {
-                throw Exception("Synchronization revoked, deleted, moved or bound to another repository")
+                throw CliFailure(
+                    "stale_approval",
+                    "Synchronization revoked, deleted, moved or bound to another repository"
+                )
             }
 
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + grant)
@@ -169,7 +172,7 @@ internal class Synchronization {
                 value,
                 "upstream"
             ) {
-                throw Exception("Invalid synchronization grant commit ancestry")
+                throw CliFailure("invalid_state", "Invalid synchronization grant commit ancestry")
             }
 
             return value
@@ -179,7 +182,7 @@ internal class Synchronization {
             ApprovalBase.Check(repo, approval)
 
             if target != J.Text(approval, "base_branch") || (current && GitHub.Branch(repo, target) != upstream) {
-                throw Exception("Synchronization target moved; a new exact owner grant is required")
+                throw CliFailure("stale_approval", "Synchronization target moved; a new exact owner grant is required")
             }
 
             Decree.CheckCurrent(repo, upstream, approval)
@@ -222,53 +225,54 @@ internal class Synchronization {
                 let receipt = J.Get(value, "receipt")
 
                 if J.Number(value, "pr") != pr || J.Number(value, "issue") != issue {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if J.Number(value, "approval_version") != approvalVersion || J.Text(value, "approval") != approval {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if J.Text(value, "base") != approvedBase || J.Text(value, "target") != target {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if !RepositoryIdentity.SameRepo(J.Text(value, "fork"), fork) || J.Text(value, "branch") != branch {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 let candidate = J.Text(value, "candidate")
                 let upstream = J.Text(value, "upstream")
 
                 if J.Text(item, "candidate") != candidate || J.Text(item, "upstream") != upstream {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if J.Text(receipt, "head") != J.Text(value, "previous") || J.Text(receipt, "approval") != approval {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if J.Number(receipt, "version") != approvalVersion {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if J.Number(receipt, "issue") != issue || J.Text(receipt, "donor") != donor {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if RequestData.Canonical(History(receipt)) != RequestData.Canonical(J.Parse(J.Write(prefix))) {
-                    throw Exception(failure)
+                    throw CliFailure("stale_approval", failure)
                 }
 
                 if grant == sync {
                     let predecessor = J.Text(value, "previous")
                     let revision = J.Text(value, "expected")
                     if candidate != head || predecessor != previous || revision != expected {
-                        throw Exception(
+                        throw CliFailure(
+                            "stale_approval",
                             "Synchronization candidate, previous head or expected state differs from exact owner grant"
                         )
                     }
@@ -283,7 +287,7 @@ internal class Synchronization {
                     historyItems[historyItems.Count - 1],
                     "grant"
                 ) != sync {
-                    throw Exception("Missing exact synchronization grant in amendment history")
+                    throw CliFailure("invalid_state", "Missing exact synchronization grant in amendment history")
                 }
             }
 
@@ -416,7 +420,7 @@ internal class Synchronization {
             let mergedAt = J.Get(pull, "merged_at").ValueKind
             if J.Text(pull, "state") != "open" || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) {
-                throw Exception("Synchronization requires an already-published open, unmerged PR")
+                throw CliFailure("invalid_state", "Synchronization requires an already-published open, unmerged PR")
             }
         }
 
@@ -432,7 +436,10 @@ internal class Synchronization {
 
             if J.Text(head, "sha") != published || RequestData.Canonical(PrBody.Receipt(J.Text(pull, "body"))) !=
             RequestData.Canonical(J.Get(value, "receipt")) {
-                throw Exception("Published head or receipt changed during synchronization authorization")
+                throw CliFailure(
+                    "stale_approval",
+                    "Published head or receipt changed during synchronization authorization"
+                )
             }
 
             let reference = GitHub.Api("repos/" + J.Text(value, "fork") + "/git/ref/heads/" + J.Text(value, "branch"))
@@ -440,19 +447,19 @@ internal class Synchronization {
             let remoteHead = J.Text(J.Get(reference, "object"), "sha")
 
             if remoteHead != published || J.Text(head, "ref") != J.Text(value, "branch") {
-                throw Exception(branchFailure)
+                throw CliFailure("stale_approval", branchFailure)
             }
 
             let headRepo = J.Text(J.Get(head, "repo"), "full_name")
 
             if !RepositoryIdentity.SameRepo(headRepo, J.Text(value, "fork")) {
-                throw Exception(branchFailure)
+                throw CliFailure("stale_approval", branchFailure)
             }
 
             Target(repo, approval, J.Text(value, "target"), J.Text(value, "upstream"))
 
             if CoordinationState.Load(repo, J.Number(value, "issue")).Sha != J.Text(value, "expected") {
-                throw Exception("Synchronization expected coordination state changed")
+                throw CliFailure("stale_approval", "Synchronization expected coordination state changed")
             }
         }
 
@@ -475,7 +482,7 @@ internal class Synchronization {
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
 
             if pending != "" && J.Text(J.Get(pull, "head"), "sha") == J.Text(receipt, "head") {
-                throw Exception("No pending pushed synchronization to replace")
+                throw CliFailure("invalid_state", "No pending pushed synchronization to replace")
             }
 
             let issue = J.Number(receipt, "issue")
@@ -614,7 +621,10 @@ internal class Synchronization {
                 parents[0],
                 "sha"
             ) != grant {
-                throw Exception("Revocation ref changed; inspect physical authority without retrying")
+                throw CliFailure(
+                    "stale_approval",
+                    "Revocation ref changed; inspect physical authority without retrying"
+                )
             }
 
             PublicOutput.ResultData = map[string, Object?]{"repo": repo, "grant": grant}

@@ -119,7 +119,7 @@ internal class Overlaps {
                     )
 
                     if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 100 {
-                        throw Exception("Incomplete native dependency evidence")
+                        throw CliFailure("invalid_state", "Incomplete native dependency evidence")
                     }
 
                     for dependency in value.EnumerateArray() {
@@ -183,7 +183,9 @@ internal class Overlaps {
                 }
             } catch (error ApiDeadlineException) {
                 throw error
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error is JsonException || error.GetType() == typeof(
+                Exception
+            ) {
                 Failure(facts, "dependencies", error)
             } finally {
                 facts["dependencies"] = rows
@@ -234,7 +236,7 @@ internal class Overlaps {
             let facts = item.Facts
 
             if target == "" {
-                throw Exception("Current target is unavailable")
+                throw CliFailure("invalid_state", "Current target is unavailable")
             }
 
             let key = base + ":" + target
@@ -295,7 +297,10 @@ internal class Overlaps {
                 if !targets.ContainsKey(branch) {
                     try {
                         targets[branch] = GitHub.Branch(repo, branch)
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure ||
+                        error is JsonException ||
+                        error is ApiDeadlineException ||
+                        error.GetType() == typeof(Exception) {
                         targets[branch] = ""
                     }
                 }
@@ -335,10 +340,16 @@ internal class Overlaps {
 
                     try {
                         Upstream(repo, item, base, targets[branch], changes)
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure ||
+                        error is JsonException ||
+                        error is ApiDeadlineException ||
+                        error.GetType() == typeof(Exception) {
                         Failure(facts, "upstream", error)
                     }
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(facts, "diff", error)
                 }
 
@@ -365,12 +376,18 @@ internal class Overlaps {
 
                     facts["required_checks"] = required
                     facts["required_check_count"] = names.Count
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(facts, "checks", error)
                 }
 
                 Dependencies(repo, binding.Number("issue"), facts)
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is JsonException ||
+                error is ApiDeadlineException ||
+                error.GetType() == typeof(Exception) {
                 Failure(facts, "binding", error)
             }
         }
@@ -397,7 +414,7 @@ internal class Overlaps {
                     item.Facts["target_branch_after"] = J.Text(J.Get(pull, "base"), "ref")
 
                     if item.Identity == "" || Identity(pull) != item.Identity {
-                        throw Exception("Contribution identity changed during evidence collection")
+                        throw CliFailure("stale_approval", "Contribution identity changed during evidence collection")
                     }
 
                     if let binding = item.Binding {
@@ -407,13 +424,19 @@ internal class Overlaps {
                         let original = J.Write(J.Select(binding.Element(), fields))
 
                         if current != original {
-                            throw Exception("Contribution binding changed during evidence collection")
+                            throw CliFailure(
+                                "stale_approval",
+                                "Contribution binding changed during evidence collection"
+                            )
                         }
                     }
 
                     item.Stable = true
                     item.Facts["identity_status"] = "stable"
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(item.Facts, "identity", error)
                     item.Facts["binding_status"] = "unknown"
                     item.Invalidate()
@@ -424,7 +447,10 @@ internal class Overlaps {
                 var current string = ""
                 try {
                     current = GitHub.Branch(repo, target.Key)
-                } catch (error Exception) { }
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) { }
 
                 for item in items {
                     if item.Target != target.Key {

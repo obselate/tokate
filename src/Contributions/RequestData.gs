@@ -21,14 +21,17 @@ internal class RequestData {
 
         internal func Parse(text string, limit int32 = 8192) JsonElement {
             if Encoding.UTF8.GetByteCount(text) > limit {
-                throw Exception("Coordination data exceeds its byte limit")
+                throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
             }
 
-            using let document = JsonDocument.Parse(text, JsonDocumentOptions{MaxDepth: 32})
-            let value = document.RootElement.Clone()
-            Unique(value)
-
-            return value
+            try {
+                using let document = JsonDocument.Parse(text, JsonDocumentOptions{MaxDepth: 32})
+                let value = document.RootElement.Clone()
+                Unique(value)
+                return value
+            } catch (error JsonException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
         }
 
         internal func Comment(request JsonElement) string {
@@ -51,7 +54,7 @@ internal class RequestData {
 
         internal func CommentData(body string) JsonElement {
             if Encoding.UTF8.GetByteCount(body) > 9216 || !body.StartsWith("/tokate ", StringComparison.Ordinal) {
-                throw Exception("Invalid or oversized coordination comment")
+                throw CliFailure("invalid_state", "Invalid or oversized coordination comment")
             }
 
             let text = body.Substring(8)
@@ -64,36 +67,42 @@ internal class RequestData {
             let ending = "\n```\n</details>"
 
             if start < 0 || !body.EndsWith(ending, StringComparison.Ordinal) {
-                throw Exception("Malformed readable coordination request")
+                throw CliFailure("invalid_state", "Malformed readable coordination request")
             }
 
             let payload = body.Substring(start + marker.Length, body.Length - start - marker.Length - ending.Length)
             let request = Parse(payload)
 
             if body != Comment(request) {
-                throw Exception("Coordination comment differs from its request")
+                throw CliFailure("invalid_state", "Coordination comment differs from its request")
             }
 
             return request
         }
 
         internal func FileData(path string, limit int32) JsonElement {
-            using let file = File.OpenRead(path)
-            using let bytes = MemoryStream()
-            let buffer = [8192]byte
-            var count int32
+            try {
+                using let file = File.OpenRead(path)
+                using let bytes = MemoryStream()
+                let buffer = [8192]byte
+                var count int32
 
-            while (
-                count = file.Read(buffer, 0, Math.Min(buffer.Length, limit + 1 - Convert.ToInt32(bytes.Length)))
-            ) > 0 {
-                bytes.Write(buffer, 0, count)
+                while (
+                    count = file.Read(buffer, 0, Math.Min(buffer.Length, limit + 1 - Convert.ToInt32(bytes.Length)))
+                ) > 0 {
+                    bytes.Write(buffer, 0, count)
 
-                if bytes.Length > limit {
-                    throw Exception("Coordination data exceeds its byte limit")
+                    if bytes.Length > limit {
+                        throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
+                    }
                 }
-            }
 
-            return Parse(Encoding.UTF8.GetString(bytes.ToArray()), limit)
+                return Parse(Encoding.UTF8.GetString(bytes.ToArray()), limit)
+            } catch (error IOException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            } catch (error UnauthorizedAccessException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
         }
 
         private func Unique(value JsonElement) {
@@ -101,7 +110,7 @@ internal class RequestData {
                 let names = HashSet[string](StringComparer.Ordinal)
                 for field in value.EnumerateObject() {
                     if !names.Add(field.Name) {
-                        throw Exception("Duplicate JSON key")
+                        throw CliFailure("invalid_state", "Duplicate JSON key")
                     }
 
                     Unique(field.Value)
@@ -115,14 +124,14 @@ internal class RequestData {
 
         internal func Keys(value JsonElement, names string) {
             if value.ValueKind != JsonValueKind.Object {
-                throw Exception("Expected one strict JSON object")
+                throw CliFailure("invalid_state", "Expected one strict JSON object")
             }
 
             let allowed = HashSet[string](names.Split(','), StringComparer.Ordinal)
 
             for field in value.EnumerateObject() {
                 if field.Name == "" || !allowed.Contains(field.Name) {
-                    throw Exception("Unknown or authority-granting request field")
+                    throw CliFailure("invalid_state", "Unknown or authority-granting request field")
                 }
             }
         }
@@ -160,7 +169,7 @@ internal class RequestData {
             if value.ValueKind == JsonValueKind.Number {
                 var integer int64
                 if !value.TryGetInt64(out integer) {
-                    throw Exception("Only integer metadata is supported")
+                    throw CliFailure("invalid_state", "Only integer metadata is supported")
                 }
 
                 return integer.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -171,7 +180,7 @@ internal class RequestData {
 
         internal func Token(value string, message string = "Invalid tool identifier") string {
             if !Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
-                throw Exception(message)
+                throw CliFailure("invalid_state", message)
             }
 
             return value
@@ -183,7 +192,7 @@ internal class RequestData {
             let items = J.Items(value)
 
             if value.ValueKind != JsonValueKind.Array || items.Count < 1 || items.Count > 16 {
-                throw Exception("Declare 1 to 16 tools, including every tool used")
+                throw CliFailure("invalid_state", "Declare 1 to 16 tools, including every tool used")
             }
 
             for index in 0 ... items.Count {
@@ -208,8 +217,12 @@ internal class RequestData {
 
                 if number.ValueKind != JsonValueKind.Undefined &&
                     number.ValueKind != JsonValueKind.Null &&
-                    (!number.TryGetInt64(out seconds) || seconds < 0 || seconds > 86400 * 365) {
-                    throw Exception("Invalid donor-reported coding time")
+                    (
+                    number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out seconds) ||
+                        seconds < 0 ||
+                        seconds > 86400 * 365
+                ) {
+                    throw CliFailure("invalid_state", "Invalid donor-reported coding time")
                 }
 
                 let usage = J.Get(tool, "usage")
@@ -218,8 +231,9 @@ internal class RequestData {
 
                     for field in usage.EnumerateObject() {
                         var count int64
-                        if !field.Value.TryGetInt64(out count) || count < 0 {
-                            throw Exception("Usage must be a nonnegative donor-reported count")
+                        if field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt64(out count) ||
+                            count < 0 {
+                            throw CliFailure("invalid_state", "Usage must be a nonnegative donor-reported count")
                         }
                     }
                 }
@@ -230,7 +244,7 @@ internal class RequestData {
             Keys(value, "uuid,head,tree,patch_sha256,seconds,tools,verification")
 
             if System.Text.Encoding.UTF8.GetByteCount(Canonical(value)) > 6144 {
-                throw Exception("Correction provenance exceeds its byte limit")
+                throw CliFailure("invalid_state", "Correction provenance exceeds its byte limit")
             }
 
             var uuid Guid
@@ -243,7 +257,7 @@ internal class RequestData {
                 value,
                 "verification"
             ) != "tokate-observed-locally-exact-commit" {
-                throw Exception("Invalid bounded correction provenance")
+                throw CliFailure("invalid_state", "Invalid bounded correction provenance")
             }
 
             RepositoryIdentity.CommitSha(head)
@@ -252,7 +266,7 @@ internal class RequestData {
             let tools = J.Get(value, "tools")
 
             if tools.ValueKind != JsonValueKind.Array {
-                throw Exception("Correction tools must be an array; [] declares manual editing")
+                throw CliFailure("invalid_state", "Correction tools must be an array; [] declares manual editing")
             }
 
             if J.Count(tools) > 0 {
@@ -261,7 +275,7 @@ internal class RequestData {
 
             if policy.ValueKind != JsonValueKind.Undefined {
                 if J.Number(value, "seconds") > J.Number(policy, "max_seconds") {
-                    throw Exception("Correction budget exceeds original owner policy")
+                    throw CliFailure("invalid_state", "Correction budget exceeds original owner policy")
                 }
                 CorrectionTools(tools, policy)
             }
@@ -269,7 +283,7 @@ internal class RequestData {
 
         internal func CorrectionTools(tools JsonElement, policy JsonElement) {
             if tools.ValueKind != JsonValueKind.Array {
-                throw Exception("Correction tools must be an array; [] declares manual editing")
+                throw CliFailure("invalid_state", "Correction tools must be an array; [] declares manual editing")
             }
 
             if J.Count(tools) > 0 {
@@ -295,7 +309,7 @@ internal class RequestData {
         internal func Incomplete(metadata JsonElement) bool {
             let value = J.Get(metadata, "incomplete")
             if value.ValueKind != JsonValueKind.Undefined && value.ValueKind != JsonValueKind.True {
-                throw Exception("Incomplete work must be declared explicitly")
+                throw CliFailure("invalid_state", "Incomplete work must be declared explicitly")
             }
 
             return value.ValueKind == JsonValueKind.True
@@ -308,16 +322,16 @@ internal class RequestData {
             for old in J.Items(J.Get(state, "outcomes")) {
                 if J.Text(old, "uuid") == J.Text(request, "uuid") {
                     if J.Text(old, "binding") != binding {
-                        throw Exception("UUID replay changed actor or request contents")
+                        throw CliFailure("invalid_state", "UUID replay changed actor or request contents")
                     }
 
                     if result.ValueKind != JsonValueKind.Undefined {
-                        throw Exception("Ambiguous recorded request outcomes")
+                        throw CliFailure("invalid_state", "Ambiguous recorded request outcomes")
                     }
 
                     result = J.Get(old, "outcome")
                     if result.ValueKind != JsonValueKind.Object {
-                        throw Exception("Invalid recorded request outcome")
+                        throw CliFailure("invalid_state", "Invalid recorded request outcome")
                     }
                 }
             }
@@ -335,7 +349,7 @@ internal class RequestData {
                 J.Text(value, "approval"),
                 "^[0-9a-f]{64}$"
             ) {
-                throw Exception("Request needs a canonical UUID and approval identity")
+                throw CliFailure("invalid_state", "Request needs a canonical UUID and approval identity")
             }
 
             RepositoryIdentity.CommitSha(J.Text(value, "expected"))
@@ -355,7 +369,7 @@ internal class RequestData {
                 if !Regex.IsMatch(J.Text(metadata, "branch"), "^tokate/v2-[0-9a-f-]{36}$") ||
                     (J.Text(metadata, "source") != "external" && J.Text(metadata, "source") != "tokate") ||
                     J.Text(metadata, "verification") != (Incomplete(metadata) ? "not-passed": "donor-reported-pass") {
-                    throw Exception("Invalid contribution declaration")
+                    throw CliFailure("invalid_state", "Invalid contribution declaration")
                 }
 
                 Tools(J.Get(metadata, "tools"))
@@ -366,11 +380,11 @@ internal class RequestData {
 
                 if correction.ValueKind != JsonValueKind.Undefined {
                     if Incomplete(metadata) {
-                        throw Exception("Incomplete work cannot claim verified correction provenance")
+                        throw CliFailure("invalid_state", "Incomplete work cannot claim verified correction provenance")
                     }
 
                     if J.Text(metadata, "source") != "tokate" {
-                        throw Exception("Correction provenance requires managed original work")
+                        throw CliFailure("invalid_state", "Correction provenance requires managed original work")
                     }
                     Correction(correction, J.Text(metadata, "head"), JsonElement{})
                 }
@@ -389,20 +403,20 @@ internal class RequestData {
                     "pr"
                 ) < 1 ||
                     J.Number(metadata, "seconds") < 1 || J.Text(metadata, "verification") != "donor-reported-pass" {
-                    throw Exception("Invalid amendment declaration")
+                    throw CliFailure("invalid_state", "Invalid amendment declaration")
                 }
 
                 let tools = J.Get(metadata, "tools")
 
                 if tools.ValueKind != JsonValueKind.Array {
-                    throw Exception("Amendment tools must be an array")
+                    throw CliFailure("invalid_state", "Amendment tools must be an array")
                 }
 
                 if J.Count(tools) > 0 {
                     Tools(tools)
                 }
             } else {
-                throw Exception("Only claim, publish and amend are donor request operations")
+                throw CliFailure("invalid_state", "Only claim, publish and amend are donor request operations")
             }
 
             let summary = J.Get(metadata, "summary")
