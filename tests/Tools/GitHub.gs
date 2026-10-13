@@ -705,10 +705,6 @@ internal partial class Fixture {
             return Answer(issue)
         }
         if tail.StartsWith("issues?") {
-            let query = tail.Substring(tail.IndexOf('?') + 1).Split('&')
-            let sizeField = Array.Find(query, field -> field.StartsWith("per_page=", StringComparison.Ordinal)) ??
-                "per_page=30"
-            let size = Int32.Parse(sizeField.Substring(9))
             let rows = JsonArray()
             let issues = State["issues"]?.AsObject() ?? Check.Map("1", State["issue"]?.DeepClone()).AsObject()
             for item in issues {
@@ -717,11 +713,11 @@ internal partial class Fixture {
                 for label in issue["labels"]?.AsArray() ?? JsonArray() {
                     labelled = labelled || Check.Text(label["name"]) == "tokate:approved"
                 }
-                if labelled && Check.Text(issue["state"]) == "open" && rows.Count < size {
+                if labelled && Check.Text(issue["state"]) == "open" {
                     rows.Add(issue.DeepClone())
                 }
             }
-            return Answer(rows)
+            return Answer(CommentPage(rows))
         }
         if tail.StartsWith("issues/comments?") {
             let comments = JsonArray()
@@ -770,7 +766,7 @@ internal partial class Fixture {
                     "user",
                     Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId),
                     "issue_url",
-                    "https://api.github.com/repos/owner/project/issues/1"
+                    "https://api.github.com/repos/owner/project/issues/" + issueNumber
                 )
                 if Check.Text(body["body"]).Contains("<!-- tokate-admission:v1 -->") {
                     comment["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")

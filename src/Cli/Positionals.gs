@@ -220,6 +220,8 @@ internal class Positionals {
                         args.Values["--profile"] = words[1]
                     }
                 }
+            } else if args.Command == "donate" && words.Count == 1 && words[0] == "stop" {
+                args.Subject = "stop"
             } else if target == "repo" {
                 Limit(args, 1)
 

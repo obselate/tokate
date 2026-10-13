@@ -94,6 +94,37 @@ Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO
 | Submission | Tokate pushes saved work and requests a draft PR. It discovers or creates your fork. |
 | Review | The owner reviews and merges the PR. |
 
+## Donate until stopped
+
+```sh
+tokate donate OWNER/REPO --time 1h --profile NAME
+tokate donate stop
+```
+
+Use `--harness`, `--model` and `--effort` instead of `--profile` for an explicit
+selection. Add `--total 8h` to limit total elapsed time. Without it, the loop runs
+until stopped. It starts a task only when its full per-task budget fits the
+remaining total. `--time` covers coding and verification for each task.
+
+One confirmation names the repository, harness, model, effort, per-task budget
+and total budget or "until stopped". This consent covers every task the loop
+claims in that repository within those limits. Noninteractive and `--json` use
+require `--yes`.
+
+Tokate selects open approved issues oldest first across all pages. It skips
+reservations, stale approval, denied access, unmet dependencies and issues already
+attempted by this loop. Each task uses claim, work and submit. Pending submission
+is checked with the same submit
+before the next task. The loop does not wait for owner merge.
+
+When no task is eligible, it checks again in ten minutes. Run `tokate donate stop`
+in another terminal with the same Tokate state directory to stop after the
+current task. The loop removes the stop marker. Ctrl-C retains its existing
+cancellation behavior. Failed tasks release their reservations. Three failures
+in a row stop the loop and print the failed runs. Normal output has one line per
+task with its issue, result and PR URL. Progress goes to stderr. `--json` emits
+one final summary object, with up to the last 100 task results.
+
 ## Use a script
 
 1. Replace `N` with the issue number, `M` with an allowed model and `E` with its allowed effort.

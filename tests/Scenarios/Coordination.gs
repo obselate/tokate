@@ -1807,4 +1807,117 @@ internal partial class CoordinationFlow : CoordinationFixture {
         restored["body"] = JsonValue.Create(body)
         Flow.Save()
     }
+
+    private func Donating(args[]string, env Dictionary[string, string], output Chan[Result]) {
+        output <- TestProcess.Run(Flow.Binary, args, env)
+    }
+
+    internal func RepositoryDonation() {
+        Check.Envelope(
+            Flow.Call([]string{"donate", "owner/project", "--time", "30s", "--json"}, 1),
+            "donate",
+            "error",
+            "confirmation_required"
+        )
+        let exhausted = Check.Envelope(
+            Flow.Call(
+                []string{
+                    "donate",
+                    "owner/project",
+                    "--time",
+                    "30s",
+                    "--total",
+                    "1s",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--yes",
+                    "--json"
+                }
+            ),
+            "donate",
+            "ok"
+        )
+        Check.That(Check.Text(exhausted["data"]?["reason"]) == "total_exhausted", "Donation exceeded its total budget")
+        Flow.NoInference()
+        let request = ClaimRequest()
+        Coordinate(Event(request, actor: 1, login: "owner"))
+        let reserved = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
+        Flow.Reload()
+        let second = Flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
+        second["number"] = JsonValue.Create(2)
+        second["title"] = JsonValue.Create("Second approved issue")
+        Flow.State["issues"] = Check.Map("1", Flow.State["issue"]?.DeepClone(), "2", second)
+        Flow.Save()
+        Flow.Call([]string{"approve", "owner/project#2"}, owner: true)
+        let args = []string{
+            "donate",
+            "owner/project",
+            "--time",
+            "30s",
+            "--model",
+            "gpt-6.1-sol",
+            "--effort",
+            "high",
+            "--runs",
+            Path.Combine(Flow.Temp.Root, "runs"),
+            "--yes",
+            "--json"
+        }
+        let env = Dictionary[string, string](Flow.Temp.Env)
+        env["GH_TOKEN"] = "fixture-donor"
+        let output = Chan[Result](1)
+        go Donating(args, env, output)
+        let deadline = DateTime.UtcNow.AddSeconds(110)
+        var handled int32
+        var stopped bool
+        var result Result? = nil
+        while result == nil {
+            Flow.Reload()
+            let comments = Flow.State["request_comments"]?.AsArray() ?? JsonArray()
+            if comments.Count > handled {
+                let comment = comments[handled] ?? throw Exception("Missing donation request")
+                Check.That(Check.Text(comment["issue_url"]).EndsWith("/2"), "Donation claimed the reserved issue")
+                let posted = Check.PostedRequest(Check.Map("posted_request", comment.DeepClone()))
+                Flow.CoordinatePosted(2)
+                handled++
+                if Check.Text(posted["action"]) == "publish" {
+                    Check.Envelope(Flow.Call([]string{"donate", "stop", "--json"}), "donate", "ok")
+                    stopped = true
+                }
+            }
+            select {
+                case let finished = <- output {
+                    result = finished
+                }
+                case <- after(TimeSpan.FromMilliseconds(20)) { }
+            }
+            Check.That(DateTime.UtcNow < deadline, "Donation did not stop")
+        }
+        let summary = Check.Envelope(result ?? throw Exception("Missing donation result"), "donate", "ok")["data"] ??
+            throw Exception("Missing donation summary")
+        Check.That(stopped && handled == 2, "Donation did not claim and submit exactly one task")
+        Check.That(
+            Check.Text(summary["completed"]) == "1" && Check.Text(summary["failed"]) == "0",
+            "Donation task failed"
+        )
+        Check.That(Check.Text(summary["reason"]) == "stopped", "Donation ignored the stop marker")
+        Check.That(Check.Text(summary["tasks"]?[0]?["issue"]) == "2", "Donation reported the wrong issue")
+        Check.Contains(Check.Text(summary["tasks"]?[0]?["pr_url"]), "/pull/10")
+        Check.That(
+            !File.Exists(Path.Combine(Flow.Temp.Env["HOME"], ".local/state/tokate/donate.stop")),
+            "Stop marker was not removed"
+        )
+        Check.That(
+            Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1") == reserved,
+            "Donation changed another donor reservation"
+        )
+        Flow.Reload()
+        Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Donation repeated inference")
+        Check.That(
+            Flow.State["pulls"]?.AsArray().Count == 1 && Check.Text(Flow.State["pulls"]?[0]?["draft"]) == "true",
+            "Donation did not submit one draft PR"
+        )
+    }
 }

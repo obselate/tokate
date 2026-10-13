@@ -73,6 +73,7 @@ internal class Startup {
         internal func NeedsCatalog(command string, options Args?) bool -> command == "select" ||
             (command == "claim" && options?.Get("source") != "external") ||
             command == "work" ||
+            command == "donate" ||
             (command == "prepare" && options?.Get("source") == "tokate")
 
         private func DoctorScope(options Args) string -> options.Get("owner") == "true" ? "owner":
@@ -136,6 +137,7 @@ internal class Startup {
 
             if command == "init" ||
                 command == "work" ||
+                command == "donate" ||
                 command == "claim" ||
                 command == "prepare" ||
                 command == "external" ||
@@ -147,6 +149,7 @@ internal class Startup {
             }
 
             let independent = command == "work" ||
+                command == "donate" ||
                 command == "claim" ||
                 command == "external" ||
                 command == "amend" ||

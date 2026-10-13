@@ -219,6 +219,10 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
+    if options.Command == "donate" && options.Subject == "stop" {
+        return Donate.Stop()
+    }
+
     if options.Command != "doctor" && options.Command != "defaults" {
         DonorSelection.ApplyDefaults(options)
         Startup.Check(options)
@@ -232,6 +236,10 @@ func Dispatch(options Args) int32 {
     }
 
     switch options.Command {
+        case "donate" {
+            return Donate.Run(options)
+        }
+
         case "doctor" {
             return Startup.Doctor(options)
         }
