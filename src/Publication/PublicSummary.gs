@@ -15,6 +15,7 @@ internal class PublicSummary {
         private let Missing string = "PR report has no change summary for this candidate. Supply a current public summary and republish."
         private let Incomplete string = "PR report omits the public change or verification report region. Restore the Tokate report before acceptance."
         private let Altered string = "PR report differs from the authoritative public summary for this exact candidate. Restore it or amend with a current summary."
+        private let RestrictedTextPattern string = "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|\\bsk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
 
         internal func Validate(value JsonElement, head string = "") {
             let limit = J.Get(value, "head").ValueKind == JsonValueKind.Undefined ? 4046: 4096
@@ -45,12 +46,18 @@ internal class PublicSummary {
 
                     if item.ValueKind != JsonValueKind.String || !Safe(text) {
                         let rejected = Regex.Match(text, "[^A-Za-z0-9 .,;:!?()'+_=-]")
+                        let restricted = Regex.Match(text, RestrictedTextPattern)
 
                         throw CliFailure(
                             "invalid_state",
                             "Public summary " + key + "[" + index.ToString() +
                                 "] contains invalid public text" +
-                                (rejected.Success ? "; first disallowed character " + J.Write(rejected.Value): "")
+                                (rejected.Success ? "; first disallowed character " + J.Write(rejected.Value): "") +
+                                (
+                                restricted.Success ? "; matched disallowed public text pattern " + J.Write(
+                                    restricted.Value
+                                ): ""
+                            )
                         )
                     }
 
@@ -60,10 +67,7 @@ internal class PublicSummary {
         }
 
         private func Safe(text string) bool -> text.Length >= 3 && text.Length <= 200 && text == text.Trim() &&
-            Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(
-            text,
-            "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|sk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
-        )
+            Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(text, RestrictedTextPattern)
 
         internal func Identifier(text string, model bool = false) string {
             if text == "" && !model {

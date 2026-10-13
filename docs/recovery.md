@@ -26,6 +26,18 @@ Bare `42` selects the newest attempt for commands that take a run. Use `42-1` fo
 
 Do not edit `run.json` or delete evidence to bypass a failure. In a picker, `h` or Esc returns home. In a text input, use Esc.
 
+## Correct a rejected public summary
+
+If coding completed but the public summary was rejected, keep the saved run.
+Correct `tokate-public-summary.json` in its `checkout` directory, then run:
+
+```sh
+tokate submit --run DIR
+```
+
+Tokate checks the corrected summary and runs owner verification before publication.
+It uses the completed work without new inference. Do not start another run.
+
 ## Correct completed work before publication
 
 1. Archive the completed evidence before editing.

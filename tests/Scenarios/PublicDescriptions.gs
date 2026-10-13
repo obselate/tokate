@@ -315,12 +315,20 @@ internal class PublicDescriptions {
                     let prompt = Check.Text(flow.State["prompts"]?[0])
                     Check.Contains(prompt, "Allowed characters are A-Z, a-z, 0-9, space")
                     Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =.")
-                    File.WriteAllText(
-                        Path.Combine(run, "checkout", "tokate-public-summary.json"),
-                        Summary("Add final result content with shout=True.").ToJsonString()
-                    )
+                    let summaryPath = Path.Combine(run, "checkout", "tokate-public-summary.json")
+                    let unsafe = Summary("Add final result content.")
+                    unsafe["verification"]?.AsArray().Add(JsonValue.Create("sk-abc123 leaked") as JsonNode)
+                    File.WriteAllText(summaryPath, unsafe.ToJsonString())
+                    let rejected = flow.Call([]string{"submit", "--run", run}, 1)
+                    Check.Contains(rejected.Error, "verification[1]")
+                    Check.Contains(rejected.Error, "matched disallowed public text pattern \"sk-\"")
+                    flow.NoPr()
+                    let corrected = Summary("Add final result content with shout=True.")
+                    corrected["verification"]?.AsArray().Add(JsonValue.Create("Task-field checks passed.") as JsonNode)
+                    File.WriteAllText(summaryPath, corrected.ToJsonString())
                     flow.Publish(run)
                     Check.Contains(Body(flow), "- Add final result content with shout=True.")
+                    Check.Contains(Body(flow), "Donor-reported: Task-field checks passed.")
                     Check.That(Check.Text(flow.State["exec_count"]) == executions, "Summary recovery started inference")
                     Check.That(
                         !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
