@@ -7,13 +7,12 @@ import System.Text.Json
 
 internal class DonorSelection {
     shared {
-        internal func Supported(value JsonElement) bool ->
-        (J.Text(value, "harness") == "codex" && J.Text(value, "provider") == "openai") ||
-            (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions") ||
-            (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic") ||
-            (J.Text(value, "harness") == "omp" && J.Text(value, "provider") != "")
+        internal func Supported(value JsonElement) bool -> Managed(value) && J.Text(value, "provider") != ""
 
-        internal func Managed(saved JsonElement) bool -> Supported(saved) || J.Text(saved, "harness") == "omp"
+        internal func Managed(saved JsonElement) bool -> Harness.Accepts(
+            J.Text(saved, "harness"),
+            J.Text(saved, "provider")
+        )
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
@@ -85,8 +84,8 @@ internal class DonorSelection {
 
             let harness = args.Get("harness", "codex")
 
-            if harness == "omp" && args.Get("provider") == "" {
-                let allowed = policy.Providers("omp")
+            if Harness.Find(harness)?.Provider == "" && args.Get("provider") == "" {
+                let allowed = policy.Providers(harness)
 
                 if allowed.Count != 1 {
                     throw CliFailure(
@@ -102,11 +101,12 @@ internal class DonorSelection {
 
             let provider = args.Get("provider", "openai")
 
-            if harness != "claude" && (args.Get("claude-profile") != "") {
+            if !Harness.Owns(harness, "claude-profile") && (args.Get("claude-profile") != "") {
                 throw Exception("Claude profile options require the claude harness")
             }
 
-            if harness != "pi" && (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
+            if !Harness.Owns(harness, "endpoint") &&
+                (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
                 throw Exception("Pi runtime options require the pi harness")
             }
 
@@ -127,19 +127,15 @@ internal class DonorSelection {
                 explicitPair ? "explicit invocation": "saved donor default"
             )
 
-            if harness != "codex" {
+            let adapter = Harness.Find(harness) ?? throw Exception("Unsupported managed harness/provider")
+            if let choose = adapter.Select {
                 if model != "" {
                     args.Values["--model"] = model
                 }
                 if effort != "" {
                     args.Values["--effort"] = effort
                 }
-                return switch harness {
-                    case "claude": ClaudeHarness.Select(args, policy, source)
-                    case "pi": PiHarness.Select(args, policy, source)
-                    case "omp": OmpHarness.Select(args, policy, source)
-                    default: throw Exception("Unsupported managed harness/provider")
-                }
+                return choose(args, policy, source)
             }
 
             let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))
@@ -303,18 +299,8 @@ internal class DonorSelection {
             }
 
             policy.Validate(harness, provider, run.Text("model"), run.Text("effort"), run.Number("seconds"))
-            switch harness {
-                case "claude" {
-                    ClaudeHarness.ValidateSaved(run)
-                }
-                case "pi" {
-                    PiHarness.ValidateSaved(run)
-                }
-                case "omp" {
-                    OmpHarness.ValidateSaved(run)
-                }
-            }
-            if harness != "codex" {
+            if let validate = Harness.Find(harness)?.ValidateSaved {
+                validate(run)
                 return
             }
 

@@ -1287,14 +1287,7 @@ internal class Cli {
                     throw Exception("Choose one doctor scope: owner, managed or external")
                 }
 
-                if args.Get("harness") != "" && args.Get("harness") != "codex" && args.Get("harness") != "pi" &&
-                    args.Get("harness") != "claude" && args.Get("harness") != "omp" &&
-                    !(
-                    args.Get("set-default") == "true" && Array.IndexOf(
-                        DonorDefaults.Harnesses,
-                        args.Get("harness")
-                    ) >= 0
-                ) {
+                if args.Get("harness") != "" && Harness.Find(args.Get("harness")) == nil {
                     throw Exception("Managed diagnostics support codex, claude, pi or omp")
                 }
 
@@ -1304,7 +1297,8 @@ internal class Cli {
                     }
                 }
 
-                if args.Get("harness") != "pi" && (args.Get("pi-root") != "" || args.Get("node") != "") {
+                if !Harness.Owns(args.Get("harness"), "pi-root") &&
+                    (args.Get("pi-root") != "" || args.Get("node") != "") {
                     throw Exception("Pi runtime options require the pi harness")
                 }
             }
@@ -1430,7 +1424,8 @@ internal class Cli {
                     DonorDefaults.NormalizePair(args)
                 }
 
-                if args.Subject == "set" && args.Get("harness") != "claude" && (args.Get("claude-profile") != "") {
+                if args.Subject == "set" && !Harness.Owns(args.Get("harness"), "claude-profile") &&
+                    (args.Get("claude-profile") != "") {
                     throw Exception("Claude profile options require the claude harness")
                 }
 
@@ -1448,10 +1443,8 @@ internal class Cli {
                     if args.Subject == "set" {
                         if !partial && (key == "harness" || key == "provider" || key == "model" || key == "effort") {
                             args.Need(key)
-                        } else if (key == "endpoint" || key == "pi-root" || key == "node") && args.Get(
-                            "harness"
-                        ) != "pi" &&
-                            args.Get(key) != "" {
+                        } else if (key == "endpoint" || key == "pi-root" || key == "node") && args.Get(key) != "" &&
+                            !Harness.Owns(args.Get("harness"), key) {
                             throw Exception("Pi runtime options require the pi harness")
                         }
                     } else if args.Get(key) != "" {

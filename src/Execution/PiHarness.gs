@@ -235,6 +235,13 @@ internal class PiHarness {
             return J.Parse(J.Write(selected))
         }
 
+        internal func Doctor(options Args, tool ToolCheck) {
+            Runtime(options)
+            let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
+            tool.Path = options.Need("pi-root")
+            tool.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
+        }
+
         internal func ValidateSaved(run Data) {
             PiBoundary.Endpoint(run.Text("pi_endpoint"))
 
@@ -291,27 +298,22 @@ internal class PiHarness {
             )
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[
-            string,
-            Object?
-        ] {
+        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw ExecutionFailure.Create(
                     "inference_failed",
                     "Pi did not complete; inspect private captured evidence. No new run was started"
                 )
             }
-            let usage = SessionEvidence.Completed(
-                directory,
+            let evidence = SessionEvidence.Completed(
                 result.Output,
                 run.Text("model"),
                 J.Text(J.Get(run.Element(), "observed_invocation"), "provider")
             )
-            run.Fields["reported_model"] = run.Text("model")
             run.Fields[
                 "usage_provenance"
             ] = "harness-reported; server identity, resources and billing are not independently proven"
-            return usage
+            return evidence
         }
     }
 }

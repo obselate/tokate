@@ -245,10 +245,7 @@ internal class Worker {
             return ValueTuple[[]string, Dictionary[string, Object?]?](Command(args.ToArray(), harnessPath), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[
-            string,
-            Object?
-        ] {
+        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
             if result.Code != 0 {
                 throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")
             }
@@ -260,9 +257,7 @@ internal class Worker {
                     "Codex output was truncated; no complete turn evidence"
                 )
             }
-            let usage = CodexEvidence.CompletedUsage(directory, result.Output)
-            run.Fields["reported_model"] = nil
-            return usage
+            return CodexEvidence.Completed(result.Output)
         }
     }
 }

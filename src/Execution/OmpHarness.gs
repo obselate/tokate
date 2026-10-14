@@ -39,6 +39,17 @@ internal class OmpHarness {
             return J.Parse(J.Write(selected))
         }
 
+        internal func Doctor(options Args, tool ToolCheck) {
+            let result = OmpRuntime.Runtime(options)
+            let models = OmpRuntime.Models(options.Need("harness-path"))
+            if models.Count == 0 {
+                throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
+            }
+            tool.Path = options.Need("harness-path")
+            tool.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
+                " configured models listed without inference or credential checks."
+        }
+
         internal func ValidateSaved(run Data) {
             if !Path.IsPathFullyQualified(run.Text("harness_path")) {
                 throw ExecutionFailure.Create("invalid_state", "Saved OMP run requires its original executable")
@@ -89,10 +100,7 @@ internal class OmpHarness {
             return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[
-            string,
-            Object?
-        ] {
+        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 let reason = OmpEvidence.Failure(result.Output)
                 throw ExecutionFailure.Create(
@@ -101,18 +109,11 @@ internal class OmpHarness {
                         "; inspect private captured evidence. No new run was started"
                 )
             }
-            let usage = SessionEvidence.Completed(
-                directory,
-                result.Output,
-                run.Text("model"),
-                run.Text("provider"),
-                omp: true
-            )
-            run.Fields["reported_model"] = run.Text("model")
+            let evidence = SessionEvidence.Completed(result.Output, run.Text("model"), run.Text("provider"), omp: true)
             run.Fields[
                 "usage_provenance"
             ] = "harness-reported for the main session; provider identity, credits and billing are not independently proven"
-            return usage
+            return evidence
         }
     }
 }

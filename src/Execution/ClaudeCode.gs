@@ -183,7 +183,7 @@ internal class ClaudeCode {
             )
         }
 
-        internal func Reports(text string, model string, effort string, directory string = "") JsonElement {
+        internal func Reports(text string, model string, effort string, evidence Evidence? = nil) JsonElement {
             try {
                 var started int32
                 var completed int32
@@ -203,7 +203,7 @@ internal class ClaudeCode {
 
                     let type = J.Text(value, "type")
 
-                    if directory != "" &&
+                    if evidence != nil &&
                         completed != 0 &&
                         (
                         type == "assistant" ||
@@ -227,7 +227,7 @@ internal class ClaudeCode {
 
                     if type == "result" {
                         completed++
-                        if directory != "" &&
+                        if evidence != nil &&
                             (
                             started != 1 || completed != 1 || J.Text(value, "subtype") != "success" || J.Get(
                                 value,
@@ -265,7 +265,7 @@ internal class ClaudeCode {
                     }
                 }
 
-                if directory != "" {
+                if let target = evidence {
                     if started != 1 || completed != 1 || String.IsNullOrWhiteSpace(report) {
                         throw ExecutionFailure.Create(
                             "inference_failed",
@@ -273,13 +273,11 @@ internal class ClaudeCode {
                         )
                     }
 
-                    File.WriteAllText(Path.Combine(directory, "report.md"), report)
+                    target.Report = report
                 }
 
                 return J.Parse(J.Write(reports))
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is JsonException {
+            } catch (error JsonException) {
                 throw ExecutionFailure.From(error, "inference_failed")
             }
         }

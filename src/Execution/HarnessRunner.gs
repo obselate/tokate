@@ -7,43 +7,151 @@ import System.Diagnostics
 import System.IO
 import System.Text.Json
 
-internal class Harness {
-    internal let Label string
+internal class Evidence {
+    internal var Report string = ""
+    internal var Usage Dictionary[string, Object?] = map[string, Object?]{}
+    internal var Model string? = nil
+}
+
+internal class Harness(
+    title string,
+    billing string,
+    provider string,
+    hint string,
+    label string,
+    prepare Func[string, Data, JsonElement, RuntimeBudget, ValueTuple[[]string, Dictionary[string, Object?]?]],
+    read Func[string, Data, JsonElement, CommandResult, Evidence],
+    activity Action[string],
+    choose Func[Args, Policy, string, JsonElement]? = nil,
+    validateSaved Action[Data]? = nil,
+    doctor Action[Args, ToolCheck]? = nil,
+    beforeRun Action[Data, RuntimeBudget]? = nil,
+    pair Func[string, string, bool]? = nil,
+    options[]string? = nil,
+    tools[]string? = nil,
+    catalog bool = false,
+    continues bool = true,
+    nix string = "",
+    installer string = "",
+    config string = ""
+) {
+    internal let Title string = title
+    internal let Billing string = billing
+    internal let Provider string = provider
+    internal let Hint string = hint
+    internal let Label string = label
     internal let Prepare Func[
         string,
         Data,
         JsonElement,
         RuntimeBudget,
         ValueTuple[[]string, Dictionary[string, Object?]?]
-    ]
-    internal let Read Func[string, Data, JsonElement, CommandResult, Dictionary[string, Object?]]
-    internal let Activity Action[string]
-    internal let BeforeRun Action[Data, RuntimeBudget]?
+    ] = prepare
+    internal let Read Func[string, Data, JsonElement, CommandResult, Evidence] = read
+    internal let Activity Action[string] = activity
+    internal let Select Func[Args, Policy, string, JsonElement]? = choose
+    internal let ValidateSaved Action[Data]? = validateSaved
+    internal let Doctor Action[Args, ToolCheck]? = doctor
+    internal let BeforeRun Action[Data, RuntimeBudget]? = beforeRun
+    internal let Pair Func[string, string, bool]? = pair
+    internal let Options[]string = options ?? []string{}
+    internal let Tools[]string = tools ?? []string{}
+    internal let Catalog bool = catalog
+    internal let Continues bool = continues
+    internal let Nix string = nix
+    internal let Installer string = installer
+    internal let Config string = config
 
-    internal init(
-        label string,
-        prepare Func[string, Data, JsonElement, RuntimeBudget, ValueTuple[[]string, Dictionary[string, Object?]?]],
-        read Func[string, Data, JsonElement, CommandResult, Dictionary[string, Object?]],
-        activity Action[string],
-        beforeRun Action[Data, RuntimeBudget]? = nil
-    ) {
-        Label = label
-        Prepare = prepare
-        Read = read
-        Activity = activity
-        BeforeRun = beforeRun
+    shared {
+        internal let Table Dictionary[string, Harness] = map[string, Harness]{
+            "codex": Harness(
+                "Codex",
+                "Subscription",
+                "openai",
+                "Add native Linux x64 Codex or the @openai/codex npm launcher with its matching codex-linux-x64 native runtime to PATH; user-local installations are supported. Use --harness-path FILE for a custom location.",
+                "Inference",
+                Worker.Prepare,
+                Worker.Read,
+                Worker.Activity,
+                nix: "nixpkgs#codex",
+                config: ".codex"
+            ),
+            "pi": Harness(
+                "Pi",
+                "Local",
+                "local-chat-completions",
+                "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation.",
+                "Pi inference",
+                PiHarness.Prepare,
+                PiHarness.Read,
+                PiHarness.Activity,
+                PiHarness.Select,
+                PiHarness.ValidateSaved,
+                PiHarness.Doctor,
+                PiHarness.BeforeRun,
+                options: []string{"endpoint", "pi-root", "node"},
+                tools: []string{"/bin/bash"},
+                catalog: true,
+                nix: "github:earendil-works/pi/stable",
+                installer: "https://pi.dev/install.sh"
+            ),
+            "claude": Harness(
+                "Claude Code",
+                "Subscription",
+                "anthropic",
+                "Use an installed Claude Code with its existing login.",
+                "Claude inference",
+                ClaudeHarness.Prepare,
+                ClaudeHarness.Read,
+                ClaudeHarness.Activity,
+                ClaudeHarness.Select,
+                ClaudeHarness.ValidateSaved,
+                ClaudeHarness.Doctor,
+                pair: ClaudeCode.Pair,
+                options: []string{"claude-profile"},
+                tools: []string{"/bin/bash", "bwrap", "socat"},
+                continues: false
+            ),
+            "omp": Harness(
+                "OMP",
+                "",
+                "",
+                "Install OMP with its official installer and sign in, or use --harness-path FILE.",
+                "OMP inference",
+                OmpHarness.Prepare,
+                OmpHarness.Read,
+                OmpHarness.Activity,
+                OmpHarness.Select,
+                OmpHarness.ValidateSaved,
+                OmpHarness.Doctor,
+                catalog: true
+            )
+        }
+
+        internal func Find(name string) Harness? -> Table.ContainsKey(name) ? Table[name]: nil
+
+        internal func DefaultProvider(name string) string -> Find(name)?.Provider ?? ""
+
+        internal func Accepts(name string, provider string) bool -> Find(name) is Harness adapter &&
+            (adapter.Provider == "" || adapter.Provider == provider)
+
+        internal func Describe(name string, provider string) string {
+            let billing = Find(name)?.Billing ?? ""
+            return (Find(name)?.Title ?? name) + " (" + (billing == "" ? provider: billing) + ")"
+        }
+
+        internal func Owns(name string, option string) bool {
+            let options = Find(name)?.Options ?? []string{}
+            return Array.IndexOf(options, option) >= 0
+        }
+
+        internal func Resumes(name string, provider string) bool -> Find(name)?.Continues == true &&
+            Accepts(name, provider)
     }
 }
 
 internal class HarnessRunner {
     shared {
-        private let Adapters Dictionary[string, Harness] = map[string, Harness]{
-            "codex": Harness("Inference", Worker.Prepare, Worker.Read, Worker.Activity),
-            "claude": Harness("Claude inference", ClaudeHarness.Prepare, ClaudeHarness.Read, ClaudeHarness.Activity),
-            "pi": Harness("Pi inference", PiHarness.Prepare, PiHarness.Read, PiHarness.Activity, PiHarness.BeforeRun),
-            "omp": Harness("OMP inference", OmpHarness.Prepare, OmpHarness.Read, OmpHarness.Activity)
-        }
-
         internal func Execute(directory string, options Args) {
             try {
                 using let lease = RunStorage.Lease(directory)
@@ -66,7 +174,7 @@ internal class HarnessRunner {
                 var started = File.Exists(Path.Combine(directory, "events.jsonl")) || File.Exists(
                     Path.Combine(directory, "report.md")
                 )
-                for name in Adapters.Keys {
+                for name in Harness.Table.Keys {
                     started = started || run.Fields.ContainsKey(name + "_version")
                 }
                 if started {
@@ -94,7 +202,7 @@ internal class HarnessRunner {
                 RuntimeBudget.Validate(run)
 
                 let harness = run.Text("harness")
-                let adapter = Adapters[harness]
+                let adapter = Harness.Table[harness]
                 let codex = harness == "codex"
                 if codex {
                     let harnessPath = run.Text("harness_path")
@@ -174,13 +282,15 @@ internal class HarnessRunner {
                     run.Fields["output_truncated"] = result.OutputTruncated
                     run.Fields["error_truncated"] = result.ErrorTruncated
                     run.Fields["inference_exit_code"] = result.Code
-                    let usage = adapter.Read.Invoke(directory, run, record, result)
+                    let evidence = adapter.Read.Invoke(directory, run, record, result)
+                    File.WriteAllText(Path.Combine(directory, "report.md"), evidence.Report)
+                    run.Fields["reported_model"] = evidence.Model
                     run.Fields["turn_completed"] = true
-                    run.Fields["usage"] = usage
+                    run.Fields["usage"] = evidence.Usage
                     run.Fields["execution_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
                     run.Save(directory)
                     PublicOutput.FailureCode = "invalid_state"
-                    Contribution.Finish(directory, run, record, usage, timer, seconds, reserve)
+                    Contribution.Finish(directory, run, record, evidence.Usage, timer, seconds, reserve)
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
                     if codex && !inferenceStarted {
                         throw error

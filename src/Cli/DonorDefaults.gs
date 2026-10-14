@@ -8,8 +8,6 @@ import System.Text.RegularExpressions
 
 internal class DonorDefaults {
     shared {
-        internal let Harnesses[]string = []string{"codex", "pi", "claude", "omp"}
-
         internal func NormalizePair(args Args) {
             if args.Command == "defaults" && args.Subject == "set" && args.Get("harness") == "" && args.Get(
                 "provider"
@@ -39,15 +37,14 @@ internal class DonorDefaults {
                 args.Values["--harness"] = "codex"
             }
 
-            for pair in[][]string{
-                []string{"codex", "openai"},
-                []string{"pi", "local-chat-completions"},
-                []string{"claude", "anthropic"}
-            } {
-                if args.Get("harness") == pair[0] && args.Get("provider") == "" {
-                    args.Values["--provider"] = pair[1]
-                } else if args.Get("harness") == "" && args.Get("provider") == pair[1] {
-                    args.Values["--harness"] = pair[0]
+            for (name, adapter) in Harness.Table {
+                if adapter.Provider == "" {
+                    continue
+                }
+                if args.Get("harness") == name && args.Get("provider") == "" {
+                    args.Values["--provider"] = adapter.Provider
+                } else if args.Get("harness") == "" && args.Get("provider") == adapter.Provider {
+                    args.Values["--harness"] = name
                 }
             }
         }
@@ -112,7 +109,7 @@ internal class DonorDefaults {
                 }
             }
 
-            if J.Text(value, "claude-profile") != "" && J.Text(value, "harness") != "claude" {
+            if J.Text(value, "claude-profile") != "" && !Harness.Owns(J.Text(value, "harness"), "claude-profile") {
                 throw Exception("Claude profile options require the claude harness")
             }
 
@@ -124,10 +121,10 @@ internal class DonorDefaults {
                 .ValueKind == JsonValueKind.Undefined
             RequestData.Token(J.Text(value, "harness"))
 
-            if partial && J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "" {
+            if partial && Harness.Owns(J.Text(value, "harness"), "claude-profile") && J.Text(value, "provider") == "" {
                 let fields = J.Select(value, "harness,harness-path,claude-profile")
 
-                fields["provider"] = "anthropic"
+                fields["provider"] = Harness.DefaultProvider(J.Text(value, "harness"))
                 value = J.Parse(J.Write(fields))
             }
 
@@ -136,8 +133,9 @@ internal class DonorDefaults {
             }
 
             if partial {
-                if Array.IndexOf(Harnesses, J.Text(value, "harness")) < 0 ||
-                    Provider(J.Text(value, "harness")) != J.Text(value, "provider") {
+                if Harness.Find(J.Text(value, "harness")) == nil || Harness.DefaultProvider(
+                    J.Text(value, "harness")
+                ) != J.Text(value, "provider") {
                     throw Exception("Unsupported harness default")
                 }
 
@@ -145,7 +143,7 @@ internal class DonorDefaults {
                     LocalPaths.RuntimePath(J.Text(value, "harness-path"))
                 }
 
-                if J.Text(value, "harness") == "pi" {
+                if Harness.Owns(J.Text(value, "harness"), "endpoint") {
                     if J.Text(value, "endpoint") != "" {
                         PiBoundary.Endpoint(J.Text(value, "endpoint"))
                     }
@@ -164,8 +162,8 @@ internal class DonorDefaults {
 
             RequestData.Token(J.Text(value, "effort"))
 
-            if J.Text(value, "harness") == "pi" {
-                if J.Text(value, "provider") != "local-chat-completions" {
+            if Harness.Owns(J.Text(value, "harness"), "endpoint") {
+                if J.Text(value, "provider") != Harness.DefaultProvider(J.Text(value, "harness")) {
                     throw Exception("Pi profiles require local-chat-completions")
                 }
 
@@ -178,7 +176,7 @@ internal class DonorDefaults {
                     }
                 }
             } else {
-                if J.Text(value, "harness") == "omp" {
+                if Harness.Find(J.Text(value, "harness"))?.Catalog == true {
                     RequestData.ModelIdentifier(J.Text(value, "model"))
                 } else {
                     RequestData.Token(J.Text(value, "model"))
@@ -192,13 +190,6 @@ internal class DonorDefaults {
             }
 
             return value
-        }
-
-        internal func Provider(harness string) string -> switch harness {
-            case "codex": "openai"
-            case "pi": "local-chat-completions"
-            case "claude": "anthropic"
-            default: ""
         }
 
         private func Write(value JsonElement, profile string = "") {
@@ -308,10 +299,9 @@ internal class DonorDefaults {
 
             if args.Get("model") == "" && args.Get("effort") == "" {
                 let harness = args.Need("harness")
-                let provider = Provider(harness)
+                let provider = Harness.DefaultProvider(harness)
 
-                if Array.IndexOf(Harnesses, harness) < 0 ||
-                    (args.Get("provider") != "" && args.Get("provider") != provider) {
+                if Harness.Find(harness) == nil || (args.Get("provider") != "" && args.Get("provider") != provider) {
                     throw Exception("Unsupported harness default")
                 }
 
@@ -341,12 +331,12 @@ internal class DonorDefaults {
             let choice = map[string, Object?]{}
 
             for key in[]string{"harness", "provider", "model", "effort"} {
-                choice[key] = key == "model" && (args.Get("harness") == "pi" || args.Get("harness") == "omp") ?
+                choice[key] = key == "model" && Harness.Find(args.Get("harness"))?.Catalog == true ?
                 RequestData.ModelIdentifier(args.Need(key)): RequestData.Token(args.Need(key))
             }
 
-            if args.Get("harness") == "pi" {
-                if args.Get("provider") != "local-chat-completions" {
+            if Harness.Owns(args.Get("harness"), "endpoint") {
+                if args.Get("provider") != Harness.DefaultProvider(args.Get("harness")) {
                     throw Exception("Pi profiles require local-chat-completions")
                 }
 

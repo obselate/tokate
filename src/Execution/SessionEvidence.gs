@@ -2,7 +2,6 @@ package Tokate
 
 import System
 import System.Collections.Generic
-import System.IO
 import System.Text.Json
 
 internal class SessionEvidence {
@@ -27,19 +26,13 @@ internal class SessionEvidence {
             return true
         }
 
-        internal func Completed(
-            directory string,
-            output string,
-            model string,
-            provider string,
-            omp bool = false
-        ) Dictionary[string, Object?] {
+        internal func Completed(output string, model string, provider string, omp bool = false) Evidence {
             try {
                 let harness = omp ? "OMP": "Pi"
                 var started bool
                 var settled bool
                 var lastStop = ""
-                var report = ""
+                let evidence = Evidence{Model: model}
                 var input int64
                 var cached int64
                 var generated int64
@@ -84,10 +77,10 @@ internal class SessionEvidence {
                             throw Invalid("Pi reported a different response model")
                         }
                         lastStop = J.Text(message, "stopReason")
-                        report = ""
+                        evidence.Report = ""
                         for part in J.Items(J.Get(message, "content")) {
                             if J.Text(part, "type") == "text" {
-                                report += J.Text(part, "text")
+                                evidence.Report += J.Text(part, "text")
                             }
                         }
                         let usage = J.Get(message, "usage")
@@ -111,7 +104,7 @@ internal class SessionEvidence {
                         }
 
                         let aborted = !omp && J.Get(item, "aborted").ValueKind != JsonValueKind.False
-                        if !started || aborted || lastStop != "stop" || String.IsNullOrWhiteSpace(report) {
+                        if !started || aborted || lastStop != "stop" || String.IsNullOrWhiteSpace(evidence.Report) {
                             throw Invalid(harness + " did not return a completed response within the donor's allowance")
                         }
                         settled = true
@@ -122,15 +115,13 @@ internal class SessionEvidence {
                     throw Invalid(harness + " did not report a " + (omp ? "terminal result": "settled run"))
                 }
 
-                File.WriteAllText(Path.Combine(directory, "report.md"), report)
-                return map[string, Object?]{
+                evidence.Usage = map[string, Object?]{
                     "input_tokens": input,
                     "cached_input_tokens": cached,
                     "output_tokens": generated
                 }
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is JsonException {
+                return evidence
+            } catch (error JsonException) {
                 throw ExecutionFailure.From(error, "inference_failed")
             }
         }

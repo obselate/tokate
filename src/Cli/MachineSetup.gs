@@ -171,7 +171,8 @@ internal class MachineSetup {
             let missing = List[string]()
 
             for tool in tools {
-                if (tool.Path != "" && !(manager.EndsWith("apk") && tool.Status == "failed")) || tool.Name == "codex" {
+                if Harness.Find(tool.Name) != nil ||
+                    (tool.Path != "" && !(manager.EndsWith("apk") && tool.Status == "failed")) {
                     continue
                 }
 
@@ -261,7 +262,7 @@ internal class MachineSetup {
             }
 
             for tool in tools {
-                if tool.Name == "codex" && tool.Path == "" {
+                if Harness.Find(tool.Name) != nil && tool.Path == "" {
                     return Harness(options)
                 }
             }
@@ -277,8 +278,9 @@ internal class MachineSetup {
             }
 
             let name = options.Get("harness", "codex")
+            let adapter = Harness.Find(name)
 
-            if name != "codex" && name != "pi" {
+            if adapter == nil || adapter.Nix == "" {
                 return false
             }
 
@@ -287,18 +289,14 @@ internal class MachineSetup {
             }
 
             if NixManaged() || NixHost() {
-                Terminal.Message(
-                    "Install through Nix: nix profile add " +
-                        (name == "pi" ? "github:earendil-works/pi/stable": "nixpkgs#codex"),
-                    error: true
-                )
+                Terminal.Message("Install through Nix: nix profile add " + adapter.Nix, error: true)
 
                 return false
             }
 
             Terminal.Message("Could not use " + name + ". It may be installed at a custom location.", "yellow", true)
 
-            if name == "pi" {
+            if Harness.Owns(name, "pi-root") {
                 Terminal.Message("For an SDK installation, use --pi-root DIR --node FILE.", error: true)
             }
 
@@ -326,12 +324,12 @@ internal class MachineSetup {
             )
 
             try {
-                if name == "codex" {
+                if adapter.Installer == "" {
                     options.Values["--harness-path"] = InstallCodex(temporary)
                 } else {
                     let script = Path.Combine(temporary, "install.sh")
 
-                    Download("https://pi.dev/install.sh", script)
+                    Download(adapter.Installer, script)
 
                     let code = PublicOutput.Enabled || Console.IsInputRedirected ?
                     Installation.Execute(
@@ -354,7 +352,7 @@ internal class MachineSetup {
                         )
                     }
 
-                    let path = LocalPaths.Harness("pi")
+                    let path = LocalPaths.Harness(name)
 
                     if path == "" {
                         throw CliFailure(
