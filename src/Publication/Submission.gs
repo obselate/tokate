@@ -63,7 +63,7 @@ internal class Submission {
                     "-c",
                     "user.name=" + run.Text("donor"),
                     "-c",
-                    "user.email=tokate@users.noreply.github.com",
+                    "user.email=" + RepositoryIdentity.DonorEmail(run),
                     "-c",
                     "commit.gpgsign=false",
                     "commit",

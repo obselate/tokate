@@ -8,7 +8,10 @@ import System.Text.Json
 internal class GitHub {
     shared {
         internal func AutomationCommit(message string, tree string, parents IEnumerable[string]) Object {
-            let identity = map[string, Object?]{"name": "Tokate", "email": "tokate@users.noreply.github.com"}
+            let identity = map[string, Object?]{
+                "name": "github-actions[bot]",
+                "email": "41898282+github-actions[bot]@users.noreply.github.com"
+            }
             return map[string, Object?]{
                 "message": message,
                 "tree": tree,

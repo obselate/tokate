@@ -365,7 +365,7 @@ internal partial class NativeFlow : NativeFixture {
             Path.Combine(Bin, "fork"),
             Check.Text(State["pulls"]?[0]?["head"]?["sha"]),
             "donor",
-            "tokate@users.noreply.github.com"
+            "123+donor@users.noreply.github.com"
         )
         Receipt("owner/project#10", owner: true)
         Git("-C", Upstream, "config", "remote.origin.url", "https://github.com/owner/project")
