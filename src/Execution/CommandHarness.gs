@@ -15,10 +15,14 @@ internal class CommandHarness {
             let words = J.Items(J.Get(tool, "command"))
             let output = J.Text(tool, "output")
             let models = J.Get(tool, "models").ValueKind
-            if words.Count == 0 || words[0].ToString().Contains('{') ||
+            let first = words.Count == 0 ? "": words[0].ToString()
+            let named = words.Exists(word -> word.ToString().Contains("{model}"))
+            if !named || first.Contains('{') || first.StartsWith('-') || first.Contains('=') ||
                 models != JsonValueKind.Object ||
                 (output != "codex" && output != "claude" && output != "session") {
-                throw Exception("A command tool needs a fixed executable, models and output codex, claude or session")
+                throw Exception(
+                    "A command tool needs a fixed executable, a {model} word, models and output codex, claude or session"
+                )
             }
 
             for word in words {
@@ -34,31 +38,36 @@ internal class CommandHarness {
         internal func Select(args Args, policy Policy, source string) JsonElement {
             let selected = DonorSelection.Selection(args, policy, source)
             selected["command"] = J.Get(policy.Tool("command", args.Need("provider")), "command")
+            if args.Get("consented-command") != "" && args.Get("consented-command") != J.Write(selected["command"]) {
+                throw Exception("The owner changed the command after your consent. No inference started.")
+            }
             selected["capability"] = "owner-declared command with the donor's tools; no isolation"
             selected["availability"] = "unknown"
             selected["availability_evidence"] = "Tokate does not probe the command, its model or its account"
             return J.Parse(J.Write(selected))
         }
 
+        internal func Text(selection JsonElement) string -> String.Join(
+            " ",
+            J.Items(J.Get(selection, "command")).Select(word -> word.ToString())
+        )
+
         internal func Adapter(tool JsonElement) Harness {
             let output = J.Text(tool, "output")
+            var activity Action[string] = OmpHarness.Activity
+            if output == "codex" {
+                activity = Worker.Activity
+            } else if output == "claude" {
+                activity = ClaudeHarness.Activity
+            }
             return Harness(
                 "Command inference",
                 (directory, run, record, coding) -> Prepare(tool, directory, run),
                 (directory, run, record, result) -> output == "codex" ? Worker.Read(directory, run, record, result):
-                output == "claude" ? ClaudeHarness.Read(directory, run, record, result): Read(directory, run, result),
-                line -> Activity(output, line)
+                output == "claude" ? ClaudeHarness.Read(directory, run, record, result):
+                OmpHarness.Read(directory, run, record, result),
+                activity
             )
-        }
-
-        private func Activity(output string, line string) {
-            if output == "codex" {
-                Worker.Activity(line)
-            } else if output == "claude" {
-                ClaudeHarness.Activity(line)
-            } else {
-                SessionEvidence.Activity(J.Parse(line))
-            }
         }
 
         private func Prepare(tool JsonElement, directory string, run Data) ValueTuple[
@@ -93,25 +102,6 @@ internal class CommandHarness {
                 args,
                 map[string, Object?]{"observed_invocation": invocation}
             )
-        }
-
-        private func Read(directory string, run Data, result CommandResult) Dictionary[string, Object?] {
-            if result.Code != 0 || result.Truncated || result.ReadFailed {
-                throw ExecutionFailure.Create(
-                    "inference_failed",
-                    "The command harness did not complete; inspect private captured evidence. No new run was started"
-                )
-            }
-            let usage = SessionEvidence.Completed(
-                directory,
-                result.Output,
-                run.Text("model"),
-                run.Text("provider"),
-                omp: true
-            )
-            run.Fields["reported_model"] = run.Text("model")
-            run.Fields["usage_provenance"] = "harness-reported; identity and billing are not independently proven"
-            return usage
         }
     }
 }

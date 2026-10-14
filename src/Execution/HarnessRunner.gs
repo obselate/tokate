@@ -161,6 +161,9 @@ internal class HarnessRunner {
                         if codex {
                             Verification.Validate(checkout)
                         }
+                        if harness == "command" {
+                            Terminal.Step("Running " + String.Join(" ", prepared.Item1) + "...")
+                        }
                         result = Commands.Run(
                             LocalPaths.NeedSystemTool("env", codex ? directory: checkout),
                             prepared.Item1,

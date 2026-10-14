@@ -243,7 +243,9 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 
 The owner can allow a `command` tool. It runs the owner's command from the policy
 on your computer, without a sandbox. Read the command in `tokate policy OWNER/REPO`
-or in the `select --json` output before you claim.
+or in the `select --json` output before you claim. Confirmation screens show the
+command. Work prints it before it starts. `work OWNER/REPO` refuses a claim when
+the owner changed the command after your consent.
 
 ```sh
 tokate claim OWNER/REPO#42 --harness command --model MODEL --effort EFFORT --time 1h

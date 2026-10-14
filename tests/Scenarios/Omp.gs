@@ -224,7 +224,8 @@ internal class OmpChecks {
                     }
                 )
                 let run = prepared.Output.Substring(prepared.Output.LastIndexOf("Run: ") + 5).Trim()
-                flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"})
+                let worked = flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"})
+                Check.Contains(worked.Output + worked.Error, "Running omp --mode json")
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
                     Check.Text(saved["state"]) == "generated" && Check.Text(

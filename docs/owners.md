@@ -122,7 +122,7 @@ the argv without a shell or a sandbox. It sends the prompt on standard input.
 
 | Field | Rule |
 | --- | --- |
-| `command` | Text words. The first word is the executable. Other words can contain only `{prompt_file}`, `{model}`, `{effort}` and `{checkout}` placeholders. |
+| `command` | Text words. The first word is the executable. It cannot start with `-` or contain `=`. One word must contain `{model}`. Other words can contain only `{prompt_file}`, `{model}`, `{effort}` and `{checkout}` placeholders. |
 | `output` | `codex`, `claude` or `session` JSONL. Tokate reads it with the parser of that format. |
 | `models` | Required. Session output must report this provider and model. |
 

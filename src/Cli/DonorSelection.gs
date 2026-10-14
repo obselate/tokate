@@ -273,6 +273,9 @@ internal class DonorSelection {
                 )
                 Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
                 Terminal.Row("Availability", J.Text(selection, "availability"))
+                if J.Text(selection, "harness") == "command" {
+                    Terminal.Row("Command", CommandHarness.Text(selection))
+                }
 
                 if WizardScreen.Choose(
                     "Confirm donation",
