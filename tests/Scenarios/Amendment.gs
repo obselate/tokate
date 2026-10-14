@@ -574,6 +574,15 @@ internal class AmendmentFlow {
                     ),
                     "External amendment was copied into the verification checkout before amend"
                 )
+                Check.That(
+                    TestProcess.Run(
+                        "/usr/bin/git",
+                        []string{"-C", Path.Combine(run, "checkout"), "cat-file", "-e", commit},
+                        flow.Flow.Temp.Env
+                    )
+                        .Code != 0,
+                    "External amendment candidate already exists in the verification checkout"
+                )
             }
             if modelPolicy != "" {
                 File.WriteAllText(

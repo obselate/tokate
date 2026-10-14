@@ -559,6 +559,8 @@ internal class Amendment {
 
                     Commands.Git(
                         checkout,
+                        "-c",
+                        "protocol.file.allow=always",
                         "fetch",
                         "--quiet",
                         "--no-tags",
