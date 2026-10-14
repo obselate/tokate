@@ -72,8 +72,7 @@ internal class Startup {
 
         internal func NeedsCatalog(command string, options Args?) bool -> command == "select" ||
             (command == "claim" && options?.Get("source") != "external") ||
-            command == "work" ||
-            (command == "prepare" && options?.Get("source") == "tokate")
+            command == "work"
 
         private func DoctorScope(options Args) string -> options.Get("owner") == "true" ? "owner":
         options.Get("external") == "true" ||
@@ -110,13 +109,15 @@ internal class Startup {
             }
 
             let names = List[string]{"setsid", "/usr/bin/env", "/usr/bin/setpriv", "/usr/bin/unshare", "gh"}
-            let catalog = NeedsCatalog(command, options)
+            var catalog = NeedsCatalog(command, options)
             var pi = options.Get("harness") == "pi"
             var claude = options.Get("harness") == "claude"
             var omp = options.Get("harness") == "omp"
             if options.Get("run") != "" && command == "work" {
-                let harness = Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness")
+                let run = Data.Load(Path.GetFullPath(options.Need("run")))
+                let harness = run.Text("harness")
 
+                catalog = run.Text("source") != "external"
                 pi = harness == "pi"
                 claude = harness == "claude"
                 omp = harness == "omp"
@@ -126,18 +127,9 @@ internal class Startup {
                 names.Add("codex")
             }
 
-            if options.Get("run") != "" {
-                let run = Data.Load(Path.GetFullPath(options.Need("run")))
-
-                if command == "work" && (run.Number("version") != 2 || run.Text("source") != "tokate") {
-                    throw CliFailure("invalid_state", "External work uses external --run; inference is never launched")
-                }
-            }
-
             if command == "init" ||
                 command == "work" ||
                 command == "claim" ||
-                command == "prepare" ||
                 command == "external" ||
                 command == "submit" ||
                 command == "amend" ||

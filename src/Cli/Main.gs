@@ -310,14 +310,6 @@ func Dispatch(options Args) int32 {
             return ReservationRequest.Run(options)
         }
 
-        case "prepare" {
-            let directory = ContributionPreparation.Prepare(options)
-
-            if Data.Load(directory).Text("state") == "claim_pending" {
-                return 8
-            }
-        }
-
         case "external" {
             ExternalContribution.External(options)
         }
@@ -328,11 +320,11 @@ func Dispatch(options Args) int32 {
             return 0
         }
 
-        case "authorize-sync" {
+        case "sync" when options.Subject == "authorize" {
             Synchronization.Authorize(options)
         }
 
-        case "revoke-sync" {
+        case "sync" {
             Synchronization.Revoke(options)
         }
 
@@ -401,30 +393,23 @@ func Dispatch(options Args) int32 {
             if Cli.RepositoryWork(options) {
                 return Donate.Run(options)
             }
-            let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options): Path.GetFullPath(
-                options.Need("run")
-            )
-            PublicOutput.RunDirectory = directory
-
-            if Data.Load(directory).Text("state") == "claim_pending" {
-                if options.Get("run") != "" {
-                    ContributionPreparation.ResumePending(directory, options)
-                }
-
-                if Data.Load(directory).Text("state") == "claim_pending" {
-                    return 8
-                }
-            }
-
+            let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
+            ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)
             let ready = Data.Load(directory)
 
-            if !ready.Flag("gratis") {
-                Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
+            if ready.Text("state") == "claim_pending" {
+                return 8
             }
-            HarnessRunner.Execute(directory, options)
-            PublicOutput.FailureCode = "command_failed"
-            if !ready.Flag("gratis") || Data.Load(directory).Text("state") == "generated" {
-                Submission.Commit(directory)
+
+            if ready.Text("source") == "tokate" {
+                if !ready.Flag("gratis") {
+                    Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
+                }
+                HarnessRunner.Execute(directory, options)
+                PublicOutput.FailureCode = "command_failed"
+                if !ready.Flag("gratis") || Data.Load(directory).Text("state") == "generated" {
+                    Submission.Commit(directory)
+                }
             }
         }
 

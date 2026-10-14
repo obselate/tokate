@@ -62,7 +62,7 @@ internal class CliCommand(
 
     internal func Needs(name string) bool -> ("," + Required + ",").Contains("," + name + ",")
 
-    internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "prepare" || Name == "status"
+    internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "status"
 
     internal prop Brief string -> Summary.Split([]string{". ", "; "}, StringSplitOptions.None)[0].TrimEnd('.')
 
@@ -77,7 +77,6 @@ internal class CliCommand(
         (
         (Name == "work" && name != "yes" && name != "non-interactive") ||
             (Name == "checks" && name != "watch" && name != "timeout" && name != "verbose") ||
-            Name == "prepare" ||
             Name == "status"
     )
 }
@@ -195,7 +194,6 @@ internal class Cli {
             CliOption("watch", "", "Wait for checks; default: off"),
             CliOption("verbose", "", "Show check evidence and required owner actions"),
             CliOption("timeout", "TIME", "Check wait limit, at most 24h; default: 20m"),
-            CliOption("state", "SHA", "Exact coordination-state commit"),
             CliOption("source", "SOURCE", "Coding source", "external tokate"),
             CliOption("tools", "FILE", "Nonsecret JSON tool declarations"),
             CliOption("summary", "FILE", "Bounded public JSON summary for the exact candidate commit"),
@@ -507,25 +505,14 @@ internal class Cli {
                 group: "more"
             ),
             CliCommand(
-                "authorize-sync",
-                "commit,upstream,sync",
-                "repo,pr,commit,upstream",
-                "Owner: grant an exact candidate synchronization; no candidate inspection or acceptance.",
-                "PR --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]",
-                "authorize-sync 10 --commit C --upstream U",
+                "sync",
+                "commit,upstream,sync,grant",
+                "repo,pr",
+                "Owner: grant an exact candidate synchronization, or revoke a grant by nonforce ref advance; no candidate inspection or acceptance.",
+                "PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]\n       tokate sync PR revoke --grant SHA",
+                "sync 10 authorize --commit C --upstream U",
                 effects: "local_read github_read github_write",
                 target: "pr",
-                group: "more"
-            ),
-            CliCommand(
-                "revoke-sync",
-                "grant",
-                "repo,grant",
-                "Owner: preserve and revoke a synchronization grant by nonforce ref advance.",
-                "[OWNER/REPO] --grant SHA",
-                "revoke-sync --grant G",
-                effects: "local_read github_read github_write",
-                target: "repo",
                 group: "more"
             ),
             CliCommand(
@@ -590,17 +577,6 @@ internal class Cli {
                 "Post a strict claim or publication request; no inference.",
                 "ISSUE --file FILE",
                 "request 42 --file request.json",
-                effects: "local_read local_write github_read github_write",
-                target: "issue",
-                group: "internal"
-            ),
-            CliCommand(
-                "prepare",
-                "run,state,source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,fork,time,verify-time,unlimited,runs,continue-from,from-pr,yes",
-                "repo,issue,state,source",
-                "Prepare a fresh reserved v2 contribution, or resume recorded preparation; no inference, checks or publication.",
-                "ISSUE [NAME] --state SHA --source external --tools FILE [options]\n       tokate prepare ISSUE [NAME] --state SHA --source tokate [selection options]\n       [--continue-from DIR --time TIME --verify-time TIME --yes]\n       tokate prepare --run DIR",
-                "prepare 42 --state SHA --source external --tools tools.json",
                 effects: "local_read local_write github_read github_write",
                 target: "issue",
                 group: "internal"
@@ -762,11 +738,11 @@ internal class Cli {
 
             case "claim": []string{"ISSUE", "NAME"}
 
-            case "prepare": []string{"ISSUE", "NAME"}
-
             case "status": []string{"ISSUE|OWNER/REPO|RUN"}
 
             case "checks": []string{"PR|RUN"}
+
+            case "sync": []string{"PR", "authorize|revoke"}
 
             case "runs": []string{"ISSUE|OWNER/REPO"}
 
@@ -884,6 +860,20 @@ internal class Cli {
                                     "github_read": true,
                                     "github_write": write
                                 }
+                            }
+                        )
+                    }
+                }
+
+                if command.Name == "sync" {
+                    for mode in[]string{"authorize", "revoke"} {
+                        modes.Add(
+                            map[string, Object?]{
+                                "name": mode,
+                                "required_inputs": mode == "authorize" ? []string{"commit", "upstream"}: []string{
+                                    "grant"
+                                },
+                                "effects": effects
                             }
                         )
                     }
@@ -1122,7 +1112,7 @@ internal class Cli {
                     )
                 }
 
-                if name == "work" || name == "claim" || name == "prepare" {
+                if name == "work" || name == "claim" {
                     OptionHelp(text, "NAME", "Saved donor profile; follows ISSUE.", width)
                 }
 
@@ -1164,7 +1154,6 @@ internal class Cli {
                 if command.SupportsSavedRun {
                     text.AppendLine(
                         name == "status" ? "Use RUN or --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
-                        name == "prepare" ? "Use --run DIR only for recorded preparation before coding; it never resumes coding.":
                         name == "work" ? "ISSUE alone continues its newest saved claim; otherwise it starts a new attempt. For a saved claim, use RUN or --run DIR instead of required inputs.":
                         "Use RUN or --run DIR instead of PR to check a saved run. A PR with one saved run uses that run."
                     )
@@ -1242,8 +1231,7 @@ internal class Cli {
             }
 
             if args.Get("unlimited") == "true" {
-                if args.Get("seconds") != "" || args.Get("continue-from") != "" ||
-                    (args.Command == "prepare" && args.Get("source") != "tokate") {
+                if args.Get("seconds") != "" || args.Get("continue-from") != "" {
                     throw Exception("--unlimited requires fresh managed work and excludes --time and --continue-from")
                 }
 
@@ -1255,10 +1243,6 @@ internal class Cli {
             if args.Get("continue-from") != "" && !args.Help {
                 args.Need("seconds")
                 args.Need("verification-reserve")
-
-                if args.Command == "prepare" && args.Get("source") != "tokate" {
-                    throw Exception("--continue-from requires --source tokate")
-                }
             }
 
             if args.Command == "doctor" {
@@ -1325,10 +1309,6 @@ internal class Cli {
                 }
             }
 
-            if args.Get("verification-reserve") != "" && args.Command == "prepare" && args.Get("source") != "tokate" {
-                throw Exception("--verify-time requires --source tokate")
-            }
-
             if args.Get("prs") != "" {
                 PullNumbers(args.Get("prs"))
             }
@@ -1388,7 +1368,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"state", "commit", "grant", "upstream", "sync"} {
+            for key in[]string{"commit", "grant", "upstream", "sync"} {
                 if args.Get(key) != "" {
                     RepositoryIdentity.CommitSha(args.Get(key))
                 }
@@ -1404,6 +1384,25 @@ internal class Cli {
 
             if args.Help {
                 return
+            }
+
+            if args.Command == "sync" {
+                let authorize = args.Subject == "authorize"
+
+                if !authorize && args.Subject != "revoke" {
+                    throw Exception("Use tokate sync PR authorize or tokate sync PR revoke")
+                }
+
+                for key in[]string{"commit", "upstream", "sync", "grant"} {
+                    if (key == "grant") == authorize && args.Get(key) != "" {
+                        throw Exception("sync " + args.Subject + " does not take --" + key)
+                    }
+                }
+
+                args.Need(authorize ? "commit": "grant")
+                if authorize {
+                    args.Need("upstream")
+                }
             }
 
             if args.Command == "defaults" {
@@ -1460,7 +1459,7 @@ internal class Cli {
                 }
             }
 
-            if (args.Command == "prepare" || args.Command == "claim") && args.Get("source") == "external" {
+            if args.Command == "claim" && args.Get("source") == "external" {
                 args.Need("tools")
 
                 for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
@@ -1485,12 +1484,6 @@ internal class Cli {
                         throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
                     }
                 }
-
-                if args.Command == "prepare" && args.Get("non-interactive") != "" {
-                    throw Exception("External declarations use --tools; selection option conflicts: --non-interactive")
-                }
-            } else if args.Command == "claim" && args.Get("tools") != "" {
-                throw Exception("Claim tool declarations require --source external")
             }
 
             if args.Get("run") != "" && command.SupportsSavedRun {

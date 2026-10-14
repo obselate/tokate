@@ -227,13 +227,17 @@ internal class Positionals {
                     Reference(args, words[0], target)
                 }
             } else {
-                let profileOperand = args.Command == "work" || args.Command == "claim" || args.Command == "prepare"
-                Limit(args, profileOperand ? 2: (target == "" ? 0: 1))
+                let second = args.Command == "work" || args.Command == "claim" || args.Command == "sync"
+                Limit(args, second ? 2: (target == "" ? 0: 1))
 
                 if words.Count > 0 {
                     Reference(args, words[0], target == "run" ? "issue": target)
 
-                    if args.Command == "work" && args.Get("issue") == "" && words.Count > 1 && words[1] == "stop" {
+                    if words.Count > 1 &&
+                        (
+                        args.Command == "sync" ||
+                            (args.Command == "work" && args.Get("issue") == "" && words[1] == "stop")
+                    ) {
                         args.Subject = "stop"
                     } else if words.Count > 1 {
                         if args.Get("issue") == "" || args.Get("attempt") != "" || args.Get("run") != "" {

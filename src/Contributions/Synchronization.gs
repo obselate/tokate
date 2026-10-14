@@ -583,6 +583,10 @@ internal class Synchronization {
             let grant = RepositoryIdentity.CommitSha(args.Need("grant"))
             let value = Load(repo, grant)
 
+            if J.Number(value, "pr") != args.Number("pr") {
+                throw CliFailure("invalid_state", "Synchronization grant belongs to another PR")
+            }
+
             let tree = GitHub.Api(
                 "repos/" + repo + "/git/trees",
                 map[string, Object?]{

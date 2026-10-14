@@ -17,12 +17,7 @@ internal class DonorSelection {
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
-                (
-                args.Command != "select" &&
-                    args.Command != "claim" &&
-                    args.Command != "work" &&
-                    (args.Command != "prepare" || args.Get("source") != "tokate")
-            ) {
+                (args.Command != "select" && args.Command != "claim" && args.Command != "work") {
                 return
             }
 
@@ -265,7 +260,8 @@ internal class DonorSelection {
                 return
             }
 
-            let source = J.Text(selection, "source")
+            let source = (run?.Text("continuation_source") ?? "") == "" ? J.Text(selection, "source"):
+            "explicit continuation import"
 
             if args.Get("yes") == "true" ||
                 source == "explicit invocation" ||

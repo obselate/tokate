@@ -150,7 +150,7 @@ internal class WorkspacePreparation {
                 "invalid_state",
                 "Preserved unidentified, dirty or divergent preparation at " +
                     path +
-                    ". Inspect and move it aside explicitly, or use its original saved run; then use prepare --run DIR. No files or branches were replaced."
+                    ". Inspect and move it aside explicitly, or use its original saved run; then use work --run DIR. No files or branches were replaced."
             )
         }
 
@@ -159,7 +159,7 @@ internal class WorkspacePreparation {
 
             let savedState = run.Text("state")
             let fields = run.Fields
-            let failure = "prepare --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
+            let failure = "work --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
 
             if run.Number("preparation_version") != 1 || !Identified(run) {
                 throw CliFailure("invalid_state", failure)
@@ -239,10 +239,7 @@ internal class WorkspacePreparation {
             AttemptContinuation.Location(directory, run)
 
             if !run.Flag("preparation_complete") || !Identified(run) {
-                throw CliFailure(
-                    "invalid_state",
-                    "Preparation is incomplete; use prepare --run " + directory + " before work"
-                )
+                throw CliFailure("invalid_state", "Preparation is incomplete; use work --run " + directory)
             }
 
             let upstream = GitHub.Api("repos/" + run.Text("repo"))
@@ -259,10 +256,7 @@ internal class WorkspacePreparation {
             if AttemptContinuation.Has(run) {
                 Source(checkout, run)
                 if run.Text("continuation_phase") != "imported" {
-                    throw CliFailure(
-                        "invalid_state",
-                        "Continuation import is incomplete; use prepare --run " + directory
-                    )
+                    throw CliFailure("invalid_state", "Continuation import is incomplete; use work --run " + directory)
                 }
 
                 ContinuationImport.Check(directory, run, ContributionAuthority.Recheck(run))
@@ -456,7 +450,7 @@ internal class WorkspacePreparation {
                 "invalid_state",
                 "Fork creation is not ready or its response was lost. Inspect " +
                     head +
-                    "; use prepare --run " +
+                    "; use work --run " +
                     directory +
                     " for bounded readiness reads. Creation will not be repeated."
             )

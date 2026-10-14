@@ -58,7 +58,7 @@ internal class RunStorage {
                 "invalid_state",
                 "Preserved unidentified, dirty or divergent preparation at " +
                     path +
-                    ". Inspect and move it aside explicitly, or use its original saved run; then use prepare --run DIR. No files or branches were replaced."
+                    ". Inspect and move it aside explicitly, or use its original saved run; then use work --run DIR. No files or branches were replaced."
             )
         }
 
