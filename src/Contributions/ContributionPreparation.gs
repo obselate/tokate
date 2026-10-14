@@ -249,7 +249,10 @@ internal class ContributionPreparation {
                 PublicOutput.RunDirectory = directory
                 run.Fields["name"] = Path.GetFileName(directory)
                 WorkspacePreparation.Select(run, args.Get("fork"))
-                Directory.CreateDirectory(directory)
+                Directory.CreateDirectory(
+                    directory,
+                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                )
                 using let lease = RunStorage.Lease(directory)
                 WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
                 WorkspacePreparation.Complete(directory, run)

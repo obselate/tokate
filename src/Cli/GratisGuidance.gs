@@ -20,8 +20,7 @@ internal class GratisGuidance {
                 if uri.Scheme != "https" {
                     throw CliFailure("invalid_arguments", "Prompt URLs must use HTTPS")
                 }
-                using let handler = HttpClientHandler{AllowAutoRedirect: false}
-                using let client = HttpClient(handler)
+                using let client = HttpClient()
                 client.Timeout = TimeSpan.FromSeconds(30)
                 using let response = client
                     .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead)
@@ -91,10 +90,18 @@ internal class GratisGuidance {
                 let path = ordered[index]
                 index++
                 let text = Text(repo, revision, path, tree)
+                if Rank(path) < 0 && Encoding.UTF8.GetByteCount(text) > 32768 {
+                    continue
+                }
                 Add(guidance, path, text)
+                if Rank(path) < 0 {
+                    continue
+                }
                 for token in text.Split(" \t\r\n()<>\"`".ToCharArray(), StringSplitOptions.RemoveEmptyEntries) {
                     let linked = Relative(path, Uri.UnescapeDataString(token.Split('#')[0]))
-                    if tree.ContainsKey(linked) && !ordered.Contains(linked) {
+                    let extension = Path.GetExtension(linked).ToLowerInvariant()
+                    if tree.ContainsKey(linked) && !ordered.Contains(linked) &&
+                        (extension == ".md" || extension == ".rst" || extension == ".txt") {
                         ordered.Add(linked)
                     }
                 }

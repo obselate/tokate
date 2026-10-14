@@ -44,59 +44,36 @@ internal class Gratis {
             let pulls = List[Object]()
             var cursor string? = nil
             while true {
-                var filesCursor string? = nil
-                var issuesCursor string? = nil
-                let files = HashSet[string]()
-                let issues = HashSet[int32]()
-                var connection JsonElement
-                var pull JsonElement
-                var number int32
-                while true {
-                    let result = Query(
-                        repo,
-                        "query($$owner:String!,$$name:String!,$$cursor:String,$$files:String,$$issues:String){repository(owner:$$owner,name:$$name){pullRequests(states:OPEN,first:1,after:$$cursor,orderBy:{field:CREATED_AT,direction:ASC}){nodes{number title body closingIssuesReferences(first:100,after:$$issues){nodes{number repository{nameWithOwner}} pageInfo{hasNextPage endCursor}} files(first:100,after:$$files){nodes{path} pageInfo{hasNextPage endCursor}}} pageInfo{hasNextPage endCursor}}}}",
-                        map[string, Object?]{"cursor": cursor, "files": filesCursor, "issues": issuesCursor}
-                    )
-                    connection = J.Get(J.Get(result, "repository"), "pullRequests")
-                    Require(connection.ValueKind == JsonValueKind.Object, "Open PR snapshot is unavailable")
-                    let nodes = J.Items(J.Get(connection, "nodes"))
-                    if nodes.Count == 0 {
-                        return pulls
-                    }
-                    pull = nodes[0]
-                    Require(number == 0 || number == J.Number(pull, "number"), "Open PR snapshot changed during paging")
-                    number = J.Number(pull, "number")
-                    let changed = J.Get(pull, "files")
-                    let linked = J.Get(pull, "closingIssuesReferences")
-                    files.UnionWith(J.Items(J.Get(changed, "nodes")).Select(file -> J.Text(file, "path")))
-                    issues.UnionWith(
-                        J
-                            .Items(J.Get(linked, "nodes"))
-                            .Where(
-                            issue -> RepositoryIdentity.SameRepo(
-                                J.Text(J.Get(issue, "repository"), "nameWithOwner"),
-                                repo
-                            )
-                        )
-                            .Select(issue -> J.Number(issue, "number"))
-                    )
-                    let moreFiles = J.Bool(J.Get(changed, "pageInfo"), "hasNextPage")
-                    let moreIssues = J.Bool(J.Get(linked, "pageInfo"), "hasNextPage")
-                    if !moreFiles && !moreIssues {
-                        break
-                    }
-                    filesCursor = moreFiles ? J.Text(J.Get(changed, "pageInfo"), "endCursor"): filesCursor
-                    issuesCursor = moreIssues ? J.Text(J.Get(linked, "pageInfo"), "endCursor"): issuesCursor
-                }
-                pulls.Add(
-                    map[string, Object?]{
-                        "number": J.Number(pull, "number"),
-                        "title": J.Text(pull, "title"),
-                        "body": J.Text(pull, "body"),
-                        "issues": List[int32](issues),
-                        "files": List[string](files)
-                    }
+                let result = Query(
+                    repo,
+                    "query($$owner:String!,$$name:String!,$$cursor:String){repository(owner:$$owner,name:$$name){pullRequests(states:OPEN,first:50,after:$$cursor,orderBy:{field:CREATED_AT,direction:ASC}){nodes{number title body closingIssuesReferences(first:20){nodes{number repository{nameWithOwner}}} files(first:100){nodes{path}}} pageInfo{hasNextPage endCursor}}}}",
+                    map[string, Object?]{"cursor": cursor}
                 )
+                let connection = J.Get(J.Get(result, "repository"), "pullRequests")
+                Require(connection.ValueKind == JsonValueKind.Object, "Open PR snapshot is unavailable")
+                for pull in J.Items(J.Get(connection, "nodes")) {
+                    pulls.Add(
+                        map[string, Object?]{
+                            "number": J.Number(pull, "number"),
+                            "title": J.Text(pull, "title"),
+                            "body": J.Text(pull, "body"),
+                            "issues": J
+                                .Items(J.Get(J.Get(pull, "closingIssuesReferences"), "nodes"))
+                                .Where(
+                                issue -> RepositoryIdentity.SameRepo(
+                                    J.Text(J.Get(issue, "repository"), "nameWithOwner"),
+                                    repo
+                                )
+                            )
+                                .Select(issue -> J.Number(issue, "number"))
+                                .ToList(),
+                            "files": J
+                                .Items(J.Get(J.Get(pull, "files"), "nodes"))
+                                .Select(file -> J.Text(file, "path"))
+                                .ToList()
+                        }
+                    )
+                }
                 if !J.Bool(J.Get(connection, "pageInfo"), "hasNextPage") {
                     return pulls
                 }
@@ -112,6 +89,18 @@ internal class Gratis {
             if Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 {
                 for item in bounded {
                     item["body"] = ""
+                }
+            }
+            while Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 && bounded.Count > 0 {
+                bounded.RemoveAt(bounded.Count - 1)
+            }
+            if record.ContainsKey("issue") {
+                let issue = J.Select(J.Parse(J.Write(record["issue"])), "number,title,body")
+                record["issue"] = issue
+                var body = issue["body"]?.ToString() ?? ""
+                while Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 && body != "" {
+                    body = body.Substring(0, body.Length / 2)
+                    issue["body"] = body
                 }
             }
             Require(Encoding.UTF8.GetByteCount(J.Write(record)) <= 65536, "Guidance and PR snapshot exceed 64 KiB")
@@ -143,9 +132,19 @@ internal class Gratis {
                 run.Fields["ready"] = Artifact(checkout, "tokate-ready.txt") != "" && guidance
                 let findings = Artifact(checkout, "tokate-findings.md")
                 if findings != "" {
-                    let safe = !Regex.IsMatch(findings, PublicSummary.RestrictedTextPattern)
-                    Require(guidance && safe, "Findings lack guidance or contain restricted public text")
-                    run.Fields["findings"] = findings
+                    File.WriteAllText(Path.Combine(directory, "findings.md"), findings)
+                    let home = Environment.GetEnvironmentVariable("HOME") ?? ""
+                    let safe = !Regex.IsMatch(findings, PublicSummary.RestrictedTextPattern) && !findings.Contains(
+                        checkout,
+                        StringComparison.Ordinal
+                    ) &&
+                        !findings.Contains(directory, StringComparison.Ordinal) &&
+                        (home == "" || !findings.Contains(home, StringComparison.Ordinal))
+                    if guidance && safe {
+                        run.Fields["findings"] = findings
+                    } else {
+                        run.Fields["discussion_error"] = "Findings were not published"
+                    }
                 }
                 PublicSummary.Capture(directory, checkout, run)
                 if budget.Git(checkout, "status", "--porcelain") != "" {
@@ -187,7 +186,14 @@ internal class Gratis {
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
             let marker = "<!-- tokate-receipt:" + J.Write(receipt) + " -->"
             let report = PrBody.Report(PublicSummary.Report(summary, "No repository check ran."))
-            let body = report + "\n\n" + attribution + "\n\n<!-- tokate-v2:" + id + " -->\n" + marker
+            let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
+                report +
+                "\n\n" +
+                attribution +
+                "\n\n<!-- tokate-v2:" +
+                id +
+                " -->\n" +
+                marker
             if run.Text("state") == "generated" {
                 let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
                 Require(Commands.Git(checkout, "rev-parse", "HEAD") == run.Text("commit"), "Verified head changed")
@@ -212,7 +218,6 @@ internal class Gratis {
                 Publication.SavePr(directory, run, pull)
             }
             let findings = run.Text("findings")
-            Require(!Regex.IsMatch(findings, PublicSummary.RestrictedTextPattern), "Restricted findings text")
             if findings == "" {
                 return
             }

@@ -203,8 +203,9 @@ internal partial class Fixture {
             let pulls = State["pulls"]?.AsArray() ?? JsonArray()
             let cursor = Check.Text(body["variables"]?["cursor"])
             let index = cursor == "" ? 0: Int32.Parse(cursor)
-            if index < pulls.Count {
-                let pull = pulls[index] ?? throw Exception("Missing pull")
+            let end = Math.Min(index + 50, pulls.Count)
+            for offset in index ... end {
+                let pull = pulls[offset] ?? throw Exception("Missing pull")
                 nodes.Add(
                     Check.Map(
                         "number",
@@ -236,7 +237,7 @@ internal partial class Fixture {
                                 "nodes",
                                 nodes,
                                 "pageInfo",
-                                Check.Map("hasNextPage", index + 1 < pulls.Count, "endCursor", (index + 1).ToString())
+                                Check.Map("hasNextPage", end < pulls.Count, "endCursor", end.ToString())
                             )
                         )
                     )
