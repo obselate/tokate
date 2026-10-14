@@ -162,67 +162,64 @@ internal class TargetBranches {
                 "V2 prepared the moving target instead of approved base"
             )
             RunBase(run, base, branch)
-            flow.Call([]string{"submit", "--run", run})
+            flow.Call([]string{"submit", "--run", run, "--json"})
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(request))
             Receipt(flow, branch, base)
         }
 
-        private func Freshness(binary string, version int32, change string) {
+        private func Freshness(binary string) {
             using let test = CoordinationFixture(binary)
             let flow = test.Flow
             test.Initialize()
             let branch = "release/freshness"
             let base = Target(flow, branch)
-            if change == "missing" {
-                flow.Git("-C", flow.Upstream, "branch", "-D", branch)
-                flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, 1, owner: true)
-                flow.NoInference()
-                return
-            }
-            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
-            var run = ""
-            test.Coordinate(test.Event(test.ClaimRequest()))
-            run = test.Prepare()
-            let saved = File.ReadAllText(Path.Combine(run, "run.json"))
-            if change == "deleted" {
-                flow.Git("-C", flow.Upstream, "branch", "-D", branch)
-            } else if change == "authority" {
-                flow.Reload()
-                flow.State["default_branch"] = JsonValue.Create(branch)
-                flow.Save()
-            } else {
-                if change == "policy" {
-                    let path = Path.Combine(flow.Upstream, ".github/tokate.json")
-                    let policy = Check.Json(File.ReadAllText(path))
-                    policy["max_seconds"] = JsonValue.Create(3599)
-                    File.WriteAllText(path, policy.ToJsonString())
-                } else {
-                    File.AppendAllText(
-                        Path.Combine(flow.Upstream, ".github/tokate-pr.md"),
-                        "\nChanged authority template\n"
-                    )
-                }
-                flow.Commit("Owner configuration changed")
-                flow.Git("-C", flow.Upstream, "checkout", "main")
-            }
-            let result = version == 1 ? flow.Call([]string{"work", "--run", run}, 1): flow.Call(
-                []string{"external", "--run", run, "--commit", base},
-                1
-            )
-            if change != "deleted" {
-                Check.Contains(result.Error, "The owner must run: tokate approve owner/project#1")
-            }
-            Check.That(
-                File.ReadAllText(Path.Combine(run, "run.json")) == saved,
-                "Failed freshness check rewrote saved run"
-            )
+            flow.Call([]string{"approve", "owner/project#1", "--base-branch", "release/missing"}, 1, owner: true)
             flow.NoInference()
-            flow.NoPr()
+            Console.WriteLine("PASS V2 target freshness: missing")
+            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
+            test.Coordinate(test.Event(test.ClaimRequest()))
+            let run = test.Prepare()
+            let saved = File.ReadAllText(Path.Combine(run, "run.json"))
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
+            for change in[]string{"deleted", "authority", "policy", "template"} {
+                baseline.Restore()
+                if change == "deleted" {
+                    flow.Git("-C", flow.Upstream, "branch", "-D", branch)
+                } else if change == "authority" {
+                    flow.Reload()
+                    flow.State["default_branch"] = JsonValue.Create(branch)
+                    flow.Save()
+                } else {
+                    if change == "policy" {
+                        let path = Path.Combine(flow.Upstream, ".github/tokate.json")
+                        let policy = Check.Json(File.ReadAllText(path))
+                        policy["max_seconds"] = JsonValue.Create(3599)
+                        File.WriteAllText(path, policy.ToJsonString())
+                    } else {
+                        File.AppendAllText(
+                            Path.Combine(flow.Upstream, ".github/tokate-pr.md"),
+                            "\nChanged authority template\n"
+                        )
+                    }
+                    flow.Commit("Owner configuration changed")
+                }
+                let result = flow.Call([]string{"external", "--run", run, "--commit", base}, 1)
+                if change != "deleted" {
+                    Check.Contains(result.Error, "The owner must run: tokate approve owner/project#1")
+                }
+                Check.That(
+                    File.ReadAllText(Path.Combine(run, "run.json")) == saved,
+                    "Failed freshness check rewrote saved run"
+                )
+                flow.NoInference()
+                flow.NoPr()
+                Console.WriteLine("PASS V2 target freshness: " + change)
+            }
         }
 
-        private func Instructions(binary string, version int32, change string) {
-            using let test = DecreeFlow.Create(binary, version)
+        private func Instructions(binary string) {
+            using let test = DecreeFlow.Create(binary, 2)
             let flow = test.Flow
             let branch = "release/instructions"
             test.Text("Authority instructions\n")
@@ -233,30 +230,28 @@ internal class TargetBranches {
             test.Snapshot(DecreeFlow.Exact, true)
             let run = test.Start()
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
-            if change == "authority" {
-                let path = Path.Combine(flow.Upstream, "DECREE.md")
-                File.Delete(path)
-                File.CreateSymbolicLink(path, "target.txt")
-                flow.Commit("Unsupported authority instructions are outside selected target")
-            } else if change == "unrelated" {
-                Move(flow, branch)
-            } else if change != "delivery" {
-                flow.Git("-C", flow.Upstream, "checkout", branch)
-                test.Text("Changed selected instructions\n")
-                flow.Git("-C", flow.Upstream, "checkout", "main")
-            }
-            if change == "changed" || change == "unsupported" {
-                flow.Call([]string{"work", "--run", run}, 1)
-                Check.That(
-                    File.ReadAllText(Path.Combine(run, "run.json")) == saved,
-                    "Changed instructions rewrote saved work"
-                )
-                flow.NoInference()
-            } else {
-                flow.Call([]string{"work", "--run", run})
-                test.Prompt(DecreeFlow.Exact, true)
-            }
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
+            flow.Git("-C", flow.Upstream, "checkout", branch)
+            test.Text("Changed selected instructions\n")
+            flow.Git("-C", flow.Upstream, "checkout", "main")
+            flow.Call([]string{"work", "--run", run}, 1)
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "run.json")) == saved,
+                "Changed instructions rewrote saved work"
+            )
+            flow.NoInference()
             flow.NoPr()
+            Console.WriteLine("PASS V2 target instruction boundary: changed")
+            baseline.Restore()
+            let path = Path.Combine(flow.Upstream, "DECREE.md")
+            File.Delete(path)
+            File.CreateSymbolicLink(path, "target.txt")
+            flow.Commit("Unsupported authority instructions are outside selected target")
+            Move(flow, branch)
+            flow.Call([]string{"work", "--run", run})
+            test.Prompt(DecreeFlow.Exact, true)
+            flow.NoPr()
+            Console.WriteLine("PASS V2 target instruction boundary: authority and unrelated target changes")
         }
 
         private func Structured(binary string) {
@@ -360,16 +355,8 @@ internal class TargetBranches {
             if selected == "Receipts" {
                 return
             }
-            for version in[]int32{2} {
-                for change in[]string{"missing", "deleted", "authority", "policy", "template"} {
-                    Freshness(binary, version, change)
-                    Console.WriteLine("PASS V" + version.ToString() + " target freshness: " + change)
-                }
-                for change in[]string{"delivery", "authority", "unrelated", "changed", "unsupported"} {
-                    Instructions(binary, version, change)
-                    Console.WriteLine("PASS V" + version.ToString() + " target instruction boundary: " + change)
-                }
-            }
+            Freshness(binary)
+            Instructions(binary)
         }
     }
 }
