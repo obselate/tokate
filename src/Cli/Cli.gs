@@ -20,14 +20,11 @@ internal class CliOption(spec string) {
     internal prop Choices string -> String.Join(" ", Words.Skip(2))
 
     internal func Describe(command string) string -> switch Name {
-        case "yes" when command == "init": "Apply the listed GitHub Actions settings and branch protection changes"
+        case "yes" when command == "init": "Apply the listed GitHub settings, access record and setup PR"
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
-        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
-        case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
-        case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
-        case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
+        case "non-interactive" when command == "init": "Never prompt; preview unless --yes is given"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
@@ -122,16 +119,14 @@ internal class Cli {
             "trust: Request trusted donor access instead of access to one issue",
             "auth: Explicitly check tool-owned authentication status; never print credential values",
             "fix: Preview missing prerequisite installations; --yes applies them; use --harness-path for an existing harness",
-            "model-policy MODE unrestricted whitelist: Explicit model access choice; existing restrictions are preserved",
-            "models JSON: Map of models to effort arrays copied to each selected tool; absent declares no effort control",
-            "allowed-tools TOOLS: Tool names keep external and OMP permissions; exact harness/provider pairs or a JSON array with per-tool models replace the list",
+            "allowed-tools TOOLS: Tool names, harness/provider pairs or a JSON array with per-tool models; replaces the list; default: codex, claude and pi with any model",
             "eligibility MODE trusted open: Task eligibility; new repositories default to trusted",
             "verification JSON: Existing project verification commands as JSON argv arrays",
             "required-checks JSON: Required GitHub check names as a JSON array",
             "reservation-time TIME: Reservation lifetime from 5m to 7d",
             "pr-text TEXT: Optional literal owner text appended to PRs; no template expressions",
             "close-message TEXT: Optional literal admission message reserved for later admission integration",
-            "base-branch BRANCH: Owner-selected target; default: upstream default branch (prompt on a terminal)",
+            "base-branch BRANCH: Owner-selected target; default: upstream default branch",
             "total TIME: Start tasks only while --time fits in this total, default: until stopped",
             "model MODEL: Owner-approved model",
             "effort EFFORT off minimal low medium high xhigh max ultra absent: Owner-approved effort",
@@ -164,7 +159,6 @@ internal class Cli {
             "summary FILE: Bounded public JSON summary for the exact candidate commit",
             "file FILE: Strict claim or publication request JSON",
             "event FILE: Trusted GitHub event JSON",
-            "output FILE: New workflow file outside .github",
             "sync SHA: Exact live owner synchronization grant",
             "resume: Inspect saved reconciliation intent and physical Git state without repeating a merge",
             "grant SHA: Synchronization grant to revoke",
@@ -272,11 +266,11 @@ internal class Cli {
                 "release 42"
             ),
             CliCommand(
-                "init own local_read,local_write,github_read,github_write repo",
-                "[OWNER/REPO] [--path DIR] [options]",
-                "path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive,yes",
-                "Write owner policy and a pinned workflow into a checkout; starts from the policy on GitHub and options change only what they name.",
-                "init owner/project --model-policy unrestricted --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'"
+                "init own local_read,github_read,github_write repo",
+                "[OWNER/REPO] [options]",
+                "allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive,yes",
+                "Set up or update a repository: Actions settings, access record and a setup PR with the policy and pinned workflow; options change only what they name.",
+                "init owner/project --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'"
             ),
             CliCommand(
                 "approve own local_read,github_read,github_write repo,issue",
@@ -389,13 +383,6 @@ internal class Cli {
                 "grant",
                 "Owner: preserve and revoke a synchronization grant by nonforce ref advance.",
                 "revoke-sync --grant 0123456789abcdef0123456789abcdef01234567"
-            ),
-            CliCommand(
-                "coordinator-setup more local_read,local_write,github_read,github_write repo,output",
-                "[OWNER/REPO] --output FILE",
-                "output,non-interactive,yes",
-                "Preview a shared workflow entry using verified matching release assets; no inference.",
-                "coordinator-setup owner/project --output coordinator.yml"
             ),
             CliCommand(
                 "completion more local_read",
@@ -961,7 +948,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"path", "run", "runs", "file", "tools", "summary", "event", "output", "continue-from"} {
+            for key in[]string{"path", "run", "runs", "file", "tools", "summary", "event", "continue-from"} {
                 if args.Get(key) != "" {
                     Path.GetFullPath(args.Get(key))
                 }
@@ -995,7 +982,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"effort", "source", "availability", "model-policy", "eligibility"} {
+            for key in[]string{"effort", "source", "availability", "eligibility"} {
                 if args.Get(key) != "" && Array.IndexOf(
                     OptionFor(args.Command, key).Choices.Split(' '),
                     args.Get(key)
@@ -1112,7 +1099,7 @@ internal class Cli {
                 throw Exception("Required: " + String.Join(", ", missing))
             }
 
-            if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {
+            if command.Needs("repo") && args.Get("repo") == "" {
                 args.Values["--repo"] = RepositoryInput.Local()
             }
         }

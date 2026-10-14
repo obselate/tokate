@@ -388,7 +388,7 @@ internal class AdmissionChecks {
             using let setup = CoordinationFixture(binary)
             setup.Initialize()
             setup.Flow.ReleaseReady()
-            let output = Path.Combine(setup.Flow.Temp.Root, "coordinator.yml")
+            let init = []string{"init", "owner/project", "--yes"}
             setup.Flow.Reload()
             setup.Flow.State["actions_policy"] = Check.Map(
                 "enforcement",
@@ -399,20 +399,25 @@ internal class AdmissionChecks {
                 )
             )
             setup.Flow.Save()
-            Check.Contains(
-                setup
-                    .Flow
-                    .Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
-                    .Error,
-                "November 2, 2026"
+            Check.Contains(setup.Flow.Call(init, 1, owner: true).Error, "November 2, 2026")
+            Check.That(
+                setup.Flow.Git("-C", setup.Flow.Upstream, "branch", "--list", "tokate-setup") == "",
+                "Blocked event policy enabled automatic closure"
             )
-            Check.That(!File.Exists(output), "Blocked event policy enabled automatic closure")
             setup.Flow.Reload()
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.Save()
-            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, owner: true)
-            Check.Contains(File.ReadAllText(output), "pull_request_target:")
-            File.Delete(output)
+            setup.Flow.Call(init, owner: true)
+            Check.Contains(
+                setup.Flow.Git(
+                    "-C",
+                    setup.Flow.Upstream,
+                    "show",
+                    "tokate-setup:.github/workflows/tokate-coordinator.yml"
+                ),
+                "pull_request_target:"
+            )
+            setup.Flow.Git("-C", setup.Flow.Upstream, "merge", "-q", "--ff-only", "tokate-setup")
             setup.Flow.Reload()
             setup.Flow.State["actions_policy"] = Check.Map(
                 "enforcement",
@@ -428,8 +433,7 @@ internal class AdmissionChecks {
                 )
             )
             setup.Flow.Save()
-            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, owner: true)
-            File.Delete(output)
+            Check.Contains(setup.Flow.Call(init, owner: true).Output, "Nothing to change")
             setup.Flow.Reload()
             let active = setup.Flow.State["actions_policy"] ?? throw Exception("Missing policy")
             let rules = active["rules"]?.AsArray() ?? throw Exception("Missing policy rules")
@@ -442,20 +446,17 @@ internal class AdmissionChecks {
                 )
             )
             setup.Flow.Save()
-            Check.Contains(
-                setup
-                    .Flow
-                    .Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
-                    .Error,
-                "actor policy"
-            )
-            Check.That(!File.Exists(output), "Active actor policy enabled automatic closure")
+            Check.Contains(setup.Flow.Call(init, 1, owner: true).Error, "actor policy")
             setup.Flow.Reload()
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.State["actions_policies"] = Check.Map("total_count", 0, "policies", JsonArray())
             setup.Flow.Save()
-            setup.Flow.Call([]string{"coordinator-setup", "owner/project", "--output", output, "--yes"}, 1, owner: true)
-            Check.That(!File.Exists(output), "Missing event policy enabled automatic closure")
+            setup.Flow.Call(init, owner: true)
+            setup.Flow.Reload()
+            Check.That(
+                Check.Text(setup.Flow.State["actions_policy"]?["name"]) == "Tokate coordinator events",
+                "Missing event policy was not created"
+            )
             let central = TestResources.Template("coordinator.yml")
             Check.Contains(central, "contents: read")
             Check.Contains(central, "admit \"$$TOKATE_REPOSITORY\"")

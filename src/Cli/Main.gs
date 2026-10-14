@@ -253,14 +253,6 @@ func Dispatch(options Args) int32 {
             OwnerSetup.Run(options)
         }
 
-        case "coordinator-setup" {
-            PublicOutput.ResultData = map[string, Object?]{
-                "repo": options.Get("repo"),
-                "output": Path.GetFullPath(options.Need("output"))
-            }
-            CoordinatorSetup.Run(options)
-        }
-
         case "access" {
             AccessState.Run(options)
         }
