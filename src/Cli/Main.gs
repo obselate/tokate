@@ -436,18 +436,6 @@ func Dispatch(options Args) int32 {
             return Checks.Run(options)
         }
 
-        case "policy" {
-            let repo = RepositoryIdentity.Repo(options.Need("repo"))
-            let info = GitHub.Api("repos/" + repo)
-            let value = Policy.Load(repo, J.Text(info, "default_branch")).Value
-
-            if PublicOutput.Enabled {
-                PublicOutput.ResultData = map[string, Object?]{"repo": repo, "policy": PublicOutput.Policy(value)}
-            } else {
-                Terminal.Json(value, "Repository policy")
-            }
-        }
-
         case "verify" {
             let repo = RepositoryIdentity.Repo(options.Need("repo"))
             let number = options.Number("pr")

@@ -386,22 +386,11 @@ internal class Cli {
                 group: "own"
             ),
             CliCommand(
-                "policy",
-                "",
-                "repo",
-                "Read upstream owner policy from GitHub; no inference.",
-                "[OWNER/REPO]",
-                "policy owner/project",
-                effects: "local_read github_read",
-                target: "repo",
-                group: "own"
-            ),
-            CliCommand(
                 "doctor",
-                "repo,auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
                 "",
-                "Check prerequisites or owner repository health; repository checks are read-only; no inference.",
-                "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
+                "Check prerequisites, or repository policy and coordinator health; repository checks are read-only; no inference.",
+                "[repo [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
                 "doctor",
                 effects: "local_read local_write github_read",
                 target: "doctor",
@@ -703,7 +692,7 @@ internal class Cli {
         internal func Words(command string) string -> command == "work" ? "stop":
         command == "defaults" ? "set show remove list use":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
-        command == "doctor" ? "owner managed external codex claude pi omp":
+        command == "doctor" ? "repo managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
 
         internal func RepositoryWork(args Args) bool -> args.Command == "work" && args.Get("issue") == "" && args.Get(
@@ -773,8 +762,8 @@ internal class Cli {
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
 
             case "doctor": []string{
-                "owner|managed|external|HARNESS",
-                "OWNER/REPO (after owner) or HARNESS (after managed)"
+                "repo|managed|external|HARNESS",
+                "OWNER/REPO (after repo) or HARNESS (after managed)"
             }
             default: switch command.Target {
                 case "issue": []string{"ISSUE"}
@@ -1107,7 +1096,7 @@ internal class Cli {
                 } else if command.Target == "doctor" {
                     OptionHelp(
                         text,
-                        "owner|codex|managed|external|HARNESS",
+                        "repo|codex|managed|external|HARNESS",
                         "Choose one scope or one harness such as codex",
                         width
                     )
@@ -1262,9 +1251,8 @@ internal class Cli {
             }
 
             if args.Command == "doctor" {
-                if args.Get("repo") != "" &&
-                    (args.Get("owner") != "true" || args.Get("fix") == "true" || args.Get("set-default") == "true") {
-                    throw Exception("Repository diagnostics require doctor owner and are read-only")
+                if args.Subject == "repo" && (args.Get("fix") == "true" || args.Get("set-default") == "true") {
+                    throw Exception("doctor repo is read-only")
                 }
 
                 if args.Get("set-default") == "true" && args.Get("harness") == "" {
@@ -1273,18 +1261,6 @@ internal class Cli {
 
                 if args.Get("yes") == "true" && args.Get("fix") != "true" {
                     throw Exception("doctor --yes requires --fix")
-                }
-
-                var scopes int32
-
-                for key in[]string{"owner", "managed", "external"} {
-                    if args.Get(key) == "true" {
-                        scopes++
-                    }
-                }
-
-                if scopes > 1 {
-                    throw Exception("Choose one doctor scope: owner, managed or external")
                 }
 
                 if args.Get("harness") != "" && args.Get("harness") != "codex" && args.Get("harness") != "pi" &&
@@ -1299,7 +1275,7 @@ internal class Cli {
                 }
 
                 for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
-                    if scopes > 0 && args.Get("managed") != "true" && args.Get(key) != "" {
+                    if (args.Subject == "repo" || args.Subject == "external") && args.Get(key) != "" {
                         throw Exception("Harness options require managed diagnostics")
                     }
                 }

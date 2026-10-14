@@ -75,16 +75,15 @@ internal class Startup {
             command == "work" ||
             (command == "prepare" && options?.Get("source") == "tokate")
 
-        private func DoctorScope(options Args) string -> options.Get("owner") == "true" ? "owner":
-        options.Get("external") == "true" ||
+        private func DoctorScope(options Args) string -> options.Subject == "external" ||
             (
             options.Get("harness") != "" && DonorDefaults.Provider(options.Get("harness")) == "" &&
                 (
                 options.Get("harness") != "omp" ||
-                    (options.Get("set-default") == "true" && options.Get("managed") != "true")
+                    (options.Get("set-default") == "true" && options.Subject != "managed")
             )
         ) ? "external":
-        options.Get("managed") == "true" || options.Get("harness") != "" || options.Get("harness-path") != "" ?
+        options.Subject == "managed" || options.Get("harness") != "" || options.Get("harness-path") != "" ?
         "managed": "external"
 
         internal func Requirements(options Args)[]string {
@@ -92,9 +91,7 @@ internal class Startup {
 
             if command == "doctor" {
                 let doctorScope = DoctorScope(options)
-                let selected = Args(
-                    []string{doctorScope == "owner" ? "init": doctorScope == "external" ? "external": "work"}
-                )
+                let selected = Args([]string{doctorScope == "external" ? "external": "work"})
 
                 for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
                     if options.Get(key) != "" {
@@ -435,11 +432,11 @@ internal class Startup {
         }
 
         internal func Doctor(options Args) int32 {
-            if options.Get("owner") == "true" && options.Get("repo") != "" {
+            if options.Subject == "repo" {
                 return OwnerHealth.Run(options)
             }
 
-            if options.Get("managed") == "true" && options.Get("harness") == "" {
+            if options.Subject == "managed" && options.Get("harness") == "" {
                 let saved = DonorDefaults.Read()
 
                 if J.Text(saved, "harness") != "" {
@@ -469,148 +466,144 @@ internal class Startup {
                 return Doctor(options)
             }
 
-            if doctorScope != "owner" {
-                var probe = Ready(tools, "setsid") && Ready(tools, "/usr/bin/setsid")
+            var probe = Ready(tools, "setsid") && Ready(tools, "/usr/bin/setsid")
 
-                if pi && probe {
-                    let runtime = ToolCheck{
-                        Name: "pi",
-                        Hint: "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation."
-                    }
-
-                    let missingPi = options.Get("pi-root") == "" && options.Get("harness-path") == "" &&
-                        LocalPaths.Harness("pi") == ""
-                    try {
-                        PiHarness.Runtime(options)
-
-                        let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
-
-                        runtime.Path = options.Need("pi-root")
-                        runtime.Status = "ready"
-                        runtime.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
-                    } catch (error Exception) {
-                        runtime.Status = "failed"
-                        if error is CliFailure failure {
-                            runtime.Code = failure.Code
-                        }
-
-                        runtime.Detail = error.Message +
-                            (SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
-                        if options.Get("fix") == "true" {
-                            Terminal.Message(error.Message, "yellow", true)
-                        }
-
-                        if options.Get("fix") == "true" && missingPi && MachineSetup.Harness(options) {
-                            return Doctor(options)
-                        }
-
-                        probe = false
-                    }
-
-                    tools.Add(runtime)
+            if pi && probe {
+                let runtime = ToolCheck{
+                    Name: "pi",
+                    Hint: "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation."
                 }
 
-                if claude && probe {
-                    let runtime = ToolCheck{
-                        Name: "claude",
-                        Hint: "Use an installed Claude Code with its existing login."
+                let missingPi = options.Get("pi-root") == "" && options.Get("harness-path") == "" && LocalPaths.Harness(
+                    "pi"
+                ) == ""
+                try {
+                    PiHarness.Runtime(options)
+
+                    let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
+
+                    runtime.Path = options.Need("pi-root")
+                    runtime.Status = "ready"
+                    runtime.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
+                } catch (error Exception) {
+                    runtime.Status = "failed"
+                    if error is CliFailure failure {
+                        runtime.Code = failure.Code
                     }
 
-                    try {
-                        let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
-
-                        runtime.Path = options.Need("harness-path")
-                        runtime.Status = "ready"
-                        runtime.Detail = J.Text(result, "version") +
-                            (
-                            options.Get(
-                                "auth"
-                            ) == "true" ? "; personal native-login status checked.": "; native controls checked without authentication status."
-                        )
-                    } catch (error Exception) {
-                        runtime.Status = "failed"
-                        runtime.Detail = error.Message
-                        probe = false
+                    runtime.Detail = error.Message +
+                        (SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
+                    if options.Get("fix") == "true" {
+                        Terminal.Message(error.Message, "yellow", true)
                     }
 
-                    tools.Add(runtime)
+                    if options.Get("fix") == "true" && missingPi && MachineSetup.Harness(options) {
+                        return Doctor(options)
+                    }
+
+                    probe = false
                 }
 
-                if omp && probe {
-                    let runtime = ToolCheck{
-                        Name: "omp",
-                        Hint: "Install OMP with its official installer and sign in, or use --harness-path FILE."
-                    }
+                tools.Add(runtime)
+            }
 
-                    try {
-                        let result = OmpRuntime.Runtime(options)
-                        let models = OmpRuntime.Models(options.Need("harness-path"))
+            if claude && probe {
+                let runtime = ToolCheck{Name: "claude", Hint: "Use an installed Claude Code with its existing login."}
 
-                        if models.Count == 0 {
-                            throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
-                        }
+                try {
+                    let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
 
-                        runtime.Path = options.Need("harness-path")
-                        runtime.Status = "ready"
-                        runtime.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
-                            " configured models listed without inference or credential checks."
-                    } catch (error Exception) {
-                        runtime.Status = "failed"
-                        if error is CliFailure failure {
-                            runtime.Code = failure.Code
-                        }
-
-                        runtime.Detail = error.Message
-                        probe = false
-                    }
-
-                    tools.Add(runtime)
+                    runtime.Path = options.Need("harness-path")
+                    runtime.Status = "ready"
+                    runtime.Detail = J.Text(result, "version") +
+                        (
+                        options.Get(
+                            "auth"
+                        ) == "true" ? "; personal native-login status checked.": "; native controls checked without authentication status."
+                    )
+                } catch (error Exception) {
+                    runtime.Status = "failed"
+                    runtime.Detail = error.Message
+                    probe = false
                 }
 
-                if doctorScope == "managed" && !pi && !claude && !omp {
-                    let sandbox = ToolCheck{
-                        Name: "sandbox",
-                        Status: "skipped",
-                        Hint: "Ensure native Codex sandbox support and permission profiles. Tokate does not change security settings.",
-                        Detail: "Requires working setsid, /usr/bin/setsid, /usr/bin/env and codex."
+                tools.Add(runtime)
+            }
+
+            if omp && probe {
+                let runtime = ToolCheck{
+                    Name: "omp",
+                    Hint: "Install OMP with its official installer and sign in, or use --harness-path FILE."
+                }
+
+                try {
+                    let result = OmpRuntime.Runtime(options)
+                    let models = OmpRuntime.Models(options.Need("harness-path"))
+
+                    if models.Count == 0 {
+                        throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
                     }
 
-                    if probe && Ready(tools, "codex") && Ready(tools, "/usr/bin/env") {
-                        try {
-                            let pinned = Worker.Doctor(options.Get("harness-path"))
+                    runtime.Path = options.Need("harness-path")
+                    runtime.Status = "ready"
+                    runtime.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
+                        " configured models listed without inference or credential checks."
+                } catch (error Exception) {
+                    runtime.Status = "failed"
+                    if error is CliFailure failure {
+                        runtime.Code = failure.Code
+                    }
 
+                    runtime.Detail = error.Message
+                    probe = false
+                }
+
+                tools.Add(runtime)
+            }
+
+            if doctorScope == "managed" && !pi && !claude && !omp {
+                let sandbox = ToolCheck{
+                    Name: "sandbox",
+                    Status: "skipped",
+                    Hint: "Ensure native Codex sandbox support and permission profiles. Tokate does not change security settings.",
+                    Detail: "Requires working setsid, /usr/bin/setsid, /usr/bin/env and codex."
+                }
+
+                if probe && Ready(tools, "codex") && Ready(tools, "/usr/bin/env") {
+                    try {
+                        let pinned = Worker.Doctor(options.Get("harness-path"))
+
+                        sandbox.Status = "ready"
+                        sandbox.Detail = "Checkout and private /tmp writable. Control files and Git metadata unreadable."
+                        if pinned {
+                            sandbox.Detail += " Repository global.json SDK/MSBuild starts inside the sandbox."
+                        }
+                    } catch (error CliFailure) {
+                        if error.Code == "missing_tools" {
                             sandbox.Status = "ready"
-                            sandbox.Detail = "Checkout and private /tmp writable. Control files and Git metadata unreadable."
-                            if pinned {
-                                sandbox.Detail += " Repository global.json SDK/MSBuild starts inside the sandbox."
-                            }
-                        } catch (error CliFailure) {
-                            if error.Code == "missing_tools" {
-                                sandbox.Status = "ready"
-                                sandbox.Detail = "Sandbox isolation probe passed; pinned toolchain probe failed."
-                                tools.Add(
-                                    ToolCheck{
-                                        Name: "toolchain",
-                                        Status: "failed",
-                                        Hint: error.Summary,
-                                        Detail: error.Summary
-                                    }
-                                )
-                            } else {
-                                sandbox.Status = "failed"
-                                sandbox.Detail = error.Summary
-                                sandbox.Code = error.Code
-                            }
-                        } catch (error Exception) {
+                            sandbox.Detail = "Sandbox isolation probe passed; pinned toolchain probe failed."
+                            tools.Add(
+                                ToolCheck{
+                                    Name: "toolchain",
+                                    Status: "failed",
+                                    Hint: error.Summary,
+                                    Detail: error.Summary
+                                }
+                            )
+                        } else {
                             sandbox.Status = "failed"
-                            sandbox.Detail = "Sandbox probe could not complete. " +
-                                sandbox.Hint +
-                                " Ensure temporary storage is writable and repository global.json is a regular file, not a symbolic link."
+                            sandbox.Detail = error.Summary
+                            sandbox.Code = error.Code
                         }
+                    } catch (error Exception) {
+                        sandbox.Status = "failed"
+                        sandbox.Detail = "Sandbox probe could not complete. " +
+                            sandbox.Hint +
+                            " Ensure temporary storage is writable and repository global.json is a regular file, not a symbolic link."
                     }
-
-                    tools.Add(sandbox)
                 }
+
+                tools.Add(sandbox)
             }
 
             if options.Get("auth") == "true" {
@@ -631,9 +624,7 @@ internal class Startup {
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")
             Show(tools)
 
-            if (doctorScope == "external" && options.Get("external") != "true") || options.Get(
-                "set-default"
-            ) == "true" {
+            if (doctorScope == "external" && options.Subject != "external") || options.Get("set-default") == "true" {
                 DoctorHarnesses(options)
             }
 
