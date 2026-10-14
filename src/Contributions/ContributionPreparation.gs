@@ -312,7 +312,7 @@ internal class ContributionPreparation {
             return Pending(directory, run, args)
         }
 
-        internal func ResumePending(directory string, args Args, seconds int32 = 30) string {
+        internal func ResumePending(directory string, args Args) string {
             PublicOutput.RunDirectory = directory
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
@@ -326,7 +326,7 @@ internal class ContributionPreparation {
                 return directory
             }
 
-            return Pending(directory, run, args, seconds)
+            return Pending(directory, run, args)
         }
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
@@ -425,7 +425,7 @@ internal class ContributionPreparation {
             }
         }
 
-        private func Pending(directory string, run Data, args Args, seconds int32 = 30) string {
+        private func Pending(directory string, run Data, args Args) string {
             let viewer = GitHub.Api("user")
             let repo = RepositoryIdentity.Repo(run.Text("repo"))
             let issue = run.Number("issue")
@@ -454,7 +454,7 @@ internal class ContributionPreparation {
                 J.Get(run.Element(), "donor_id")
             )
 
-            ApiTransport.BeginDeadline(seconds)
+            ApiTransport.BeginDeadline(30)
 
             var accepted CoordinationState? = nil
 

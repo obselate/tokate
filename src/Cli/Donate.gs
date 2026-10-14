@@ -72,13 +72,9 @@ internal class Donate {
                 directory = ContributionPreparation.Acquire(claim)
                 let pending = Stopwatch.StartNew()
                 while Data.Load(directory).Text("state") == "claim_pending" {
-                    ApiTransport.BeginDeadline(
-                        Math.Max(
-                            0,
-                            options.Number("seconds") - Convert.ToInt32(Math.Ceiling(pending.Elapsed.TotalSeconds))
-                        )
-                    )
-                    ApiTransport.CheckDeadline()
+                    if pending.Elapsed.TotalSeconds >= options.Number("seconds") {
+                        throw ApiDeadlineException()
+                    }
                     Submission.ResetWorkflow()
                     if let guidance = Submission.PendingWorkflow(directory, Data.Load(directory)) {
                         if guidance["role"]?.ToString() == "owner" {
@@ -89,19 +85,8 @@ internal class Donate {
                         }
                     }
                     ApiTransport.PollWait()
-                    ContributionPreparation.ResumePending(
-                        directory,
-                        claim,
-                        Math.Max(
-                            0,
-                            options.Number("seconds") - Convert.ToInt32(Math.Ceiling(pending.Elapsed.TotalSeconds))
-                        )
-                    )
-                    if pending.Elapsed.TotalSeconds >= options.Number("seconds") {
-                        throw ApiDeadlineException()
-                    }
+                    ContributionPreparation.ResumePending(directory, claim)
                 }
-                ApiTransport.EndDeadline()
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
                 let submit = Args([]string{"submit", "--run", directory})
                 ApiTransport.BeginDeadline(options.Number("seconds"))
