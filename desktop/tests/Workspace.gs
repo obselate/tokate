@@ -437,6 +437,51 @@ func WorkspaceFlow() {
         )
         AwaitControl(host, adapter, AccessibilityRole.Status, "The pull request has the amendment.")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Amend contribution", enabled: true)
+        let unpublished = Path.Combine(storage, "unpublished")
+        Directory.CreateDirectory(unpublished)
+        File.WriteAllText(Path.Combine(unpublished, "run.json"), "{\"public_summary\":{\"changes\":[\"Fix the table header.\"],\"verification\":[],\"limitations\":[]}}")
+        File.Move(Path.Combine(bin, "tokate"), Path.Combine(bin, "tokate-published"))
+        Script(
+            bin,
+            "tokate",
+            "if [ \"$$1\" = status ] && [ \"$$3\" = 'RUN' ]; then\n  printf '%s' '{\"schema_version\":1,\"command\":\"status\",\"exit_code\":0,\"status\":\"ok\",\"data\":{\"run\":\"RUN\",\"repo\":\"owner/repo\",\"issue\":45,\"state\":\"failed\",\"failure_reason\":\"verification_failed\",\"pr\":0,\"commit\":\"ORIGINAL\",\"artifacts\":{\"checkout\":\"CHECKOUT\"}},\"next_actions\":[]}'\nelif [ \"$$1\" = amend ] && [ \"$$3\" = 'RUN' ] && [ \"$$4\" = --json ]; then\n  printf '%s\\n' \"$$@\" > 'FIXTURE/archive-args'\n  printf '%s' '{\"schema_version\":1,\"command\":\"amend\",\"exit_code\":0,\"status\":\"ok\",\"data\":{},\"next_actions\":[]}'\nelse\n  exec 'BIN/tokate-published' \"$$@\"\nfi\n"
+                .Replace("RUN", unpublished)
+                .Replace("ORIGINAL", commits[0])
+                .Replace("CHECKOUT", checkout)
+                .Replace("FIXTURE", fixture)
+                .Replace("BIN", bin)
+        )
+        using let original = System.Diagnostics.Process.Start("git", "-C \"" + checkout + "\" checkout --detach " + commits[0])
+        original.WaitForExit()
+        Require(original.ExitCode == 0, "Could not prepare the original unpublished checkout")
+        Choose(host, window, adapter, "Saved work")
+        Choose(host, window, adapter, "Back to contributions")
+        Choose(host, window, adapter, "Refresh contributions")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Saved owner/repo #45", enabled: true)
+        Choose(host, window, adapter, "Saved owner/repo #45")
+        Choose(host, window, adapter, "Amend contribution")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Check again", enabled: true)
+        Require(
+            File.ReadAllText(Path.Combine(fixture, "archive-args")) == "amend\n--run\n" + unpublished + "\n--json\n",
+            "Unpublished amendment did not archive evidence without a commit or budget"
+        )
+        Require(
+            Find(adapter.Root, AccessibilityRole.Button, "Verify and publish amendment")?.Disabled == true,
+            "Unpublished amendment can verify before a corrected commit exists"
+        )
+        using let edited = System.Diagnostics.Process.Start("git", "-C \"" + checkout + "\" checkout --detach " + commits[1])
+        edited.WaitForExit()
+        Require(edited.ExitCode == 0, "Could not select the edited unpublished checkout")
+        Choose(host, window, adapter, "Check again")
+        AwaitControl(host, adapter, AccessibilityRole.TextInput, "Change 1", "Fix the table header.")
+        Edit(window, host, adapter, "Verification minutes", "9")
+        Choose(host, window, adapter, "Verify and publish amendment")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Status, "The pull request has the amendment.")
+        Require(
+            File.ReadAllText(Path.Combine(fixture, "amend-args")).Contains("--time\n9m\n--commit\n" + commits[1]),
+            "Unpublished amendment did not verify the edited checkout HEAD"
+        )
     } finally {
         Environment.SetEnvironmentVariable("PATH", previousPath)
         Environment.SetEnvironmentVariable("XDG_STATE_HOME", previousState)

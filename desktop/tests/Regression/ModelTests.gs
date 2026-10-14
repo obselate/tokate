@@ -103,7 +103,7 @@ func ModelTests() {
         derived.Length == 3 && derived[0] == RunAction.Submit && derived[1] == RunAction.Checks && derived[2] == RunAction.Prepare,
         "next actions are filtered, deduplicated and extended"
     )
-    Regression.Equal(RunActions.ButtonLabel(RunAction.Recover), "Run verification again", "recover label")
+    Regression.Equal(RunActions.ButtonLabel(RunAction.Amend), "Amend contribution", "amend label")
 
     let claim = "0f8fad5b-d9cb-469f-a165-70867728950e"
     let reservation = Reservation{

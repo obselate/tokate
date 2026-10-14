@@ -36,8 +36,8 @@ func SavedTests() {
 
     saved.ToggleAmendment()
     saved.SetVerification("0")
-    saved.Act(RunAction.Recover)
-    Regression.Equal(feedback.Current.Message, "Enter 1 to 1440 verification minutes.", "recovery minutes are validated")
+    saved.Act(RunAction.Amend)
+    Regression.Equal(feedback.Current.Message, "Enter 1 to 1440 verification minutes.", "amendment minutes are validated")
     saved.SetVerification("11")
     saved.Act(RunAction.Amend)
     Regression.Equal(feedback.Current.Message, "Commit the correction in the saved checkout first.", "amendment needs a new commit")

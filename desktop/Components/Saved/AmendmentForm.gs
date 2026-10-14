@@ -4,13 +4,12 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The verification budget for recovery, or the whole amendment: the commit in the saved checkout that it
-/// publishes, the public summary of the pull request for the donor to correct, who made the correction and
-/// the budget. A checkout without a correction shows only how to make one.
+/// The amendment: the commit in the saved checkout that it publishes, the public summary of the pull
+/// request for the donor to correct, who made the correction and the budget. A checkout without a
+/// correction shows only how to make one.
 data struct AmendmentForm {
     var Amendment AmendmentDraft
     var Run Run
-    var Recovery bool
     var Stacked bool
     var Button CommandButton
     var Disabled bool
@@ -49,7 +48,7 @@ data struct AmendmentForm {
             Rule{}.Build(),
             Section(
                 "Amend the contribution",
-                "Tokate verifies one commit from your saved checkout and adds it to the pull request. No inference runs."
+                "Tokate verifies one commit from your saved checkout and requests draft publication. No inference runs."
             ),
         }
         if Amendment.Checked {
@@ -62,7 +61,7 @@ data struct AmendmentForm {
             children.Add(Editor())
             children.Add(Rule{}.Build())
         }
-        if ready || Recovery {
+        if ready {
             children.Add(budget)
         }
         if Notice.Message != "" {
@@ -111,7 +110,7 @@ data struct AmendmentForm {
             Row{
                 Children: []Blob{
                     Label{
-                        Content: (Amendment.Files == 1 ? "1 file": Amendment.Files.ToString() + " files") + " changed since the published commit",
+                        Content: (Amendment.Files == 1 ? "1 file": Amendment.Files.ToString() + " files") + " changed since the saved commit",
                         Size: AppTheme.SmallSize,
                         Muted: true,
                     }.Build(),
@@ -125,7 +124,7 @@ data struct AmendmentForm {
         let steps = List[Blob]()
         for step in []string{
             "1. Open the checkout folder.",
-            "2. Make the changes that the owner requested and commit them.",
+            "2. Make the required changes and commit them.",
             "3. Select \"Check again\".",
         } {
             steps.Add(Label{Content: step, Size: AppTheme.SmallSize, Muted: true}.Build())

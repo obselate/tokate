@@ -493,9 +493,24 @@ class SavedWorkService {
     /// starts with the lines that the pull request shows, and with manual editing as the declared tool.
     func ToggleAmendment() {
         let opening = !Current.Amendment.Open
-        SetAmendment(Current.Amendment with{Open = opening, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
-        if opening {
-            ReadCorrection(true)
+        if opening && Current.Run.Pr == 0 && !Current.Run.External {
+            let path = Current.RunPath
+            commands.Cli(
+                []string{"amend", "--run", path},
+                (outcome CommandOutcome) -> {
+                    if !commands.Failed(outcome) && Current.RunPath == path {
+                        SetAmendment(Current.Amendment with{Open = true, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
+                        feedback.Show("Original evidence preserved. Edit and commit the checkout, then select Check again.")
+                        ReadCorrection(true)
+                    }
+                },
+                seconds: 600
+            )
+        } else {
+            SetAmendment(Current.Amendment with{Open = opening, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
+            if opening {
+                ReadCorrection(true)
+            }
         }
     }
 

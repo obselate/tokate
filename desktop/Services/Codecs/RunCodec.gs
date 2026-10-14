@@ -8,7 +8,9 @@ class RunCodec {
         func Run(data JsonElement, path string = "") Run {
             let tools = Json.Items(data, "tools")
             let found = Json.Text(data, "run")
+            let correction = Json.Get(data, "correction")
             let amendment = Json.Get(data, "amendment")
+            let finish = Json.Strings(Json.Get(data, "next"), "command")
             return Run{
                 Path: found != "" ? found: path,
                 Repo: Json.Text(data, "repo"),
@@ -30,8 +32,9 @@ class RunCodec {
                 Commit: Json.Text(data, "commit"),
                 Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
                 External: Json.Text(data, "source") == "external",
-                Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"): "",
-                Finish: Json.Strings(Json.Get(data, "next"), "command"),
+                Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"):
+                Json.Text(correction, "state") == "verified" && finish.Length > 1 && finish[1] == "amend" ? Json.Text(correction, "commit"): "",
+                Finish: finish,
                 Guidance: Json.Text(Json.Get(data, "next"), "action"),
                 Warning: "",
             }

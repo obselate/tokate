@@ -94,7 +94,8 @@ class RunStore {
 
         /// Why the amendment of `commit` failed, when Tokate saved that after `since`. Otherwise "".
         func AmendmentFailure(run string, commit string, since DateTime) string {
-            let record = Path.Combine(run, "amendments", commit, "run.json")
+            let amended = Path.Combine(run, "amendments", commit, "run.json")
+            let record = File.Exists(amended) ? amended: Path.Combine(run, "correction.json")
             try {
                 return File.Exists(record) && File.GetLastWriteTimeUtc(record) >= since ?
                 RunCodec.AmendmentFailure(Json.ParseFile(record)): ""
@@ -107,7 +108,8 @@ class RunStore {
         /// command that Tokate gives. Tokate compares the summary and the tool declarations of that command
         /// with the saved amendment, so new files with the saved values replace the first files.
         func FinishAmendment(run Run, path string) CoordinatorRequest {
-            let record = Json.ParseFile(Path.Combine(path, "amendments", run.Amending, "run.json"))
+            let amended = Path.Combine(path, "amendments", run.Amending, "run.json")
+            let record = Json.ParseFile(File.Exists(amended) ? amended: Path.Combine(path, "correction.json"))
             let tools = Json.Get(record, "tools")
             let files = WriteAmendment(Json.Summary(run.Amending, RunCodec.Summary(record)), Json.Items(tools).Length > 0 ? Json.Raw(tools): "")
             let arguments = List[string]()

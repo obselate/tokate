@@ -93,6 +93,18 @@ func ServiceTests() {
         Regression.Equal(RunStore.Checkout(external), Path.Combine(runs, "a", "coding"), "external amendments use the donor coding checkout")
         File.WriteAllText(RunStore.ClaimFile(external.Path), "{\"source\":\"external\",\"synchronizations\":[]}")
         Regression.Equal(RunStore.Checkout(external), external.Checkout, "synchronized external amendments use the saved checkout")
+        File.WriteAllText(Path.Combine(external.Path, "correction.json"), "{\"state\":\"verified\",\"tools\":[],\"public_summary\":{\"changes\":[\"Fix the header.\"],\"verification\":[],\"limitations\":[]}}")
+        let pending = RunCodec.Run(Json.Parse(
+            "{\"repo\":\"owner/repo\",\"issue\":7,\"correction\":{\"state\":\"verified\",\"commit\":\"corrected\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"" + external.Path + "\",\"--commit\",\"corrected\",\"--time\",\"300s\",\"--summary\",\"/gone/summary.json\",\"--json\"]}}"
+        ))
+        let request = RunStore.FinishAmendment(pending, external.Path)
+        try {
+            Regression.Check(request.Seconds == 420 && request.Head == "corrected", "unpublished pending amendment preserves its head and budget")
+            Regression.Check(File.ReadAllText(RunStore.SummaryFile(request.Files)).Contains("\"head\":\"corrected\""), "unpublished pending amendment restores its exact summary")
+            Regression.Check(Array.IndexOf(request.Arguments, RunStore.SummaryFile(request.Files)) >= 0, "unpublished pending amendment replaces the missing summary file")
+        } finally {
+            RunStore.Remove(request.Files)
+        }
 
         let checkout = Path.Combine(directory, "checkout")
         Directory.CreateDirectory(checkout)

@@ -52,8 +52,12 @@ data struct RunDetails {
         for action in Actions {
             shown.Add(action)
         }
+        if run.Pr > 0 || !run.External && (run.State == "generated" || run.FailureReason == "verification_failed") {
+            if !shown.Contains(RunAction.Amend) {
+                shown.Add(RunAction.Amend)
+            }
+        }
         if run.Pr > 0 {
-            shown.Add(RunAction.Amend)
             shown.Add(RunAction.Reconcile)
         }
         var text = guide.Text
@@ -122,7 +126,7 @@ data struct RunDetails {
                 }
                 children.Add(Label{Content: String.Join(" ", next.Arguments)}.Build())
                 children.Add((Button with{
-                    Label = next.Command == "prepare" ? "Prepare continuation": next.Command == "help" ? "Read recovery help": "Inspect authority",
+                    Label = next.Command == "prepare" ? "Prepare continuation": next.Command == "help" ? "Read failure help": "Inspect authority",
                     Disabled = Waiting,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())

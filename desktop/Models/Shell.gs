@@ -73,7 +73,7 @@ data struct Activity {
             case "defaults": "Loading profiles"
             case "models": "Loading models"
             case "debug": "Loading models"
-            case "recover": "Verifying contribution"
+            case "amend": "Amending contribution"
             case "submit": "Submitting contribution"
             case "publish": "Publishing draft PR"
             case "checks": "Checking pull request"

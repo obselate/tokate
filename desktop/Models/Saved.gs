@@ -81,7 +81,6 @@ enum RunAction {
     Prepare,
     Submit,
     Checks,
-    Recover,
     Amend,
     Reconcile
 }
@@ -93,7 +92,6 @@ class RunActions {
             case RunAction.Prepare: "prepare"
             case RunAction.Submit: "submit"
             case RunAction.Checks: "checks"
-            case RunAction.Recover: "recover"
             case RunAction.Amend: "amend"
             default: "reconcile"
         }
@@ -103,7 +101,7 @@ class RunActions {
             case "prepare": RunAction.Prepare
             case "submit": RunAction.Submit
             case "checks": RunAction.Checks
-            case "recover": RunAction.Recover
+            case "amend": RunAction.Amend
             default: nil
         }
 
@@ -142,7 +140,6 @@ class RunActions {
 
         func DialogTitle(action RunAction) string -> switch action {
             case RunAction.Amend: "Publish amendment"
-            case RunAction.Recover: "Run verification"
             case RunAction.Reconcile: "Update workspace"
             case RunAction.Checks: "Check pull request"
             default: "Continue contribution"
@@ -152,11 +149,10 @@ class RunActions {
             case RunAction.Amend: "Publish verified changes to GitHub. The owner reviews and merges."
             case RunAction.Submit: "Publish verified changes to GitHub. The owner reviews and merges."
             case RunAction.Reconcile: "Merge the current target into this saved workspace."
-            case RunAction.Recover: "Run project verification without inference."
             default: "Inspect and continue this contribution."
         }
 
-        func NeedsBudget(action RunAction) bool -> action == RunAction.Recover || action == RunAction.Amend
+        func NeedsBudget(action RunAction) bool -> action == RunAction.Amend
 
         /// True when the command only sends a request, and the same command saves the result later.
         func Requests(action RunAction) bool -> action == RunAction.Submit || action == RunAction.Amend
@@ -226,8 +222,8 @@ data struct RunGuide {
             case "Verification failed": RunGuide{
                 Step: 1,
                 Heading: "Verification failed",
-                Text: "Correct the work in the run directory. Then run the verification again. No inference runs.",
-                Main: RunAction.Recover,
+                Text: "Select Amend contribution to preserve original evidence before editing. Then commit the changes and verify the amendment. No inference runs.",
+                Main: RunAction.Amend,
             }
             case "Ready to submit": RunGuide{
                 Step: 2,

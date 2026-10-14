@@ -15,7 +15,7 @@ data struct CliError {
         case "stale_approval": "Keep the saved work. Ask the owner to review current authority and re-approve the issue."
         case "authentication_required": "Use the original donor account. Inspect saved status before continuing."
         case "inference_failed": "Preserve partial work. Inspect status before fresh preparation with a new explicit budget."
-        case "verification_failed": "Inspect saved verification results. Correct the exact commit before recovery or amendment."
+        case "verification_failed": "Inspect saved verification results. Preserve original evidence before editing, then amend the exact commit."
         case "invalid_state": "Inspect saved state and artifacts. Do not overwrite evidence or start another attempt to bypass this refusal."
         case "invalid_arguments": "Read command help and correct the arguments before continuing."
         case "missing_tools": "Repair the selected installation, then run doctor. No inference has started."

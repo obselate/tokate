@@ -32,6 +32,11 @@ func CodecTests() {
     Regression.Equal(run.ErrorMessage, "Independent verification failed. Inspect the private verification artifact.", "run error message")
     Regression.Equal(run.Approval, "appr-1", "run approval")
     Regression.Equal(run.CodingTime, "30 minutes", "coding time text")
+    let correction = RunCodec.Run(Json.Parse(
+        "{\"correction\":{\"state\":\"verified\",\"commit\":\"corrected\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"/runs/a\",\"--commit\",\"corrected\",\"--time\",\"300s\"]}}"
+    ))
+    Regression.Equal(correction.Amending, "corrected", "unpublished amendment waits for publication")
+    Regression.Check(correction.Finish[1] == "amend", "unpublished amendment finishes with amend")
 
     let policy = PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))
     Regression.Check(policy.Loaded && policy.Version == 3 && policy.MaxSeconds == 5400, "policy basics")

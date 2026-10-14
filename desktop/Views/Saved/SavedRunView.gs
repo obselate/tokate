@@ -19,11 +19,9 @@ class SavedRunView {
         let state = saved.Current
         let run = state.Run
         let amendment = state.Amendment
-        let recovery = Array.IndexOf(state.Actions, RunAction.Recover) >= 0
-        let form Blob? = recovery || amendment.Open ? AmendmentForm{
+        let form Blob? = amendment.Open ? AmendmentForm{
             Amendment: amendment,
             Run: run,
-            Recovery: recovery,
             Stacked: page.NarrowContent,
             Button: page.Button,
             Disabled: page.Busy,

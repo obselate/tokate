@@ -130,7 +130,7 @@ func CommandTests() {
         "submit --run /runs/1",
         "submit arguments"
     )
-    Regression.Check(TokateCommands.RunActionTimeout(RunAction.Recover, amendment) == 540, "recover timeout")
+    Regression.Check(TokateCommands.RunActionTimeout(RunAction.Amend, amendment) == 540, "amend timeout")
     Regression.Check(TokateCommands.RunActionTimeout(RunAction.Checks, amendment) == 600, "default timeout")
 
     let listing = IssueListing.Empty(IssueFilter.NeedsApproval) with{AppliedQuery = "empty \"results\""}
