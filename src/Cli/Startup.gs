@@ -134,8 +134,7 @@ internal class Startup {
                 }
             }
 
-            if command == "init" ||
-                command == "work" ||
+            if command == "work" ||
                 command == "claim" ||
                 command == "prepare" ||
                 command == "external" ||
@@ -170,7 +169,7 @@ internal class Startup {
                 }
             }
 
-            if command == "coordinator-setup" || command == "init" {
+            if command == "init" {
                 names.Add("curl")
                 names.Add("tar")
             }

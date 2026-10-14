@@ -61,7 +61,7 @@ internal class OwnerHealth {
                 let configured = pinnedVersion != "" && uses.Count == 1
                 pin = uses.Count == 1 ? uses[0].Groups[1].Value: ""
                 let matches = configured && pinnedVersion == version
-                let command = []string{"tokate", "coordinator-setup", repo, "--output", "tokate-coordinator.yml"}
+                let command = []string{"tokate", "init", repo}
                 Add(
                     "coordinator",
                     !configured ? "problem": matches ? "ok": "warning",
@@ -70,13 +70,7 @@ internal class OwnerHealth {
                         ", CLI " +
                         version +
                         "." +
-                        (
-                        matches ? " Versions match.": " Review and install the entry from: " + String.Join(
-                            " ",
-                            command
-                        ) +
-                            "."
-                    ),
+                        (matches ? " Versions match.": " Update it with: " + String.Join(" ", command) + "."),
                     map[string, Object?]{
                         "version": pinnedVersion,
                         "cli_version": version,
@@ -107,9 +101,9 @@ internal class OwnerHealth {
                         tag +
                         "." +
                         (
-                        newer ? " Update the CLI with: tokate update. Then update the coordinator with tokate coordinator-setup " +
+                        newer ? " Update the CLI with: tokate update. Then update the coordinator with tokate init " +
                             repo +
-                            " --output tokate-coordinator.yml.": " No newer release exists."
+                            ".": " No newer release exists."
                     ),
                     map[string, Object?]{"latest_version": tag.Substring(1), "newer_release": newer},
                     newer ? []string{"tokate", "update"}: []string{}
@@ -416,9 +410,9 @@ internal class OwnerHealth {
                             pinned +
                             " is older than CLI " +
                             version +
-                            ". Owner: review and install the entry from: tokate coordinator-setup " +
+                            ". Owner: update it with: tokate init " +
                             repo +
-                            " --output tokate-coordinator.yml.",
+                            ".",
                         "yellow",
                         true
                     )
