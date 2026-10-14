@@ -8,7 +8,7 @@ import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
-        internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
+        private func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
             Console.IsInputRedirected ||
@@ -34,14 +34,6 @@ internal class OwnerSetup {
             Console.Error.WriteLine(
                 Terminal.Clean(name + "\n  Current: " + (old == "" ? "none": old) + "\n  Proposed: " + next)
             )
-        }
-
-        private func Pin(yaml string) string {
-            let uses = Regex.Matches(
-                yaml,
-                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
-            )
-            return uses.Count == 1 ? uses[0].Groups[1].Value: ""
         }
 
         private func Tools(requested string) Object {
@@ -158,15 +150,16 @@ internal class OwnerSetup {
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
-            let info = RepositoryAccess.RequireOwner(repo)
+            let info = GitHub.Api("repos/" + repo)
+            if !J.Bool(J.Get(info, "permissions"), "admin") {
+                throw Exception("Repository admin permission is required for owner setup")
+            }
+
             let main = J.Text(info, "default_branch")
             let head = GitHub.Branch(repo, main)
             let upstream = GitHub.FileAt(repo, ".github/tokate.json", head, missing: true)
             let fields = Fields(upstream)
-            var existing Policy? = nil
-            if upstream != "" {
-                existing = Policy(J.Write(fields))
-            }
+            let existing Policy? = upstream == "" ? nil: Policy(J.Write(fields))
             Options(args, fields)
             let policy = Policy(J.Write(fields))
             let text = upstream != "" && RequestData.Canonical(J.Parse(upstream)) == RequestData.Canonical(
@@ -175,10 +168,12 @@ internal class OwnerSetup {
             let path = ".github/workflows/tokate-coordinator.yml"
             let current = GitHub.FileAt(repo, path, head, missing: true)
             let generated = CoordinatorSetup.Resolve()
-            let pin = Pin(generated)
-            let workflow = Pin(current) == pin ? current: generated
+            let pin = CoordinatorSetup.Pin(generated)
+            let oldPin = CoordinatorSetup.Pin(current)
+            let workflow = oldPin == pin ? current: generated
             let shared = "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
             let changes = List[Object]()
+            let manual = List[string]()
 
             let actions = GitHub.Api("repos/" + repo + "/actions/permissions")
             if !J.Bool(actions, "enabled") {
@@ -188,47 +183,20 @@ internal class OwnerSetup {
             }
 
             let allowed = J.Text(actions, "allowed_actions")
-            var permitted = allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
-            var blocked bool
-            var selected JsonElement
-            let patterns = List[string]()
-            if allowed == "selected" {
-                selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
-                let values = J.Get(selected, "patterns_allowed")
-                if values.ValueKind != JsonValueKind.Array {
-                    throw Exception("Invalid selected Actions patterns")
-                }
-                for pattern in J.Items(values) {
-                    if pattern.ValueKind != JsonValueKind.String {
-                        throw Exception("Invalid selected Actions pattern")
-                    }
-                    let entry = pattern.GetString() ?? ""
-                    let deny = entry.StartsWith("!")
-                    if CoordinatorSetup.WorkflowMatches(deny ? entry.Substring(1): entry, shared) {
-                        blocked = blocked || deny
-                        permitted = permitted || !deny
-                    }
-                    patterns.Add(entry)
-                }
-            }
-
-            let allowlist = allowed == "selected" && !permitted && !blocked
-            if allowlist {
+            let allowlist = CoordinatorSetup.Allowlist(repo, allowed, shared)
+            let patterns = List[string](allowlist.Patterns)
+            patterns.Add(shared)
+            let extend = allowed == "selected" && !allowlist.Permitted && !allowlist.Blocked
+            if extend {
                 Change(
                     changes,
                     "Actions allowed workflows",
-                    String.Join(", ", patterns),
-                    String.Join(", ", patterns) + ", " + shared
+                    String.Join(", ", allowlist.Patterns),
+                    String.Join(", ", patterns)
                 )
-            } else if blocked || !permitted {
-                Terminal.Message(
-                    "Manual: in " +
-                        repo +
-                        " > Settings > Actions > General > Actions permissions, allow " +
-                        shared +
-                        ".",
-                    "yellow",
-                    true
+            } else if !allowlist.Permitted {
+                manual.Add(
+                    "In " + repo + " > Settings > Actions > General > Actions permissions, allow " + shared + "."
                 )
             }
 
@@ -279,10 +247,8 @@ internal class OwnerSetup {
                     protection.ValueKind != JsonValueKind.Undefined &&
                     statusChecks.ValueKind != JsonValueKind
                     .Object {
-                    Terminal.Message(
-                        "Manual: add required checks in GitHub Settings > Branches > " + branch + ".",
-                        "yellow",
-                        true
+                    manual.Add(
+                        "In GitHub Settings > Branches > " + branch + ", require " + String.Join(", ", missing) + "."
                     )
                     missing.Clear()
                 }
@@ -297,7 +263,13 @@ internal class OwnerSetup {
                     )
                 }
             } catch (error Exception) {
-                Terminal.Message("GitHub branch protection: " + Terminal.Clean(error.Message), "yellow", true)
+                manual.Add(
+                    "GitHub branch protection could not be read: " +
+                        error.Message +
+                        " Require the policy checks on " +
+                        branch +
+                        "."
+                )
             }
 
             let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")), missing: true)
@@ -315,29 +287,43 @@ internal class OwnerSetup {
                         "content": text
                     }
                 )
-                Change(changes, ".github/tokate.json", upstream, text)
             }
             if workflow != current {
                 files.Add(map[string, Object?]{"path": path, "mode": "100644", "type": "blob", "content": workflow})
+            }
+
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate-setup", missing: true)
+            let setup = J.Text(J.Get(reference, "object"), "sha")
+            let pulls = GitHub.Api(
+                "repos/" + repo + "/pulls?state=open&per_page=1&head=" + Uri.EscapeDataString(
+                    repo.Split('/')[0] + ":tokate-setup"
+                )
+            )
+            var pull = pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() > 0 ? J.Text(
+                pulls[0],
+                "html_url"
+            ): ""
+            let rebuild = files.Count > 0 && !Prepared(repo, setup, head, files)
+            if rebuild && text != upstream {
+                Change(changes, ".github/tokate.json", upstream, text)
+            }
+            if rebuild && workflow != current {
                 Change(changes, path, current, workflow)
-                if Pin(current) != "" {
+                if oldPin != "" {
                     Console.Error.WriteLine(
-                        "Compare shared workflows: https://github.com/obselate/tokate/compare/" +
-                            Pin(current) +
-                            "..." +
-                            pin
+                        "Compare shared workflows: https://github.com/obselate/tokate/compare/" + oldPin + "..." + pin
                     )
                 }
             }
-            if files.Count > 0 {
-                if GitHub.Api("repos/" + repo + "/git/ref/heads/tokate-setup", missing: true)
-                    .ValueKind != JsonValueKind
-                    .Undefined {
-                    throw Exception(
-                        "Branch tokate-setup exists. Merge or close its setup PR and delete the branch, then run init again"
-                    )
-                }
-                Change(changes, "Branch tokate-setup", "", main + " at " + head + " with the files above")
+            if rebuild {
+                Change(
+                    changes,
+                    "Branch tokate-setup",
+                    setup,
+                    "new commit on " + main + " at " + head + " with the files above"
+                )
+            }
+            if files.Count > 0 && pull == "" {
                 Change(changes, "Setup PR", "", "Set up Tokate, from tokate-setup into " + main)
             }
 
@@ -346,8 +332,12 @@ internal class OwnerSetup {
                 "repo": repo,
                 "applied": false,
                 "changes": changes,
+                "manual": manual,
                 "task_fields_changed": existing != nil && existing.Digest != policy.Digest,
                 "approvals_to_renew": affected
+            }
+            if files.Count > 0 && pull != "" {
+                result["pull_request"] = pull
             }
             PublicOutput.ResultData = result
             Terminal.Message(
@@ -355,15 +345,26 @@ internal class OwnerSetup {
                 "cyan",
                 true
             )
+            for step in manual {
+                Terminal.Message("Manual: " + step, "yellow", true)
+            }
             if affected.Count > 0 {
-                Terminal.Message("Re-approve these issues after the setup PR is merged:", "yellow", true)
+                Terminal.Message(
+                    "Re-approve these issues" + (files.Count > 0 ? " after the setup PR is merged:": ":"),
+                    "yellow",
+                    true
+                )
                 for issue in affected {
                     Terminal.Message("tokate approve " + repo + "#" + issue.ToString(), "yellow", true)
                 }
             }
 
             if changes.Count == 0 {
-                Terminal.Message("Owner setup already matches. Nothing to change.")
+                Terminal.Message(
+                    manual.Count > 0 ? "Complete the manual steps above.": files.Count > 0 ? "Nothing to change. Review and merge the setup PR " +
+                        pull +
+                        ".": "Owner setup already matches. Nothing to change."
+                )
                 return
             }
 
@@ -374,13 +375,12 @@ internal class OwnerSetup {
                 throw CliFailure("confirmation_required", "Pass --yes to apply the previewed setup. Nothing changed.")
             }
 
-            if allowlist {
-                patterns.Add(shared)
+            if extend {
                 GitHub.Api(
                     "repos/" + repo + "/actions/permissions/selected-actions",
                     map[string, Object?]{
-                        "github_owned_allowed": J.Get(selected, "github_owned_allowed"),
-                        "verified_allowed": J.Get(selected, "verified_allowed"),
+                        "github_owned_allowed": J.Get(allowlist.Selected, "github_owned_allowed"),
+                        "verified_allowed": J.Get(allowlist.Selected, "verified_allowed"),
                         "patterns_allowed": patterns
                     },
                     method: "PUT"
@@ -422,34 +422,28 @@ internal class OwnerSetup {
                     method: "POST"
                 )
             }
-            if missing.Count > 0 {
-                try {
-                    if protection.ValueKind == JsonValueKind.Undefined {
-                        GitHub.Api(
-                            protectionPath,
-                            map[string, Object?]{
-                                "required_status_checks": map[string, Object?]{"strict": false, "contexts": missing},
-                                "enforce_admins": false,
-                                "required_pull_request_reviews": nil,
-                                "restrictions": nil
-                            },
-                            method: "PUT"
-                        )
-                    } else {
-                        GitHub.Api(
-                            protectionPath + "/required_status_checks/contexts",
-                            map[string, Object?]{"contexts": missing},
-                            method: "POST"
-                        )
-                    }
-                } catch (error Exception) {
-                    Terminal.Message("GitHub branch protection: " + Terminal.Clean(error.Message), "yellow", true)
-                }
+            if missing.Count > 0 && protection.ValueKind == JsonValueKind.Undefined {
+                GitHub.Api(
+                    protectionPath,
+                    map[string, Object?]{
+                        "required_status_checks": map[string, Object?]{"strict": false, "contexts": missing},
+                        "enforce_admins": false,
+                        "required_pull_request_reviews": nil,
+                        "restrictions": nil
+                    },
+                    method: "PUT"
+                )
+            } else if missing.Count > 0 {
+                GitHub.Api(
+                    protectionPath + "/required_status_checks/contexts",
+                    map[string, Object?]{"contexts": missing},
+                    method: "POST"
+                )
             }
             if access.Sha == "" {
                 access.Write(repo, head)
             }
-            if files.Count > 0 {
+            if rebuild {
                 let base = GitHub.Api("repos/" + repo + "/git/commits/" + head)
                 let tree = GitHub.Api(
                     "repos/" + repo + "/git/trees",
@@ -457,32 +451,69 @@ internal class OwnerSetup {
                 )
                 let commit = GitHub.Api(
                     "repos/" + repo + "/git/commits",
-                    GitHub.AutomationCommit("Set up Tokate", J.Text(tree, "sha"), []string{head})
+                    GitHub.AutomationCommit(
+                        "Set up Tokate",
+                        J.Text(tree, "sha"),
+                        setup == "" ? []string{head}: []string{setup, head}
+                    )
                 )
-                GitHub.Api(
-                    "repos/" + repo + "/git/refs",
-                    map[string, Object?]{
-                        "ref": "refs/heads/tokate-setup",
-                        "sha": RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
-                    }
+                let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
+                if setup == "" {
+                    GitHub.Api(
+                        "repos/" + repo + "/git/refs",
+                        map[string, Object?]{"ref": "refs/heads/tokate-setup", "sha": next}
+                    )
+                } else {
+                    GitHub.Api(
+                        "repos/" + repo + "/git/refs/heads/tokate-setup",
+                        map[string, Object?]{"sha": next, "force": false},
+                        "PATCH"
+                    )
+                }
+            }
+            if files.Count > 0 && pull == "" {
+                pull = J.Text(
+                    GitHub.Api(
+                        "repos/" + repo + "/pulls",
+                        map[string, Object?]{
+                            "title": "Set up Tokate",
+                            "head": repo.Split('/')[0] + ":tokate-setup",
+                            "base": main,
+                            "body": "Tokate owner setup: policy and pinned coordinator workflow. Merge to finish setup."
+                        }
+                    ),
+                    "html_url"
                 )
-                let pull = GitHub.Api(
-                    "repos/" + repo + "/pulls",
-                    map[string, Object?]{
-                        "title": "Set up Tokate",
-                        "head": repo.Split('/')[0] + ":tokate-setup",
-                        "base": main,
-                        "body": "Tokate owner setup: policy and pinned coordinator workflow. Merge to finish setup."
-                    }
-                )
-                result["pull_request"] = J.Text(pull, "html_url")
-                Terminal.Message(
-                    "Opened setup PR " + J.Text(pull, "html_url") + ". Review and merge it before approving work."
-                )
-            } else {
-                Terminal.Message("Owner setup applied.")
+            }
+            if pull != "" {
+                result["pull_request"] = pull
             }
             result["applied"] = true
+            Terminal.Message(
+                files.Count > 0 ? "Setup PR " +
+                    pull +
+                    ". Review and merge it before approving work.": "Owner setup applied."
+            )
+        }
+
+        private func Prepared(repo string, setup string, head string, files List[Object]) bool {
+            if setup == "" {
+                return false
+            }
+
+            let commit = GitHub.Api("repos/" + repo + "/git/commits/" + setup)
+            if !J.Items(J.Get(commit, "parents")).Exists(parent -> J.Text(parent, "sha") == head) {
+                return false
+            }
+
+            for file in J.Items(J.Parse(J.Write(files))) {
+                if GitHub.FileAt(repo, J.Text(file, "path"), setup, missing: true).TrimEnd() != J.Text(file, "content")
+                    .TrimEnd() {
+                    return false
+                }
+            }
+
+            return true
         }
 
         private func ApprovalImpact(repo string, upstream string, policy Policy) List[int32] {

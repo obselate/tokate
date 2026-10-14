@@ -7,6 +7,13 @@ import System.Security.Cryptography
 import System.Text.Json
 import System.Text.RegularExpressions
 
+internal class ActionsAllowlist {
+    internal var Selected JsonElement
+    internal let Patterns List[string] = List[string]()
+    internal var Permitted bool
+    internal var Blocked bool
+}
+
 internal class CoordinatorSetup {
     shared {
         internal func EventPolicy(repo string, workflow string) bool {
@@ -152,7 +159,46 @@ internal class CoordinatorSetup {
             return Regex.IsMatch(workflow, "^" + expression + "$")
         }
 
-        internal func WorkflowMatches(pattern string, workflow string) bool -> Regex.IsMatch(
+        internal func Pin(yaml string) string {
+            let uses = Regex.Matches(
+                yaml,
+                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+            )
+            return uses.Count == 1 ? uses[0].Groups[1].Value: ""
+        }
+
+        internal func Allowlist(repo string, allowed string, workflow string) ActionsAllowlist {
+            let result = ActionsAllowlist{
+                Permitted: allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
+            }
+            if allowed != "selected" {
+                return result
+            }
+
+            result.Selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
+            let values = J.Get(result.Selected, "patterns_allowed")
+            if values.ValueKind != JsonValueKind.Array {
+                throw Exception("Invalid selected Actions patterns")
+            }
+
+            for pattern in J.Items(values) {
+                if pattern.ValueKind != JsonValueKind.String {
+                    throw Exception("Invalid selected Actions pattern")
+                }
+                let entry = pattern.GetString() ?? ""
+                let deny = entry.StartsWith("!")
+                if WorkflowMatches(deny ? entry.Substring(1): entry, workflow) {
+                    result.Blocked = result.Blocked || deny
+                    result.Permitted = result.Permitted || !deny
+                }
+                result.Patterns.Add(entry)
+            }
+
+            result.Permitted = result.Permitted && !result.Blocked
+            return result
+        }
+
+        private func WorkflowMatches(pattern string, workflow string) bool -> Regex.IsMatch(
             workflow,
             "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$",
             RegexOptions.IgnoreCase
