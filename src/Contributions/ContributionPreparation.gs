@@ -84,12 +84,12 @@ internal class ContributionPreparation {
             repo string,
             issue int32,
             viewer JsonElement,
-            state CoordinationState,
+            state CoordinationState?,
             record JsonElement,
             source string
         ) Data {
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
-            let policy = Policy(J.Write(J.Get(record, "policy")))
+            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: state == nil)
 
             if source != "external" && source != "tokate" {
                 throw CliFailure("invalid_state", "source must be external or tokate")
@@ -140,7 +140,9 @@ internal class ContributionPreparation {
                 }
             }
 
-            if J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object && args.Get("from-pr") == "" {
+            if state != nil && J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object && args.Get(
+                "from-pr"
+            ) == "" {
                 throw CliFailure(
                     "invalid_state",
                     "Published work is preserved; saved-checkout continuation remains unsupported until #14"
@@ -155,7 +157,7 @@ internal class ContributionPreparation {
                     "donor": donor,
                     "donor_id": J.Get(viewer, "id"),
                     "head_repo": RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
-                    "approval": J.Text(state.Value(), "approval_id"),
+                    "approval": J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
                     "base": J.Text(approval, "base"),
                     "base_branch": J.Text(approval, "base_branch"),
                     "policy_hash": J.Text(approval, "policy_hash"),
@@ -166,7 +168,7 @@ internal class ContributionPreparation {
 
             if args.Get("from-pr") != "" {
                 run.Fields["handoff"] = ContributionHandoff.Read(
-                    state,
+                    state ?? throw CliFailure("invalid_state", "Gratis work cannot adopt a contribution"),
                     J.Get(viewer, "id"),
                     record,
                     args.Number("from-pr")
@@ -228,7 +230,32 @@ internal class ContributionPreparation {
             run.Fields["branch"] = "tokate/v2-" + run.Text("id")
         }
 
-        internal func Acquire(args Args) string {
+        internal func Acquire(args Args, gratis JsonElement = default(JsonElement)) string {
+            if gratis.ValueKind != JsonValueKind.Undefined {
+                let viewer = GitHub.Api("user")
+                let repo = args.Need("repo")
+                let issue = J.Number(J.Get(gratis, "issue"), "number")
+                let run = Plan(args, repo, issue, viewer, nil, gratis, "tokate")
+                run.Fields["gratis"] = true
+                let context = Data.From(gratis)
+                context.Fields.Remove("pulls")
+                run.Fields["gratis_context"] = context.Element()
+                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy")), gratis: true).Digest
+                let id = Guid.NewGuid().ToString("N")
+                run.Fields["id"] = id
+                run.Fields["attempt"] = id
+                run.Fields["branch"] = "tokate/gratis-" + id
+                let directory = RunStorage.Allocate(RunStorage.Store(args), repo, issue, id)
+                PublicOutput.RunDirectory = directory
+                run.Fields["name"] = Path.GetFileName(directory)
+                WorkspacePreparation.Select(run, args.Get("fork"))
+                Directory.CreateDirectory(directory)
+                using let lease = RunStorage.Lease(directory)
+                WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
+                WorkspacePreparation.Complete(directory, run)
+                File.WriteAllText(Path.Combine(directory, "open-prs.json"), J.Write(J.Get(gratis, "pulls")))
+                return directory
+            }
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let info = GitHub.Api("repos/" + repo)
             let branch = J.Text(info, "default_branch")

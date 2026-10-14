@@ -88,9 +88,9 @@ internal class Submission {
                 run.Fields["public_summary"] = summary
             }
 
-            run.Fields[
-                "verification_provenance"
-            ] = incomplete ? "not passed; incomplete draft": "tokate-observed locally"
+            run.Fields["verification_provenance"] = run.Flag(
+                "gratis"
+            ) ? "No repository check ran": incomplete ? "not passed; incomplete draft": "tokate-observed locally"
             run.Fields[
                 "tool_provenance"
             ] = "Tokate-observed harness invocation and requested model/effort; tool-reported usage, not identity attestation"
@@ -617,6 +617,11 @@ internal class Submission {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+
+            if run.Flag("gratis") {
+                Gratis.Publish(directory, run)
+                return
+            }
 
             if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
                 "failure_reason"

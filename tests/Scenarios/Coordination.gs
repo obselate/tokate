@@ -1893,5 +1893,84 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Donation repeated inference")
         let pulls = Flow.State["pulls"]?.AsArray() ?? JsonArray()
         Check.That(pulls.Count == 1 && Check.Text(pulls[0]?["draft"]) == "true", "Missing draft PR")
+
+        using let gratisFlow = NativeFixture(Flow.Binary)
+        gratisFlow.Initialize(access: false)
+        gratisFlow.Git("-C", gratisFlow.Upstream, "rm", ".github/tokate.json")
+        File.WriteAllText(
+            Path.Combine(gratisFlow.Upstream, "CONTRIBUTING.md"),
+            "Add result.txt containing the fixture completion text.\n"
+        )
+        gratisFlow.Commit("Welcome donated work without a policy")
+        let instruction = Path.Combine(gratisFlow.Temp.Root, "donation.txt")
+        File.WriteAllText(instruction, "Complete the task named by CONTRIBUTING.md.")
+        gratisFlow.State["event_stream"] = Flow.State["event_stream"]?.DeepClone()
+        gratisFlow.State["donation_stop"] = JsonValue.Create(
+            Path.Combine(gratisFlow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/stop")
+        )
+        gratisFlow.Save()
+        let gratis = Check
+            .Envelope(
+            gratisFlow.Call(
+                []string{
+                    "work",
+                    "owner/project",
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--prompt",
+                    instruction,
+                    "--time",
+                    "30s",
+                    "--yes",
+                    "--json"
+                }
+            ),
+            "work",
+            "ok"
+        )["data"] ??
+            throw Exception("Missing gratis report")
+        Check.That(
+            Check.Text(gratis["submitted"]) == "1" && Check.Text(gratis["failed"]) == "0",
+            "Gratis task failed: " + gratis.ToJsonString()
+        )
+        Check.That(Check.Text(gratis["reason"]) == "stopped", "Gratis donation did not stop")
+        gratisFlow.Reload()
+        let donated = gratisFlow.State["pulls"]?.AsArray() ?? JsonArray()
+        Check.That(donated.Count == 1 && Check.Text(donated[0]?["draft"]) == "true", "Gratis did not open one draft")
+        Check.That(
+            Check.Text(donated[0]?["head"]?["repo"]?["full_name"]) == "donor/project",
+            "Gratis did not use the fork"
+        )
+        let body = Check.Text(donated[0]?["body"])
+        Check.Contains(body, "https://github.com/obselate/tokate")
+        Check.Contains(body, "No owner approved the task.")
+        Check.Contains(body, "No repository check ran.")
+        Check.Contains(body, "gpt-6.1-sol")
+        Check.Contains(body, "input: 100")
+        let prefix = "<!-- tokate-receipt:"
+        let first = body.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length
+        let receiptEnd = body.IndexOf(" -->", first, StringComparison.Ordinal)
+        let receipt = Check.Json(body.Substring(first, receiptEnd - first))
+        Check.That(Check.Text(receipt["mode"]) == "gratis", "Missing gratis receipt mode")
+        Check.That(Check.Text(receipt["owner_approved"]) == "false", "Gratis claimed owner approval")
+        Check.That(Check.Text(receipt["prompt_sha256"]) == Check.Hash(instruction), "Prompt hash differs from input")
+        Check.That(Check.Text(gratisFlow.State["exec_count"]) == "1", "Gratis repeated inference")
+        Check.That((gratisFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0, "Gratis posted a claim")
+        let prompt = Check.Text(gratisFlow.State["prompts"]?[0])
+        Check.Contains(prompt, "CONTRIBUTING.md")
+        Check.Contains(prompt, "Complete the task named by CONTRIBUTING.md.")
+        Check.Contains(prompt, "Add result.txt")
+        Check.Contains(prompt, "tokate-refusal.txt")
+        Check.Contains(prompt, "Open PR snapshot")
+        let gratisDirectory = Check.Text(gratis["tasks"]?[0]?["run_directory"])
+        Check.That(File.Exists(Path.Combine(gratisDirectory, "open-prs.json")), "Missing saved PR snapshot")
+        Check.That(
+            File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
+            "Gratis ran repository verification"
+        )
     }
 }

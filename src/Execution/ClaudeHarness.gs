@@ -120,7 +120,7 @@ internal class ClaudeHarness {
 
             let checkout = Path.Combine(directory, "checkout")
             let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
-            let policy = Policy(J.Write(J.Get(record, "policy")))
+            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
             let invocation = ClaudeCode.Invocation(
                 run.Text("model"),
                 run.Text("effort"),

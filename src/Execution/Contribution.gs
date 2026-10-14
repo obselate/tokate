@@ -35,6 +35,10 @@ internal class Contribution {
                 coding.Remaining()
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
 
+                if run.Flag("gratis") && Gratis.Outcome(directory, checkout, run, coding) {
+                    return
+                }
+
                 if coding.Git(checkout, "status", "--porcelain") == "" {
                     throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
                 }
@@ -89,35 +93,37 @@ internal class Contribution {
             File.WriteAllText(Path.Combine(directory, "verification.json"), J.Write(verification))
 
             {
-                using let workspace = VerificationWorkspace.Create(checkout, total)
+                if !run.Flag("gratis") {
+                    using let workspace = VerificationWorkspace.Create(checkout, total)
 
-                for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
-                    total.Remaining()
-                    run.Fields["verification"] = verification
-                    run.Save(directory)
+                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                        total.Remaining()
+                        run.Fields["verification"] = verification
+                        run.Save(directory)
 
-                    let check = Terminal.Verify(
-                        directory,
-                        verification,
-                        command,
-                        checkout,
-                        seconds,
-                        total,
-                        workspace: workspace
-                    )
-                    if check.Code != 0 {
-                        run.Fields["failure_reason"] = "verification_failed"
-                        throw CliFailure(
-                            "verification_failed",
-                            "Owner verification failed. Inspect the private verification.json artifact before explicit recovery."
+                        let check = Terminal.Verify(
+                            directory,
+                            verification,
+                            command,
+                            checkout,
+                            seconds,
+                            total,
+                            workspace: workspace
                         )
+                        if check.Code != 0 {
+                            run.Fields["failure_reason"] = "verification_failed"
+                            throw CliFailure(
+                                "verification_failed",
+                                "Owner verification failed. Inspect the private verification.json artifact before explicit recovery."
+                            )
+                        }
                     }
-                }
 
-                PublicOutput.FailureCode = "invalid_state"
-                run.Fields["failure_stage"] = "changed_candidate"
-                run.Fields["failure_reason"] = "candidate_changed"
-                workspace.Unchanged(total)
+                    PublicOutput.FailureCode = "invalid_state"
+                    run.Fields["failure_stage"] = "changed_candidate"
+                    run.Fields["failure_reason"] = "candidate_changed"
+                    workspace.Unchanged(total)
+                }
             }
 
             run.Fields["verification"] = verification

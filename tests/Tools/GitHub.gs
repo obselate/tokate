@@ -197,6 +197,52 @@ internal partial class Fixture {
                 }
             }
         }
+        if path == "graphql" {
+            Check.Contains(Check.Text(body["query"]), "pullRequests(states:OPEN")
+            let nodes = JsonArray()
+            let pulls = State["pulls"]?.AsArray() ?? JsonArray()
+            let cursor = Check.Text(body["variables"]?["cursor"])
+            let index = cursor == "" ? 0: Int32.Parse(cursor)
+            if index < pulls.Count {
+                let pull = pulls[index] ?? throw Exception("Missing pull")
+                nodes.Add(
+                    Check.Map(
+                        "number",
+                        pull["number"]?.DeepClone(),
+                        "title",
+                        pull["title"]?.DeepClone(),
+                        "body",
+                        pull["body"]?.DeepClone(),
+                        "closingIssuesReferences",
+                        Check.Map("nodes", JsonArray(), "pageInfo", Check.Map("hasNextPage", false)),
+                        "files",
+                        Check.Map(
+                            "nodes",
+                            JsonArray(Check.Map("path", "result.txt")),
+                            "pageInfo",
+                            Check.Map("hasNextPage", false)
+                        )
+                    )
+                )
+            }
+            return Answer(
+                Check.Map(
+                    "data",
+                    Check.Map(
+                        "repository",
+                        Check.Map(
+                            "pullRequests",
+                            Check.Map(
+                                "nodes",
+                                nodes,
+                                "pageInfo",
+                                Check.Map("hasNextPage", index + 1 < pulls.Count, "endCursor", (index + 1).ToString())
+                            )
+                        )
+                    )
+                )
+            )
+        }
         if path == "user" {
             return Answer(
                 Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor) as JsonNode, "id", actorId)
@@ -1216,6 +1262,9 @@ internal partial class Fixture {
                 Save()
                 Console.Error.WriteLine("Synthetic lost PR response: synthetic-response-secret")
                 return 1
+            }
+            if Check.Text(State["donation_stop"]) != "" {
+                File.WriteAllText(Check.Text(State["donation_stop"]), "stop\n")
             }
             return Answer(body)
         }
