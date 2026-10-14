@@ -2,6 +2,7 @@ package TokateTests
 
 import Gsharp.Concurrency
 import System
+import System.Collections.Generic
 import System.Diagnostics
 import System.IO
 import System.Text.Json.Nodes
@@ -138,10 +139,9 @@ internal class ReserveChecks {
                 "--verify-time",
                 "5s",
                 "--runs",
-                Path.Combine(flow.Temp.Root, "runs"),
-                "--json"
+                Path.Combine(flow.Temp.Root, "runs")
             }
-            flow.Call(args, 1)
+            Check.Contains(flow.Call(args, 1).Error, "--verify-time must be shorter than --time")
             flow.Claim(seconds: "6", reserve: "1", code: 1)
             Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Lower owner limit wrote invalid claim")
             Check.That(
@@ -155,9 +155,11 @@ internal class ReserveChecks {
                 "Invalid reserve wrote claim refs"
             )
             flow.NoInference()
-            args[0] = "work"
-            args[Array.IndexOf(args, "--verify-time") + 1] = "1s"
-            let saved = Check.Json(flow.Acquire(args).Output)["data"]
+            let work = List[string](args)
+            work[0] = "work"
+            work[work.IndexOf("--verify-time") + 1] = "1s"
+            work.Add("--json")
+            let saved = Check.Json(flow.Acquire(work.ToArray()).Output)["data"]
             Check.That(
                 Check.Text(saved?["seconds"]) == "5" && Check.Text(saved?["coding_seconds"]) == "4" && Check.Text(
                     saved?["verification_reserve"]
