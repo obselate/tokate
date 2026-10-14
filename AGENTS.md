@@ -61,17 +61,17 @@ Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
 
 ## Guide an owner
 
-Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
-repository with `--model-policy` or per-tool `--allowed-tools JSON`,
-`--verification JSON` and `--required-checks JSON` for new policy choices.
-Init previews local files, GitHub Actions settings and branch protection, then asks once in a terminal.
-Use `--yes` to apply without a question. Non-terminal preview changes nothing and returns `applied=false`, or rejects missing Actions settings. Preserve existing checks and customization. Review the generated policy
-and pinned workflow, verify configuration, and commit it before approving tasks.
-Setup writes version 3 with models and efforts inside each allowed tool. A tool
-without models allows any model. Version 2 remains readable with its original
-model permissions. Update the coordinator pin before committing a version 3 policy.
-Older coordinators reject version 3. Use per-tool model choices in owner setup.
-Initialize access once. Create issues with `gh issue create` or the GUI.
+Run `tokate init OWNER/REPO` with `--verification JSON` and `--required-checks JSON`
+for a new policy. No checkout is necessary. Defaults: the default branch, `trusted`
+access and codex, claude and pi with any model. Use `--allowed-tools JSON` for
+per-tool models. Init checks GitHub authentication and write access. It lists each
+Actions setting, event policy, allowlist entry and required check with its current
+and proposed value, the `tokate/access` record, the files and the `tokate-setup`
+branch and PR. It asks once in a terminal. Use `--yes` to apply without a question.
+Non-terminal preview changes nothing and returns `applied=false`. Review and merge
+the setup PR before approving tasks. Run init again after `tokate update` to update
+the coordinator pin. Init migrates a version 2 policy to version 3 in the setup PR.
+A tool without models allows any model. Create issues with `gh issue create` or the GUI.
 Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
 Use `--yes` to replace active reservation or published PR authority.
 Then trust the donor or grant that issue.

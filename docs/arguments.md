@@ -34,7 +34,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Preview local files, GitHub settings and protection, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`, or rejects missing Actions settings. |
+| `init` | `tokate init [OWNER/REPO] [options]` | Preview GitHub settings, the access record and a setup PR with the policy and pinned workflow, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
 | `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
@@ -57,7 +57,6 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
 | `authorize-sync` | `tokate authorize-sync PR --commit SHA --upstream SHA` | Grant synchronization for exact commits. |
 | `revoke-sync` | `tokate revoke-sync [OWNER/REPO] --grant SHA` | Revoke a synchronization grant. |
-| `coordinator-setup` | `tokate coordinator-setup [OWNER/REPO] --output FILE [--yes]` | Preview matching pins and workflow. Apply the file and Actions allowlist with confirmation. |
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |
