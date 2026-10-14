@@ -1794,6 +1794,7 @@ internal class CliDiscovery {
                 []string{"work", "--profile=x"},
                 []string{"donate", "owner/project", "--profile=x"},
                 []string{"stop", "extra"},
+                []string{"donate", "https://example.test/owner/project", "--time=1h"},
                 []string{"revoke", "owner/project#0"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=invalid"},
                 []string{"work", "owner/project#1", "--model=bad model", "--effort=high"},
@@ -1932,6 +1933,29 @@ internal class CliDiscovery {
                 Check.Contains(File.ReadAllText(log), "gh\napi\n")
                 Check.That(!result.Error.Contains("Usage:"), "Valid URL input rejected")
                 File.Delete(log)
+            }
+            for path in[]string{
+                "CrocSwap/integer-mult-bounds",
+                "earendil-works/pi/releases/tag/v1.2.0",
+                "owner/project/tree/main",
+                "owner/project/issues/5",
+                "owner/project/pull/7"
+            } {
+                for suffix in[]string{"", "/", ".git", ".git/"} {
+                    let result = TestProcess.Run(
+                        binary,
+                        []string{"donate", "https://github.com/" + path + suffix, "--time=1h", "--yes"},
+                        temp.Env,
+                        cwd: temp.Root
+                    )
+                    Check.That(result.Code == 1, "Recording gh stub should fail")
+                    Check.Contains(
+                        File.ReadAllText(log),
+                        "\nrepos/" + path.Split('/')[0] + "/" + path.Split('/')[1] + "\n"
+                    )
+                    Check.That(!result.Error.Contains("Usage:"), "Valid donation URL input rejected")
+                    File.Delete(log)
+                }
             }
             temp.Tool("holder")
             using let listener = Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)

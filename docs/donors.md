@@ -105,6 +105,7 @@ Use `--harness`, `--model` and `--effort` instead of NAME for an explicit
 selection. Add `--total 8h` to limit total elapsed time. Without it, the loop runs
 until stopped. It starts a task only when its full per-task budget fits the
 remaining total. `--time` covers coding and verification for each task.
+GitHub URLs also select the repository, including release, tree, issue and PR URLs.
 
 One confirmation names the repository, harness, model, effort, per-task budget
 and total budget or "until stopped". This consent covers every task the loop

@@ -792,7 +792,7 @@ internal class Cli {
         }
 
         internal func Positional(command CliCommand)[]string -> switch command.Name {
-            case "donate": []string{"OWNER/REPO|stop"}
+            case "donate": []string{"OWNER/REPO", "NAME"}
 
             case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME"}
 
@@ -807,8 +807,6 @@ internal class Cli {
             case "runs": []string{"ISSUE|OWNER/REPO"}
 
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
-
-            case "donate": []string{"OWNER/REPO", "NAME"}
 
             case "doctor": []string{
                 "owner|managed|external|HARNESS",
@@ -1245,14 +1243,6 @@ internal class Cli {
             let command = Find(args.Command)
 
             if args.Command == "donate" && !args.Help {
-                if args.Subject == "stop" {
-                    for key in args.Values.Keys {
-                        if !Global(key) {
-                            throw Exception("donate stop takes only global options")
-                        }
-                    }
-                    return
-                }
                 args.Number("seconds")
                 if args.Get("total") != "" {
                     args.Number("total")

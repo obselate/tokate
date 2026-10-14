@@ -15,11 +15,7 @@ internal class RepositoryInput {
             if value.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) {
                 let uri = Uri(value)
 
-                if uri.Query != "" || uri.Fragment != "" {
-                    throw Exception("Use a GitHub repository URL without query or fragment")
-                }
-
-                normalized = uri.AbsolutePath.Trim('/')
+                normalized = Regex.Match(uri.AbsolutePath, "^/([^/]+/[^/]+)(?:/|$)").Groups[1].Value
 
                 if normalized.EndsWith(".git") {
                     normalized = normalized.Substring(0, normalized.Length - 4)
