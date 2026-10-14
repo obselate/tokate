@@ -250,24 +250,29 @@ internal class Terminal {
                         widths.Add(0)
                     }
 
-                    widths[i] = Math.Max(widths[i], row[i].Length)
+                    widths[i] = Math.Max(widths[i], row[i].GetCellWidth())
                 }
             }
 
-            if fit >= 0 {
+            if fit >= 0 && !(error ? Console.IsErrorRedirected: Console.IsOutputRedirected) {
                 let room = Width(error) - widths.Sum() + widths[fit] - 2 * widths.Count + 2
                 widths[fit] = Math.Min(widths[fit], Math.Max(8, room))
             }
 
             for row in rows {
-                if fit >= 0 && row[fit].Length > widths[fit] {
-                    let length = widths[fit] - 3
-                    row[fit] = row[fit].Substring(0, Char.IsHighSurrogate(row[fit][length - 1]) ? length - 1: length) +
-                        "..."
+                if fit >= 0 && row[fit].GetCellWidth() > widths[fit] {
+                    var text = row[fit]
+
+                    while text.Length > 0 &&
+                        (text.GetCellWidth() > widths[fit] - 3 || Char.IsHighSurrogate(text[text.Length - 1])) {
+                        text = text.Substring(0, text.Length - 1)
+                    }
+
+                    row[fit] = text + "..."
                 }
 
                 for i in 0 ... row.Length - 1 {
-                    row[i] = row[i].PadRight(widths[i])
+                    row[i] += String(' ', widths[i] - row[i].GetCellWidth())
                 }
 
                 Line(String.Join("  ", row), "default", error)
@@ -604,7 +609,7 @@ internal class Terminal {
             let work = J.Items(J.Get(value, "work"))
             let pending = J.Count(J.Get(value, "pending_requests"))
 
-            if remote != "observed" || work.Count == 0 || pending > 0 {
+            if remote != "observed" || work.Count <= 1 || pending > 0 {
                 StatusAction(J.Get(value, "next"))
             }
 
@@ -613,13 +618,16 @@ internal class Terminal {
             }
 
             let viewer = J.Get(value, "viewer")
+            let repo = J.Text(value, "repo")
             let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU", "NEXT"}}
 
             for task in work {
                 let issue = J.Number(task, "issue").ToString()
                 let next = J.Get(task, "next")
                 let role = J.Text(next, "role")
-                let holder = J.Get(J.Get(task, "reservation"), "actor").ToString()
+                let reservation = J.Get(task, "reservation")
+                let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
+                J.Get(reservation, "actor").ToString()
                 let mine = role == J.Text(viewer, "role") &&
                     (role != "donor" || holder == "" || holder == J.Get(viewer, "actor").ToString())
                 let command = Command(J.Get(next, "command"))
@@ -629,7 +637,7 @@ internal class Terminal {
                         J.Text(task, "title"),
                         J.Text(task, "state"),
                         J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no",
-                        command == "" ? "tokate status " + J.Text(value, "repo") + "#" + issue: command
+                        command != "" ? command: work.Count == 1 ? "-": "tokate status " + repo + "#" + issue
                     }
                 )
             }

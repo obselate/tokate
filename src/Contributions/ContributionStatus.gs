@@ -73,7 +73,7 @@ internal class ContributionStatus {
         repo
     }
 
-    private func Issue(repo string, task JsonElement, single bool = false) Dictionary[string, Object?] {
+    private func Issue(repo string, task JsonElement) Dictionary[string, Object?] {
         let issue = J.Number(task, "number")
 
         if issue < 1 || J.Text(task, "state") != "open" || J.Get(task, "pull_request")
@@ -107,9 +107,6 @@ internal class ContributionStatus {
                 row["state_sha"] = state.Sha
                 if state.Sha != "" {
                     let value = state.Value()
-                    if single {
-                        Result["coordination"] = PublicOutput.Coordination(value, state.Sha)
-                    }
                     approval = J.Get(value, "approval")
                     row["approval_id"] = J.Text(value, "approval_id")
                     row["revoked"] = J.Bool(value, "revoked")
@@ -997,12 +994,24 @@ internal class ContributionStatus {
             Truncated = true
         }
 
+        if issue != 0 {
+            Result["coordination"] = nil
+            Observe(
+                Result,
+                "coordination",
+                async () -> {
+                    let state = CoordinationState.Load(repo, issue, missing: true)
+                    Result["coordination"] = state.Sha == "" ? nil: PublicOutput.Coordination(state.Value(), state.Sha)
+                }
+            )
+        }
+
         Observe(
             Result,
             "discovery",
             async () -> {
                 if issue != 0 {
-                    Issue(repo, GitHub.Issue(repo, issue), true)
+                    Issue(repo, GitHub.Issue(repo, issue))
                 } else {
                     let issues = GitHub.Api(
                         "repos/" +

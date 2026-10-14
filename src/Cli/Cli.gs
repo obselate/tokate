@@ -876,7 +876,7 @@ internal class Cli {
                                 "effects": map[string, Object?]{
                                     "local_read": true,
                                     "local_write": false,
-                                    "github_read": mode == "repository",
+                                    "github_read": mode != "run",
                                     "github_write": false
                                 }
                             }
@@ -1470,6 +1470,10 @@ internal class Cli {
                 }
             } else if args.Command == "claim" && args.Get("tools") != "" {
                 throw Exception("Claim tool declarations require --source external")
+            }
+
+            if args.Get("all") != "" && (args.Get("repo") != "" || args.Get("issue") != "" || args.Get("run") != "") {
+                throw Exception("--all applies only to bare status")
             }
 
             if args.Get("run") != "" && command.SupportsSavedRun {

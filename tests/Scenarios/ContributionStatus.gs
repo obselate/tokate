@@ -528,7 +528,40 @@ internal class ContributionStatusChecks {
                     }
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, lifecycle + "_contribution")
+                    Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
                     Check.Contains(human.Output, "gh issue view 1 --repo owner/project")
+                    if !deleted {
+                        let saved = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        let all = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--all", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        var outcome = ""
+                        for item in all["data"]?["runs"]?.AsArray() ?? JsonArray() {
+                            if Check.Text(item["run"]) == published.Run {
+                                outcome = Check.Text(item["outcome"])
+                            }
+                        }
+                        Check.That(
+                            !saved.ToJsonString().Contains(published.Run) && outcome == (merged ? "merged": "closed"),
+                            "Saved status did not hide a merged or closed PR run and show it with --all"
+                        )
+                    }
                     let owner = Row(Read(test, owner: true))
                     Check.That(
                         Check.Text(owner["state"]) == Check.Text(row["state"]) && owner["next"]?.ToJsonString() == row[
@@ -795,7 +828,9 @@ internal class ContributionStatusChecks {
             let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
             Check.Contains(narrow.Output, "ISSUE  TITLE")
-            Check.Contains(narrow.Output, "reservation_needed  yes  tokate status owner/project#1")
+            Check.Contains(narrow.Output, "reservation_needed  yes  -")
+            Check.Contains(narrow.Output, "Next action: ")
+            Check.Contains(narrow.Output, "Role: donor")
             Check.That(!narrow.Output.Contains('\u001b'), "Narrow plain status contains escapes")
         }
 

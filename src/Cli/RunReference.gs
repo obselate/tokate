@@ -172,6 +172,7 @@ internal class RunReference {
                 query += "{pullRequest(number:" + J.Number(pulls[i].Value, "pr").ToString() + "){state}}"
             }
 
+            ApiTransport.BeginDeadline(10)
             try {
                 let data = J.Get(GitHub.Api("graphql", map[string, Object?]{"query": "query{" + query + "}"}), "data")
 
@@ -182,7 +183,9 @@ internal class RunReference {
                         pulls[i].Outcome = state.ToLowerInvariant()
                     }
                 }
-            } catch (error Exception) { }
+            } catch (error Exception) { } finally {
+                ApiTransport.EndDeadline()
+            }
         }
     }
 }

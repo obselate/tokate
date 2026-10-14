@@ -9,6 +9,7 @@ import System.IO
 import System.Security.Cryptography
 import System.Text
 import System.Text.Json.Nodes
+import System.Text.RegularExpressions
 
 internal partial class Fixture {
     private func CommentPage(rows JsonArray) JsonArray {
@@ -196,6 +197,22 @@ internal partial class Fixture {
                     )
                 }
             }
+        }
+        if path == "graphql" && Check.Text(body["query"]).Contains("pullRequest(number:") {
+            let data = JsonObject()
+            for match in Regex.Matches(
+                Check.Text(body["query"]),
+                "(p[0-9]+):repository[^{]*\\{pullRequest\\(number:([0-9]+)\\)"
+            ) {
+                for pull in State["pulls"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(pull["number"]) == match.Groups[2].Value {
+                        let state = Check.Text(pull["merged"]) == "true" ? "MERGED": Check.Text(pull["state"])
+                            .ToUpperInvariant()
+                        data[match.Groups[1].Value] = Check.Map("pullRequest", Check.Map("state", state))
+                    }
+                }
+            }
+            return Answer(Check.Map("data", data))
         }
         if path == "graphql" {
             Check.Contains(Check.Text(body["query"]), "pullRequests(states:OPEN")
