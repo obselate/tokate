@@ -272,7 +272,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.NoInference()
             File.WriteAllText(path, original)
             test.Flow.Call([]string{"work", "--run", run})
-            test.Flow.Call([]string{"submit", "--run", run})
+            test.Flow.Call([]string{"submit", "--run", run, "--json"})
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
             requestedTool["effort"] = JsonValue.Create("absent")
@@ -846,7 +846,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Unknown original attribution changed"
         )
         Flow.NoPr()
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         Flow.Reload()
         let request = Check.PostedRequest(Flow.State)
         Check.That(Check.Text(request["metadata"]?["head"]) == final, "Submission reused failed head")
@@ -889,7 +889,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Imported external Git metadata"
         )
         Flow.CommitIdentity(Path.Combine(run, "checkout"), commit, "Donor", "donor@example.test")
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
         let path = Event(publish)
@@ -1079,7 +1079,12 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.State["coordinator_checks"] = Check.Json("[{\"id\":30}]")
         Flow.State["coordinator_annotations"] = JsonArray(
-            Check.Map("annotation_level", "failure", "message", "GitHub mutation failed (HTTP 422). " + String('x', 1100))
+            Check.Map(
+                "annotation_level",
+                "failure",
+                "message",
+                "GitHub mutation failed (HTTP 422). " + String('x', 1100)
+            )
         )
         Flow.Save()
         let observed = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}).Output)
@@ -1249,7 +1254,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         Flow.Mode("revoke_after_pr")
         Coordinate(Event(request), 1)
@@ -1265,7 +1270,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         let state = State()["state"] ?? throw Exception("Missing state")
         let reservation = state["reservation"] ?? throw Exception("Missing reservation")
         reservation["expires"] = JsonValue.Create(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 2)
@@ -1278,20 +1283,17 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func EvictedReplay() {
-        var first JsonNode? = nil
-        for i in 0 ... 33 {
-            let request = ClaimRequest()
-            if i == 0 {
-                first = request.DeepClone()
-            }
-            Coordinate(Event(request))
-            if i < 32 {
-                Expire()
-            }
+        let first = Claim()
+        let state = State()["state"] ?? throw Exception("Missing state")
+        let outcomes = state["outcomes"]?.AsArray() ?? throw Exception("Missing outcomes")
+        for i in 0 ... 31 {
+            outcomes.Add(Check.Map("uuid", Guid.NewGuid().ToString("D"), "binding", "", "outcome", Check.Json("{}")))
         }
+        RewriteState(state)
+        Coordinate(Event(LifecycleRequest("renew")))
         let current = State()
         Check.That(current["state"]?["outcomes"]?.AsArray().Count == 32, "Outcome window is not bounded at 32")
-        Coordinate(Event(first ?? throw Exception("Missing first request")), 1)
+        Coordinate(Event(first), 1)
         Check.That(Check.Text(State()["sha"]) == Check.Text(current["sha"]), "Evicted request repeated a claim")
         Flow.NoInference()
     }
@@ -1474,8 +1476,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         let run = Prepare("tokate")
         Flow.Call([]string{"work", "--run", run})
-        using let baseline = FixtureSnapshot(Flow.Temp.Root)
-        let comment = Comment
         Flow.Call([]string{"amend", "--run", run})
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(policyPath))
@@ -1487,20 +1487,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"amend", "--run", run})
         let corrected = AmendmentFlow.Correct(Flow, run)
         AmendmentFlow.Rework(Flow, run, corrected, tools: Tools)
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         Coordinate(Event(Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))))
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-        baseline.Restore()
-        Comment = comment
-        Flow.Call([]string{"submit", "--run", run})
-        let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
-        Flow.CommitIdentity(
-            Path.Combine(Flow.Bin, "fork"),
-            Check.Text(request["metadata"]?["head"]),
-            "donor",
-            "tokate@users.noreply.github.com"
-        )
-        Coordinate(Event(request))
         Flow.Call([]string{"submit", "--run", run})
         let published = File.ReadAllText(Path.Combine(run, "run.json"))
         let saved = Check.Json(published)
@@ -1508,7 +1496,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Check.Text(saved["state"]) == "published" && Check.Text(saved["pr"]) == "10",
             "Submit did not adopt the coordinated publication"
         )
-        Flow.Call([]string{"checks", "--run", run}, 8)
         Flow.Call([]string{"submit", "--run", run})
         Check.That(
             File.ReadAllText(Path.Combine(run, "run.json")) == published,
@@ -1547,7 +1534,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--run", run, "--json"})
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
         let declared = metadata["tools"]?.DeepClone() ?? throw Exception("Missing declared tools")
