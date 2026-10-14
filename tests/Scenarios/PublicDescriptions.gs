@@ -43,12 +43,15 @@ internal class PublicDescriptions {
         private func Managed(binary string) {
             using let flow = NativeFixture(binary)
             let run = PublishedContribution.Original(flow)
-            Check.Contains(Body(flow), "- Add a result containing the fixture completion text.")
+            let originalBody = Body(flow)
+            Check.Contains(originalBody, "- Add a result containing the fixture completion text.")
+            Check.Contains(originalBody, "Verification:")
+            Check.Contains(originalBody, "Donor-reported: original owner checks passed locally")
             Check.That(
                 !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
                 "Summary artifact committed"
             )
-            let originalBody = Body(flow)
+            Readiness(flow, run)
             let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + originalBody + "\nMaintainer after")
             flow.Save()
@@ -326,17 +329,9 @@ internal class PublicDescriptions {
             }
         }
 
-        private func Readiness(binary string) {
-            using let flow = NativeFixture(binary)
-            let run = PublishedContribution.Original(flow)
-            let body = Body(flow)
+        private func Readiness(flow NativeFixture, run string) {
             flow.Reload()
             flow.State.AsObject().Remove("exec_count")
-            flow.Save()
-            Check.Contains(body, "- Add a result containing the fixture completion text.")
-            Check.Contains(body, "Verification:")
-            Check.Contains(body, "Donor-reported: original owner checks passed locally")
-            flow.Reload()
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
             guard let ready = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}).Output)["data"] else {
@@ -489,10 +484,12 @@ internal class PublicDescriptions {
         }
 
         internal func All(binary string, selected string = "") {
-            if selected == "Managed" || (selected == "" && CiShard.Include("PublicDescriptions/Managed")) {
+            if selected == "Managed" ||
+                selected == "Readiness" ||
+                (selected == "" && CiShard.Include("PublicDescriptions/Managed")) {
                 Managed(binary)
                 Console.WriteLine(
-                    "PASS managed publication and amendment summaries, receipt and maintainer preservation"
+                    "PASS managed publication and amendment summaries, report readiness, receipt and maintainer preservation"
                 )
             }
             if selected == "External" || (selected == "" && CiShard.Include("PublicDescriptions/External")) {
@@ -507,10 +504,6 @@ internal class PublicDescriptions {
                 (selected == "" && CiShard.Include("PublicDescriptions/MissingAndUnsafe")) {
                 MissingAndUnsafe(binary)
                 Console.WriteLine("PASS missing summary fallback and unsafe publication refusal")
-            }
-            if selected == "Readiness" || (selected == "" && CiShard.Include("PublicDescriptions/Readiness")) {
-                Readiness(binary)
-                Console.WriteLine("PASS current public report readiness with missing and altered report refusal")
             }
             if selected == "ManagedBounds" || (selected == "" && CiShard.Include("PublicDescriptions/ManagedBounds")) {
                 ManagedBounds(binary)
