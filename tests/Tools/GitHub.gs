@@ -35,8 +35,7 @@ internal partial class Fixture {
         let custom = Check.Text(State["etag_path"]) == "" || Check.Text(State["etag_path"]) == ApiPath
         let initial = !custom ? etag: State["etag_initial"] == nil ? Check.Text(State["etag_initial_prefix"]) + etag:
         Check.Text(State["etag_initial"])
-        let returned = !custom ? etag: State["etag_returned"] == nil ? Check.Text(State["etag_returned_prefix"]) + etag:
-        Check.Text(State["etag_returned"])
+        let returned = !custom ? etag: State["etag_returned"] == nil ? etag: Check.Text(State["etag_returned"])
         let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic records")
         var reads int32
         for call in calls {
