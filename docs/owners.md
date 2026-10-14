@@ -21,7 +21,7 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    gh auth login
    ```
 
-3. Preview and apply the setup. No checkout is necessary.
+3. Preview the setup. No checkout is necessary.
 
    ```sh
    tokate init OWNER/REPO --verification '[["bash","scripts/verify.sh"]]' --required-checks '["verify"]'
@@ -47,10 +47,16 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
 
    Each setting shows its current and proposed value. Steps that init cannot apply
    are printed as `Manual:` and listed in `data.manual`. Init asks once in a terminal.
-   Add `--yes` to apply without a question. With `--json`, `--non-interactive` or no
-   terminal and no `--yes`, it changes nothing and exits 0 with `applied=false`.
+   With `--json`, `--non-interactive` or no terminal and no `--yes`, it changes nothing
+   and exits 0 with `applied=false`.
 
-4. Review and merge the setup PR before task approval.
+4. Apply the setup. Init opens the setup PR.
+
+   ```sh
+   tokate init OWNER/REPO --yes
+   ```
+
+5. Review and merge the setup PR before task approval.
 
    ```sh
    gh pr merge tokate-setup
@@ -75,7 +81,6 @@ manual setting. Fix it before donors submit requests.
 | **Anyone eligible** | Authenticated GitHub users who are not denied. |
 
 With no trusted donors, **Trusted people** requires an issue grant for each donor.
-Version 2 `manual` eligibility is read as `trusted`. Version 3 accepts only `trusted` and `open`.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
@@ -106,20 +111,10 @@ the argv without a shell or a sandbox. It sends the prompt on standard input.
 | `output` | `codex`, `claude` or `session` JSONL. Tokate reads it with the parser of that format. |
 | `models` | Required. Session output must report this provider and model. |
 
-Version 2 remains readable. Its whitelist applies to every tool. Unrestricted
-version 2 allows any model for each tool. Existing receipts and saved runs keep
-these rules.
-
-Init migrates a version 2 policy to version 3 and updates the coordinator pin in
-the same setup PR. An older coordinator rejects version 3. Re-approve open tasks
-after the setup PR is merged.
-
-## Approval compatibility
-
-Main binds approvals to canonical task fields after version 2 conversion.
-Old whole-text approvals become stale once. Re-approve open tasks.
-Version 2 policy remains readable. Old receipts and saved runs must still match
-current approval authority. Re-approval does not restore an old approval identity.
+Tokate reads only version 3. Init migrates a version 2 policy to version 3 and
+updates the coordinator pin in the same setup PR. The version 2 model whitelist
+becomes the `models` map of each tool. `manual` eligibility becomes `trusted`.
+Re-approve open tasks after the setup PR is merged. Old whole-text approvals become stale once.
 
 ## Approve an issue and donor
 
@@ -188,7 +183,7 @@ Do not delete these branches, open PRs from them or merge them. Exclude them fro
    ```
 
 2. Approve first-time fork workflows in the PR's linked GitHub Actions runs after diff review.
-3. Verify the receipt against owner approval and wait for required checks on the current PR head.
+3. Check the receipt against owner approval and wait for required checks on the current PR head.
 
    ```sh
    tokate checks 10 --watch
@@ -217,10 +212,11 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
    tokate update
    ```
 
-2. Update the pin through a setup PR.
+2. Preview the new pin, then apply it. Init opens a setup PR.
 
    ```sh
    tokate init OWNER/REPO
+   tokate init OWNER/REPO --yes
    ```
 
    Init shows the current and proposed workflow and a comparison URL for the shared

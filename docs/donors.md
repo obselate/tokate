@@ -114,16 +114,16 @@ Stop waits for the current task and prints wall time, submitted, skipped and fai
    ```
 
 3. Wait for coordinator acceptance.
-4. Use the exact saved attempt printed by claim. For the first attempt:
+4. Work on the saved run printed by claim.
 
    ```sh
-   tokate work N-1
+   tokate work N
    ```
 
-5. Submit that attempt after successful verification.
+5. Submit that run after successful verification.
 
    ```sh
-   tokate submit N-1
+   tokate submit N
    ```
 
 Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positional arguments](arguments.md) for issue and run references.
@@ -177,7 +177,7 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
      --effort high --endpoint http://127.0.0.1:8080/v1
    ```
 
-8. Select an allowed model choice.
+8. Check the profile under owner policy.
 
    ```sh
    tokate defaults check OWNER/REPO local
@@ -232,7 +232,7 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 
 The owner can allow a `command` tool. It runs the owner's command from the policy
 on your computer, without a sandbox. Read the command in `tokate doctor repo OWNER/REPO`
-or in the `select --json` output before you claim. Confirmation screens show the
+or in the `defaults check --json` output before you claim. Confirmation screens show the
 command. Work prints it before it starts. `work OWNER/REPO` refuses a claim when
 the owner changed the command after your consent.
 
@@ -274,7 +274,6 @@ Keep the saved run directory. Use [recovery](recovery.md) for stopped work, exte
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
 | `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix --yes` |
-| `The owner policy allows no supported managed coding tools` | `tokate doctor repo OWNER/REPO` |
 | `OMP lists no models. Sign in with omp login or configure a provider.` | `omp login` |
 
 For other failures, use the exact-message tables in [recovery](recovery.md) and [Linux security](linux-security.md).

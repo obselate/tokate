@@ -27,11 +27,11 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
 | `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. Under your active reservation, prepare a fresh attempt. `OWNER/REPO` alone is invalid. |
 | `claim` saved run | `tokate claim RUN [--yes]` | Finish or recheck a saved claim and its preparation without inference. |
-| `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
+| `submit` | `tokate submit RUN [--incomplete]` | Push saved work and request a draft PR. |
 | `status` | `tokate status [--all]` | List your saved work as a table. Inside a checkout, list only that repository. Finished runs are hidden and counted. `--all` shows them. One GitHub query marks merged or closed PRs as finished. Offline, saved state is used. |
 | `status` repository | `tokate status OWNER/REPO` | List approved issues with title, state, whether you act next and the next command. |
 | `status` issue or run | `tokate status ISSUE \| RUN` | Show issue, state, PR and next action in a short table. `--json` adds the details, and issue data includes `coordination`. |
-| `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
+| `checks` | `tokate checks PR\|RUN [--watch]` | Check the receipt against owner approval, and the report, CI and freshness gates. |
 | `pause` | `tokate pause RUN` | Pause your reservation. |
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
@@ -94,7 +94,7 @@ offer continuation. Other saved status reads are offline.
 | Input | Examples |
 | --- | --- |
 | Exact commit or authority | `--commit SHA`, `--upstream SHA`, `--grant SHA` |
-| File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE`, `--output FILE` |
+| File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE` |
 | Execution selection | `--harness codex`, `--model MODEL`, `--effort high`, `--provider openai` |
 | Time with a required unit | `--time 30m`, `--total 8h`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |
 | Units | `s` seconds, `m` minutes, `h` hours, `d` days |

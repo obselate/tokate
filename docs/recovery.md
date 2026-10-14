@@ -327,7 +327,7 @@ Approve a fork workflow only after diff review. For a stale PR, refresh `tokate 
 | `Issue is not approved.` or `Issue approval is revoked or its approval label is missing.` | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Issue text changed since approval.` | Owner: review the changed issue, then run the named `tokate approve OWNER/REPO#42` command. |
 
-An access request does not grant eligibility. In `trusted` mode, the owner must trust the donor or grant the issue. In `open` mode, anyone not denied is eligible. Version 2 `manual` is read as `trusted`.
+An access request does not grant eligibility. In `trusted` mode, the owner must trust the donor or grant the issue. In `open` mode, anyone not denied is eligible.
 
 ### Update
 
@@ -337,4 +337,4 @@ An access request does not grant eligibility. In `trusted` mode, the owner must 
 | `Running binary does not match the released archive member` | `tokate update` |
 | `Release archive checksum mismatch` | `tokate update` |
 
-After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator). Update the pin before committing a version 3 policy. Older coordinators reject version 3. Version 2 receipts and saved runs remain readable.
+After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator).

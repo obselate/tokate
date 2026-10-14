@@ -45,7 +45,7 @@ Use `tokate work OWNER/REPO stop --yes` to stop. Bare `tokate work` uses the loc
 For one issue, use `tokate work 42 NAME --time 1h` in a checkout or `tokate work OWNER/REPO#42 NAME --time 1h` elsewhere. Supply a saved profile as `NAME` or use tool flags. A repository link selects the loop. An issue link names one issue.
 See the [positional arguments guide](docs/arguments.md) for references and command forms.
 Use `tokate help COMMAND` for exact options and `--json` for structured results.
-Owner setup is `tokate init OWNER/REPO --yes`. No checkout is necessary. Init lists each GitHub setting with its current and proposed value, the access record and the setup PR. It asks once in a terminal. Non-terminal preview returns `applied=false`. Merge the setup PR to finish.
+Owner setup: `gh auth login`, then `tokate init OWNER/REPO` to preview, then `tokate init OWNER/REPO --yes` to open a setup PR. Merge the setup PR to finish. No checkout is necessary. Init lists each GitHub setting with its current and proposed value, the access record and the setup PR. It asks once in a terminal. Non-terminal preview returns `applied=false`.
 Approve existing issues with `tokate approve 42`. Create issues with `gh issue create` or the GUI.
 Doctor explains installations with `--fix`, asks once in a terminal, applies with `--fix --yes`, and accepts `--harness-path FILE` for an existing harness.
 Save donor choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.

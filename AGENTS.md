@@ -61,16 +61,20 @@ Finish with `tokate doctor`. Owners also run `tokate doctor external --auth` and
 
 ## Guide an owner
 
-Run `tokate init OWNER/REPO` with `--verification JSON` and `--required-checks JSON`
-for a new policy. No checkout is necessary. Defaults: the default branch, `trusted`
-access and codex, claude and pi with any model. Use `--allowed-tools JSON` for
-per-tool models. Init checks GitHub authentication and write access. It lists each
-Actions setting, event policy, allowlist entry and required check with its current
-and proposed value, the `tokate/access` record, the files and the `tokate-setup`
-branch and PR. It asks once in a terminal. Use `--yes` to apply without a question.
-Non-terminal preview changes nothing and returns `applied=false`. Review and merge
-the setup PR before approving tasks. Run init again after `tokate update` to update
-the coordinator pin. Init migrates a version 2 policy to version 3 in the setup PR.
+1. `gh auth login`
+2. `tokate init OWNER/REPO` previews the setup.
+3. `tokate init OWNER/REPO --yes` applies it and opens the setup PR.
+4. Review and merge the setup PR before approving tasks.
+
+Add `--verification JSON` and `--required-checks JSON` for a new policy. No checkout
+is necessary. Defaults: the default branch, `trusted` access and codex, claude and pi
+with any model. Use `--allowed-tools JSON` for per-tool models. Init checks GitHub
+authentication and write access. It lists each Actions setting, event policy,
+allowlist entry and required check with its current and proposed value, the
+`tokate/access` record, the files and the `tokate-setup` branch and PR. In a terminal
+without `--yes`, init asks once. Non-terminal preview returns `applied=false`.
+Run init again after `tokate update` to update the coordinator pin. Init migrates a
+version 2 policy to version 3 in the setup PR.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
 Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
 Use `--yes` to replace active reservation or published PR authority.
@@ -78,7 +82,7 @@ Then trust the donor or grant that issue.
 Never grant access merely because someone requested it. In `trusted` eligibility,
 trusted donors and donors granted the issue may claim. With no trusted donors,
 grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
-may claim. Version 2 `manual` is read as `trusted`. Version 3 has no `manual` mode.
+may claim.
 
 A change to task fields or the PR template revokes existing approvals. Task fields
 cover verification, required checks, protected paths, tool models, runtime and
