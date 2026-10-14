@@ -345,8 +345,9 @@ internal partial class NativeFlow : NativeFixture {
         )
         Check.Contains(
             body,
-            "| codex / openai | gpt-6.1-sol / high | " + Check.Text(saved["execution_seconds"]) +
-                " | input: 6; cached input: 76379; output: 812 tokens |"
+            "| Coding time | Input tokens | Output tokens | Cached tokens |\n| --- | --- | --- | --- | --- | --- |\n" +
+                "| codex / openai | gpt-6.1-sol / high | " +
+                Check.Text(saved["execution_seconds"]) + "s | 6 | 812 | 76.4K |"
         )
         Check.That(
             Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",

@@ -281,29 +281,59 @@ internal class PublicSummary {
             return result
         }
 
-        internal func Usage(value JsonElement) string {
-            let counts = List[string]()
+        internal func Duration(seconds int64) string {
+            let parts = []int64{seconds / 86400, seconds / 3600 % 24, seconds / 60 % 60, seconds % 60}
+            var result = ""
 
-            for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                var count int64
-                let item = J.Get(value, key)
-
-                if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
-                    counts.Add(key.Replace("_tokens", "").Replace('_', ' ') + ": " + count.ToString())
+            for i in 0 ... 4 {
+                if result != "" || parts[i] > 0 || i == 3 {
+                    result += parts[i].ToString() + "dhms".Substring(i, 1) + " "
                 }
             }
 
-            return counts.Count == 0 ? "unknown": String.Join("; ", counts) + " tokens"
+            return result.Trim()
+        }
+
+        internal func Count(value int64) string {
+            if value < 1000 {
+                return value.ToString()
+            }
+
+            var scaled = value / 1000.0
+            var unit int32
+
+            while scaled >= 999.5 && unit < 2 {
+                scaled /= 1000
+                unit += 1
+            }
+
+            return scaled.ToString(scaled < 100 ? "0.#": "0") + "KMB".Substring(unit, 1)
+        }
+
+        internal func Usage(value JsonElement) string {
+            let counts = List[string]()
+
+            for key in[]string{"input_tokens", "output_tokens", "cached_input_tokens"} {
+                var count int64
+                let item = J.Get(value, key)
+
+                counts.Add(
+                    item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 ?
+                    Count(count): "unknown"
+                )
+            }
+
+            return String.Join(" | ", counts)
         }
 
         internal func Tools(tools JsonElement, label string) string {
             var result = "\n\n| " +
                 label +
-                " | Model / effort | Coding seconds | Reported usage |\n" +
-                "| --- | --- | --- | --- |"
+                " | Model / effort | Coding time | Input tokens | Output tokens | Cached tokens |\n" +
+                "| --- | --- | --- | --- | --- | --- |"
 
             if J.Items(tools).Count == 0 {
-                return result + "\n| manual/unknown | unknown | unknown | unknown |"
+                return result + "\n| manual/unknown | unknown | unknown | unknown | unknown | unknown |"
             }
 
             for tool in J.Items(tools) {
@@ -325,7 +355,7 @@ internal class PublicSummary {
                     " | " +
                     (
                     J.Get(tool, "coding_seconds").ValueKind == JsonValueKind.Number ?
-                    J.Number(tool, "coding_seconds").ToString(): "unknown"
+                    Duration(J.Number(tool, "coding_seconds")): "unknown"
                 ) +
                     " | " +
                     Usage(J.Get(tool, "usage")) +
