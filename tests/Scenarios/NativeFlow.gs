@@ -267,8 +267,15 @@ internal partial class NativeFlow : NativeFixture {
     }
 
     internal func CrossAccountFlow() {
+        ProtectedPolicy(true)
+        Temp.Env.Remove("GH_TOKEN")
+        Temp.Env.Remove("GITHUB_TOKEN")
+        Reload()
+        State["stored_login"] = JsonValue.Create(true)
+        Save()
         Approve()
         let run = Claim()
+        Mode("protected_entrypoint")
         State["event_stream"] = JsonValue.Create(
             "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n" +
                 "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":6,\"cached_input_tokens\":76379,\"output_tokens\":812}}\n"
@@ -332,6 +339,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(Check.Text(State["exec_count"]) == "1", "Repeated execution launched another harness")
         Publish(run)
         Reload()
+        Check.That(Check.Text(State["helper_used"]) == "true", "Git did not use GitHub CLI authentication")
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
         let body = Check.Text(State["pulls"]?[0]?["body"])
@@ -662,23 +670,6 @@ internal partial class NativeFlow : NativeFixture {
         let verification = File.ReadAllText(Path.Combine(run, "verification.json"))
         Check.Contains(verification, "synthetic-raw-verification-secret")
         Check.Contains(verification, "synthetic-raw-verification-error")
-        Call([]string{"verify", "owner/project#10"}, owner: true)
-    }
-
-    internal func ToolAuthentication() {
-        ProtectedPolicy(true)
-        Temp.Env.Remove("GH_TOKEN")
-        Temp.Env.Remove("GITHUB_TOKEN")
-        Reload()
-        State["stored_login"] = JsonValue.Create(true)
-        Save()
-        Approve()
-        let run = Claim()
-        Mode("protected_entrypoint")
-        Call([]string{"work", "--run", run})
-        Publish(run)
-        Reload()
-        Check.That(Check.Text(State["helper_used"]) == "true", "Git did not use GitHub CLI authentication")
         Call([]string{"verify", "owner/project#10"}, owner: true)
     }
 

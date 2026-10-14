@@ -32,7 +32,6 @@ internal partial class NativeFlow : NativeFixture {
                 TestCase[NativeFlow]("GitEvidence", async (value NativeFlow) -> value.GitEvidence()),
                 TestCase[NativeFlow]("RepositoryConfig", async (value NativeFlow) -> value.RepositoryConfig()),
                 TestCase[NativeFlow]("OutputBoundary", async (value NativeFlow) -> value.OutputBoundary()),
-                TestCase[NativeFlow]("ToolAuthentication", async (value NativeFlow) -> value.ToolAuthentication()),
                 TestCase[NativeFlow]("ConditionalClaim", async (value NativeFlow) -> value.ConditionalClaim()),
                 TestCase[NativeFlow](
                     "ConditionalValidators",
