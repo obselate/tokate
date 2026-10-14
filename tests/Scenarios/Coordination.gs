@@ -1942,7 +1942,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(body, "No owner approved the task.")
         Check.Contains(body, "No repository check ran.")
         Check.Contains(body, "gpt-6.1-sol")
-        Check.Contains(body, "input: 100")
+        Check.Contains(body, "| Input tokens |")
         let prefix = "<!-- tokate-receipt:"
         let first = body.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length
         let receiptEnd = body.IndexOf(" -->", first, StringComparison.Ordinal)
