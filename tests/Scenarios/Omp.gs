@@ -14,7 +14,8 @@ internal class OmpChecks {
                 "substituted",
                 "length",
                 "incomplete",
-                "late-assistant"
+                "late-assistant",
+                "late-tool"
             }
             for mode in modes {
                 using let test = CoordinationFixture(binary)
