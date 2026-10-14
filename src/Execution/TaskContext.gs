@@ -35,7 +35,7 @@ internal class TaskContext {
             let instructions = J.Bool(snapshot, "present") ?
             "## Owner instructions (DECREE.md, SHA-256 " + J.Text(snapshot, "sha256") +
                 ")\nProvenance: approved snapshot\n\n<tokate-owner-instructions>\n" +
-                J.Text(snapshot, "text") + "\n</tokate-owner-instructions>\n":
+                J.Text(snapshot, "text").Replace("</tokate-", "<\\/tokate-") + "\n</tokate-owner-instructions>\n":
             "## Owner instructions (DECREE.md)\nProvenance: approved snapshot\nDECREE.md is absent.\n"
 
             return "# Tokate donation\n\n" +
@@ -61,23 +61,24 @@ internal class TaskContext {
                 ".\n" +
                 time +
                 "\n" +
+                "## tokate-public-summary.json format\n" +
+                "One JSON object with exactly three arrays: `changes` (1 to 8 items), `verification` (0 to 8) and `limitations` (0 to 4). Write [] for an empty list. Do not include `head` or other keys. Keep it at most 4046 bytes as compact JSON. Each ' and + counts as 6 bytes. Tokate publishes this file in the PR, so do not include private details.\n" +
+                "Each item is one plain ASCII sentence of 3 to 200 characters, with no leading or trailing space. Use only letters, digits, spaces and these marks: . , ; : ! ? ( ) ' + _ - =\n" +
+                "Tokate rejects the file if an item contains any of these, in any letter case and also inside longer words: a URL, http:, https:, www., a path or slash, four numbers joined by dots, ghp_, gho_, ghu_, ghs_, ghr_, github_pat_, `localhost:`, `tokate-receipt`, `tokate-report`, secret, password, credential, bearer, api key, apikey, api_key, api-key, \"generated a patch\" or \"implemented acceptance criteria\". It also rejects a one-letter word followed by a colon or `sk-` at a word boundary. Name the check or test instead.\n\n" +
                 (imported + handoff == "" ? "": "## Continuation and handoff\n\n" + imported + handoff) +
                 "## Steps\n" +
                 "1. Read the repository guidance: AGENTS.md, CONTRIBUTING.md and the owner instructions below.\n" +
                 "2. Read the task.\n" +
                 "3. Make the change. Do only what the task asks.\n" +
                 "4. Run the checks that apply to your change. Record each command and its result.\n" +
-                "5. Write tokate-public-summary.json in the checkout root, in the format below.\n" +
+                "5. Write tokate-public-summary.json in the checkout root, in the format above.\n" +
                 "6. Leave your edits uncommitted.\n" +
                 "7. Finish with a report: Changes, Acceptance criteria met, Checks and results, Limitations.\n   Report failures as they are. Tokate does not retry.\n\n" +
                 "## Task: " +
-                J.Text(issue, "title") + "\n" + J.Text(issue, "body") +
-                "\n\n" +
-                instructions +
-                "\n## tokate-public-summary.json format\n" +
-                "One JSON object of at most 4096 bytes with `changes` (1 to 8 items), `verification` (0 to 8) and `limitations` (0 to 4). Do not include `head`.\n" +
-                "Each item is one plain ASCII sentence of 3 to 200 characters. Use only letters, digits, spaces and these marks: . , ; : ! ? ( ) ' + _ - =\n" +
-                "Tokate rejects the file if an item contains any of these, even in a plain sentence: a URL, a path or slash, an IP address, `sk-`, `localhost:`, `tokate-receipt`, `tokate-report`, or the words secret, password, credential, bearer, api key, \"generated a patch\" or \"implemented acceptance criteria\". Name the check or test instead.\n"
+                J.Text(issue, "title") + "\n<tokate-issue>\n" +
+                J.Text(issue, "body").Replace("</tokate-", "<\\/tokate-") +
+                "\n</tokate-issue>\n\n" +
+                instructions
         }
     }
 }

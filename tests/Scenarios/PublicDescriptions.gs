@@ -315,7 +315,7 @@ internal class PublicDescriptions {
                     let prompt = Check.Text(flow.State["prompts"]?[0])
                     Check.Contains(
                         prompt,
-                        "Each item is one plain ASCII sentence of 3 to 200 characters. Use only letters, digits, spaces and these marks:"
+                        "Each item is one plain ASCII sentence of 3 to 200 characters, with no leading or trailing space. Use only letters, digits, spaces and these marks:"
                     )
                     Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =\n")
                     let summaryPath = Path.Combine(run, "checkout", "tokate-public-summary.json")
