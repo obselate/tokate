@@ -109,10 +109,10 @@ Never inspect credential files or mixed harness settings to discover defaults.
 
 Use `tokate claim ISSUE [NAME]` with a selected profile or model/effort and an
 explicit budget, such as `--time 1h`. It creates the request without inference and
-saves the run as an attempt such as `42-1`. `tokate status` lists your unfinished saved work.
+saves the run under the issue number, such as `42`. `tokate status` lists your unfinished saved work.
 After coordinator acceptance, use `tokate work 42`, then `tokate submit 42`.
-A bare issue number selects its newest attempt only. If its state does not fit, the
-command fails, writes nothing and lists the attempts. Name one as `42-1`.
+The issue number names its active attempt. If the issue has two active attempts, a
+command that takes a run fails, writes nothing and lists them. Name one as `42-1`.
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
@@ -144,7 +144,8 @@ Exit 0 means the read or operation succeeded, 8 means pending, and 1 means failu
 A successful status read may describe failed work. Pending CI is not success.
 
 `next_actions` contains argument arrays for separate authorized invocations. They
-name saved runs exactly with `--run DIR`. Never execute them as automatic retries.
+name saved runs exactly, such as `OWNER/REPO#42-1`. Scripts can use `--run DIR`.
+Never execute them as automatic retries.
 Truncation means some summaries were omitted.
 An output error can occur after effects, so inspect state before repeating a command.
 Logs and raw reports stay private. Usage and model declarations are not identity

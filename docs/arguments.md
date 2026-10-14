@@ -77,11 +77,12 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `https://github.com/OWNER/REPO/issues/42` | Exact issue reference. |
 | `https://github.com/OWNER/REPO/pull/10` | Exact PR reference for a PR command. |
 | `OWNER/REPO` or repository URL | Repository target. `work` loops until stopped. `claim` requires a named issue. |
-| `42-1` | Attempt 1 for issue 42. |
+| `REPO#42` | Saved run for issue 42 when one saved repository has that name. |
+| `42-1` | Attempt 1 for issue 42. Required only when the issue has two active attempts. |
 | `OWNER/REPO#42-1` | Attempt 1 in an explicit repository. |
 | `--run DIR` | Exact saved run directory. |
 
-For a `RUN` command, bare `42` selects the newest saved attempt. Use `42-1` to select attempt 1.
+For a `RUN` command, bare `42` names the active saved attempt. If two attempts are active, commands that take a run refuse it. Use `42-1` to select attempt 1.
 
 `status 42` reads issue state. `status 42-1` reads the saved attempt.
 For supported time-limit failures, saved status also reads GitHub authority to

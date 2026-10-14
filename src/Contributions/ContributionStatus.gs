@@ -1043,13 +1043,13 @@ internal class ContributionStatus {
                 )
                 status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
 
-                if attempts.Count > 0 && status.Failure == nil {
-                    let latest = attempts[attempts.Count - 1]
+                if let latest = RunReference.Pick(attempts) {
                     let donor = J.Get(latest.Value, "donor_id").ToString()
                     var next Object?
 
-                    if donor == J.Get(status.Viewer, "id").ToString() && PublicOutput.RunSummary(latest.Location)
-                        .TryGetValue("next", out next) {
+                    if status.Failure == nil && donor == J.Get(status.Viewer, "id").ToString() &&
+                        PublicOutput
+                        .RunSummary(latest.Location).TryGetValue("next", out next) {
                         for item in status.Work {
                             let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
                             if status.Text(row, "state") == "claim_accepted" &&
@@ -1094,7 +1094,7 @@ internal class ContributionStatus {
             if work.ValueKind != JsonValueKind.Array {
                 var next = Action(J.Get(value, "next"))
 
-                for action in PublicOutput.Actions {
+                for action in RunReference.Short(PublicOutput.Actions, false) {
                     if action.Length > 1 && action[1] != "status" {
                         next = Terminal.Hint(Array.FindAll(action, word -> word != "--json"))
                         break

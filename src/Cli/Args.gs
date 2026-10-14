@@ -12,7 +12,6 @@ internal class Args {
     internal var Help bool = false
     internal var Subject string = ""
     internal var Run string = ""
-    internal var Attempts List[SavedRun] = List[SavedRun]()
     internal var SavedDefaults JsonElement
     internal var HarnessFromDefault bool
 

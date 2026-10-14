@@ -11,7 +11,6 @@ internal class PublicOutput {
         internal var Enabled bool
         internal var Command string = "help"
         internal var RunDirectory string = ""
-        internal var RunName string = ""
         internal var FailureCode string = "command_failed"
         internal var ResultData Object? = nil
         internal var Truncated bool
@@ -21,7 +20,6 @@ internal class PublicOutput {
             Submission.ResetWorkflow()
             Command = command
             RunDirectory = ""
-            RunName = ""
             FailureCode = "command_failed"
             ResultData = nil
             Truncated = false
@@ -561,20 +559,6 @@ internal class PublicOutput {
 
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
 
-                    if code == "invalid_state" &&
-                        options != nil &&
-                        options
-                        .Attempts
-                        .Count > 1 &&
-                        ResultData is Dictionary[string, Object?]fields {
-                        fields["attempts"] = SavedRuns.Summary(RunReference.Recent(options.Attempts), 0)["runs"]
-                        for row in RunReference.Recent(options.Attempts) {
-                            if row.Next != "" && row.Location != RunDirectory {
-                                Actions.Add([]string{"tokate", row.Next, "--run", row.Location, "--json"})
-                            }
-                        }
-                    }
-
                     if Command == "reconcile" {
                         let intent = J.Get(run.Element(), "reconciliation")
 
@@ -654,7 +638,7 @@ internal class PublicOutput {
                 "exit_code": exitCode,
                 "data": ResultData ?? map[string, Object?]{},
                 "error": failure,
-                "next_actions": Actions,
+                "next_actions": RunReference.Short(Actions, true),
                 "truncated": Truncated
             }
 

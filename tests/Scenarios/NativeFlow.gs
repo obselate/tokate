@@ -526,39 +526,33 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(Check.Text(Check.Json(claimed)["state"]) == "claimed", "Claim did not use a named run directory")
         let second = Path.Combine(store, "owner-project-1-2")
         Directory.CreateDirectory(second)
-        let failed = Check.Json(claimed)
-        failed["state"] = JsonValue.Create("failed")
-        File.WriteAllText(Path.Combine(second, "run.json"), failed.ToJsonString())
+        File.WriteAllText(Path.Combine(second, "run.json"), claimed)
         let refused = Check.Envelope(
             flow.Call([]string{"submit", "owner/project#1", "--json"}, 1),
             "submit",
             "error",
-            "invalid_state"
+            "invalid_arguments"
         )
-        Check.That(
-            Check.Text(refused["data"]?["attempts"]?[0]?["name"]) == "owner/project#1-1" && Check.Text(
-                refused["data"]?["attempts"]?[1]?["name"]
-            ) == "owner/project#1-2",
-            "Refused bare issue did not list its attempts"
-        )
-        Check.That(
-            File.ReadAllText(Path.Combine(first, "run.json")) == claimed,
-            "Bare issue fell back to an older attempt"
-        )
-        Check.Envelope(flow.Call([]string{"work", "owner/project#1", "--json"}, 1), "work", "error", "invalid_state")
+        Check.Contains(Check.Text(refused["error"]?["message"]), "project#1-1, project#1-2")
+        Check.Envelope(flow.Call([]string{"work", "project#1", "--json"}, 1), "work", "error", "invalid_arguments")
         Check.That(
             File.ReadAllText(Path.Combine(first, "run.json")) == claimed && File.ReadAllText(
                 Path.Combine(second, "run.json")
-            ) == failed.ToJsonString(),
-            "Bare work issue changed a saved attempt"
+            ) == claimed,
+            "Ambiguous run name changed a saved attempt"
         )
-        Directory.Delete(second, true)
-        Check.Envelope(flow.Call([]string{"work", "owner/project#1", "--json"}), "work", "ok")
-        Check.That(Directory.GetDirectories(store).Length == 1, "Bare issue started a second attempt")
+        let failed = Check.Json(claimed)
+        failed["state"] = JsonValue.Create("failed")
+        File.WriteAllText(Path.Combine(second, "run.json"), failed.ToJsonString())
+        let worked = Check.Envelope(flow.Call([]string{"work", "project#1", "--json"}), "work", "ok")
+        Check.That(Directory.GetDirectories(store).Length == 2, "Bare issue started another attempt")
         Check.That(
             Check.Text(Check.Json(File.ReadAllText(Path.Combine(first, "run.json")))["state"]) == "generated",
-            "Bare issue did not continue its claim"
+            "Bare issue did not continue its active attempt"
         )
+        let actions = worked["next_actions"]?.ToJsonString() ?? ""
+        Check.Contains(actions, "[\"tokate\",\"submit\",\"owner/project#1-1\",\"--json\"]")
+        Check.Contains(actions, "[\"tokate\",\"status\",\"owner/project#1-1\",\"--json\"]")
         flow.NoPr()
     }
 

@@ -228,15 +228,15 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(args Args, rows List[SavedRun], error bool = false, short bool = false) {
+        internal func Runs(rows List[SavedRun], saved SavedRuns) {
             let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                let name = short ? row.Name: RunReference.Label(args, row)
+                let name = RunReference.Label(row, saved, row.Next == "checks")
                 table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
             }
 
-            Table(table, error)
+            Table(table)
         }
 
         internal func Table(rows List[[]string], error bool = false, fit int32 = -1) {
@@ -279,41 +279,24 @@ internal class Terminal {
             }
         }
 
-        internal func Hint(action[]string) string {
-            let index = Array.IndexOf(action, "--run")
-
-            if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
-                action[1]
-            )
-                .Runs {
-                return Command(action)
-            }
-
-            let words = List[string](action)
-
-            words.RemoveRange(index, 2)
-            words.Remove("--json")
-            words.Insert(2, PublicOutput.RunName)
-
-            return Command(words.ToArray())
-        }
+        internal func Hint(action[]string) string -> Command(Array.FindAll(action, word -> word != "--json"))
 
         internal func Command(command JsonElement, flatten bool = true) string {
-            let words = StringBuilder()
+            let words = List[string]()
 
             if command.ValueKind == JsonValueKind.Array {
                 for item in command.EnumerateArray() {
-                    AppendWord(words, item.ToString())
+                    words.Add(item.ToString())
                 }
             }
 
-            return CommandText(words, flatten)
+            return Command(words.ToArray(), flatten)
         }
 
         internal func Command(command[]string, flatten bool = true) string {
             let words = StringBuilder()
 
-            for word in command {
+            for word in RunReference.Short(List[[]string]{command}, false)[0] {
                 AppendWord(words, word)
             }
 
@@ -398,6 +381,8 @@ internal class Terminal {
                 return
             }
 
+            RunReference.Locate()
+
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
                 var stage = "Run"
@@ -425,7 +410,7 @@ internal class Terminal {
 
                 Message("Saved artifacts: " + summary, "default", true)
 
-                for action in PublicOutput.Actions {
+                for action in RunReference.Short(PublicOutput.Actions, false) {
                     Message("Next: " + Hint(action), "default", true)
                 }
             } catch (error Exception) { }

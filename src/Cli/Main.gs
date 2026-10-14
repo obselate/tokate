@@ -31,7 +31,6 @@ func Main(args[]string) int32 {
 
         if options.Get("run") != "" {
             PublicOutput.RunDirectory = Path.GetFullPath(options.Need("run"))
-            PublicOutput.RunName = options.Run
             PublicOutput.FailureCode = "invalid_state"
         }
 
@@ -99,12 +98,6 @@ func Main(args[]string) int32 {
         if !validated && !PublicOutput.Enabled {
             Terminal.Message(Cli.ErrorUsage(args), error: true)
         }
-
-        if let failed = options {
-            if code == "invalid_state" && failed.Attempts.Count > 1 && !PublicOutput.Enabled {
-                Terminal.Runs(failed, RunReference.Recent(failed.Attempts), true)
-            }
-        }
     } finally {
         DonationView.Close()
         if traffic {
@@ -113,12 +106,6 @@ func Main(args[]string) int32 {
     }
 
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
-        if let named = options {
-            if !PublicOutput.Enabled && PublicOutput.RunName == "" {
-                PublicOutput.RunName = RunReference.Name(named, PublicOutput.RunDirectory)
-            }
-        }
-
         PublicOutput.Next(options, code)
 
         if options?.Help != true {
@@ -352,7 +339,11 @@ func Dispatch(options Args) int32 {
                         run = Data.Load(directory)
                     }
                 } catch (error ApiDeadlineException) when !Donate.Active {
-                    Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
+                    Terminal.Message(
+                        "Submit pending. Run the same command again: " + Terminal.Command(
+                            []string{"tokate", "submit", "--run", directory}
+                        )
+                    )
                     return 0
                 } finally {
                     ApiTransport.EndDeadline()

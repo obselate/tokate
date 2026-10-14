@@ -178,7 +178,7 @@ internal class Cli {
             "ISSUE": "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL",
             "PR": "PR 10 of the local GitHub remote, OWNER/REPO#10 or a PR URL",
             "PR...": "2 to 16 unique PR numbers; outside a checkout qualify each as OWNER/REPO#N",
-            "RUN": "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate status lists them",
+            "RUN": "Saved run: 42, REPO#42 or OWNER/REPO#42; add -3 when the issue has two active attempts",
             "OWNER/REPO": "Repository or repository URL; default: the local GitHub remote",
             "NAME": "Saved donor profile",
             "LOGIN": "Donor login; @me uses your signed-in account",
@@ -752,13 +752,7 @@ internal class Cli {
 
                 for kind in command.Kinds(false) {
                     let required = command.Needs(kind.ToLowerInvariant().Replace("...", "s")) ? " (required)": ""
-                    OptionHelp(
-                        text,
-                        kind + required,
-                        Positions[kind] +
-                            (kind == "RUN" && command.RunTarget ? "; 42 uses the newest attempt of issue 42": ""),
-                        width
-                    )
+                    OptionHelp(text, kind + required, Positions[kind], width)
                 }
 
                 for option in Options {

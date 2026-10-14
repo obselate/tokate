@@ -54,11 +54,11 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
    Or save these choices with `tokate defaults set NAME --harness codex --model MODEL --effort EFFORT`
    and use `tokate work 42 NAME --time 1h --verify-time 20m`.
-3. Keep the printed run identifier, such as `42-1`. Wait for coding and verification.
+3. Keep the printed run name, such as `42`. Wait for coding and verification.
 4. Submit the saved run.
 
    ```sh
-   tokate submit 42-1
+   tokate submit 42
    ```
 
 5. If submission is pending, inspect `tokate status 42-1` before repeating submit.
@@ -260,11 +260,11 @@ Add `--provider PROVIDER` when the policy allows more than one command tool.
 
 | Command | Action |
 | --- | --- |
-| `tokate pause 42-1` | Pause your reservation. |
-| `tokate resume 42-1` | Resume a paused reservation without inference. |
-| `tokate renew 42-1` | Renew before the reservation expires. |
-| `tokate release 42-1` | Release the reservation for other donors. |
-| `tokate work 42-1` | Start work on an accepted saved claim. |
+| `tokate pause 42` | Pause your reservation. |
+| `tokate resume 42` | Resume a paused reservation without inference. |
+| `tokate renew 42` | Renew before the reservation expires. |
+| `tokate release 42` | Release the reservation for other donors. |
+| `tokate work 42` | Start work on an accepted saved claim. |
 | `tokate checks 10 --watch` | Watch PR 10 checks. The number is a PR number. |
 
 Keep the saved run directory. Use [recovery](recovery.md) for stopped work, external work and PR changes.
