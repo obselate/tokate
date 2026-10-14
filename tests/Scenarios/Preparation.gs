@@ -302,6 +302,7 @@ internal class PreparationChecks {
                 prepared["tools"]?.ToJsonString() == File.ReadAllText(test.Tools),
                 "External claim changed donor tool declarations"
             )
+            flow.Call([]string{"work", "--run", run, "--json"}, 0)
             flow.Reload()
             Check.That(Check.Text(flow.State["request_count"]) == "1", "External claim was posted twice")
             flow.NoInference()
