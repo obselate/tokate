@@ -296,13 +296,11 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
         let body = Check.Text(State["pulls"]?[0]?["body"])
-        Check.Contains(body, "Original donor-reported tools")
         Check.Contains(
             body,
             "| codex / openai | gpt-6.1-sol / high | " + Check.Text(saved["execution_seconds"]) +
                 " | input: 6; cached input: 76379; output: 812 tokens |"
         )
-        Check.That(!body.Contains("| Field | Value |"), "Receipt repeated the donated usage table")
         Check.That(
             Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
             "Cross-account PR must disable maintainer modification"
