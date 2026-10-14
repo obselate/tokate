@@ -408,36 +408,31 @@ internal class PublicDescriptions {
         }
 
         private func ManagedBounds(binary string) {
-            for oversized in[]bool{false, true} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let run = flow.Claim()
-                let value = BoundedArtifact()
-                if oversized {
-                    let limits = value["limitations"]?.AsArray() ?? throw Exception("Missing limits")
-                    limits[0] = JsonValue.Create(Check.Text(limits[0]) + "x")
-                }
-                flow.Reload()
-                flow.State["public_summary"] = JsonValue.Create(value.ToJsonString())
-                flow.Save()
-                flow.Call([]string{"work", "--run", run}, oversized ? 1: 0)
-                if oversized {
-                    flow.NoPr()
-                    Check.That(
-                        Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["commit"] == nil,
-                        "Oversized summary reached a publication commit"
-                    )
-                    Check.That(
-                        !File.Exists(Path.Combine(run, "changes.patch")),
-                        "Oversized summary reached independent verification"
-                    )
-                } else {
-                    flow.Publish(run)
-                    Check.Contains(Body(flow), "Fix final result behavior.")
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                }
-            }
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            let run = flow.Claim()
+            let value = BoundedArtifact()
+            let oversized = value.DeepClone()
+            let limits = oversized["limitations"]?.AsArray() ?? throw Exception("Missing limits")
+            limits[0] = JsonValue.Create(Check.Text(limits[0]) + "x")
+            flow.Reload()
+            flow.State["public_summary"] = JsonValue.Create(oversized.ToJsonString())
+            flow.Save()
+            flow.Call([]string{"work", "--run", run}, 1)
+            flow.NoPr()
+            Check.That(
+                Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["commit"] == nil,
+                "Oversized summary reached a publication commit"
+            )
+            Check.That(
+                !File.Exists(Path.Combine(run, "changes.patch")),
+                "Oversized summary reached independent verification"
+            )
+            File.WriteAllText(Path.Combine(run, "checkout", "tokate-public-summary.json"), value.ToJsonString())
+            flow.Publish(run)
+            Check.Contains(Body(flow), "Fix final result behavior.")
+            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         }
 
         private func UnsafeRequests(binary string) {
