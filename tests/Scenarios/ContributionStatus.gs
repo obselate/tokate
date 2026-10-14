@@ -531,6 +531,11 @@ internal class ContributionStatusChecks {
                     Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
                     Check.Contains(human.Output, "gh issue view 1 --repo owner/project")
                     if !deleted {
+                        let copy = Path.Combine(test.Flow.Temp.Env["HOME"], ".local/state/tokate/runs/published")
+                        let record = Check.Json(File.ReadAllText(Path.Combine(published.Run, "run.json")))
+                        record["pr"] = test.Flow.State["pulls"]?[0]?["number"]?.DeepClone()
+                        Directory.CreateDirectory(copy)
+                        File.WriteAllText(Path.Combine(copy, "run.json"), record.ToJsonString())
                         let saved = Check.Json(
                             Check.Success(
                                 TestProcess.Run(
@@ -553,12 +558,12 @@ internal class ContributionStatusChecks {
                         )
                         var outcome = ""
                         for item in all["data"]?["runs"]?.AsArray() ?? JsonArray() {
-                            if Check.Text(item["run"]) == published.Run {
+                            if Check.Text(item["run"]) == copy {
                                 outcome = Check.Text(item["outcome"])
                             }
                         }
                         Check.That(
-                            !saved.ToJsonString().Contains(published.Run) && outcome == (merged ? "merged": "closed"),
+                            !saved.ToJsonString().Contains(copy) && outcome == (merged ? "merged": "closed"),
                             "Saved status did not hide a merged or closed PR run and show it with --all"
                         )
                     }
