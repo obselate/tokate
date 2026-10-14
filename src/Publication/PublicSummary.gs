@@ -15,7 +15,6 @@ internal class PublicSummary {
         private let Missing string = "PR report has no change summary for this candidate. Supply a current public summary and republish."
         private let Incomplete string = "PR report omits the public change or verification report region. Restore the Tokate report before acceptance."
         private let Altered string = "PR report differs from the authoritative public summary for this exact candidate. Restore it or amend with a current summary."
-        private let Header string = " | Model / effort | Coding time | Input tokens | Output tokens | Cached tokens |\n| --- | --- | --- | --- | --- | --- |"
         internal let RestrictedTextPattern string = "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|\\bsk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
 
         internal func Validate(value JsonElement, head string = "") {
@@ -328,7 +327,10 @@ internal class PublicSummary {
         }
 
         internal func Tools(tools JsonElement, label string) string {
-            var result = "\n\n| " + label + Header
+            var result = "\n\n| " +
+                label +
+                " | Model / effort | Coding time | Input tokens | Output tokens | Cached tokens |\n" +
+                "| --- | --- | --- | --- | --- | --- |"
 
             if J.Items(tools).Count == 0 {
                 return result + "\n| manual/unknown | unknown | unknown | unknown | unknown | unknown |"
