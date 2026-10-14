@@ -66,11 +66,7 @@ internal class CliCommand(
 
     internal prop Brief string -> Summary.Split([]string{". ", "; "}, StringSplitOptions.None)[0].TrimEnd('.')
 
-    internal prop Runs bool -> Target == "run" ||
-        Name == "work" ||
-        Name == "claim" ||
-        Name == "checks" ||
-        Name == "status"
+    internal prop Runs bool -> Target == "run" || SupportsSavedRun
 
     internal func ConflictsWithRun(name string) bool -> name != "run" &&
         name != "help" &&
@@ -869,20 +865,6 @@ internal class Cli {
                     }
                 }
 
-                if command.Name == "sync" {
-                    for mode in[]string{"authorize", "revoke"} {
-                        modes.Add(
-                            map[string, Object?]{
-                                "name": mode,
-                                "required_inputs": mode == "authorize" ? []string{"commit", "upstream"}: []string{
-                                    "grant"
-                                },
-                                "effects": effects
-                            }
-                        )
-                    }
-                }
-
                 if command.Name == "status" {
                     for mode in[]string{"repository", "run"} {
                         modes.Add(
@@ -1392,21 +1374,12 @@ internal class Cli {
             }
 
             if args.Command == "sync" {
-                let authorize = args.Subject == "authorize"
-
-                if !authorize && args.Subject != "revoke" {
+                if args.Subject != "authorize" && args.Subject != "revoke" {
                     throw Exception("Use tokate sync PR authorize or tokate sync PR revoke")
                 }
 
-                for key in[]string{"commit", "upstream", "sync", "grant"} {
-                    if (key == "grant") == authorize && args.Get(key) != "" {
-                        throw Exception("sync " + args.Subject + " does not take --" + key)
-                    }
-                }
-
-                args.Need(authorize ? "commit": "grant")
-                if authorize {
-                    args.Need("upstream")
+                for key in(args.Subject == "authorize" ? "commit,upstream": "grant").Split(',') {
+                    args.Need(key)
                 }
             }
 

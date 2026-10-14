@@ -381,16 +381,7 @@ func Dispatch(options Args) int32 {
             OwnerApproval.Revoke(options)
         }
 
-        case "claim" {
-            let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
-            ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)
-
-            if Data.Load(directory).Text("state") == "claim_pending" {
-                return 8
-            }
-        }
-
-        case "work" {
+        case "claim", "work" {
             if Cli.RepositoryWork(options) {
                 return Donate.Run(options)
             }
@@ -402,7 +393,7 @@ func Dispatch(options Args) int32 {
                 return 8
             }
 
-            if ready.Text("source") == "tokate" {
+            if options.Command == "work" && ready.Text("source") == "tokate" {
                 if !ready.Flag("gratis") {
                     Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
                 }
