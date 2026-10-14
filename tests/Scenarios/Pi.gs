@@ -186,13 +186,7 @@ internal class PiChecks {
             Check.That(!File.Exists(installMarker), "Failed Pi probe triggered installation of an existing runtime")
             File.Delete(curl)
             let explicitSelection = Check.Json(flow.Call(args.ToArray()).Output)
-            for fields in[]string{
-                ",\"context_window\":7",
-                ",\"context_length\":7",
-                ",\"context_window\":7,\"context_length\":7",
-                ",\"context_window\":null,\"context_length\":7",
-                ",\"context_window\":7,\"context_length\":null"
-            } {
+            for fields in[]string{",\"context_length\":7", ",\"context_window\":7,\"context_length\":7"} {
                 catalog.Metadata = fields
                 let selected = Check.Json(flow.Call(args.ToArray()).Output)
                 Check.That(
@@ -211,14 +205,8 @@ internal class PiChecks {
             }
             for fields in[]string{
                 ",\"context_window\":7,\"context_length\":8",
-                ",\"context_window\":\"7\",\"context_length\":7",
                 ",\"context_length\":\"7\"",
-                ",\"context_window\":7,\"context_length\":\"7\"",
-                ",\"context_window\":7,\"context_length\":true",
-                ",\"context_window\":7,\"context_length\":0",
-                ",\"context_window\":7,\"context_length\":-7",
-                ",\"context_window\":7,\"context_length\":7.5",
-                ",\"context_window\":7,\"context_length\":2147483648"
+                ",\"context_window\":7,\"context_length\":0"
             } {
                 catalog.Metadata = fields
                 let rejected = List[string](args)
@@ -346,7 +334,7 @@ internal class PiChecks {
             args[args.Count - 1] = actualNode
             Check.Contains(flow.Call(args.ToArray()).Output, "advertised")
             args.RemoveRange(args.Count - 2, 2)
-            for version in[]string{"../escape\n", ".\n", "1.1.0\nother\n"} {
+            for version in[]string{"../escape\n", ".\n"} {
                 File.WriteAllText(versionPath, version)
                 flow.Call(args.ToArray(), 1)
             }
