@@ -34,6 +34,15 @@ func Main(args[]string) int32 {
             "artifacts/linux-x64/tokate"
         )
         switch args.Length == 0 ? "": args[0] {
+            case "--claude-smoke" when args.Length == 1 {
+                ClaudeChecks.Managed(binary, smoke: true)
+            }
+            case "--omp-smoke" when args.Length == 1 {
+                OmpChecks.Managed(binary, smoke: true)
+            }
+            case "--pi-smoke" when args.Length == 1 {
+                PiChecks.Managed(binary)
+            }
             case "--claude" when args.Length == 1 {
                 ClaudeChecks.All(binary)
             }
@@ -131,14 +140,14 @@ func Main(args[]string) int32 {
             case "--coordination" when(args.Length == 1 || args.Length == 2) {
                 CoordinationFlow.All(binary, args.Length == 2 ? args[1]: "")
             }
-            case "--correction" when(args.Length == 1 || args.Length == 2) {
-                CorrectionChecks.All(binary, args.Length == 2 ? args[1]: "")
-            }
             case "--synchronizations" when(args.Length == 1 || args.Length == 2) {
                 SynchronizationChecks.All(binary, args.Length == 2 ? args[1]: "")
             }
             case "--public-descriptions" when(args.Length == 1 || args.Length == 2) {
                 PublicDescriptions.All(binary, args.Length == 2 ? args[1]: "")
+            }
+            case "--correction" when(args.Length == 1 || args.Length == 2) {
+                AmendmentFlow.All(binary, args.Length == 2 ? args[1]: "")
             }
             case "--amendments" when(args.Length == 1 || args.Length == 2) {
                 AmendmentFlow.All(binary, args.Length == 2 ? args[1]: "")

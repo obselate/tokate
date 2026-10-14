@@ -274,10 +274,32 @@ internal partial class NativeFlow : NativeFixture {
                 "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":6,\"cached_input_tokens\":76379,\"output_tokens\":812}}\n"
         )
         Save()
+        let started = DateTimeOffset.UtcNow
         Call([]string{"work", "--run", run})
+        let finished = DateTimeOffset.UtcNow
         let checkout = Path.Combine(run, "checkout")
         let replay = Path.Combine(Temp.Root, "candidate-replay")
         let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+        Check.That(
+            Check.Text(saved["state"]) == "generated" && Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
+            "Codex did not produce a verified candidate"
+        )
+        Reload()
+        let prompt = Check.Text(State["prompts"]?[0])
+        let marker = "- Time limit: finish by "
+        Check.Contains(prompt, marker)
+        let deadline = DateTimeOffset.ParseExact(
+            prompt.Substring(prompt.IndexOf(marker, StringComparison.Ordinal) + marker.Length, 19),
+            "yyyy-MM-dd HH:mm:ss",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal
+        )
+        let seconds = Int32.Parse(Check.Text(saved["seconds"])) -
+        (saved["verification_reserve"] == nil ? 0: Int32.Parse(Check.Text(saved["verification_reserve"])))
+        Check.That(
+            deadline >= started.AddSeconds(seconds - 1) && deadline <= finished.AddSeconds(seconds),
+            "Prompt deadline differs from the coding allowance"
+        )
         Git("clone", "--no-local", checkout, replay)
         Git("-C", replay, "checkout", "--detach", Check.Text(saved["base"]))
         Git("-C", replay, "apply", "--index", Path.Combine(run, "candidate.patch"))
@@ -332,6 +354,20 @@ internal partial class NativeFlow : NativeFixture {
             Check.That(result.Code == 1, "Verify accepted an issue")
             Check.Contains(result.Error, "verify takes an open contribution PR, for example tokate verify 42.")
         }
+        using let failed = NativeFixture(Binary)
+        failed.Initialize()
+        failed.Approve()
+        let failedRun = failed.Claim()
+        failed.Mode("model_failure")
+        Check.Envelope(
+            failed.Call([]string{"work", "--run", failedRun, "--json"}, 1),
+            "work",
+            "error",
+            "inference_failed"
+        )
+        Check.FailedRun(failed, failedRun)
+        failed.Reload()
+        Check.That(Check.Text(failed.State["exec_count"]) == "1", "Failed Codex inference was repeated")
     }
 
     internal func ModelPolicyMalformed() {

@@ -238,7 +238,7 @@ internal class PublicDescriptions {
                         "Original summary has no patch binding"
                     )
                 }
-                flow.Call([]string{"recover", "--run", run})
+                flow.Call([]string{"amend", "--run", run})
                 let checkout = Path.Combine(run, "checkout")
                 File.Delete(Path.Combine(checkout, "other.txt"))
                 File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
@@ -252,7 +252,7 @@ internal class PublicDescriptions {
                 File.WriteAllText(toolsPath, tools)
                 flow.Call(
                     []string{
-                        "recover",
+                        "amend",
                         "--run",
                         run,
                         "--commit",
@@ -313,8 +313,11 @@ internal class PublicDescriptions {
                     flow.Reload()
                     let executions = Check.Text(flow.State["exec_count"])
                     let prompt = Check.Text(flow.State["prompts"]?[0])
-                    Check.Contains(prompt, "Allowed characters are A-Z, a-z, 0-9, space")
-                    Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =.")
+                    Check.Contains(
+                        prompt,
+                        "Each item is one plain ASCII sentence of 3 to 200 characters, with no leading or trailing space. Use only letters, digits, spaces and these marks:"
+                    )
+                    Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =\n")
                     let summaryPath = Path.Combine(run, "checkout", "tokate-public-summary.json")
                     let unsafe = Summary("Add final result content.")
                     unsafe["verification"]?.AsArray().Add(JsonValue.Create("sk-abc123 leaked") as JsonNode)

@@ -49,9 +49,8 @@ Use this command reference for current main. Put the target after the command.
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
 | `select` | `tokate select [OWNER/REPO] [NAME] [options]` | Select a tool and model under owner policy. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
-| `recover` | `tokate recover RUN [--commit SHA --time TIME] [--tools FILE] [--summary FILE]` | Prepare or verify a correction to completed work. |
 | `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
-| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Resume publication or verify and publish a new correction with `--time`. |
+| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
 | `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
 | `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
 | `authorize-sync` | `tokate authorize-sync PR --commit SHA --upstream SHA` | Grant synchronization for exact commits. |

@@ -596,30 +596,12 @@ internal class Coordinator {
 
             Synchronization.Keep(amendment.Fields, history)
 
-            let fields = ContributionReceipt.Coordinated(
-                repo,
-                number,
-                J.Text(value, "approval_id"),
-                J.Text(request, "expected"),
-                run.Text("id"),
-                donor,
-                J.Text(metadata, "head")
+            let receipt = Amendment.Receipt(
+                ContributionReceipt.FromState(value),
+                amendment,
+                J.Text(metadata, "head"),
+                J.Text(request, "expected")
             )
-            fields["amendment"] = Amendment.PublicRecord(amendment)
-            AttemptContinuation.Keep(fields, old)
-
-            if J.Get(old, "handoff").ValueKind != JsonValueKind.Undefined {
-                fields["handoff"] = J.Get(old, "handoff")
-            }
-
-            let correction = J.Get(old, "correction")
-            if correction.ValueKind != JsonValueKind.Undefined {
-                fields["correction"] = correction
-            }
-
-            Synchronization.Keep(fields, history)
-
-            let receipt = J.Parse(J.Write(fields))
             let pull = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
             let body = J.Text(pull, "body")
             let oldReceipt = PrBody.Receipt(body)
@@ -629,7 +611,6 @@ internal class Coordinator {
                 J.Number(metadata, "seconds"),
                 J.Get(metadata, "tools"),
                 J.Get(metadata, "summary"),
-                false,
                 old
             )
 
@@ -663,7 +644,6 @@ internal class Coordinator {
                     J.Number(current, "seconds"),
                     J.Get(current, "tools"),
                     J.Get(current, "summary"),
-                    false,
                     old
                 )
                 let observedReport = PrBody.ReportText(body)

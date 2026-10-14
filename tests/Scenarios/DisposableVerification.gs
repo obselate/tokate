@@ -242,9 +242,9 @@ internal class DisposableVerificationChecks {
             )
             Check.That(File.Exists(Path.Combine(run, "checkout/result.txt")), "Copy failure deleted donor work")
             flow.NoPr()
-            flow.Call([]string{"recover", "--run", run})
-            let commit = CorrectionChecks.Correct(flow, run)
-            CorrectionChecks.Recover(flow, run, commit)
+            flow.Call([]string{"amend", "--run", run})
+            let commit = AmendmentFlow.Correct(flow, run)
+            AmendmentFlow.Rework(flow, run, commit)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Copy failure recovery repeated inference")
         }

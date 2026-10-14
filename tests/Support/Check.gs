@@ -68,6 +68,33 @@ internal class Check {
             }
         }
 
+        internal func PrepareGuidance(result JsonNode) {
+            let command = Check.Json("[\"tokate\",\"help\",\"prepare\",\"--json\"]").ToJsonString()
+            Check.That(result["data"]?["next"]?["command"]?.ToJsonString() == command, "Missing prepare guidance")
+            var found bool
+            for action in result["next_actions"]?.AsArray() ?? JsonArray() {
+                found = found || action?.ToJsonString() == command
+                Check.That(Check.Text(action[1]) != "work", "Failed attempt recommends work")
+            }
+            Check.That(found, "Next actions omitted prepare guidance")
+        }
+
+        internal func FailedRun(flow NativeFixture, run string) {
+            let saved = Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            That(
+                Text(saved["state"]) == "failed" && Text(saved["failure_reason"]) == "inference_failed",
+                "Harness failure state or code was not saved"
+            )
+            That(
+                saved["turn_completed"] == nil && saved["commit"] == nil && saved["verification"] == nil,
+                "Failed harness reached candidate verification"
+            )
+            let status = Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+            That(Text(status["data"]?["error"]?["code"]) == "inference_failed", "Status lost the failure code")
+            PrepareGuidance(status)
+            flow.NoPr()
+        }
+
         internal func Contains(text string, expected string) -> That(
             text.Contains(expected),
             "Missing: " + expected + "\n" + text

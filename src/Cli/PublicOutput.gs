@@ -323,31 +323,7 @@ internal class PublicOutput {
 
                     result["amendment"] = ChangeSummary(amendment, location)
 
-                    let command = List[string]{
-                        "tokate",
-                        "amend",
-                        "--run",
-                        directory,
-                        "--commit",
-                        amendment.Text("commit"),
-                        "--time",
-                        amendment.Number("seconds").ToString() + "s"
-                    }
-
-                    for key in[]string{"tools", "summary", "sync"} {
-                        let argument = amendment.Text(key == "sync" ? key: key + "_argument")
-
-                        if argument != "" {
-                            command.AddRange([]string{"--" + key, argument})
-                        }
-                    }
-
-                    command.Add("--json")
-                    result["next"] = map[string, Object?]{
-                        "role": "donor",
-                        "action": "Await coordinator outcome, then re-run the same amend command with the original tools and summary options to record publication.",
-                        "command": command.ToArray()
-                    }
+                    result["next"] = ChangeNext(directory, amendment)
 
                     break
                 }
@@ -361,6 +337,11 @@ internal class PublicOutput {
                 let location = Guid.TryParse(correction.Text("uuid"), out uuid) ?
                 Path.Combine(directory, "correction-" + correction.Text("uuid")): directory
                 result["correction"] = ChangeSummary(correction, location)
+                if correction.Text("state") == "verified" && J.Get(correction.Element(), "publication")
+                    .ValueKind == JsonValueKind.Object &&
+                    run.Number("pr") == 0 {
+                    result["next"] = ChangeNext(directory, correction)
+                }
             }
 
             if run.Text("state") == "failed" {
@@ -521,6 +502,34 @@ internal class PublicOutput {
             return result
         }
 
+        private func ChangeNext(directory string, amendment Data) Object {
+            let command = List[string]{
+                "tokate",
+                "amend",
+                "--run",
+                directory,
+                "--commit",
+                amendment.Text("commit"),
+                "--time",
+                amendment.Number("seconds").ToString() + "s"
+            }
+
+            for key in[]string{"tools", "summary", "sync"} {
+                let argument = amendment.Text(key == "sync" ? key: key + "_argument")
+
+                if argument != "" {
+                    command.AddRange([]string{"--" + key, argument})
+                }
+            }
+
+            command.Add("--json")
+            return map[string, Object?]{
+                "role": "donor",
+                "action": "Await coordinator outcome, then re-run the same amend command with the original tools and summary options to record publication.",
+                "command": command.ToArray()
+            }
+        }
+
         internal func Checks(run Data, rows JsonElement, status string, facts Dictionary[string, Object?]) {
             let result = J.Select(run.Element(), "repo,pr,pr_url,commit")
 
@@ -626,10 +635,7 @@ internal class PublicOutput {
             } else if code == "missing_tools" {
                 if Command != "doctor" {
                     let diagnostic = Startup.NeedsCatalog(Command, options) ? "managed": (
-                        Command == "external" ||
-                            Command == "amend" ||
-                            Command == "recover" ||
-                            Command == "submit" ? "external": "owner"
+                        Command == "external" || Command == "amend" || Command == "submit" ? "external": "owner"
                     )
                     Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
                 }

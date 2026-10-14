@@ -251,7 +251,7 @@ internal class Diagnostics {
             File.Delete(Path.Combine(temp.Root, "bin/codex"))
             File.Delete(Path.Combine(temp.Root, "bin/git"))
             File.WriteAllText(calls, "")
-            let archive = Call(binary, temp, []string{"recover", "--run", saved}, "error", "missing_tools")
+            let archive = Call(binary, temp, []string{"amend", "--run", saved}, "error", "missing_tools")
             Check.That(
                 archive["data"]?["tools"]?.AsArray().Count == 1 && Check.Text(
                     Row(archive, "git")["status"]

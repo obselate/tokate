@@ -245,6 +245,8 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
 
    In Settings > Actions > General > Actions permissions, the pattern `obselate/tokate/.github/workflows/tokate-shared.yml@*` survives pin updates. The workflow itself stays pinned to an exact commit. An exact allowlist commit needs an update with each pin. Blocking exclusions, disabled Actions and organization restrictions need owner review. Setup does not remove exclusions or enable Actions.
 
+   Setup also needs an Actions event policy for the coordinator workflow in Settings > Actions > Policies. It must allow `issues`, `issue_comment`, `pull_request_target` and `workflow_call`. Label approval needs `issues`, which setups before 0.5.0 did not require. Add it before you run setup.
+
 3. Review the generated file against the existing coordinator workflow.
 4. Replace the existing workflow entry with the new pin. Keep required custom settings and use only one coordinator.
 5. Commit and push the workflow.

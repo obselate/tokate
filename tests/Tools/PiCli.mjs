@@ -15,10 +15,12 @@ let prompt = '';
 for await (const chunk of process.stdin) prompt += chunk;
 const emit = event => console.log(JSON.stringify(event));
 emit({ type: 'agent_start' });
+const mode = await readFile(path.join(process.env.PI_CODING_AGENT_DIR, 'mode'), 'utf8').catch(() => '');
+if (mode === 'failed') process.exit(1);
 emit({ type: 'tool_execution_start', toolName: 'write', args: { prompt } });
 await writeFile(path.join(cwd, 'tracked.txt'), 'preserved\n');
 await writeFile(path.join(cwd, 'imported.txt'), 'untracked\n');
-if (!prompt.startsWith('This is a fresh v2 attempt seeded from unpublished interrupted work.') &&
+if (mode !== 'normal' && !prompt.startsWith('This is a fresh v2 attempt seeded from unpublished interrupted work.') &&
     !prompt.startsWith('Continue the published work of another donor from preserved commit ')) {
     await mkdir(path.join(cwd, '.verification-data'), { recursive: true });
     await writeFile(path.join(cwd, '.verification-data/source-only'), 'Preserved source fixture output.');

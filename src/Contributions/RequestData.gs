@@ -281,9 +281,9 @@ internal class RequestData {
             }
         }
 
-        internal func CorrectionTools(tools JsonElement, policy JsonElement) {
+        internal func CorrectionTools(tools JsonElement, policy JsonElement, kind string = "Correction") {
             if tools.ValueKind != JsonValueKind.Array {
-                throw CliFailure("invalid_state", "Correction tools must be an array; [] declares manual editing")
+                throw CliFailure("invalid_state", kind + " tools must be an array; [] declares manual editing")
             }
 
             if J.Count(tools) > 0 {
