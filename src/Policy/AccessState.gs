@@ -42,7 +42,7 @@ internal class AccessState {
         J.Write(map[string, Object?]{"version": 1, "repo_id": RepoId, "members": Members})
     )
 
-    internal func Write(repo string, expected string) {
+    internal func Write(repo string, expected string, identity Object) {
         let text = J.Write(Value())
         RequestData.Parse(text, 65536)
 
@@ -57,7 +57,7 @@ internal class AccessState {
 
         let commit = GitHub.Api(
             "repos/" + repo + "/git/commits",
-            GitHub.AutomationCommit("Tokate donor access", J.Text(tree, "sha"), []string{expected})
+            GitHub.AutomationCommit("Tokate donor access", J.Text(tree, "sha"), []string{expected}, identity)
         )
         let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
 
@@ -615,7 +615,7 @@ internal class AccessState {
                 throw Exception("Unknown access operation")
             }
 
-            RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
+            let owner = GitHub.Author(GitHub.Api("user"))
             let info = RepositoryAccess.RequireOwner(repo)
             let repoId = RepositoryIdentity.PositiveId(J.Get(info, "id"))
             let single = operation == "grant" || operation == "remove"
@@ -699,7 +699,7 @@ internal class AccessState {
                 }
             }
 
-            access.Write(repo, expected)
+            access.Write(repo, expected, owner)
 
             Terminal.Message(
                 "Eligibility changes do not alter task scope approval. Revoked access blocks new work and publication; every PR requires owner review.",

@@ -1087,7 +1087,16 @@ internal partial class Fixture {
                 State["api_commits"] = JsonArray()
             }
             let commits = State["api_commits"]?.AsArray() ?? throw Exception("Missing API commits")
-            commits.Add(Check.Map("sha", sha, "request", body))
+            commits.Add(
+                Check.Map(
+                    "sha",
+                    sha,
+                    "request",
+                    body,
+                    "viewer",
+                    Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
+                )
+            )
             return Answer(Check.Map("sha", sha))
         }
         if tail == "git/refs" {

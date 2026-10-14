@@ -33,7 +33,8 @@ internal class CoordinationState {
             GitHub.AutomationCommit(
                 "Tokate coordination #" + issue.ToString(),
                 J.Text(tree, "sha"),
-                []string{expected}
+                []string{expected},
+                GitHub.Bot()
             ),
             expires: expires
         )

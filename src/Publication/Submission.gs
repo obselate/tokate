@@ -63,7 +63,7 @@ internal class Submission {
                     "-c",
                     "user.name=" + run.Text("donor"),
                     "-c",
-                    "user.email=" + RepositoryIdentity.DonorEmail(run),
+                    "user.email=" + RepositoryIdentity.Email(J.Get(run.Element(), "donor_id"), run.Text("donor")),
                     "-c",
                     "commit.gpgsign=false",
                     "commit",

@@ -285,10 +285,14 @@ internal open class NativeFixture : IDisposable {
                 let identity = commit["request"]?[field] ?? throw Exception("Missing explicit " + field)
                 Check.That(identity.AsObject().Count == 2 && identity["date"] == nil, "API must supply timestamps")
             }
+            let message = Check.Text(commit["request"]?["message"])
+            let login = Check.Text(commit["viewer"]?["login"])
+            let owner = message == "Set up Tokate" || message == "Tokate donor access"
             CommitIdentity(
                 Upstream,
                 Check.Text(commit["sha"]),
-                "github-actions[bot]",
+                owner ? login: "github-actions[bot]",
+                owner ? Check.Text(commit["viewer"]?["id"]) + "+" + login + "@users.noreply.github.com":
                 "41898282+github-actions[bot]@users.noreply.github.com"
             )
         }

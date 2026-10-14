@@ -149,7 +149,7 @@ internal class OwnerSetup {
 
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
+            let owner = GitHub.Author(GitHub.Api("user"))
             let info = GitHub.Api("repos/" + repo)
             if !J.Bool(J.Get(info, "permissions"), "admin") {
                 throw Exception("Repository admin permission is required for owner setup")
@@ -441,7 +441,7 @@ internal class OwnerSetup {
                 )
             }
             if access.Sha == "" {
-                access.Write(repo, head)
+                access.Write(repo, head, owner)
             }
             if rebuild {
                 let base = GitHub.Api("repos/" + repo + "/git/commits/" + head)
@@ -454,7 +454,8 @@ internal class OwnerSetup {
                     GitHub.AutomationCommit(
                         "Set up Tokate",
                         J.Text(tree, "sha"),
-                        setup == "" ? []string{head}: []string{setup, head}
+                        setup == "" ? []string{head}: []string{setup, head},
+                        owner
                     )
                 )
                 let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
