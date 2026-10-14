@@ -632,7 +632,18 @@ internal class CliDiscovery {
                 ),
                 "Defaults set required inputs differ"
             )
-            for subject in[]string{"defaults", "access"} {
+            let sync = Check.Envelope(Call(binary, []string{"help", "sync", "--json"}, temp), "help", "ok")["data"]?[
+                "commands"
+            ]?[0]?["operations"]
+            Check.That(
+                Check.Text(sync?[0]?["name"]) == "authorize" && JsonNode.DeepEquals(
+                    sync?[0]?["required_input_sets"],
+                    Check.Json("[[\"commit\",\"upstream\"]]")
+                ) &&
+                    Check.Text(sync?[1]?["name"]) == "revoke",
+                "Sync operations missing from metadata"
+            )
+            for subject in[]string{"defaults", "access", "sync"} {
                 let command = Check.Envelope(Call(binary, []string{"help", subject, "--json"}, temp), "help", "ok")[
                     "data"
                 ]?["commands"]?[0]

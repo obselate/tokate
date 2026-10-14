@@ -195,6 +195,9 @@ internal class Cli {
             "defaults use": "local_read,local_write",
             "defaults remove": "local_read,local_write",
             "defaults check": "local_read,github_read",
+            "work stop": "local_read,local_write",
+            "sync authorize": "local_read,github_read,github_write commit,upstream",
+            "sync revoke": "local_read,github_read,github_write grant",
         }
 
         internal let Commands[]CliCommand = []CliCommand{
@@ -543,9 +546,9 @@ internal class Cli {
                 let operations = List[Object]()
 
                 for form in command.Forms {
-                    for operation in form.Count > 0 && Literal(form[0]) ? form[0].Trim('[', ']').Split(
-                        '|'
-                    ): []string{} {
+                    let index = form.FindIndex(Literal)
+
+                    for operation in index < 0 ? []string{}: form[index].Trim('[', ']').Split('|') {
                         var declared string
                         let spec = (
                             Operations.TryGetValue(
@@ -556,7 +559,11 @@ internal class Cli {
                         operations.Add(
                             map[string, Object?]{
                                 "name": operation,
-                                "required_inputs": form.Skip(1).Where(slot -> !slot.StartsWith("[")).ToArray(),
+                                "required_inputs": form
+                                    .Take(index)
+                                    .Concat(form.Skip(index + 1))
+                                    .Where(slot -> !slot.StartsWith("["))
+                                    .ToArray(),
                                 "required_input_sets": spec.Skip(1).Select(set -> set.Split(',')).ToArray(),
                                 "effects": Effects(spec[0].Split(','))
                             }
