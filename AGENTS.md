@@ -106,14 +106,13 @@ command fails, writes nothing and lists the attempts. Name one as `42-1`.
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
-Use `tokate donate OWNER/REPO [NAME] --time PER_TASK [--total TOTAL]` with
-`--harness`, `--model`, `--effort` or a saved donor profile NAME to donate successive tasks.
+Use `tokate donate OWNER/REPO start [--time PER_TASK] [--total TOTAL]` with
+`--harness`, `--model`, `--effort` or the default donor profile to donate successive tasks.
 One confirmation names the repository, tool, model, effort and time limits. It
 consents to every task claimed in that repository within those limits.
-Noninteractive and JSON use require `--yes`. Without `--total`, it runs until
-stopped. `tokate stop` ends the loop after the current task. The loop
-submits drafts without waiting for merge, checks idle repositories every ten
-minutes, releases failed tasks and stops after three consecutive failures.
+Noninteractive and JSON use require `--yes`. Without `--total`, it runs until stopped.
+`tokate donate OWNER/REPO stop` waits for the current task and prints the report.
+The loop submits drafts, rechecks idle repositories every ten minutes, releases failed tasks and stops after three consecutive failures.
 
 Before inference, obtain consent for the task, harness/model and time allocation.
 Profiles do not authorize budgets.

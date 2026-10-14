@@ -97,34 +97,27 @@ Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO
 ## Donate until stopped
 
 ```sh
-tokate donate OWNER/REPO NAME --time 1h
-tokate stop
+tokate donate OWNER/REPO start
+tokate donate OWNER/REPO stop
 ```
 
-Use `--harness`, `--model` and `--effort` instead of NAME for an explicit
-selection. Add `--total 8h` to limit total elapsed time. Without it, the loop runs
-until stopped. It starts a task only when its full per-task budget fits the
-remaining total. `--time` covers coding and verification for each task.
-GitHub URLs also select the repository, including release, tree, issue and PR URLs.
-
-One confirmation names the repository, harness, model, effort, per-task budget
-and total budget or "until stopped". This consent covers every task the loop
-claims in that repository within those limits. Noninteractive and `--json` use
-require `--yes`.
-
-Tokate selects open approved issues oldest first across all pages. It skips
-reservations, stale approval, denied access, unmet dependencies and issues already
-attempted by this loop. Each task uses claim, work and submit. Pending submission
-is checked with the same submit
-before the next task. The loop does not wait for owner merge.
-
-When no task is eligible, it checks again in ten minutes. Run `tokate stop`
-in another terminal with the same Tokate state directory to stop after the
-current task. The loop removes the stop marker. Ctrl-C retains its existing
-cancellation behavior. Failed tasks release their reservations. Three failures
-in a row stop the loop and print the failed runs. Normal output has one line per
-task with its issue, result and PR URL. Progress goes to stderr. `--json` emits
-one final summary object, with up to the last 100 task results.
+Use the default donor profile or override it with `--harness`, `--model` and `--effort`.
+Save one with `tokate defaults set NAME --harness codex --model MODEL --effort high`,
+then `tokate defaults use NAME`. Check it with `tokate select OWNER/REPO NAME --non-interactive`.
+Any GitHub repository, release, tree, issue or PR URL selects its OWNER/REPO.
+`--time` covers coding and verification per task, defaulting to the lower of one hour
+and the owner limit. Without `--total`, it runs until stopped. A task starts only
+when its full budget fits the remaining total.
+One confirmation names the repository, harness, model, effort and both budgets.
+It covers every task claimed with those tools and limits. Noninteractive and JSON use require `--yes`.
+Approved issues are selected oldest first across pages. Reserved, stale, inaccessible,
+dependency-blocked and already attempted issues are skipped. Each task uses claim, work and submit.
+Claim and submission waits are bounded by the per-task budget. Only owner-role workflow guidance fails the wait.
+Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.
+Stop uses a per-repository marker, waits for the current task and prints the report.
+If no loop runs, it says so and prints the last report when available. Start clears stale stop markers.
+The saved session and exit report include start/end times, wall time, submitted/skipped/failed tasks,
+PR URLs and summed input, cached input and output tokens from each run's usage. `--json` emits one report object.
 
 ## Use a script
 

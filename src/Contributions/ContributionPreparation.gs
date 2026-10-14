@@ -228,30 +228,6 @@ internal class ContributionPreparation {
             run.Fields["branch"] = "tokate/v2-" + run.Text("id")
         }
 
-        internal func Available(repo string, issue int32, viewer JsonElement, state CoordinationState) JsonElement {
-            let record = state.Check(
-                repo,
-                issue,
-                RepositoryIdentity.Login(J.Text(viewer, "login")),
-                J.Get(viewer, "id")
-            )
-
-            let reservation = J.Get(state.Value(), "reservation")
-
-            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
-            }
-
-            if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
-                throw CliFailure("stale_approval", "Legacy lease reacquisition requires fresh owner approval")
-            }
-
-            Overlaps.RequireDependencies(repo, issue)
-
-            return record
-        }
-
         internal func Acquire(args Args) string {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let info = GitHub.Api("repos/" + repo)
@@ -268,8 +244,22 @@ internal class ContributionPreparation {
 
             let issue = args.Number("issue")
             let viewer = GitHub.Api("user")
+            let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
             let state = CoordinationState.Load(repo, issue)
-            let record = Available(repo, issue, viewer, state)
+            let record = state.Check(repo, issue, donor, J.Get(viewer, "id"))
+
+            let reservation = J.Get(state.Value(), "reservation")
+
+            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
+            }
+
+            if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
+                throw CliFailure("stale_approval", "Legacy lease reacquisition requires fresh owner approval")
+            }
+
+            Overlaps.RequireDependencies(repo, issue)
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
@@ -454,13 +444,21 @@ internal class ContributionPreparation {
                 J.Get(run.Element(), "donor_id")
             )
 
-            ApiTransport.BeginDeadline(30)
+            ApiTransport.BeginDeadline(Donate.Active ? args.Number("seconds"): 30)
 
             var accepted CoordinationState? = nil
 
             try {
                 while true {
                     ApiTransport.CheckDeadline()
+                    if Donate.Active {
+                        Submission.ResetWorkflow()
+                        if let guidance = Submission.PendingWorkflow(directory, run) {
+                            if guidance["role"]?.ToString() == "owner" {
+                                throw CliFailure("command_failed", "Owner workflow failed")
+                            }
+                        }
+                    }
                     let state = CoordinationState.Load(repo, issue)
 
                     if J.Text(state.Value(), "approval_id") != run.Text("approval") {
@@ -485,7 +483,7 @@ internal class ContributionPreparation {
 
                     ApiTransport.PollWait()
                 }
-            } catch (error ApiDeadlineException) { } finally {
+            } catch (error ApiDeadlineException) when !Donate.Active { } finally {
                 ApiTransport.EndDeadline()
             }
 

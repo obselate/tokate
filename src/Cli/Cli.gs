@@ -5,6 +5,7 @@ import System.Collections.Generic
 import System.ComponentModel
 import System.IO
 import System.Text
+import System.Text.Json
 import System.Text.RegularExpressions
 
 internal class CliOption(name string, value string, description string, choices string = "") {
@@ -16,7 +17,7 @@ internal class CliOption(name string, value string, description string, choices 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
-        case "yes" when command == "donate": "Consent to every task in this repository with the selected tool and time limits"
+        case "yes" when command == "donate": "Confirm starting every task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
@@ -26,8 +27,9 @@ internal class CliOption(name string, value string, description string, choices 
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
         case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
+        case "time" when command == "donate": "Per-task coding and verification budget; default: the lower of 1h and the owner limit"
         case "time" when(
-            command == "work" || command == "claim" || command == "donate"
+            command == "work" || command == "claim"
         ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
         case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
@@ -138,12 +140,7 @@ internal class Cli {
                 "BRANCH",
                 "Owner-selected target; default: upstream default branch (prompt on a terminal)"
             ),
-            CliOption(
-                "total",
-                "TIME",
-                "Stop starting tasks when the per-task budget exceeds the remaining total; absent runs until stopped"
-            ),
-            CliOption("profile", "NAME", "Saved donor profile"),
+            CliOption("total", "TIME", "Total wall-time limit; default: until stopped"),
             CliOption("model", "MODEL", "Owner-approved model"),
             CliOption(
                 "effort",
@@ -230,22 +227,12 @@ internal class Cli {
             CliCommand(
                 "donate",
                 "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,fork,runs",
-                "repo,time",
-                "Donate approved tasks until stopped or the total time expires. One confirmation authorizes every task within the selected limits.",
-                "OWNER/REPO [NAME] --time PER_TASK [--total TOTAL] [options]",
-                "donate owner/project default --time 1h --yes",
+                "repo",
+                "Donate approved tasks using explicit tool flags or your default donor profile until stopped or the total time expires. Stop waits for the current task and prints wall time, task results, PR URLs and token totals.",
+                "OWNER/REPO start [--time PER_TASK] [--total TOTAL] [options]\n       tokate donate OWNER/REPO stop [--yes]",
+                "donate owner/project start --harness codex --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
                 target: "repo",
-                group: "donate"
-            ),
-            CliCommand(
-                "stop",
-                "",
-                "",
-                "Stop a running donation after its current task; no inference.",
-                "",
-                "stop",
-                effects: "local_write",
                 group: "donate"
             ),
             CliCommand(
@@ -739,7 +726,8 @@ internal class Cli {
             return row[b.Length]
         }
 
-        internal func Words(command string) string -> command == "defaults" ? "set show remove list use":
+        internal func Words(command string) string -> command == "donate" ? "start stop":
+        command == "defaults" ? "set show remove list use":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
         command == "doctor" ? "owner managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
@@ -792,7 +780,7 @@ internal class Cli {
         }
 
         internal func Positional(command CliCommand)[]string -> switch command.Name {
-            case "donate": []string{"OWNER/REPO", "NAME"}
+            case "donate": []string{"OWNER/REPO", "start|stop"}
 
             case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME"}
 
@@ -1243,15 +1231,22 @@ internal class Cli {
             let command = Find(args.Command)
 
             if args.Command == "donate" && !args.Help {
-                args.Number("seconds")
-                if args.Get("total") != "" {
-                    args.Number("total")
+                let explicit = args.Get("harness") + args.Get("model") + args.Get("effort")
+                if args.Subject == "stop" {
+                    for key in args.Values.Keys {
+                        if !Global(key) && key != "--repo" && key != "--yes" && key != "--non-interactive" {
+                            throw Exception("donate OWNER/REPO stop accepts only --yes and global options")
+                        }
+                    }
+                } else if explicit == "" && DonorDefaults.Read(allowMissing: true)
+                    .ValueKind == JsonValueKind
+                    .Undefined {
+                    throw Exception(
+                        "Choose a tool with tokate donate OWNER/REPO start --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
+                    )
                 }
                 if !DonorSelection.Interactive(args) && args.Get("yes") != "true" {
-                    throw CliFailure(
-                        "confirmation_required",
-                        "Noninteractive donate requires --yes before any claim or inference"
-                    )
+                    throw CliFailure("confirmation_required", "Noninteractive donate requires --yes")
                 }
             }
 

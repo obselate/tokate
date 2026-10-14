@@ -1813,50 +1813,40 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func RepositoryDonation() {
-        Check.Envelope(
-            Flow.Call([]string{"donate", "owner/project", "--time", "30s", "--json"}, 1),
-            "donate",
-            "error",
-            "confirmation_required"
-        )
+        let start = []string{"donate", "owner/project", "start", "--json"}
+        let stop = []string{"donate", "owner/project", "stop", "--yes", "--json"}
+        let missing = Check.Envelope(Flow.Call(start, 1), "donate", "error", "invalid_arguments")
+        Check.Contains(Check.Text(missing["error"]?["message"]), "tokate defaults set NAME --harness codex")
+        Check.Contains(Check.Text(missing["error"]?["message"]), "tokate select OWNER/REPO NAME")
         Flow.Call([]string{"defaults", "set", "donor", "--model", "gpt-6.1-sol", "--effort", "high"})
-        let exhausted = Check.Envelope(
-            Flow.Call(
-                []string{"donate", "owner/project", "donor", "--time", "30s", "--total", "1s", "--yes", "--json"}
-            ),
-            "donate",
-            "ok"
-        )
+        Flow.Call([]string{"defaults", "use", "donor"})
+        Check.Envelope(Flow.Call(start, 1), "donate", "error", "confirmation_required")
+        let total = []string{"donate", "owner/project", "start", "--total", "1s", "--yes", "--json"}
+        let exhausted = Check.Envelope(Flow.Call(total), "donate", "ok")
         Check.That(Check.Text(exhausted["data"]?["reason"]) == "total_exhausted", "Donation exceeded its total budget")
         Flow.NoInference()
-        let request = ClaimRequest()
-        Coordinate(Event(request, actor: 1, login: "owner"))
+        let stateDir = Path.Combine(Flow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project")
+        let marker = Path.Combine(stateDir, "stop")
+        File.WriteAllText(marker, "stale")
+        Coordinate(Event(ClaimRequest(), actor: 1, login: "owner"))
         let reserved = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
         Flow.Reload()
         let second = Flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
         second["number"] = JsonValue.Create(2)
-        second["title"] = JsonValue.Create("Second approved issue")
         Flow.State["issues"] = Check.Map("1", Flow.State["issue"]?.DeepClone(), "2", second)
+        Flow.State["event_stream"] = JsonValue.Create(
+            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":100,\"cached_input_tokens\":20,\"output_tokens\":10}}\n"
+        )
         Flow.Save()
         Flow.Call([]string{"approve", "owner/project#2"}, owner: true)
-        let args = []string{
-            "donate",
-            "owner/project",
-            "donor",
-            "--time",
-            "30s",
-            "--runs",
-            Path.Combine(Flow.Temp.Root, "runs"),
-            "--yes",
-            "--json"
-        }
+        let args = []string{"donate", "owner/project", "start", "--time", "30s", "--yes", "--json"}
+        let tokens = Check.Json("{\"input_tokens\":100,\"cached_input_tokens\":20,\"output_tokens\":10}")
         let env = Dictionary[string, string](Flow.Temp.Env)
         env["GH_TOKEN"] = "fixture-donor"
         let output = Chan[Result](1)
         go Donating(args, env, output)
         let deadline = DateTime.UtcNow.AddSeconds(110)
         var handled int32
-        var stopped bool
         var result Result? = nil
         while result == nil {
             Flow.Reload()
@@ -1868,8 +1858,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 Flow.CoordinatePosted(2)
                 handled++
                 if Check.Text(posted["action"]) == "publish" {
-                    Check.Envelope(Flow.Call([]string{"stop", "--json"}), "stop", "ok")
-                    stopped = true
+                    let other = []string{"donate", "other/project", "stop", "--yes", "--json"}
+                    Check.Envelope(Flow.Call(other), "donate", "ok")
+                    let report = Check.Envelope(Flow.Call(stop), "donate", "ok")["data"]
+                    Check.That(Check.Text(report?["completed"]) == "1", "Stop did not wait for the task report")
+                    Check.That(JsonNode.DeepEquals(report?["usage"], tokens), "Stop lost task usage")
                 }
             }
             select {
@@ -1882,27 +1875,24 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
         let summary = Check.Envelope(result ?? throw Exception("Missing donation result"), "donate", "ok")["data"] ??
             throw Exception("Missing donation summary")
-        Check.That(stopped && handled == 2, "Donation did not claim and submit exactly one task")
-        Check.That(
-            Check.Text(summary["completed"]) == "1" && Check.Text(summary["failed"]) == "0",
-            "Donation task failed"
-        )
+        Check.That(handled == 2, "Donation did not claim and submit exactly one task")
+        Check.That(Check.Text(summary["completed"]) == "1" && Check.Text(summary["failed"]) == "0", "Task failed")
+        Check.That(Check.Text(summary["skipped"]) == "1", "Donation did not count the reserved issue as skipped")
         Check.That(Check.Text(summary["reason"]) == "stopped", "Donation ignored the stop marker")
-        Check.That(Check.Text(summary["tasks"]?[0]?["issue"]) == "2", "Donation reported the wrong issue")
-        Check.Contains(Check.Text(summary["tasks"]?[0]?["pr_url"]), "/pull/10")
-        Check.That(
-            !File.Exists(Path.Combine(Flow.Temp.Env["HOME"], ".local/state/tokate/donate.stop")),
-            "Stop marker was not removed"
-        )
-        Check.That(
-            Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1") == reserved,
-            "Donation changed another donor reservation"
-        )
+        let task = summary["tasks"]?[1] ?? throw Exception("Missing task")
+        Check.That(Check.Text(task["issue"]) == "2", "Donation reported the wrong issue")
+        Check.Contains(Check.Text(task["pr_url"]), "/pull/10")
+        let savedRun = Check.Json(File.ReadAllText(Path.Combine(Check.Text(task["run_directory"]), "run.json")))
+        Check.That(JsonNode.DeepEquals(summary["usage"], savedRun["usage"]), "Loop report lost task usage")
+        Check.That(Check.Text(summary["ended_at"]) != "", "Session has no end time")
+        let last = Check.Envelope(Flow.Call(stop), "donate", "ok")["data"]
+        Check.That(JsonNode.DeepEquals(summary, last), "Stopped session report changed")
+        Check.That(!File.Exists(marker), "Stop marker was not removed")
+        let current = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
+        Check.That(current == reserved, "Reservation changed")
         Flow.Reload()
         Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Donation repeated inference")
-        Check.That(
-            Flow.State["pulls"]?.AsArray().Count == 1 && Check.Text(Flow.State["pulls"]?[0]?["draft"]) == "true",
-            "Donation did not submit one draft PR"
-        )
+        let pulls = Flow.State["pulls"]?.AsArray() ?? JsonArray()
+        Check.That(pulls.Count == 1 && Check.Text(pulls[0]?["draft"]) == "true", "Missing draft PR")
     }
 }

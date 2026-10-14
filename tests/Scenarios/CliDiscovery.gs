@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "donate stop work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "donate work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -1058,12 +1058,10 @@ internal class CliDiscovery {
                     Check.That(names.Add(Check.Text(option["name"])), "CLI metadata repeated an option")
                 }
                 Check.That(Check.Text(command["noninteractive"]) == "true", "Hidden interactive command")
+                let name = Check.Text(command["command"])
+                let inference = name == "work" || name == "donate"
                 Check.That(
-                    Check.Text(command["inference"]) == (
-                        (
-                            Check.Text(command["command"]) == "work" || Check.Text(command["command"]) == "donate"
-                        ) ? "true": "false"
-                    ),
+                    Check.Text(command["inference"]) == (inference ? "true": "false"),
                     "Incorrect inference effects"
                 )
                 Check.That(command["effects"]?.AsObject().Count == 4, "Incomplete read/write effects")
@@ -1744,12 +1742,10 @@ internal class CliDiscovery {
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             let donate = Call(binary, []string{"help", "donate"}, temp).Output
-            Check.Contains(donate, "OWNER/REPO [NAME] --time PER_TASK")
+            Check.Contains(donate, "OWNER/REPO start [--time PER_TASK]")
+            Check.Contains(donate, "tokate donate OWNER/REPO stop [--yes]")
             Check.That(!donate.Contains("--profile"), "Donate help exposes a profile flag")
-            Check.Contains(
-                Call(binary, []string{"help", "stop"}, temp).Output,
-                "Stop a running donation after its current task; no inference."
-            )
+            Check.That(!donate.Contains("NAME"), "Donate help exposes a profile positional")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
             Check.Contains(
                 Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
@@ -1792,9 +1788,6 @@ internal class CliDiscovery {
                 []string{"approve", "--base-branch=release", "--base-branch=other", "--help"},
                 []string{"work", "--base-branch=release", "--help"},
                 []string{"work", "--profile=x"},
-                []string{"donate", "owner/project", "--profile=x"},
-                []string{"stop", "extra"},
-                []string{"donate", "https://example.test/owner/project", "--time=1h"},
                 []string{"revoke", "owner/project#0"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=invalid"},
                 []string{"work", "owner/project#1", "--model=bad model", "--effort=high"},
@@ -1934,29 +1927,13 @@ internal class CliDiscovery {
                 Check.That(!result.Error.Contains("Usage:"), "Valid URL input rejected")
                 File.Delete(log)
             }
-            for path in[]string{
-                "CrocSwap/integer-mult-bounds",
-                "earendil-works/pi/releases/tag/v1.2.0",
-                "owner/project/tree/main",
-                "owner/project/issues/5",
-                "owner/project/pull/7"
-            } {
-                for suffix in[]string{"", "/", ".git", ".git/"} {
-                    let result = TestProcess.Run(
-                        binary,
-                        []string{"donate", "https://github.com/" + path + suffix, "--time=1h", "--yes"},
-                        temp.Env,
-                        cwd: temp.Root
-                    )
-                    Check.That(result.Code == 1, "Recording gh stub should fail")
-                    Check.Contains(
-                        File.ReadAllText(log),
-                        "\nrepos/" + path.Split('/')[0] + "/" + path.Split('/')[1] + "\n"
-                    )
-                    Check.That(!result.Error.Contains("Usage:"), "Valid donation URL input rejected")
-                    File.Delete(log)
-                }
-            }
+            let reference = "https://github.com/earendil-works/pi/releases/tag/v1.2.0?ref=x#fragment"
+            let argv = []string{"donate", reference, "start", "--model=model", "--effort=high", "--yes"}
+            let donation = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
+            Check.That(donation.Code == 1, "Recording gh stub should fail")
+            Check.Contains(File.ReadAllText(log), "\nrepos/earendil-works/pi\n")
+            Check.That(!donation.Error.Contains("Usage:"), "Valid donation URL input rejected")
+            File.Delete(log)
             temp.Tool("holder")
             using let listener = Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
             listener.Bind(Address(temp.Root))

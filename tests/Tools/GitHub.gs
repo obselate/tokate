@@ -705,6 +705,10 @@ internal partial class Fixture {
             return Answer(issue)
         }
         if tail.StartsWith("issues?") {
+            let query = tail.Substring(tail.IndexOf('?') + 1).Split('&')
+            let sizeField = Array.Find(query, field -> field.StartsWith("per_page=", StringComparison.Ordinal)) ??
+                "per_page=30"
+            let size = Int32.Parse(sizeField.Substring(9))
             let rows = JsonArray()
             let issues = State["issues"]?.AsObject() ?? Check.Map("1", State["issue"]?.DeepClone()).AsObject()
             for item in issues {
@@ -713,11 +717,11 @@ internal partial class Fixture {
                 for label in issue["labels"]?.AsArray() ?? JsonArray() {
                     labelled = labelled || Check.Text(label["name"]) == "tokate:approved"
                 }
-                if labelled && Check.Text(issue["state"]) == "open" {
+                if labelled && Check.Text(issue["state"]) == "open" && rows.Count < size {
                     rows.Add(issue.DeepClone())
                 }
             }
-            return Answer(CommentPage(rows))
+            return Answer(rows)
         }
         if tail.StartsWith("issues/comments?") {
             let comments = JsonArray()

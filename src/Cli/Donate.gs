@@ -10,44 +10,61 @@ import System.Threading
 internal class Donate {
     shared {
         internal var Active bool
+        private func Running(directory string) bool {
+            if !Directory.Exists(directory) {
+                return false
+            }
+            try {
+                using let lease = RunStorage.Lease(directory)
+                return false
+            } catch (error IOException) {
+                return true
+            }
+        }
 
-        private func Marker() string -> Path.Combine(LocalPaths.StateDirectory(), "donate.stop")
+        private func Report(session JsonElement) {
+            PublicOutput.ResultData = session
+            if !PublicOutput.Enabled {
+                Terminal.Json(session, "Donation report")
+            }
+        }
 
-        internal func Stop() int32 {
-            Directory.CreateDirectory(LocalPaths.StateDirectory())
-            File.WriteAllText(Marker(), "stop\n")
-            PublicOutput.ResultData = map[string, Object?]{"stop_requested": true}
-            Terminal.Message("Donation will stop after the current task.")
+        internal func Stop(options Args) int32 {
+            let repo = options.Need("repo")
+            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            if options.Get("yes") != "true" {
+                if WizardScreen.Choose("Stop donating?", repo, []string{"Stop", "Cancel"}, selected: 2) != 1 {
+                    throw CliFailure("confirmation_required", "Donation stop was not confirmed")
+                }
+            }
+            WizardScreen.Close()
+            if Running(directory) {
+                File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
+                while Running(directory) {
+                    Thread.Sleep(100)
+                }
+            } else {
+                Terminal.Message("No donation is running for " + repo + ".")
+            }
+            let path = Path.Combine(directory, "session.json")
+            PublicOutput.ResultData = map[string, Object?]{"repo": repo, "running": false}
+            if File.Exists(path) {
+                Report(Data.Read(path).Element())
+            }
             return 0
         }
 
-        private func Pick(repo string, viewer JsonElement, attempted HashSet[int32]) int32 {
+        private func Pick(repo string, attempted HashSet[int32]) int32 {
             var page int32 = 1
             while true {
-                let issues = GitHub.Api(
-                    "repos/" +
-                        repo +
-                        "/issues?state=open&labels=tokate%3Aapproved&sort=created&direction=asc&per_page=100&page=" +
-                        page.ToString()
-                )
-                if issues.ValueKind != JsonValueKind.Array {
-                    throw CliFailure("invalid_state", "Cannot list approved issues")
-                }
+                let query = "/issues?state=open&labels=tokate%3Aapproved&sort=created&direction=asc&per_page=100&page="
+                let issues = GitHub.Api("repos/" + repo + query + page.ToString())
                 for issue in J.Items(issues) {
-                    if J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
-                        continue
-                    }
                     let number = J.Number(issue, "number")
-                    if attempted.Contains(number) {
+                    if attempted.Contains(number) || J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
                         continue
                     }
-                    try {
-                        let state = CoordinationState.Load(repo, number)
-                        ContributionPreparation.Available(repo, number, viewer, state)
-                        if J.Get(state.Value(), "contribution").ValueKind != JsonValueKind.Object {
-                            return number
-                        }
-                    } catch (error CliFailure) when error.Code == "stale_approval" || error.Code == "invalid_state" { }
+                    return number
                 }
                 if issues.GetArrayLength() < 100 {
                     return 0
@@ -57,174 +74,96 @@ internal class Donate {
         }
 
         private func Task(options Args, issue int32) Dictionary[string, Object?] {
-            let claim = Args([]string{"claim"})
-            for field in options.Values {
-                if field.Key != "--total" && field.Key != "--profile" {
-                    claim.Values[field.Key] = field.Value
-                }
-            }
-            claim.Values["--issue"] = issue.ToString()
+            options.Values["--issue"] = issue.ToString()
             var directory string = ""
-            var result string = "submitted"
-            var release string = ""
-            var url string = ""
+            let task = map[string, Object?]{"issue": issue, "result": "completed"}
             try {
-                directory = ContributionPreparation.Acquire(claim)
-                let pending = Stopwatch.StartNew()
-                while Data.Load(directory).Text("state") == "claim_pending" {
-                    if pending.Elapsed.TotalSeconds >= options.Number("seconds") {
-                        throw ApiDeadlineException()
-                    }
-                    Submission.ResetWorkflow()
-                    if let guidance = Submission.PendingWorkflow(directory, Data.Load(directory)) {
-                        if guidance["role"]?.ToString() == "owner" {
-                            throw CliFailure(
-                                "command_failed",
-                                guidance["action"]?.ToString() ?? "Claim workflow failed"
-                            )
-                        }
-                    }
-                    ApiTransport.PollWait()
-                    ContributionPreparation.ResumePending(directory, claim)
-                }
+                directory = ContributionPreparation.Acquire(options)
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
-                let submit = Args([]string{"submit", "--run", directory})
                 ApiTransport.BeginDeadline(options.Number("seconds"))
-                while true {
-                    ApiTransport.CheckDeadline()
-                    Submission.Submit(submit)
-                    let run = Data.Load(directory)
-                    url = run.Text("pr_url")
-                    if run.Number("pr") > 0 {
-                        break
-                    }
-                    Submission.ResetWorkflow()
-                    if let guidance = Submission.PendingWorkflow(directory, run) {
-                        if guidance["role"]?.ToString() == "owner" {
-                            throw CliFailure(
-                                "command_failed",
-                                guidance["action"]?.ToString() ?? "Submission workflow failed"
-                            )
-                        }
-                    }
-                    Terminal.Message("Submit pending. Checking the same submission again.")
-                    ApiTransport.PollWait()
-                }
-            } catch (error CommandInterrupted) {
-                throw error
-            } catch (error Exception) {
-                if directory == "" {
-                    directory = PublicOutput.RunDirectory
-                }
-                result = error is CliFailure &&
-                    (error.Code == "invalid_state" || error.Code == "stale_approval") &&
-                    (directory == "" || Data.Load(directory).Text("id") == "") ? "skipped": "failed"
-                Terminal.Message("Task #" + issue.ToString() + " " + result + ": " + error.Message, error: true)
+                Dispatch(Args([]string{"submit", "--run", directory}))
+            } catch (error Exception) when !(error is CommandInterrupted) {
+                directory = PublicOutput.RunDirectory
+                let unclaimed = directory == "" || Data.Load(directory).Text("id") == ""
+                let ineligible = error is CliFailure &&
+                    (error.Code == "invalid_state" || error.Code == "stale_approval")
+                task["result"] = unclaimed && ineligible ? "skipped": "failed"
                 if directory != "" && Data.Load(directory).Text("id") != "" {
                     ApiTransport.BeginDeadline(30)
                     try {
-                        let args = Args([]string{"release", "--run", directory})
-                        while ReservationRequest.Run(args) == 8 {
+                        while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
                             ApiTransport.PollWait()
                         }
-                        release = "released"
-                    } catch (error CommandInterrupted) {
-                        throw error
-                    } catch (error Exception) {
-                        release = "unconfirmed"
-                        Terminal.Message(
-                            "Reservation release unconfirmed: " + directory + ": " + error.Message,
-                            error: true
-                        )
-                    } finally {
-                        ApiTransport.EndDeadline()
+                    } catch (error Exception) when !(error is CommandInterrupted) {
+                        Terminal.Message("Reservation release unconfirmed: " + error.Message, error: true)
                     }
                 }
             } finally {
                 ApiTransport.EndDeadline()
             }
-            return map[string, Object?]{
-                "issue": issue,
-                "result": result,
-                "pr_url": url,
-                "run_directory": directory,
-                "release": release
-            }
+            task["pr_url"] = directory == "" ? "": Data.Load(directory).Text("pr_url")
+            task["run_directory"] = directory
+            return task
         }
 
         internal func Run(options Args) int32 {
-            if File.Exists(Marker()) {
-                File.Delete(Marker())
-            }
             let repo = options.Need("repo")
-            let seconds = options.Number("seconds")
+            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            Directory.CreateDirectory(directory)
+            using let lease = RunStorage.Lease(directory)
+            let marker = Path.Combine(directory, "stop")
+            File.Delete(marker)
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
             let policy = Policy.Load(repo, GitHub.Branch(repo, J.Text(info, "default_branch")))
+            let maximum = Math.Min(3600, J.Number(policy.Value, "max_seconds"))
+            let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
+            options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
             let selection = DonorSelection.Resolve(options, policy)
-            let consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(
-                selection,
-                "model"
-            ) +
-                "\nEffort: " +
-                J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() +
+            let limit = Double.IsPositiveInfinity(total) ? "until stopped": total.ToString() + " seconds"
+            let consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(selection, "model")
+            let budgets = "\nEffort: " + J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() +
                 " seconds\nTotal: " +
-                (Double.IsPositiveInfinity(total) ? "until stopped": total.ToString() + " seconds")
+                limit
             if options.Get("yes") != "true" {
-                if WizardScreen.Choose(
-                    "Confirm repository donation",
-                    consent,
-                    []string{"Start", "Cancel"},
-                    "This consent covers every task claimed in this repository with this tool and these limits.",
-                    selected: 2
-                ) != 1 {
-                    throw CliFailure("confirmation_required", "Repository donation was not confirmed")
+                if WizardScreen.Choose(repo, consent + budgets, []string{"Start", "Cancel"}, selected: 2) != 1 {
+                    throw CliFailure("confirmation_required", "Donation start was not confirmed")
                 }
             }
             WizardScreen.Close()
-            Terminal.Message(consent, error: true)
-            Active = true
+            Terminal.Message(consent + budgets, error: true)
             for key in[]string{"harness", "provider", "model", "effort"} {
                 options.Values["--" + key] = J.Text(selection, key)
             }
-            options.Values["--yes"] = "true"
-            options.Values["--non-interactive"] = "true"
-            let viewer = GitHub.Api("user")
             let timer = Stopwatch.StartNew()
             let tasks = List[Object]()
-            let failed = List[string]()
             let attempted = HashSet[int32]()
-            var completed int32
-            var failures int32
             var consecutive int32
-            var reason string = "stopped"
+            let usage = map[string, Object?]{"input_tokens": 0L, "cached_input_tokens": 0L, "output_tokens": 0L}
+            let session = Data(map[string, Object?]{"repo": repo, "tasks": tasks, "usage": usage, "reason": "stopped"})
+            session.Fields["started_at"] = DateTimeOffset.UtcNow.ToString("O")
+            for key in[]string{"completed", "skipped", "failed"} {
+                session.Fields[key] = 0
+            }
+            let sessionPath = Path.Combine(directory, "session.json")
+            session.Write(sessionPath)
+            Active = true
             try {
-                while !File.Exists(Marker()) {
-                    if seconds > total - timer.Elapsed.TotalSeconds {
-                        reason = "total_exhausted"
+                while !File.Exists(marker) {
+                    if consecutive == 3 || seconds > total - timer.Elapsed.TotalSeconds {
+                        session.Fields["reason"] = consecutive == 3 ? "consecutive_failures": "total_exhausted"
                         break
                     }
                     PublicOutput.RunDirectory = ""
-                    PublicOutput.Actions.Clear()
-                    let issue = Pick(repo, viewer, attempted)
-                    if File.Exists(Marker()) {
-                        break
-                    }
-                    if seconds > total - timer.Elapsed.TotalSeconds {
-                        reason = "total_exhausted"
-                        break
+                    let issue = Pick(repo, attempted)
+                    if File.Exists(marker) || seconds > total - timer.Elapsed.TotalSeconds {
+                        continue
                     }
                     if issue == 0 {
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
-                        let next = timer.Elapsed.TotalSeconds + 600
-                        while !File.Exists(Marker()) &&
-                            timer
-                            .Elapsed
-                            .TotalSeconds < next &&
-                            seconds <= total - timer
-                            .Elapsed
-                            .TotalSeconds {
+                        let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
+                        while !File.Exists(marker) && timer.Elapsed.TotalSeconds < next {
                             Thread.Sleep(1000)
                         }
                         continue
@@ -232,53 +171,30 @@ internal class Donate {
                     attempted.Add(issue)
                     let task = Task(options, issue)
                     tasks.Add(task)
-                    if tasks.Count > 100 {
-                        tasks.RemoveAt(0)
-                        PublicOutput.Truncated = true
-                    }
-                    if task["result"]?.ToString() == "submitted" {
-                        completed++
-                        failed.Clear()
-                        consecutive = 0
-                    } else if task["result"]?.ToString() == "failed" {
-                        failures++
-                        consecutive++
-                        let directory = task["run_directory"]?.ToString() ?? ""
-                        if directory != "" {
-                            failed.Add(directory)
+                    let result = task["result"]?.ToString() ?? ""
+                    session.Fields[result] = session.Number(result) + 1
+                    consecutive = result == "failed" ? consecutive + 1: 0
+                    let runDir = task["run_directory"]?.ToString() ?? ""
+                    let taskUsage = runDir == "" ? JsonElement{}: J.Get(Data.Load(runDir).Element(), "usage")
+                    for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
+                        let count = J.Get(taskUsage, key)
+                        if count.ValueKind == JsonValueKind.Number {
+                            usage[key] = Convert.ToInt64(usage[key]) + count.GetInt64()
                         }
                     }
-                    if !PublicOutput.Enabled {
-                        Console.WriteLine(
-                            "#" + issue.ToString() + " " + task["result"]?.ToString() + " " + task["pr_url"]?.ToString()
-                        )
-                    }
-                    if consecutive == 3 {
-                        reason = "consecutive_failures"
-                        Terminal.Message(
-                            "Stopped after 3 consecutive failures. Failed runs: " + String.Join(", ", failed),
-                            error: true
-                        )
-                        break
-                    }
+                    session.Write(sessionPath)
                 }
             } finally {
                 Active = false
-                if File.Exists(Marker()) {
-                    File.Delete(Marker())
-                }
+                File.Delete(marker)
                 PublicOutput.RunDirectory = ""
                 PublicOutput.Actions.Clear()
-                PublicOutput.ResultData = map[string, Object?]{
-                    "repo": repo,
-                    "reason": reason,
-                    "completed": completed,
-                    "failed": failures,
-                    "failed_runs": failed,
-                    "tasks": tasks
-                }
+                session.Fields["ended_at"] = DateTimeOffset.UtcNow.ToString("O")
+                session.Fields["wall_seconds"] = timer.Elapsed.TotalSeconds
+                session.Write(sessionPath)
+                Report(session.Element())
             }
-            return reason == "consecutive_failures" ? 1: 0
+            return consecutive == 3 ? 1: 0
         }
     }
 }

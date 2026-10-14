@@ -220,15 +220,20 @@ internal class Positionals {
                         args.Values["--profile"] = words[1]
                     }
                 }
-            } else if target == "repo" {
-                Limit(args, args.Command == "donate" ? 2: 1)
-
+            } else if args.Command == "donate" {
+                Limit(args, 2)
+                if !args.Help && (words.Count != 2 || (words[1] != "start" && words[1] != "stop")) {
+                    throw Exception("Use tokate donate OWNER/REPO start|stop")
+                }
                 if words.Count > 0 {
-                    Reference(args, words[0], target)
+                    Reference(args, words[0], "repo")
+                }
+                args.Subject = words.Count > 1 ? words[1]: ""
+            } else if target == "repo" {
+                Limit(args, 1)
 
-                    if words.Count > 1 {
-                        args.Values["--profile"] = words[1]
-                    }
+                if words.Count == 1 {
+                    Reference(args, words[0], target)
                 }
             } else {
                 let profileOperand = args.Command == "work" || args.Command == "claim" || args.Command == "prepare"
