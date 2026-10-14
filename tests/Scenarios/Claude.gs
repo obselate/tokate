@@ -372,11 +372,12 @@ internal class ClaudeChecks {
                 parsed?["effort"] == nil && Check.Text(parsed?["usage"]?["input_tokens"]) == "12",
                 "Reports invented effort or lost native usage"
             )
-            for field in[]string{"\"model\":\"claude-sonnet-4-6\"", "\"effort\":\"low\""} {
-                File.WriteAllText(
-                    report,
-                    "{\"type\":\"system\",\"subtype\":\"init\"," + field + "}\n{\"type\":\"result\"," + field + "}\n"
-                )
+            for lines in[]string{
+                "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-sonnet-4-6\"}\n{\"type\":\"result\",\"model\":\"claude-sonnet-4-6\"}\n",
+                "{\"type\":\"system\",\"subtype\":\"init\",\"effort\":\"low\"}\n{\"type\":\"result\",\"effort\":\"low\"}\n",
+                "{\"type\":\"system\",\"subtype\":\"init\"}\n{\"type\":\"assistant\",\"message\":{\"model\":\"claude-sonnet-4-6\"}}\n{\"type\":\"result\"}\n"
+            } {
+                File.WriteAllText(report, lines)
                 Check.That(
                     TestProcess.Run(binary, withReport.ToArray(), data.Env).Code == 1,
                     "Conflicting native report was accepted"
