@@ -35,7 +35,8 @@ internal class TaskContext {
             let instructions = J.Bool(snapshot, "present") ?
             "## Owner instructions (DECREE.md, SHA-256 " + J.Text(snapshot, "sha256") +
                 ")\nProvenance: approved snapshot\n\n<tokate-owner-instructions>\n" +
-                J.Text(snapshot, "text").Replace("</tokate-", "<\\/tokate-") + "\n</tokate-owner-instructions>\n":
+                J
+                .Text(snapshot, "text").Replace("</tokate-", "<\\/tokate-") + "\n</tokate-owner-instructions>\n":
             "## Owner instructions (DECREE.md)\nProvenance: approved snapshot\nDECREE.md is absent.\n"
 
             return "# Tokate donation\n\n" +
@@ -75,8 +76,10 @@ internal class TaskContext {
                 "6. Leave your edits uncommitted.\n" +
                 "7. Finish with a report: Changes, Acceptance criteria met, Checks and results, Limitations.\n   Report failures as they are. Tokate does not retry.\n\n" +
                 "## Task: " +
-                J.Text(issue, "title") + "\n<tokate-issue>\n" +
-                J.Text(issue, "body").Replace("</tokate-", "<\\/tokate-") +
+                J.Text(issue, "title") + "\n<tokate-issue>\n" + J.Text(issue, "body").Replace(
+                "</tokate-",
+                "<\\/tokate-"
+            ) +
                 "\n</tokate-issue>\n\n" +
                 instructions
         }

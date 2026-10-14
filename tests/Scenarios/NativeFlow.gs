@@ -291,7 +291,7 @@ internal partial class NativeFlow : NativeFixture {
             DateTimeStyles.AssumeUniversal
         )
         let seconds = Int32.Parse(Check.Text(saved["seconds"])) -
-            (saved["verification_reserve"] == nil ? 0: Int32.Parse(Check.Text(saved["verification_reserve"])))
+        (saved["verification_reserve"] == nil ? 0: Int32.Parse(Check.Text(saved["verification_reserve"])))
         Check.That(
             deadline >= started.AddSeconds(seconds - 1) && deadline <= finished.AddSeconds(seconds),
             "Prompt deadline differs from the coding allowance"

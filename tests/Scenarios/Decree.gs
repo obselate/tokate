@@ -70,8 +70,10 @@ internal class DecreeFlow : IDisposable {
         let start = prompt.IndexOf(marker, StringComparison.Ordinal) + marker.Length
         let end = prompt.LastIndexOf("\n</tokate-owner-instructions>", StringComparison.Ordinal)
         Check.That(
-            start >= marker.Length && end >= start &&
-                prompt.Substring(start, end - start) == text.Replace("</tokate-", "<\\/tokate-"),
+            start >= marker.Length && end >= start && prompt.Substring(start, end - start) == text.Replace(
+                "</tokate-",
+                "<\\/tokate-"
+            ),
             "Complete escaped approved text did not reach the managed prompt"
         )
     }
