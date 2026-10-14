@@ -421,7 +421,7 @@ func Dispatch(options Args) int32 {
             if !ready.Flag("gratis") {
                 Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
             }
-            Worker.Execute(directory, options)
+            HarnessRunner.Execute(directory, options)
             PublicOutput.FailureCode = "command_failed"
             if !ready.Flag("gratis") || Data.Load(directory).Text("state") == "generated" {
                 Submission.Commit(directory)
