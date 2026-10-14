@@ -83,12 +83,12 @@ func CommandTests() {
     }
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", setup)),
-        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --max-time 30m --allowed-tools [{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}] --eligibility open",
+        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --max-time 30m --allowed-tools [{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}] --eligibility open --yes",
         "init arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))) with{Path = "/p"})),
-        "init o/r --path /p --non-interactive",
+        "init o/r --path /p --non-interactive --yes",
         "unchanged init leaves upstream tool permissions untouched"
     )
     Regression.Equal(Regression.Args(TokateCommands.OwnerDoctor("o/r")), "doctor owner o/r --auth", "owner repository health")

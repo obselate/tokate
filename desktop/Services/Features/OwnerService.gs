@@ -486,7 +486,7 @@ class OwnerService {
             dialogs.Ask(
                 Confirmation{
                     Title: "Write project setup?",
-                    Text: "Write the policy and workflow into " + setup.Path + ".\n\nReview and commit these files before approving work. Existing checks are preserved unless you explicitly replaced them.",
+                    Text: "Write the policy and workflow into " + setup.Path + ".\n\nTokate also applies missing GitHub Actions settings and adds the required checks to branch protection on the target branch.\n\nReview and commit these files before approving work. Existing checks are preserved unless you explicitly replaced them.",
                     ConfirmLabel: "Confirm",
                     Heading: "",
                 },

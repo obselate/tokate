@@ -123,6 +123,7 @@ class TokateCommands {
                 args.Add("--eligibility")
                 args.Add(draft.Eligibility)
             }
+            args.Add("--yes")
             return args.ToArray()
         }
 
