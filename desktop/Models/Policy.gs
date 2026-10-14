@@ -8,6 +8,12 @@ data struct ModelAllowance {
     var Efforts []string
 }
 
+data struct ToolAllowance {
+    var Tool string
+    var Models []ModelAllowance
+    var Restricted bool
+}
+
 data struct Policy {
     var Loaded bool
     var Version int32
@@ -22,8 +28,9 @@ data struct Policy {
     var AllowedTools []string
     /// The allowed tools, each as "harness/provider".
     var ToolProviders []string
+    var ToolModels []ToolAllowance
 
-    prop AllowsUnlimited bool -> Version == 2 && AllowUnlimited
+    prop AllowsUnlimited bool -> Version >= 2 && AllowUnlimited
 
     prop SupportsApproval bool -> Version >= 2
 
@@ -44,6 +51,30 @@ data struct Policy {
     /// Whether the owner allows only the listed models. A policy without the setting is a whitelist.
     prop RestrictsModels bool -> Loaded && ModelPolicy != "unrestricted"
 
+    func ModelsFor(harness string, provider string) []ModelAllowance {
+        if Version < 3 {
+            return Models ?? []ModelAllowance{}
+        }
+        for tool in ToolModels {
+            if tool.Tool == harness + "/" + provider {
+                return tool.Models
+            }
+        }
+        return []ModelAllowance{}
+    }
+
+    func RestrictsTool(harness string, provider string) bool {
+        if Version < 3 {
+            return RestrictsModels
+        }
+        for tool in ToolModels {
+            if tool.Tool == harness + "/" + provider {
+                return tool.Restricted
+            }
+        }
+        return Loaded
+    }
+
     func Exceeds(totalSeconds int32) bool -> totalSeconds > 86400 || (MaxSeconds > 0 && totalSeconds > MaxSeconds)
 
     shared {
@@ -56,6 +87,7 @@ data struct Policy {
             Eligibility: "",
             AllowedTools: []string{},
             ToolProviders: []string{},
+            ToolModels: []ToolAllowance{},
         }
     }
 }

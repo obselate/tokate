@@ -38,6 +38,10 @@ data struct IssueWork {
     var Issue string
     var State string
     var Drafts []string
+    var ApprovalStatus string
+    var NextAction string
+
+    prop NeedsApproval bool -> ApprovalStatus == "stale"
 }
 
 /// The owner's last receipt and CI results for a draft pull request. Empty text means not checked.
@@ -86,30 +90,32 @@ data struct SetupDraft {
     var Commands [][]string
     var Checks []string
     var Models []ModelAllowance
-    var ModelsJson string
     var ModelPolicy string
+    var ModelTool string
+    var ToolModels []ToolAllowance
     /// The allowed pairs that replace those of the policy, joined with commas, or "" for no change.
     var Tools string
     var Eligibility string
     var Minutes string
     var CommandsChanged bool
     var ChecksChanged bool
+    var PermissionsChanged bool
 
     func EffectiveEligibility(policy Policy) string {
         let selected = Eligibility == "" ? policy.Eligibility: Eligibility
         return selected == "" ? "trusted": selected
     }
 
-    func EffectiveModelPolicy(policy Policy) string -> ModelPolicy == "" ? policy.ModelPolicy: ModelPolicy
-
     /// The allowed harness and provider pairs, each as "harness/provider". A pair that this app does not
     /// know stays in the list.
-    func EffectiveTools(policy Policy) []string {
+    func EffectiveTools() []string {
         let allowed = List[string]()
         if Tools != "" {
             allowed.AddRange(Tools.Split(','))
         } else {
-            allowed.AddRange(policy.ToolProviders)
+            for tool in ToolModels {
+                allowed.Add(tool.Tool)
+            }
         }
         if allowed.Count == 0 {
             allowed.Add("codex/openai")
@@ -132,18 +138,46 @@ data struct SetupDraft {
     }
 
     shared {
-        func From(policy Policy) SetupDraft -> SetupDraft{
-            Path: "",
-            Commands: policy.Verification,
-            Checks: policy.RequiredChecks,
-            Models: policy.Models,
-            ModelsJson: "",
-            ModelPolicy: policy.Loaded ? "": "unrestricted",
-            Tools: "",
-            Eligibility: "",
-            Minutes: "",
+        func From(policy Policy) SetupDraft {
+            let pairs = policy.Loaded && policy.ToolProviders.Length > 0 ? policy.ToolProviders: []string{"codex/openai"}
+            let tools = List[ToolAllowance]()
+            for pair in pairs {
+                let split = pair.IndexOf('/')
+                tools.Add(ToolAllowance{
+                    Tool: pair,
+                    Models: policy.ModelsFor(pair.Substring(0, split), pair.Substring(split + 1)),
+                    Restricted: policy.RestrictsTool(pair.Substring(0, split), pair.Substring(split + 1)),
+                })
+            }
+            let selected = tools[0]
+            return SetupDraft{
+                Path: "",
+                Commands: policy.Verification,
+                Checks: policy.RequiredChecks,
+                Models: selected.Models,
+                ModelPolicy: selected.Restricted ? "whitelist": "unrestricted",
+                ModelTool: selected.Tool,
+                ToolModels: tools.ToArray(),
+                PermissionsChanged: !policy.Loaded,
+                Tools: "",
+                Eligibility: "",
+                Minutes: "",
+            }
         }
     }
+}
+
+data struct CoordinatorReport {
+    var Loaded bool
+    var Applied bool
+    var Output string
+    var CurrentVersion string
+    var NewVersion string
+    var CurrentCommit string
+    var NewCommit string
+    var CompareUrl string
+    var ReleaseUrl string
+    var Allowlist string
 }
 
 /// Everything the owner page shows. Text typed into the setup editors lives in their components.
@@ -155,6 +189,7 @@ data struct OwnerState {
     var Tab OwnerTab
     var Project ProjectInfo
     var Policy Policy
+    var PolicyTruncated bool
     var Work []IssueWork
     var Reviews []DraftReview
     var Access AccessList
@@ -167,6 +202,9 @@ data struct OwnerState {
     var OmpOpen bool
     /// What the CLI reported when setup was last written.
     var Written string
+    var DoctorReport string
+    var CoordinatorOutput string
+    var Coordinator CoordinatorReport
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
 
@@ -174,7 +212,7 @@ data struct OwnerState {
     func OmpProviders() []string {
         let result = List[string]()
         let pairs = List[string](Policy.ToolProviders)
-        pairs.AddRange(Setup.EffectiveTools(Policy))
+        pairs.AddRange(Setup.EffectiveTools())
         for pair in pairs {
             if pair.StartsWith("omp/") && !result.Contains(pair.Substring(4)) {
                 result.Add(pair.Substring(4))
@@ -216,10 +254,12 @@ data struct OwnerState {
             Work: []IssueWork{},
             Reviews: []DraftReview{},
             Access: AccessList.Empty,
-            Setup: SetupDraft.From(Policy.Empty) with{ModelPolicy = ""},
+            Setup: SetupDraft.From(Policy.Empty),
             Codex: []ModelChoice{},
             Omp: []ModelChoice{},
             Written: "",
+            DoctorReport: "",
+            CoordinatorOutput: "",
         }
     }
 }
@@ -234,12 +274,11 @@ class SetupSteps {
 
 class Eligibility {
     shared {
-        let All []string = []string{"trusted", "open", "manual"}
+        let All []string = []string{"trusted", "open"}
 
-        func Label(mode string) string -> mode == "trusted" ? "Trusted donors": mode == "open" ? "Everyone": "Per issue"
+        func Label(mode string) string -> mode == "open" ? "Everyone": "Trusted donors"
 
-        func Detail(mode string) string -> mode == "trusted" ? "Donors that you trust.": mode == "open" ?
-        "All donors not denied.": "Donors with an issue grant."
+        func Detail(mode string) string -> mode == "open" ? "All donors not denied.": "Donors that you trust."
     }
 }
 

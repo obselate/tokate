@@ -20,11 +20,21 @@ class PolicyCodec {
             }
             let tools = List[string]()
             let providers = List[string]()
+            let toolModels = List[ToolAllowance]()
             for tool in Json.Items(value, "allowed_tools") {
                 let harness = Json.Text(tool, "harness")
                 let provider = Json.Text(tool, "provider")
                 tools.Add(harness)
-                providers.Add(harness + "/" + (provider != "" ? provider: HarnessOption.ProviderOf(harness)))
+                let pair = harness + "/" + (provider != "" ? provider: HarnessOption.ProviderOf(harness))
+                providers.Add(pair)
+                let allowances = List[ModelAllowance]()
+                let toolEntries = Json.Get(tool, "models")
+                if Json.IsObject(toolEntries) {
+                    for model in toolEntries.EnumerateObject() {
+                        allowances.Add(ModelAllowance{Model: model.Name, Efforts: Json.Strings(model.Value)})
+                    }
+                }
+                toolModels.Add(ToolAllowance{Tool: pair, Models: allowances.ToArray(), Restricted: Json.IsObject(toolEntries)})
             }
             return Policy{
                 Loaded: Json.IsObject(value),
@@ -36,12 +46,38 @@ class PolicyCodec {
                 Verification: commands.ToArray(),
                 Models: models.ToArray(),
                 ModelPolicy: Json.Text(value, "model_policy"),
-                Eligibility: Json.Text(value, "eligibility"),
+                Eligibility: Json.Text(value, "eligibility") == "manual" ? "trusted": Json.Text(value, "eligibility"),
                 AllowedTools: tools.ToArray(),
                 ToolProviders: providers.ToArray(),
+                ToolModels: toolModels.ToArray(),
             }
         }
 
         func FromPolicyResult(data JsonElement) Policy -> Policy(Json.Get(data, "policy"))
+
+        func Coordinator(data JsonElement) CoordinatorReport -> CoordinatorReport{
+            Loaded: Json.IsObject(data),
+            Applied: Json.Text(data, "actions_allowlist") != "",
+            Output: Json.Text(data, "output"),
+            CurrentVersion: Json.Text(data, "current_version"),
+            NewVersion: Json.Text(data, "new_version"),
+            CurrentCommit: Json.Text(data, "current_commit"),
+            NewCommit: Json.Text(data, "new_commit"),
+            CompareUrl: Json.Text(data, "compare_url"),
+            ReleaseUrl: Json.Text(data, "release_url"),
+            Allowlist: Json.Text(data, "actions_allowlist"),
+        }
+
+        func OwnerHealth(data JsonElement) string {
+            let lines = List[string]()
+            for check in Json.Items(data, "checks") {
+                lines.Add(Json.Text(check, "check").Replace('_', ' ') + ": " + Json.Text(check, "status") + "\n" + Json.Text(check, "message"))
+                let command = Json.Strings(check, "command")
+                if command.Length > 0 {
+                    lines.Add(String.Join(" ", command))
+                }
+            }
+            return String.Join("\n\n", lines)
+        }
     }
 }

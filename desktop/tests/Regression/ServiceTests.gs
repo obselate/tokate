@@ -89,6 +89,10 @@ func ServiceTests() {
             RunCodec.ClaimId(Regression.Fixture("run-file.json")),
             "claim identity from a run directory"
         )
+        let external = Run.Empty with{External = true, Path = Path.Combine(runs, "a"), Checkout = Path.Combine(runs, "a", "checkout")}
+        Regression.Equal(RunStore.Checkout(external), Path.Combine(runs, "a", "coding"), "external amendments use the donor coding checkout")
+        File.WriteAllText(RunStore.ClaimFile(external.Path), "{\"source\":\"external\",\"synchronizations\":[]}")
+        Regression.Equal(RunStore.Checkout(external), external.Checkout, "synchronized external amendments use the saved checkout")
 
         let checkout = Path.Combine(directory, "checkout")
         Directory.CreateDirectory(checkout)

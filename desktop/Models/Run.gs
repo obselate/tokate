@@ -51,6 +51,8 @@ data struct Run {
     var Amending string
     /// The command that Tokate gives to finish that amendment.
     var Finish []string
+    var Guidance string
+    var Warning string
 
     prop Kind RunState -> Run.Parse(State)
 
@@ -117,6 +119,8 @@ data struct Run {
             Checkout: "",
             Amending: "",
             Finish: []string{},
+            Guidance: "",
+            Warning: "",
         }
     }
 }

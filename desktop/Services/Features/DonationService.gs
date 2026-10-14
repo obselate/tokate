@@ -333,7 +333,7 @@ class DonationService {
                         RunCodec.Reader(directory),
                         (status Reply[Run]) -> {
                             if !commands.Failed(status.Outcome) {
-                                Open(status.Value, directory)
+                                Open(status.Value with{Warning = status.Outcome.Warning}, directory)
                             }
                         }
                     )
@@ -523,7 +523,7 @@ class DonationService {
             output.Append(outcome.Failure)
             progress = progress with{Output = output.Lines, OutputRevision = output.Revision, Truncated = output.Dropped}
         } else if reply.Value.Path != "" {
-            progress = progress with{Run = reply.Value}
+            progress = progress with{Run = reply.Value with{Warning = outcome.Warning}}
         }
         SetProgress(progress)
     }

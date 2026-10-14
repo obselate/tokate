@@ -91,7 +91,10 @@ class OwnerService {
             return
         }
         Issues.Reset(reply.Value.Repository, IssueFilter.All)
-        Set(Current with{Open = true, Selected = nil, Project = reply.Value})
+        Set(Current with{
+            Open = true, Selected = nil, Project = reply.Value, Written = "", DoctorReport = "",
+            CoordinatorOutput = "", Coordinator = CoordinatorReport{},
+        })
         activity.Activate("Refresh project")
         commands.Cli[Policy](
             TokateCommands.Policy(reply.Value.Repository),
@@ -109,6 +112,7 @@ class OwnerService {
         Edit(
             Current with{
                 Policy = policy,
+                PolicyTruncated = reply.Outcome.Envelope?.Truncated ?? false,
                 Project = project,
                 Setup = SetupDraft.From(policy) with{Path = Current.Setup.Path, Step = Current.Setup.Step},
             }
@@ -129,11 +133,18 @@ class OwnerService {
     }
 
     func CheckPrerequisites() {
-        commands.Cli(
-            TokateCommands.OwnerDoctor(),
-            (outcome CommandOutcome) -> {
+        let repository = Current.Open ? Repository: ""
+        commands.Cli[string](
+            TokateCommands.OwnerDoctor(repository),
+            PolicyCodec.OwnerHealth,
+            (reply Reply[string]) -> {
+                let outcome = reply.Outcome
+                Set(Current with{DoctorReport = String.Join("\n", Array.FindAll(
+                    []string{!String.IsNullOrEmpty(reply.Value) ? reply.Value: outcome.Report, outcome.Diagnostics},
+                    part -> part != ""
+                ))})
                 if !commands.Failed(outcome) {
-                    feedback.Show("Owner prerequisites checked.", Tone.Done)
+                    feedback.Show(repository == "" ? "Owner prerequisites checked.": "Owner repository health checked.", Tone.Done)
                 }
             }
         )
@@ -188,6 +199,7 @@ class OwnerService {
             "Approve issue #" + number,
             TokateCommands.Approve(Repository, number, branch),
             "Authorize issue #" + number + " on " + branch + " under the current project policy." +
+                "\n\nThis ends any reservation or published PR authority under an earlier approval." +
                 (drafts.Length > 0 ? "\n\nThis issue has a contribution under an earlier approval (PR #" + String.Join(", #", drafts) +
                 "). A new approval replaces its reservation, and the donor cannot amend the contribution after that.": ""),
             false
@@ -304,14 +316,17 @@ class OwnerService {
     /// Allows or removes a harness with one provider. OMP opens its provider list, or removes all its
     /// providers. At least one pair stays allowed.
     func ToggleTool(id string) {
-        let pairs = List[string](Current.Setup.EffectiveTools(Current.Policy))
+        let pairs = List[string](Current.Setup.EffectiveTools())
         if id == "omp" {
             let providers = pairs.FindAll(pair -> pair.StartsWith("omp/"))
             if providers.Count == 0 {
                 Set(Current with{OmpOpen = !Current.OmpOpen})
             } else if providers.Count < pairs.Count {
                 pairs.RemoveAll(pair -> pair.StartsWith("omp/"))
-                Edit(Current with{OmpOpen = false, Setup = Current.Setup with{Tools = String.Join(",", pairs)}})
+                Edit(Current with{OmpOpen = false, Setup = Current.Setup with{Tools = String.Join(",", pairs), PermissionsChanged = true}})
+                if !pairs.Contains(Current.Setup.ModelTool) {
+                    SetModelTool(pairs[0])
+                }
             }
             return
         }
@@ -329,13 +344,16 @@ class OwnerService {
     }
 
     private func TogglePair(pair string) {
-        let pairs = List[string](Current.Setup.EffectiveTools(Current.Policy))
+        let pairs = List[string](Current.Setup.EffectiveTools())
         if !pairs.Remove(pair) {
             pairs.Add(pair)
         } else if pairs.Count == 0 {
             pairs.Add(pair)
         }
-        EditSetup(Current.Setup with{Tools = String.Join(",", pairs)})
+        EditSetup(Current.Setup with{Tools = String.Join(",", pairs), PermissionsChanged = true})
+        if !pairs.Contains(Current.Setup.ModelTool) {
+            SetModelTool(pairs[0])
+        }
     }
 
     /// Reads the model catalogs of this computer for the setup pickers, once.
@@ -347,7 +365,34 @@ class OwnerService {
         commands.Catalogs((codex, omp) -> Set(Current with{Codex = codex, Omp = omp}))
     }
 
-    func SetModelPolicy(policy string) -> EditSetup(Current.Setup with{ModelPolicy = policy})
+    func SetModelTool(tool string) {
+        var models = []ModelAllowance{}
+        var restricted = false
+        for allowance in Current.Setup.ToolModels {
+            if allowance.Tool == tool {
+                models = allowance.Models
+                restricted = allowance.Restricted
+            }
+        }
+        EditSetup(Current.Setup with{
+            ModelTool = tool,
+            Models = models,
+            ModelPolicy = restricted ? "whitelist": "unrestricted",
+        })
+    }
+
+    func SetModelPolicy(policy string) {
+        let setup = Current.Setup
+        let tools = List[ToolAllowance](setup.ToolModels)
+        let allowance = ToolAllowance{Tool: setup.ModelTool, Models: setup.Models, Restricted: policy == "whitelist"}
+        let index = tools.FindIndex(tool -> tool.Tool == setup.ModelTool)
+        if index >= 0 {
+            tools[index] = allowance
+        } else {
+            tools.Add(allowance)
+        }
+        EditSetup(setup with{ModelPolicy = policy, ToolModels = tools.ToArray(), PermissionsChanged = true})
+    }
 
     /// Allows `model` with comma-separated `efforts`, or "absent" when none are given.
     func AddModel(model string, efforts string) {
@@ -378,19 +423,70 @@ class OwnerService {
         SetModels(models.ToArray())
     }
 
-    private func SetModels(models []ModelAllowance) -> EditSetup(
-        Current.Setup with{Models = models, ModelsJson = Json.StringListMap(models), ModelPolicy = "whitelist"}
-    )
+    private func SetModels(models []ModelAllowance) {
+        EditSetup(Current.Setup with{Models = models})
+        SetModelPolicy("whitelist")
+    }
 
     func SetMinutes(value string) -> EditSetup(Current.Setup with{Minutes = value})
 
     func SetPath(path string) -> EditSetup(Current.Setup with{Path = path})
+
+    func SetCoordinatorOutput(path string) -> Set(Current with{CoordinatorOutput = path, Coordinator = CoordinatorReport{}})
+
+    func PreviewCoordinator() {
+        if !Path.IsPathFullyQualified(Current.CoordinatorOutput) {
+            feedback.Show("Enter an absolute path for a new workflow file outside .github.", Tone.Fail)
+            return
+        }
+        commands.Cli[CoordinatorReport](
+            TokateCommands.CoordinatorSetup(Repository, Current.CoordinatorOutput),
+            PolicyCodec.Coordinator,
+            (reply Reply[CoordinatorReport]) -> {
+                if !commands.Failed(reply.Outcome) {
+                    Set(Current with{Coordinator = reply.Value})
+                }
+            }
+        )
+    }
+
+    func ApplyCoordinator() {
+        let preview = Current.Coordinator
+        if !preview.Loaded || preview.Applied {
+            return
+        }
+        dialogs.Ask(
+            Confirmation{
+                Title: "Generate coordinator workflow?",
+                Text: Repository + "\n\nWrite the current release workflow to " + preview.Output +
+                    "." + (preview.NewCommit != "" ? "\n\nPreviewed shared workflow commit: " + preview.NewCommit + ".": "") +
+                    "\n\nThis also checks Actions and updates its allowlist to permit the new shared workflow. " +
+                    "Review the generated file, then install and commit it yourself.",
+                ConfirmLabel: "Generate and update allowlist",
+                Heading: "",
+            },
+            () -> {
+                commands.Cli[CoordinatorReport](
+                    TokateCommands.CoordinatorSetup(Repository, preview.Output, true),
+                    PolicyCodec.Coordinator,
+                    (reply Reply[CoordinatorReport]) -> {
+                        if !commands.Failed(reply.Outcome) {
+                            Set(Current with{Coordinator = reply.Value})
+                        }
+                    }
+                )
+            }
+        )
+    }
 
     /// Writes the policy and workflow into the checkout after confirmation, and keeps the report of the files.
     func Apply() {
         try {
             let repository = RepositoryRef.Parse(Repository).FullName
             let setup = Current.Setup
+            if Current.PolicyTruncated {
+                throw Exception("The CLI omitted policy entries. Use tokate init to preserve the complete tool permissions.")
+            }
             if !Directory.Exists(setup.CheckedPath()) {
                 throw Exception("Enter an existing absolute checkout path.")
             }
@@ -409,7 +505,10 @@ class OwnerService {
                             if commands.Failed(outcome) {
                                 return
                             }
-                            Set(Current with{Written = outcome.Diagnostics})
+                            Set(Current with{Written = String.Join("\n", Array.FindAll(
+                                []string{outcome.Report, outcome.Diagnostics},
+                                part -> part != ""
+                            ))})
                             feedback.Show("Setup written. Review and commit the files before approving issues.", Tone.Done)
                         },
                         directory: setup.Path

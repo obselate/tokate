@@ -26,8 +26,8 @@ class RunReader : Cancellable {
             if Cancelled(outcome) {
                 return nil
             }
-            let run Run? = outcome.Failure == "" ? status.Value: nil
-            var error = outcome.Failure != "" ? outcome.Failure: outcome.ExitCode != 0 ? outcome.Envelope?.Error?.Message ?? "": ""
+            let run Run? = outcome.Failure == "" ? status.Value with{Warning = outcome.Warning, Checkout = RunStore.Checkout(status.Value)}: nil
+            var error = outcome.Failure != "" ? outcome.Failure: outcome.ExitCode != 0 ? outcome.ErrorMessage(): ""
             if run == nil || !run!!.Readable {
                 error = error == "" ? "Saved contribution could not be read.": error
             }

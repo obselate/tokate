@@ -18,8 +18,9 @@ class ContributionsTab {
             let repository = owner.Repository
             let number = issue.NumberText
             let work = state.WorkFor(number)
-            let status = work != nil && work!!.Drafts.Length > 0 ? "Needs review": work != nil ? work!!.State.Replace('_', ' '): issue.IsApproved ?
-            "Approved": "Needs approval"
+            let needsApproval = work?.NeedsApproval ?? false
+            let status = needsApproval ? "Needs fresh approval": work != nil && work!!.Drafts.Length > 0 ? "Needs review":
+            work != nil ? work!!.State.Replace('_', ' '): issue.IsApproved ? "Approved": "Needs approval"
             return []Blob{
                 Row{
                     Children: []Blob{
@@ -65,7 +66,7 @@ class ContributionsTab {
                     Compact: page.CompactPanels,
                     Button: page.Button,
                     OnApproval: () -> {
-                        if issue.IsApproved {
+                        if issue.IsApproved && !needsApproval {
                             owner.Revoke(issue)
                         } else {
                             owner.Approve(issue)

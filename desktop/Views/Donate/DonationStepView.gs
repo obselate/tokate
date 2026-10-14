@@ -23,6 +23,12 @@ class DonationStepView {
         if message != "" {
             children.Add(Callout{Message: message, Tone: tone}.Build())
         }
+        if progress.Run.Warning != "" {
+            children.Add(Callout{Message: progress.Run.Warning, Tone: Tone.Need}.Build())
+        }
+        if progress.Run.Guidance != "" {
+            children.Add(Callout{Message: progress.Run.Guidance, Tone: Tone.Need}.Build())
+        }
         children.Add(
             DonationStatus{
                 Progress: progress,

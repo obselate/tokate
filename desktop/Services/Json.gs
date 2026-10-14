@@ -100,6 +100,31 @@ class Json {
             }
         )
 
+        func AllowedTools(pairs []string, tools []ToolAllowance) string -> Write(
+            writer -> {
+                writer.WriteStartArray()
+                for pair in pairs {
+                    let split = pair.IndexOf('/')
+                    writer.WriteStartObject()
+                    writer.WriteString("harness", pair.Substring(0, split))
+                    writer.WriteString("provider", pair.Substring(split + 1))
+                    for tool in tools {
+                        if tool.Tool == pair && tool.Restricted {
+                            writer.WritePropertyName("models")
+                            writer.WriteStartObject()
+                            for model in tool.Models {
+                                writer.WritePropertyName(model.Model)
+                                WriteStrings(writer, model.Efforts)
+                            }
+                            writer.WriteEndObject()
+                        }
+                    }
+                    writer.WriteEndObject()
+                }
+                writer.WriteEndArray()
+            }
+        )
+
         /// The public summary file that `tokate amend` reads for the candidate commit `head`.
         func Summary(head string, summary PublicSummary) string -> Write(
             writer -> {

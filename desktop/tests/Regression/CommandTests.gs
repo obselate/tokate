@@ -71,21 +71,41 @@ func CommandTests() {
         CommandsChanged = true,
         Checks = []string{"build"},
         ChecksChanged = true,
-        ModelPolicy = "whitelist",
-        Models = []ModelAllowance{ModelAllowance{Model: "gpt", Efforts: []string{"high"}}},
+        ToolModels = []ToolAllowance{ToolAllowance{
+            Tool: "codex/openai",
+            Models: []ModelAllowance{ModelAllowance{Model: "gpt", Efforts: []string{"high"}}},
+            Restricted: true,
+        }},
+        PermissionsChanged = true,
         Minutes = "30",
         Tools = "codex/openai,omp/openrouter",
         Eligibility = "open",
     }
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", setup)),
-        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --model-policy whitelist --max-time 30m --models {\"gpt\":[\"high\"]} --allowed-tools codex/openai,omp/openrouter --eligibility open",
+        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --max-time 30m --allowed-tools [{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}] --eligibility open",
         "init arguments"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}) with{Path = "/p"})),
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))) with{Path = "/p"})),
         "init o/r --path /p --non-interactive",
-        "unchanged init arguments"
+        "unchanged init leaves upstream tool permissions untouched"
+    )
+    Regression.Equal(Regression.Args(TokateCommands.OwnerDoctor("o/r")), "doctor owner o/r --auth", "owner repository health")
+    Regression.Equal(
+        Regression.Args(TokateCommands.Approve("o/r", "42", "main")),
+        "approve o/r#42 --base-branch main --yes",
+        "confirmed approval can replace stale authority"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.CoordinatorSetup("o/r", "/p/new.yml")),
+        "coordinator-setup o/r --output /p/new.yml --non-interactive",
+        "coordinator preview does not apply"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.CoordinatorSetup("o/r", "/p/new.yml", true)),
+        "coordinator-setup o/r --output /p/new.yml --non-interactive --yes",
+        "confirmed coordinator apply"
     )
 
     let amendment = AmendmentDraft.Initial with{

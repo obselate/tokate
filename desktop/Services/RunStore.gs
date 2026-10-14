@@ -51,6 +51,15 @@ class RunStore {
         func ClaimId(run string) string -> RunCodec.ClaimId(Json.ParseFile(ClaimFile(run)))
 
         func Exists(path string) bool -> File.Exists(path)
+        func Checkout(run Run) string {
+            if !run.External {
+                return run.Checkout
+            }
+            let saved = Json.ParseFile(ClaimFile(run.Path))
+            return Json.Get(saved, "reconciliation").ValueKind == System.Text.Json.JsonValueKind.Undefined &&
+                Json.Get(saved, "synchronizations").ValueKind == System.Text.Json.JsonValueKind.Undefined ?
+                Path.Combine(run.Path, "coding"): run.Checkout
+        }
 
         /// The commit at HEAD of a saved checkout, when its files differ from `published`.
         func Correction(checkout string, published string) CheckoutHead {

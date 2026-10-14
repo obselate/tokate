@@ -114,6 +114,9 @@ class RunActions {
                     continue
                 }
                 if let parsed = Parse(action.Command) {
+                    if parsed == RunAction.Prepare && Array.IndexOf(action.Arguments, "--continue-from") >= 0 {
+                        continue
+                    }
                     if !result.Contains(parsed) {
                         result.Add(parsed)
                     }
@@ -218,8 +221,7 @@ data struct RunGuide {
             case "Initial donation failed": RunGuide{
                 Step: 1,
                 Heading: "The donation failed",
-                Text: "Start the donation again.",
-                Main: RunAction.Work,
+                Text: "Inspect the saved work and status. Fresh preparation needs current approval and an explicit new time budget.",
             }
             case "Verification failed": RunGuide{
                 Step: 1,

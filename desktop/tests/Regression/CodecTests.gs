@@ -9,8 +9,9 @@ func CodecTests() {
     Regression.Check(CliCodec.Matches(pending, 8, "claim"), "envelope matches the command")
     Regression.Check(!CliCodec.Matches(pending, 0, "claim"), "envelope rejects a different exit code")
     Regression.Check(pending.Error == nil, "null error decodes as none")
-    Regression.Equal(pending.NextActions[1].Command, "prepare", "next action command")
+    Regression.Equal(pending.NextActions[1].Command, "work", "managed pending claim next action")
     Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/state/tokate/runs/abc", "run path")
+    Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("Do not repost"), "pending claim preserves recovery guidance")
 
     let failed = Regression.Fixture("envelope-error.json")
     let envelope = CliCodec.Envelope(failed)
@@ -28,21 +29,32 @@ func CodecTests() {
     Regression.Equal(run.Harness, "pi", "first tool harness wins")
     Regression.Check(run.Issue == 42 && run.Pr == 7 && run.CodingSeconds == 1800, "run numbers")
     Regression.Check(!run.Unlimited, "run flags")
-    Regression.Equal(run.ErrorMessage, "Verification failed.", "run error message")
+    Regression.Equal(run.ErrorMessage, "Independent verification failed. Inspect the private verification artifact.", "run error message")
     Regression.Equal(run.Approval, "appr-1", "run approval")
     Regression.Equal(run.CodingTime, "30 minutes", "coding time text")
 
     let policy = PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))
-    Regression.Check(policy.Loaded && policy.Version == 2 && policy.MaxSeconds == 5400, "policy basics")
+    Regression.Check(policy.Loaded && policy.Version == 3 && policy.MaxSeconds == 5400, "policy basics")
     Regression.Check(policy.AllowsUnlimited, "policy flags")
     Regression.Equal(String.Join(",", policy.RequiredChecks), "build,test", "required checks")
     Regression.Equal(String.Join(" ", policy.Verification[0]), "/bin/sh -c dotnet test", "verification command")
     Regression.Check(
-        policy.Models.Length == 2 && policy.Models[0].Model == "gpt-6.1-sol" && policy.Models[0].Efforts[1] == "xhigh",
-        "model whitelist"
+        policy.ModelsFor("codex", "openai").Length == 1 &&
+            policy.ModelsFor("codex", "openai")[0].Efforts[1] == "xhigh" &&
+            policy.RestrictsTool("codex", "openai") && !policy.RestrictsTool("pi", "local-chat-completions"),
+        "per-tool model whitelist and unrestricted tool"
     )
     Regression.Equal(String.Join(",", policy.AllowedTools), "codex,pi", "allowed tools")
     Regression.Check(!PolicyCodec.Policy(JsonElement{}).Loaded, "missing policy is not loaded")
+    let legacy = PolicyCodec.Policy(Json.Parse(
+        "{\"version\":2,\"model_policy\":\"whitelist\",\"models\":{\"gpt\":[\"high\"]},\"eligibility\":\"manual\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}]}"
+    ))
+    Regression.Check(legacy.ModelsFor("codex", "openai").Length == 1 && legacy.Eligibility == "trusted", "legacy model and eligibility permissions survive migration")
+    let coordinator = PolicyCodec.Coordinator(Json.Parse(
+        "{\"repo\":\"o/r\",\"output\":\"/p/new.yml\",\"current_version\":\"0.4.0\",\"new_version\":\"0.5.0\",\"current_commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"new_commit\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"compare_url\":\"https://github.com/obselate/tokate/compare/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"release_url\":\"https://github.com/obselate/tokate/releases/tag/v0.5.0\",\"actions_allowlist\":\"Updated the Actions allowlist to permit obselate/tokate/.github/workflows/tokate-shared.yml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.\"}"
+    ))
+    Regression.Check(coordinator.Loaded && coordinator.Applied && coordinator.CurrentVersion == "0.4.0" && coordinator.NewVersion == "0.5.0", "coordinator pin comparison")
+    Regression.Check(coordinator.CompareUrl != "" && coordinator.ReleaseUrl != "" && coordinator.Allowlist.StartsWith("Updated"), "coordinator links and allowlist result")
 
     let search = IssueCodec.Search(Regression.Fixture("search.json"))
     Regression.Check(search.Total == 1203 && search.Rows.Length == 2, "search totals")
@@ -58,6 +70,11 @@ func CodecTests() {
         PullRequestCodec.ChecksStatus(Json.Parse("{\"checks_status\":\"pending\",\"workflow_runs_awaiting_approval\":[]}")),
         "pending",
         "checks without waiting workflow runs keep their state"
+    )
+    Regression.Equal(
+        PullRequestCodec.ChecksStatus(Json.Parse("{\"machine_status\":\"historical\",\"checks_status\":\"unread\"}")),
+        "historical",
+        "closed pull requests retain historical machine state"
     )
     let pull = PullRequestCodec.PullRequest(Regression.Fixture("pull-request.json"))
     Regression.Check(pull.ChecksPending && !pull.ChecksFailed, "pull request checks")
@@ -114,6 +131,12 @@ func CodecTests() {
         "",
         "a model outside the whitelist is cleared"
     )
+    let scoped = PolicyCodec.Policy(Json.Parse(
+        "{\"version\":3,\"allowed_tools\":[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\",\"models\":{\"claude-opus-5-5\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"models\":{\"a/b\":[\"max\"]}},{\"harness\":\"omp\",\"provider\":\"anthropic\"}]}"
+    ))
+    Regression.Check(ModelChoice.Catalog("pi", "", []ModelChoice{}, omp, scoped)[0].Slug == "claude-opus-5-5", "Pi uses its own model permissions")
+    Regression.Check(ModelChoice.Catalog("omp", "openrouter", []ModelChoice{}, omp, scoped)[0].Efforts.Length == 0, "OMP efforts are scoped to its provider")
+    Regression.Check(ModelChoice.Catalog("omp", "anthropic", []ModelChoice{}, omp, scoped).Length == 1, "a tool without models is unrestricted")
     Regression.Check(
         !DonorCodec.HarnessReady(Json.Parse("{\"tools\":[{\"name\":\"pi\",\"status\":\"failed\"}]}"), "pi") &&
             DonorCodec.HarnessReady(Json.Parse("{\"tools\":[]}"), "pi"),
@@ -132,6 +155,7 @@ func CodecTests() {
 
     let work = IssueCodec.Work(Regression.Fixture("issue-work.json"))
     Regression.Check(work.Length == 1 && work[0].Issue == "42" && work[0].Drafts[1] == "9", "issue work")
+    Regression.Check(work[0].NeedsApproval && work[0].NextAction.Contains("tokate approve"), "stale label approvals retain owner guidance")
 
     Regression.Throws(() -> Json.Parse(String('x', Json.MaxLength + 1)), "JSON input exceeds the size limit.", "size limit")
 }

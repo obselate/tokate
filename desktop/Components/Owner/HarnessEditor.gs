@@ -19,7 +19,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
     protected override func Build(input HarnessEditorInput) Blob {
         let owner = input.Owner
         let state = owner.Current
-        let pairs = state.Setup.EffectiveTools(state.Policy)
+        let pairs = state.Setup.EffectiveTools()
         let allowed = List[string]()
         let kept = List[string]()
         for pair in pairs {
