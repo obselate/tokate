@@ -16,7 +16,6 @@ internal class PublicSummary {
         private let Incomplete string = "PR report omits the public change or verification report region. Restore the Tokate report before acceptance."
         private let Altered string = "PR report differs from the authoritative public summary for this exact candidate. Restore it or amend with a current summary."
         private let Header string = " | Model / effort | Coding time | Input tokens | Output tokens | Cached tokens |\n| --- | --- | --- | --- | --- | --- |"
-        private let LegacyHeader string = " | Model / effort | Coding seconds | Reported usage |\n| --- | --- | --- | --- |"
         internal let RestrictedTextPattern string = "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|\\bsk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
 
         internal func Validate(value JsonElement, head string = "") {
@@ -326,32 +325,6 @@ internal class PublicSummary {
             }
 
             return String.Join(" | ", counts)
-        }
-
-        internal func Upgrade(report string) string -> Regex.Replace(
-            report.Replace(LegacyHeader, Header),
-            "(?m)^(\\| [^|\\n]* \\| [^|\\n]* \\| )([0-9]{1,9}|unknown) \\| (unknown|(?:[a-z ]+: [0-9]{1,18}; )*[a-z ]+: [0-9]{1,18} tokens) \\|$",
-            LegacyRow
-        )
-
-        private func LegacyRow(row Match) string {
-            let seconds = row.Groups[2].Value
-            let usage = map[string, Object?]{}
-
-            if row.Groups[3].Value != "unknown" {
-                for pair in row.Groups[3].Value.Replace(" tokens", "").Split("; ") {
-                    let parts = pair.Split(": ")
-                    usage[parts[0].Replace(' ', '_') + "_tokens"] = Int64.Parse(parts[1])
-                }
-            }
-
-            let tool = row.Groups[1].Value
-
-            return tool +
-                (seconds == "unknown" ? "unknown": Duration(Int64.Parse(seconds))) +
-                " | " +
-                Usage(J.Parse(J.Write(usage))) +
-                " |"
         }
 
         internal func Tools(tools JsonElement, label string) string {

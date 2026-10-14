@@ -153,7 +153,7 @@ internal class PrBody {
                 throw CliFailure("invalid_state", "Malformed Tokate report region")
             }
 
-            return PublicSummary.Upgrade(body.Substring(start, end - start).Trim())
+            return body.Substring(start, end - start).Trim()
         }
 
         internal func Owned(body string) string -> ReportText(body) + "\n" + RequestData.Canonical(Receipt(body))
