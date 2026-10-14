@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access policy doctor defaults update uninstall overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -981,7 +981,7 @@ internal class CliDiscovery {
                 Check.Text(defaults?["operations"]?[1]?["effects"]?["local_write"]) == "false",
                 "Defaults read advertised a write"
             )
-            for name in[]string{"select", "amend", "request"} {
+            for name in[]string{"defaults", "amend", "request"} {
                 let command = Check.Envelope(Call(binary, []string{"help", name, "--json"}, temp), "help", "ok")[
                     "data"
                 ]?["commands"]?[0]
@@ -1470,10 +1470,6 @@ internal class CliDiscovery {
                 Call(binary, []string{"work", "owner/project#1", "--time", "2d"}, temp, 1).Error,
                 "Use at most 24h: --time"
             )
-            Check.Contains(
-                Call(binary, []string{"verify-pr"}, temp, 1).Error,
-                "Unknown command: verify-pr. Use tokate verify."
-            )
 
             for argv in[][]string{
                 []string{"nonsense", "--help"},
@@ -1495,7 +1491,6 @@ internal class CliDiscovery {
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
                 []string{"amend", "--run=x", "--time=0s"},
                 []string{"checks", "--run=x", "--timeout=86401s"},
-                []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},
                 []string{"approve", "--base-branch=release//next", "--help"},
                 []string{"approve", "--base-branch=release.lock", "--help"},
@@ -1628,7 +1623,6 @@ internal class CliDiscovery {
                 []string{"policy", "owner/project"},
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
-                []string{"verify", "https://github.com/owner/project/pull/1"},
                 []string{"work", issueUrl, "--model=model", "--effort=high"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=high"},
                 []string{"work", commentUrl, "--model=model", "--effort=high"},

@@ -183,8 +183,9 @@ internal class ClaudeChecks {
                 "PRIVATE_NAME"
             )
             let words = []string{
-                "claude-capabilities",
-                "--claude",
+                "doctor",
+                "claude",
+                "--harness-path",
                 Path.Combine(data.Root, "bin/claude"),
                 "--claude-profile",
                 profile,
@@ -200,8 +201,8 @@ internal class ClaudeChecks {
                 status["subscriptionType"] = JsonValue.Create(plan)
                 File.WriteAllText(statusPath, status.ToJsonString())
                 let result = TestProcess.Run(binary, words, data.Env)
-                let envelope = Check.Envelope(result, "claude-capabilities", "ok")
-                let value = envelope["data"] ?? throw Exception("Missing gate data")
+                let envelope = Check.Envelope(result, "doctor", "ok")
+                let value = envelope["data"]?["claude"] ?? throw Exception("Missing gate data")
                 Check.That(
                     value["auth_status"]?.AsObject().Count == 4 && Check.Text(
                         value["auth_status"]?["subscriptionType"]
@@ -226,41 +227,41 @@ internal class ClaudeChecks {
             let local = List[string](words)
             local.RemoveRange(local.Count - 2, 2)
             local.AddRange([]string{"--path", checkout})
-            Check.Envelope(TestProcess.Run(binary, local.ToArray(), data.Env), "claude-capabilities", "ok")
+            Check.Envelope(TestProcess.Run(binary, local.ToArray(), data.Env), "doctor", "ok")
             Check.SetModels(policy, Check.Json("{\"claude-sonnet-5-5\":[\"medium\"]}"))
             Check.SaveJson(policyPath, policy)
-            words[6] = "claude-sonnet-5-5"
-            words[8] = "medium"
-            let changed = Check.Envelope(TestProcess.Run(binary, words, data.Env), "claude-capabilities", "ok")["data"]
+            words[7] = "claude-sonnet-5-5"
+            words[9] = "medium"
+            let changed = Check.Envelope(TestProcess.Run(binary, words, data.Env), "doctor", "ok")["data"]?["claude"]
             Check.That(
-                Check.Text(changed?["requested"]?["model"]) == words[6] && Check.Text(
+                Check.Text(changed?["requested"]?["model"]) == words[7] && Check.Text(
                     changed?["requested"]?["effort"]
-                ) == words[8],
+                ) == words[9],
                 "Changed owner model/effort policy did not reach the native invocation"
             )
             let invocation = List[string]()
             for word in changed?["invocation"]?.AsArray() ?? throw Exception("Missing invocation") {
                 invocation.Add(Check.Text(word))
             }
-            Check.That(invocation[invocation.IndexOf("--model") + 1] == words[6], "Native model was not selected")
-            Check.That(invocation[invocation.IndexOf("--effort") + 1] == words[8], "Native effort was not selected")
+            Check.That(invocation[invocation.IndexOf("--model") + 1] == words[7], "Native model was not selected")
+            Check.That(invocation[invocation.IndexOf("--effort") + 1] == words[9], "Native effort was not selected")
             let changedReport = Path.Combine(data.Root, "selected.jsonl")
             File.WriteAllText(
                 changedReport,
-                Check.Map("type", "system", "subtype", "init", "model", words[6], "effort", words[8]).ToJsonString() +
+                Check.Map("type", "system", "subtype", "init", "model", words[7], "effort", words[9]).ToJsonString() +
                     "\n"
             )
             let reported = List[string](words)
             reported.AddRange([]string{"--file", changedReport})
             let evidence = Check.Envelope(
                 TestProcess.Run(binary, reported.ToArray(), data.Env),
-                "claude-capabilities",
+                "doctor",
                 "ok"
             )
             Check.That(
-                Check.Text(evidence["data"]?["native_reports"]?["model"]) == words[6] && Check.Text(
-                    evidence["data"]?["native_reports"]?["effort"]
-                ) == words[8],
+                Check.Text(evidence["data"]?["claude"]?["native_reports"]?["model"]) == words[7] && Check.Text(
+                    evidence["data"]?["claude"]?["native_reports"]?["effort"]
+                ) == words[9],
                 "Matching reports were not accepted for the selected pair"
             )
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
@@ -269,8 +270,8 @@ internal class ClaudeChecks {
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
             Check.SetModels(policy, Check.Json("{\"claude-opus-5-5\":[\"high\"]}"))
             Check.SaveJson(policyPath, policy)
-            words[6] = "claude-opus-5-5"
-            words[8] = "high"
+            words[7] = "claude-opus-5-5"
+            words[9] = "high"
             for pair in[]string{
                 "loggedIn=false",
                 "loggedIn=true",
@@ -294,7 +295,7 @@ internal class ClaudeChecks {
             File.WriteAllText(statusPath, status.ToJsonString())
             for effort in[]string{"xhigh", "medium", "max"} {
                 let rejected = List[string](words)
-                rejected[8] = effort
+                rejected[9] = effort
                 let result = TestProcess.Run(binary, rejected.ToArray(), data.Env)
                 Check.That(
                     result.Code == 1 && result.Output.Contains("not allowed by the repository policy"),
@@ -302,7 +303,7 @@ internal class ClaudeChecks {
                 )
             }
             let alias = List[string](words)
-            alias[6] = "opus"
+            alias[7] = "opus"
             let aliasResult = TestProcess.Run(binary, alias.ToArray(), data.Env)
             Check.That(
                 aliasResult.Code == 1 && aliasResult.Output.Contains("Unsupported native Claude model/effort pair"),
@@ -335,9 +336,9 @@ internal class ClaudeChecks {
                 "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-opus-5-5\",\"permissionMode\":\"default\"}\n{\"type\":\"result\",\"usage\":{\"input_tokens\":12}}\n"
             )
             let parsed = Check
-                .Envelope(TestProcess.Run(binary, withReport.ToArray(), data.Env), "claude-capabilities", "ok")[
+                .Envelope(TestProcess.Run(binary, withReport.ToArray(), data.Env), "doctor", "ok")[
                 "data"
-            ]?["native_reports"]
+            ]?["claude"]?["native_reports"]
             Check.That(
                 parsed?["effort"] == nil && Check.Text(parsed?["usage"]?["input_tokens"]) == "12",
                 "Reports invented effort or lost native usage"

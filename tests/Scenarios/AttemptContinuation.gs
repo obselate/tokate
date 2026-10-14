@@ -424,7 +424,7 @@ internal class AttemptContinuationChecks {
                 test.Flow.NoPr()
             }
             test.Coordinate(test.Event(request))
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
             test.Flow.Reload()
             let body = Check.Text(test.Flow.State["pulls"]?[0]?["body"])
             Check.Contains(
@@ -443,7 +443,7 @@ internal class AttemptContinuationChecks {
                     body.Substring(0, receiptStart) + receipt.ToJsonString() + body.Substring(receiptEnd)
                 )
                 test.Flow.Save()
-                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                test.Flow.Receipt("owner/project#10", false, true)
             }
             test.Flow.Reload()
             let pull = test.Flow.State["pulls"]?[0] ?? throw Exception("Missing pull")
@@ -451,7 +451,7 @@ internal class AttemptContinuationChecks {
             test.Flow.Save()
             test.Lifecycle("pause")
             test.Lifecycle("resume")
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
         }
 
         private func Refusals(binary string) {

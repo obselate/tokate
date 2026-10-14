@@ -76,7 +76,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("- Add a result"), "Amendment retained abandoned summary")
             flow.Call(args)
             Check.That(Body(flow) == body, "Repeated amendment changed body")
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
         }
 
         private func External(binary string) {
@@ -175,7 +175,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("\"harness\""), "Raw tool JSON in public report")
             flow.Coordinate(event)
             Check.That(Body(flow.Flow) == body, "Repeated publication changed body")
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Flow.Receipt("owner/project#10", owner: true)
             let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + body + "\nMaintainer after")
             flow.Flow.Save()
@@ -217,7 +217,7 @@ internal class PublicDescriptions {
             flow.Coordinate(amendmentEvent)
             Check.That(Body(flow.Flow) == reviewed, "Repeated coordinated amendment changed body")
             flow.Flow.Call(args)
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Flow.Receipt("owner/project#10", owner: true)
         }
 
         private func Recovery(binary string) {
@@ -280,7 +280,7 @@ internal class PublicDescriptions {
                 Check.Contains(body, "Donor-reported correction tools")
                 Check.Contains(body, "cover only the original completed turn")
                 Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Receipt("owner/project#10", owner: true)
             }
         }
 
@@ -339,7 +339,7 @@ internal class PublicDescriptions {
                         !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
                         "Recovered summary artifact committed"
                     )
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Receipt("owner/project#10", owner: true)
                 }
             }
         }
@@ -458,7 +458,7 @@ internal class PublicDescriptions {
                 } else {
                     flow.Publish(run)
                     Check.Contains(Body(flow), "Fix final result behavior.")
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Receipt("owner/project#10", owner: true)
                 }
             }
         }

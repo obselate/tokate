@@ -176,7 +176,7 @@ internal class OverlapFlow : IDisposable {
                 metadata["sync"] = JsonValue.Create(grant)
                 Test.Coordinate(Test.Event(request))
                 Heads[issue - 1] = candidate
-                Flow.Call([]string{"verify", "owner/project#" + (issue + 9).ToString()}, owner: true)
+                Flow.Receipt("owner/project#" + (issue + 9).ToString(), owner: true)
             }
         }
         return upstream

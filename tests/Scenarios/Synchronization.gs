@@ -509,7 +509,7 @@ internal class SynchronizationChecks {
                         Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"]) == candidate,
                         "Race did not preserve physical push"
                     )
-                    flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                    flow.Receipt("owner/project#10", false, true)
                 }
                 return
             }
@@ -577,13 +577,13 @@ internal class SynchronizationChecks {
             if mode == "tree-reuse" {
                 flow.StartTreeTraffic()
             }
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             if mode == "tree-reuse" {
                 flow.TreeTraffic(h, 1, false, false)
                 flow.Reload()
                 flow.State["diff_fault"] = JsonValue.Create("wrong-identical-base")
                 flow.Save()
-                let refused = flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                let refused = flow.Receipt("owner/project#10", false, true)
                 Check.Contains(
                     refused.Output + refused.Error,
                     "Missing or mismatched synchronization ancestry evidence"
@@ -642,7 +642,7 @@ internal class SynchronizationChecks {
             Amend(flow, run, next)
             if mode == "tree-reuse" {
                 flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Receipt("owner/project#10", owner: true)
                 flow.TreeTraffic(h, 1, true, false)
             }
             let history = Saved(run)["synchronizations"]?[0] ?? throw Exception("Lost historical synchronization")
@@ -665,7 +665,7 @@ internal class SynchronizationChecks {
                     Check.Text(checked["data"]?["gates"]?["freshness"]?["status"]) == "passed",
                 "Later target movement rejected verified synchronization history"
             )
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
             let newGrant = Grant(flow, newCandidate, newUpstream)
@@ -704,7 +704,7 @@ internal class SynchronizationChecks {
             Check.That(Saved(run)["synchronizations"]?.AsArray().Count == 2, "New grant discarded history")
             if mode == "tree-reuse" {
                 flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Receipt("owner/project#10", owner: true)
                 flow.TreeTraffic(h, 2, false, false)
                 PublishedContribution.Write(Path.Combine(run, "checkout"), "two-grant-followup.txt", "later head\n")
                 let later = Commit(flow, Path.Combine(run, "checkout"), "Later head after two grants")
@@ -715,14 +715,14 @@ internal class SynchronizationChecks {
                 coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
                 Amend(flow, run, later)
                 flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Receipt("owner/project#10", owner: true)
                 flow.TreeTraffic(h, 2, true, false)
                 let tree = flow.Git("-C", Path.Combine(flow.Bin, "fork"), "rev-parse", later + "^{tree}")
                 flow.Reload()
                 flow.State["tree_fault"] = JsonValue.Create("truncated")
                 flow.State["tree_fault_sha"] = JsonValue.Create(tree)
                 flow.Save()
-                flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                flow.Receipt("owner/project#10", false, true)
                 flow.Reload()
                 flow.State["tree_fault"] = nil
                 flow.State["tree_fault_sha"] = nil
@@ -737,7 +737,7 @@ internal class SynchronizationChecks {
                 Check.Contains(rejected.Output + rejected.Error, "Synchronization changes protected owner content")
             }
             Revoke(flow, grant)
-            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            flow.Receipt("owner/project#10", false, true)
             flow.NoInference()
         }
 
@@ -1032,14 +1032,14 @@ internal class SynchronizationChecks {
                     return
                 }
                 if mode == "moving-target-coordinated" {
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Receipt("owner/project#10", owner: true)
                     Check.That(Check.Text(Saved(run)["commit"]) == h, "Owner verification changed saved head")
                 }
                 if pending != "" {
                     let failed = Amend(flow, run, candidate, pending, 1)
                     Check.Contains(failed.Output + failed.Error, "Synchronization target moved")
                     if mode == "moving-target-pushed" {
-                        flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+                        flow.Receipt("owner/project#10", false, true)
                         Grant(flow, candidate, flow.Git("-C", flow.Upstream, "rev-parse", "HEAD"), 1)
                     }
                 }
@@ -1119,7 +1119,7 @@ internal class SynchronizationChecks {
             coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
             Amend(flow, run, candidate, grant)
             Check.That(Check.Text(Saved(run)["commit"]) == candidate, "Amend did not publish reconciled candidate")
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             if mode == "moving-target-pushed" {
                 PublishedContribution.Write(flow.Upstream, "movement.txt", "target changed again\n")
                 flow.Commit("Move target after recovery")
@@ -1136,7 +1136,7 @@ internal class SynchronizationChecks {
                 flow.Reload()
                 coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
                 Amend(flow, run, candidate, nextGrant)
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Receipt("owner/project#10", owner: true)
             }
             if mode == "edits" {
                 PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")

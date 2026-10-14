@@ -58,7 +58,7 @@ internal class TargetBranches {
                 !Check.Text(pull["body"]).Contains("Untrusted target template"),
                 "Target template weakened authority"
             )
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
             let current = flow.Git("-C", flow.Upstream, "rev-parse", branch)
@@ -93,11 +93,11 @@ internal class TargetBranches {
             let target = flow.State["pulls"]?[0]?["base"] ?? throw Exception("Missing base")
             target["ref"] = JsonValue.Create("main")
             flow.Save()
-            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            flow.Receipt("owner/project#10", false, true)
             target["ref"] = JsonValue.Create(branch)
             flow.Save()
             flow.Git("-C", flow.Upstream, "branch", "-D", branch)
-            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            flow.Receipt("owner/project#10", false, true)
         }
 
         private func V2(binary string, branch string, external bool) {

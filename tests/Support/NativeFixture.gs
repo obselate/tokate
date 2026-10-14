@@ -124,7 +124,7 @@ internal open class NativeFixture : IDisposable {
         Git("-C", Upstream, "-c", "user.name=Fixture", "-c", "user.email=test@example.test", "commit", "-m", message)
     }
 
-    internal func Call(args[]string, code int32 = 0, owner bool = false, traffic bool = false) Result {
+    private func Run(args[]string, owner bool, traffic bool = false) Result {
         let env = Dictionary[string, string](Temp.Env)
         if env.ContainsKey("GH_TOKEN") {
             env["GH_TOKEN"] = owner ? "fixture-owner": "fixture-donor"
@@ -134,10 +134,24 @@ internal open class NativeFixture : IDisposable {
         if traffic {
             all.Add("--traffic")
         }
-        let result = TestProcess.Run(Binary, all.ToArray(), env)
+        return TestProcess.Run(Binary, all.ToArray(), env)
+    }
+
+    internal func Call(args[]string, code int32 = 0, owner bool = false, traffic bool = false) Result {
+        let result = Run(args, owner, traffic)
         Check.That(
             result.Code == code,
             "Expected exit " + code.ToString() + ", got " + result.Code.ToString() + "\n" + result.Output + result.Error
+        )
+        return result
+    }
+
+    internal func Receipt(target string, passed bool = true, owner bool = false) Result {
+        let result = Run([]string{"checks", target, "--json"}, owner)
+        let status = Check.Text(Check.Json(result.Output)["data"]?["gates"]?["receipt"]?["status"])
+        Check.That(
+            (status == "passed") == passed && (passed || result.Code == 1),
+            "Expected receipt " + (passed ? "passed": "refused") + ", got " + status + "\n" + result.Output + result.Error
         )
         return result
     }

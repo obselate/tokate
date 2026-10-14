@@ -20,19 +20,7 @@ internal class DonorDefaults {
                     saved = Read()
                 }
 
-                for key in[]string{
-                    "harness",
-                    "provider",
-                    "endpoint",
-                    "pi-root",
-                    "node",
-                    "harness-path",
-                    "claude-profile",
-                } {
-                    if args.Get(key) == "" && J.Text(saved, key) != "" {
-                        args.Values["--" + key] = J.Text(saved, key)
-                    }
-                }
+                Fill(args, saved)
             }
 
             if args.Get("harness") == "" && args.Get("provider") == "" {
@@ -48,6 +36,14 @@ internal class DonorDefaults {
                     args.Values["--provider"] = pair[1]
                 } else if args.Get("harness") == "" && args.Get("provider") == pair[1] {
                     args.Values["--harness"] = pair[0]
+                }
+            }
+        }
+
+        internal func Fill(args Args, saved JsonElement) {
+            for key in[]string{"harness", "provider", "endpoint", "pi-root", "node", "harness-path", "claude-profile"} {
+                if args.Get(key) == "" && J.Text(saved, key) != "" {
+                    args.Values["--" + key] = J.Text(saved, key)
                 }
             }
         }
@@ -122,73 +118,55 @@ internal class DonorDefaults {
 
             let partial = J.Get(value, "model").ValueKind == JsonValueKind.Undefined && J.Get(value, "effort")
                 .ValueKind == JsonValueKind.Undefined
-            RequestData.Token(J.Text(value, "harness"))
+            let harness = RequestData.Token(J.Text(value, "harness"))
 
-            if partial && J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "" {
+            if partial && harness == "claude" && J.Text(value, "provider") == "" {
                 let fields = J.Select(value, "harness,harness-path,claude-profile")
 
                 fields["provider"] = "anthropic"
                 value = J.Parse(J.Write(fields))
             }
 
-            if !partial {
-                RequestData.Token(J.Text(value, "provider"))
+            if J.Text(value, "harness-path") != "" {
+                LocalPaths.RuntimePath(J.Text(value, "harness-path"))
+            }
+
+            if harness == "pi" {
+                if !partial || J.Text(value, "endpoint") != "" {
+                    PiBoundary.Endpoint(J.Text(value, "endpoint"))
+                }
+
+                for key in[]string{"pi-root", "node"} {
+                    if J.Text(value, key) != "" {
+                        LocalPaths.RuntimePath(J.Text(value, key))
+                    }
+                }
+            } else {
+                RequestData.Keys(
+                    value,
+                    partial ? "harness,provider,harness-path,claude-profile": "harness,provider,model,effort,harness-path,claude-profile"
+                )
             }
 
             if partial {
-                if Array.IndexOf(Harnesses, J.Text(value, "harness")) < 0 ||
-                    Provider(J.Text(value, "harness")) != J.Text(value, "provider") {
+                if Array.IndexOf(Harnesses, harness) < 0 || Provider(harness) != J.Text(value, "provider") {
                     throw Exception("Unsupported harness default")
-                }
-
-                if J.Text(value, "harness-path") != "" {
-                    LocalPaths.RuntimePath(J.Text(value, "harness-path"))
-                }
-
-                if J.Text(value, "harness") == "pi" {
-                    if J.Text(value, "endpoint") != "" {
-                        PiBoundary.Endpoint(J.Text(value, "endpoint"))
-                    }
-
-                    for key in[]string{"pi-root", "node"} {
-                        if J.Text(value, key) != "" {
-                            LocalPaths.RuntimePath(J.Text(value, key))
-                        }
-                    }
-                } else {
-                    RequestData.Keys(value, "harness,provider,harness-path,claude-profile")
                 }
 
                 return value
             }
 
+            RequestData.Token(J.Text(value, "provider"))
             RequestData.Token(J.Text(value, "effort"))
 
-            if J.Text(value, "harness") == "pi" {
-                if J.Text(value, "provider") != "local-chat-completions" {
-                    throw Exception("Pi profiles require local-chat-completions")
-                }
-
-                RequestData.ModelIdentifier(J.Text(value, "model"))
-                PiBoundary.Endpoint(J.Text(value, "endpoint"))
-
-                for key in[]string{"pi-root", "node"} {
-                    if J.Get(value, key).ValueKind != JsonValueKind.Undefined {
-                        LocalPaths.RuntimePath(J.Text(value, key))
-                    }
-                }
-            } else {
-                if J.Text(value, "harness") == "omp" {
-                    RequestData.ModelIdentifier(J.Text(value, "model"))
-                } else {
-                    RequestData.Token(J.Text(value, "model"))
-                }
-
-                RequestData.Keys(value, "harness,provider,model,effort,harness-path,claude-profile")
+            if harness == "pi" && J.Text(value, "provider") != "local-chat-completions" {
+                throw Exception("Pi profiles require local-chat-completions")
             }
 
-            if J.Text(value, "harness-path") != "" {
-                LocalPaths.RuntimePath(J.Text(value, "harness-path"))
+            if harness == "pi" || harness == "omp" {
+                RequestData.ModelIdentifier(J.Text(value, "model"))
+            } else {
+                RequestData.Token(J.Text(value, "model"))
             }
 
             return value
@@ -277,8 +255,22 @@ internal class DonorDefaults {
                 )
             }
 
-            if args.Subject == "show" {
-                return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(Read(profile))}))
+            if args.Subject == "check" {
+                let repo = RepositoryIdentity.Repo(args.Need("repo"))
+                let policy = Policy.Load(repo, J.Text(GitHub.Api("repos/" + repo), "default_branch"))
+                let fields = "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
+
+                return J.Parse(J.Write(J.Select(DonorSelection.Resolve(args, policy), fields)))
+            }
+
+            if args.Subject == "show" || args.Subject == "use" {
+                let selected = Read(profile)
+
+                if args.Subject == "use" {
+                    Write(selected)
+                }
+
+                return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(selected)}))
             }
 
             if args.Subject == "remove" {
@@ -298,16 +290,10 @@ internal class DonorDefaults {
                 return J.Parse(J.Write(map[string, Object?]{"profile": profile, "removed": existed}))
             }
 
-            if args.Subject == "use" {
-                let selected = Read(profile)
-
-                Write(selected)
-
-                return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(selected)}))
-            }
+            let harness = args.Need("harness")
+            var choice = map[string, Object?]{}
 
             if args.Get("model") == "" && args.Get("effort") == "" {
-                let harness = args.Need("harness")
                 let provider = Provider(harness)
 
                 if Array.IndexOf(Harnesses, harness) < 0 ||
@@ -316,57 +302,39 @@ internal class DonorDefaults {
                 }
 
                 let previous = Read(profile, allowMissing: true)
-                let choice = J.Text(previous, "harness") == harness && J.Text(previous, "provider") == provider ?
-                J.Select(previous, "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile"):
-                map[string, Object?]{"harness": harness}
+
+                if J.Text(previous, "harness") == harness && J.Text(previous, "provider") == provider {
+                    choice = J.Select(
+                        previous,
+                        "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile"
+                    )
+                }
+
+                choice["harness"] = harness
 
                 if provider != "" {
                     choice["provider"] = provider
                 }
+            } else {
+                for key in[]string{"harness", "provider", "model", "effort"} {
+                    choice[key] = key == "model" && (harness == "pi" || harness == "omp") ?
+                    RequestData.ModelIdentifier(args.Need(key)): RequestData.Token(args.Need(key))
+                }
 
-                for key in[]string{"harness-path", "pi-root", "node", "endpoint", "claude-profile"} {
-                    if args.Get(key) != "" {
-                        choice[key] = key == "endpoint" ? PiBoundary.Endpoint(args.Get(key)):
-                        LocalPaths.RuntimePath(args.Get(key))
+                if harness == "pi" {
+                    if args.Get("provider") != "local-chat-completions" {
+                        throw Exception("Pi profiles require local-chat-completions")
                     }
-                }
 
-                let selected = RequestData.Parse(J.Write(choice), 16 * 1024)
-
-                Write(selected, profile)
-
-                return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(selected)}))
-            }
-
-            let choice = map[string, Object?]{}
-
-            for key in[]string{"harness", "provider", "model", "effort"} {
-                choice[key] = key == "model" && (args.Get("harness") == "pi" || args.Get("harness") == "omp") ?
-                RequestData.ModelIdentifier(args.Need(key)): RequestData.Token(args.Need(key))
-            }
-
-            if args.Get("harness") == "pi" {
-                if args.Get("provider") != "local-chat-completions" {
-                    throw Exception("Pi profiles require local-chat-completions")
-                }
-
-                choice["endpoint"] = PiBoundary.Endpoint(args.Need("endpoint"))
-
-                for key in[]string{"pi-root", "node"} {
-                    if args.Get(key) != "" {
-                        choice[key] = LocalPaths.RuntimePath(args.Get(key))
-                    }
+                    args.Need("endpoint")
                 }
             }
 
-            for key in[]string{"claude-profile"} {
+            for key in[]string{"endpoint", "pi-root", "node", "claude-profile", "harness-path"} {
                 if args.Get(key) != "" {
-                    choice[key] = LocalPaths.RuntimePath(args.Get(key))
+                    choice[key] = key == "endpoint" ? PiBoundary.Endpoint(args.Get(key)):
+                    LocalPaths.RuntimePath(args.Get(key))
                 }
-            }
-
-            if args.Get("harness-path") != "" {
-                choice["harness-path"] = LocalPaths.RuntimePath(args.Need("harness-path"))
             }
 
             let value = RequestData.Parse(J.Write(choice), 16 * 1024)

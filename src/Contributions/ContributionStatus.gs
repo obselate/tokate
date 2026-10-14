@@ -821,8 +821,8 @@ internal class ContributionStatus {
                     stage = "owner_review"
                     draftNext = Next(
                         "owner",
-                        "Verify the recorded receipt before reviewing acceptance; status does not establish readiness.",
-                        []string{"tokate", "verify", repo + "#" + Text(draft, "pr")}
+                        "Check the recorded receipt and CI before reviewing acceptance; status does not establish readiness.",
+                        []string{"tokate", "checks", repo + "#" + Text(draft, "pr")}
                     )
                 }
 

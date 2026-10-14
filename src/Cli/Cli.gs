@@ -20,6 +20,7 @@ internal class CliOption(name string, value string, description string, choices 
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
+        case "file" when command == "doctor": "Native Claude report to check against the selected model and effort"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
@@ -85,11 +86,6 @@ internal class CliCommand(
 internal class Cli {
     shared {
         internal let Options[]CliOption = []CliOption{
-            CliOption(
-                "claude",
-                "FILE",
-                "Installed unmodified native Claude Code executable; never installed implicitly"
-            ),
             CliOption(
                 "claude-profile",
                 "DIR",
@@ -375,17 +371,6 @@ internal class Cli {
                 group: "own"
             ),
             CliCommand(
-                "verify",
-                "",
-                "repo,pr",
-                "Check a PR receipt against owner approval; no inference or publication.",
-                "PR",
-                "verify 10",
-                effects: "local_read github_read",
-                target: "pr",
-                group: "own"
-            ),
-            CliCommand(
                 "policy",
                 "",
                 "repo",
@@ -398,10 +383,10 @@ internal class Cli {
             ),
             CliCommand(
                 "doctor",
-                "repo,auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "repo,auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default,model,effort,policy,path,file",
                 "",
                 "Check prerequisites or owner repository health; repository checks are read-only; no inference.",
-                "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
+                "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]\n       tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]",
                 "doctor",
                 effects: "local_read local_write github_read",
                 target: "doctor",
@@ -409,12 +394,12 @@ internal class Cli {
             ),
             CliCommand(
                 "defaults",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability",
                 "",
-                "Save or choose harness and model profiles; no inference.",
-                "set [NAME] --harness HARNESS [options]\n       tokate defaults use NAME\n       tokate defaults show|remove [NAME]\n       tokate defaults",
+                "Save or choose harness and model profiles, or check one against owner policy and offline harness capabilities; no inference.",
+                "set [NAME] --harness HARNESS [options]\n       tokate defaults use NAME\n       tokate defaults show|remove [NAME]\n       tokate defaults check [OWNER/REPO] [NAME] [--model MODEL --effort EFFORT] [options]\n       tokate defaults",
                 "defaults set --model gpt-6.1-sol --effort high",
-                effects: "local_read local_write",
+                effects: "local_read local_write github_read",
                 target: "defaults",
                 group: "setup"
             ),
@@ -438,17 +423,6 @@ internal class Cli {
                 "uninstall",
                 effects: "local_read local_write",
                 target: "",
-                group: "more"
-            ),
-            CliCommand(
-                "select",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive",
-                "repo",
-                "Select under current owner policy and offline harness capabilities; no inference or reservation.",
-                "[OWNER/REPO] [NAME] [--model MODEL --effort EFFORT] [options]\n       tokate select NAME [options]",
-                "select owner/project NAME --non-interactive",
-                effects: "local_read local_write github_read",
-                target: "repo",
                 group: "more"
             ),
             CliCommand(
@@ -627,17 +601,6 @@ internal class Cli {
                 target: "repo",
                 group: "internal"
             ),
-            CliCommand(
-                "claude-capabilities",
-                "claude,claude-profile,model,effort,file,path,policy",
-                "claude,model,effort",
-                "Check installed native Claude interfaces and personal login status without inference.",
-                "--claude FILE --model MODEL --effort EFFORT [--claude-profile DIR] [--policy FILE] [--file REPORT]",
-                "claude-capabilities --claude /usr/local/bin/claude --model MODEL --effort EFFORT",
-                effects: "local_read local_write",
-                target: "",
-                group: "internal"
-            ),
         }
 
         internal func Find(name string) CliCommand {
@@ -645,10 +608,6 @@ internal class Cli {
                 if command.Name == name {
                     return command
                 }
-            }
-
-            if name == "verify-pr" {
-                throw Exception("Unknown command: verify-pr. Use tokate verify.")
             }
 
             var nearest = ""
@@ -701,7 +660,7 @@ internal class Cli {
         }
 
         internal func Words(command string) string -> command == "work" ? "stop":
-        command == "defaults" ? "set show remove list use":
+        command == "defaults" ? "set show remove list use check":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
         command == "doctor" ? "owner managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
@@ -770,8 +729,6 @@ internal class Cli {
 
             case "runs": []string{"ISSUE|OWNER/REPO"}
 
-            case "select": []string{"OWNER/REPO|NAME", "NAME"}
-
             case "doctor": []string{
                 "owner|managed|external|HARNESS",
                 "OWNER/REPO (after owner) or HARNESS (after managed)"
@@ -789,7 +746,7 @@ internal class Cli {
 
                 case "access": []string{"OPERATION", "LOGIN", "OWNER/REPO|ISSUE"}
 
-                case "defaults": []string{"list|set|show|remove|use", "NAME"}
+                case "defaults": []string{"list|set|show|remove|use|check", "NAME|OWNER/REPO", "NAME"}
 
                 case "subject": []string{command.Name == "help" ? "COMMAND": "bash|zsh|fish"}
                 default: []string{}
@@ -849,7 +806,7 @@ internal class Cli {
                 let modes = List[Object]()
 
                 if command.Name == "defaults" {
-                    for mode in[]string{"set", "show", "remove", "list", "use"} {
+                    for mode in Words("defaults").Split(' ') {
                         modes.Add(
                             map[string, Object?]{
                                 "name": mode,
@@ -861,7 +818,7 @@ internal class Cli {
                                 "effects": map[string, Object?]{
                                     "local_read": true,
                                     "local_write": mode == "set" || mode == "remove" || mode == "use",
-                                    "github_read": false,
+                                    "github_read": mode == "check",
                                     "github_write": false
                                 }
                             }
@@ -1113,15 +1070,6 @@ internal class Cli {
                     )
                 }
 
-                if name == "select" {
-                    OptionHelp(
-                        text,
-                        "NAME",
-                        "Saved donor profile; in a checkout this can be the only positional",
-                        width
-                    )
-                }
-
                 if name == "work" || name == "claim" || name == "prepare" {
                     OptionHelp(text, "NAME", "Saved donor profile; follows ISSUE.", width)
                 }
@@ -1212,7 +1160,7 @@ internal class Cli {
                     DonorDefaults
                     .Read(allowMissing: true).ValueKind == JsonValueKind.Undefined {
                     throw Exception(
-                        "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
+                        "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate defaults check OWNER/REPO NAME."
                     )
                 }
             }
@@ -1306,6 +1254,15 @@ internal class Cli {
 
                 if args.Get("harness") != "pi" && (args.Get("pi-root") != "" || args.Get("node") != "") {
                     throw Exception("Pi runtime options require the pi harness")
+                }
+
+                if args.Get("model") + args.Get("effort") + args.Get("policy") + args.Get("path") + args.Get("file") != "" {
+                    if args.Get("harness") != "claude" {
+                        throw Exception("Model checks require doctor claude")
+                    }
+
+                    args.Need("model")
+                    args.Need("effort")
                 }
             }
 
@@ -1407,12 +1364,12 @@ internal class Cli {
             }
 
             if args.Command == "defaults" {
-                if args.Subject != "use" &&
-                    args.Subject != "set" &&
-                    args.Subject != "show" &&
-                    args.Subject != "remove" &&
-                    args.Subject != "list" {
-                    throw Exception("Unknown defaults operation; use set, show, list, use or remove")
+                if Array.IndexOf(Words("defaults").Split(' '), args.Subject) < 0 {
+                    throw Exception("Unknown defaults operation; use set, show, list, use, remove or check")
+                }
+
+                if args.Subject == "check" && args.Get("repo") == "" {
+                    args.Values["--repo"] = RepositoryInput.Local()
                 }
 
                 if args.Subject == "list" && args.Get("profile") != "" {
@@ -1444,8 +1401,9 @@ internal class Cli {
                     "node",
                     "harness-path",
                     "claude-profile",
+                    "availability",
                 } {
-                    if args.Subject == "set" {
+                    if args.Subject == "set" && key != "availability" {
                         if !partial && (key == "harness" || key == "provider" || key == "model" || key == "effort") {
                             args.Need(key)
                         } else if (key == "endpoint" || key == "pi-root" || key == "node") && args.Get(
@@ -1454,7 +1412,7 @@ internal class Cli {
                             args.Get(key) != "" {
                             throw Exception("Pi runtime options require the pi harness")
                         }
-                    } else if args.Get(key) != "" {
+                    } else if args.Subject != "check" && args.Get(key) != "" {
                         throw Exception("defaults " + args.Subject + " does not take --" + key)
                     }
                 }

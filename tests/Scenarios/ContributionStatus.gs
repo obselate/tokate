@@ -439,7 +439,7 @@ internal class ContributionStatusChecks {
             let published = Row(Read(test, owner: true))
             Check.That(Check.Text(published["state"]) == "owner_review", "Recorded contribution omitted owner review")
             Check.That(
-                Check.Text(published["next"]?["command"]?[1]) == "verify",
+                Check.Text(published["next"]?["command"]?[1]) == "checks",
                 "Owner receipt verification command omitted"
             )
             Check.Contains(Check.Text(published["drafts"]?[0]?["receipt"]), "unverified")
@@ -468,7 +468,7 @@ internal class ContributionStatusChecks {
             Check.That(
                 Check.Text(expired["state"]) == "owner_review" && expired["drafts"]?.AsArray().Count == 1 && Check.Text(
                     expired["next"]?["command"]?[1]
-                ) == "verify" &&
+                ) == "checks" &&
                     Check.Text(expired["reservation"]?["expired"]) == "true",
                 "Expired lease replaced canonical published PR review"
             )

@@ -69,10 +69,6 @@ internal class Positionals {
         }
 
         internal func Reference(args Args, word string, key string) {
-            if args.Command == "verify" && word.Contains("/issues/") {
-                throw Exception("verify takes an open contribution PR, for example tokate verify 42.")
-            }
-
             let segment = key == "pr" ? "pull": "issues"
             if key != "repo" && word.Contains("://") && (word.Contains("/issues/") || word.Contains("/pull/")) {
                 Url(args, word, key, segment)
@@ -186,11 +182,16 @@ internal class Positionals {
                     Cli.Find(args.Subject)
                 }
             } else if target == "defaults" {
-                Limit(args, 2)
                 args.Subject = words.Count == 0 ? "list": words[0]
+                let repo = args.Subject == "check" && words.Count > 1 && (words.Count > 2 || words[1].Contains("/"))
+                Limit(args, repo ? 3: 2)
 
-                if words.Count > 1 {
-                    args.Values["--profile"] = words[1]
+                if repo {
+                    Reference(args, words[1], "repo")
+                }
+
+                if words.Count > (repo ? 2: 1) {
+                    args.Values["--profile"] = words[repo ? 2: 1]
                 }
             } else if target == "doctor" {
                 Doctor(args)
@@ -208,18 +209,6 @@ internal class Positionals {
                 }
 
                 args.Values["--prs"] = String.Join(",", prs)
-            } else if target == "repo" && args.Command == "select" {
-                Limit(args, 2)
-
-                if words.Count == 1 && !words[0].Contains("/") {
-                    args.Values["--profile"] = words[0]
-                } else if words.Count > 0 {
-                    Reference(args, words[0], "repo")
-
-                    if words.Count > 1 {
-                        args.Values["--profile"] = words[1]
-                    }
-                }
             } else if target == "repo" {
                 Limit(args, 1)
 

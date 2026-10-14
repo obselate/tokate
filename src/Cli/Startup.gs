@@ -70,7 +70,7 @@ internal class Startup {
             return tools
         }
 
-        internal func NeedsCatalog(command string, options Args?) bool -> command == "select" ||
+        internal func NeedsCatalog(command string, options Args?) bool -> (command == "defaults" && options?.Subject == "check") ||
             (command == "claim" && options?.Get("source") != "external") ||
             command == "work" ||
             (command == "prepare" && options?.Get("source") == "tokate")
@@ -105,7 +105,7 @@ internal class Startup {
                 return Requirements(selected)
             }
 
-            if (command == "status" && options.Get("run") != "") || command == "defaults" {
+            if (command == "status" && options.Get("run") != "") || (command == "defaults" && options.Subject != "check") {
                 return []string{}
             }
 
@@ -469,6 +469,8 @@ internal class Startup {
                 return Doctor(options)
             }
 
+            var gate Object? = nil
+
             if doctorScope != "owner" {
                 var probe = Ready(tools, "setsid") && Ready(tools, "/usr/bin/setsid")
 
@@ -517,15 +519,15 @@ internal class Startup {
                     }
 
                     try {
-                        let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
+                        let authenticate = options.Get("auth") == "true" || options.Get("model") != ""
+                        let result = ClaudeCode.Runtime(options, authenticate: authenticate)
+                        gate = options.Get("model") == "" ? nil: ClaudeCode.Gate(options, result)
 
                         runtime.Path = options.Need("harness-path")
                         runtime.Status = "ready"
                         runtime.Detail = J.Text(result, "version") +
                             (
-                            options.Get(
-                                "auth"
-                            ) == "true" ? "; personal native-login status checked.": "; native controls checked without authentication status."
+                            authenticate ? "; personal native-login status checked.": "; native controls checked without authentication status."
                         )
                     } catch (error Exception) {
                         runtime.Status = "failed"
@@ -626,6 +628,9 @@ internal class Startup {
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
                 fields["authentication_requested"] = options.Get("auth") == "true"
+                if gate != nil {
+                    fields["claude"] = gate
+                }
             }
 
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")

@@ -295,9 +295,8 @@ internal class Diagnostics {
                 "missing_tools"
             )
             Check.That(Check.Text(Row(managed, "codex")["status"]) == "missing", "Managed catalog route omitted Codex")
-            for command in[]string{"claim", "select"} {
-                let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
-                let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")
+            for words in[][]string{[]string{"claim", "owner/project#1"}, []string{"defaults", "check", "owner/project"}} {
+                let selection = Call(binary, temp, words, "error", "missing_tools")
                 Check.That(
                     Check.Text(Row(selection, "codex")["status"]) == "missing",
                     "Offline catalog route omitted Codex"
@@ -380,8 +379,8 @@ internal class Diagnostics {
                 }
                 if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"select", "owner/project", "--non-interactive"}),
-                        "select",
+                        FixedCall(binary, flow, helper, []string{"defaults", "check", "owner/project"}),
+                        "defaults",
                         "error",
                         "missing_tools"
                     )

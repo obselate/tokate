@@ -185,29 +185,11 @@ func Dispatch(options Args) int32 {
         return Installation.Run(options.Command)
     }
 
-    if options.Command == "claude-capabilities" {
-        var value System.Text.Json.JsonElement
-
-        try {
-            value = ClaudeCode.Gate(options)
-        } catch (error Exception) {
-            throw CliFailure("verification_failed", error.Message, summary: error.Message)
-        }
-
-        if PublicOutput.Enabled {
-            PublicOutput.ResultData = value
-        } else {
-            Terminal.Json(value, "Claude capabilities; no inference started")
-        }
-
-        return 0
-    }
-
     if Cli.RepositoryWork(options) && options.Subject == "stop" {
         return Donate.Stop(options)
     }
 
-    if options.Command != "doctor" && options.Command != "defaults" {
+    if options.Command != "doctor" && (options.Command != "defaults" || options.Subject == "check") {
         DonorSelection.ApplyDefaults(options)
         Startup.Check(options)
     }
@@ -231,21 +213,6 @@ func Dispatch(options Args) int32 {
                 PublicOutput.ResultData = value
             } else {
                 Terminal.Json(value, "Donor defaults")
-            }
-        }
-
-        case "select" {
-            let repo = RepositoryIdentity.Repo(options.Need("repo"))
-            let info = GitHub.Api("repos/" + repo)
-            let selection = DonorSelection.Resolve(options, Policy.Load(repo, J.Text(info, "default_branch")))
-
-            if PublicOutput.Enabled {
-                PublicOutput.ResultData = J.Select(
-                    selection,
-                    "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
-                )
-            } else {
-                Terminal.Json(selection, "Donor selection")
             }
         }
 
@@ -446,26 +413,6 @@ func Dispatch(options Args) int32 {
             } else {
                 Terminal.Json(value, "Repository policy")
             }
-        }
-
-        case "verify" {
-            let repo = RepositoryIdentity.Repo(options.Need("repo"))
-            let number = options.Number("pr")
-            let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString(), missing: true)
-
-            if pull.ValueKind == JsonValueKind.Undefined {
-                throw Exception("verify takes an open contribution PR, for example tokate verify 42.")
-            }
-
-            if J.Text(pull, "state") != "open" {
-                let state = J.Bool(pull, "merged") ? "merged": "closed"
-                throw Exception("PR #" + number.ToString() + " is " + state + "; verify checks open contribution PRs.")
-            }
-
-            let run = ReceiptVerification.Verify(repo, number, pull)
-
-            PublicOutput.ResultData = J.Select(run.Element(), "repo,pr,pr_url,commit")
-            Terminal.Message("PR receipt matches owner approval and policy. Model usage remains donor-reported.")
         }
 
         case "status" when options.Get("run") == "" {

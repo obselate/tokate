@@ -164,10 +164,10 @@ internal class EligibilityChecks {
                 test.Flow.Call([]string{"submit", "--run", run})
                 let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
                 test.Coordinate(test.Event(publish))
-                test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                test.Flow.Receipt("owner/project#10", owner: true)
                 if version == 2 {
                     Policy(test, "open", 3)
-                    test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    test.Flow.Receipt("owner/project#10", owner: true)
                     Check.That(
                         Check.Text(test.State()["state"]?["approval_id"]) == Check.Text(state["approval_id"]),
                         "Version conversion replaced existing approval"
@@ -176,12 +176,12 @@ internal class EligibilityChecks {
                 test.Flow.Reload()
                 test.Flow.State["fork_owner_id"] = JsonValue.Create(124)
                 test.Flow.Save()
-                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
+                test.Flow.Receipt("owner/project#10", false, true)
                 test.Flow.Reload()
                 test.Flow.State["fork_owner_id"] = nil
                 test.Flow.Save()
                 Access(test, "deny")
-                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
+                test.Flow.Receipt("owner/project#10", false, true)
                 Check.Contains(
                     test.Flow.Call([]string{"submit", "--run", run}, 1).Error,
                     "Donor is denied. The owner must run: tokate access restore donor owner/project"
@@ -408,7 +408,7 @@ internal class EligibilityChecks {
             test.Flow.Call([]string{"submit", "--run", run})
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(publish))
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
             test.Flow.Reload()
             Check.That(
                 Check.Text(test.Flow.State["exec_count"]) == "1",
@@ -561,7 +561,7 @@ internal class EligibilityChecks {
                         test.Flow.State["pulls"]?.AsArray().Count == 1,
                         "Uncertain publication did not preserve physical PR"
                     )
-                    test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
+                    test.Flow.Receipt("owner/project#10", false, true)
                 }
                 Check.That(test.State()["state"]?["contribution"] == nil, "Revoked access authorized publication")
                 test.Flow.NoInference()
@@ -906,7 +906,7 @@ internal class EligibilityChecks {
             let body = Check.Text(test.Flow.State["pulls"]?[0]?["body"])
             Check.Contains(body, "Fixes #1")
             Check.Contains(body, "Literal {{issue}} owner text")
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
             test.Flow.ResetTraffic()
             let history = Check.Envelope(
                 test.Flow.Call([]string{"access", "history", "donor", "owner/project", "--json"}),
@@ -956,14 +956,14 @@ internal class EligibilityChecks {
             policy["close_message"] = JsonValue.Create("Changed admission message")
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Change optional text")
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
             File.WriteAllText(
                 Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"),
                 TestResources.Template("tokate-pr.md") + "Changed template\n"
             )
             test.Flow.Commit("Change PR template")
             Check.Contains(
-                test.Flow.Call([]string{"verify", "owner/project#10"}, 1, true).Error,
+                test.Flow.Call([]string{"checks", "owner/project#10"}, 1, true).Error,
                 "PR template changed."
             )
             test.Flow.NoInference()

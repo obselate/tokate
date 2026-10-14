@@ -524,9 +524,6 @@ internal class Overlaps {
                 contributions.Add(item.Facts)
                 if item.Binding != nil {
                     PublicOutput.Actions.Add(
-                        []string{"tokate", "verify", repo + "#" + item.Number.ToString(), "--json"}
-                    )
-                    PublicOutput.Actions.Add(
                         []string{"tokate", "checks", repo + "#" + item.Number.ToString(), "--json"}
                     )
                 }
