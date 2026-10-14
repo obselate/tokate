@@ -106,13 +106,12 @@ internal class PublishedContribution : IDisposable {
             if modelPolicy != "" {
                 let path = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(path))
-                policy["model_policy"] = JsonValue.Create(modelPolicy)
                 if modelPolicy == "unrestricted" {
-                    policy.AsObject().Remove("models")
+                    Check.SetModels(policy, nil)
                 } else {
-                    (policy["models"] ?? throw Exception("Missing model whitelist"))["claude-sonnet-4-6"] = Check.Json(
-                        "[\"absent\"]"
-                    )
+                    (policy["allowed_tools"]?[1]?["models"] ?? throw Exception("Missing model whitelist"))[
+                        "claude-sonnet-4-6"
+                    ] = Check.Json("[\"absent\"]")
                 }
                 File.WriteAllText(path, policy.ToJsonString())
                 flow.Flow.Commit("External amendment effort policy")

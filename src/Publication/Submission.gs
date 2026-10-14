@@ -562,6 +562,8 @@ internal class Submission {
                 "verification": RequestData.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
             }
 
+            ContributionReceipt.Models(metadata, run.Element())
+
             if RequestData.Incomplete(run.Element()) {
                 metadata["incomplete"] = true
             }

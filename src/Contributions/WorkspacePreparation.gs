@@ -131,7 +131,7 @@ internal class WorkspacePreparation {
                 }
             }
 
-            for key in "version,repo,issue,donor,donor_id,approval,base,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,harness,harness_path,provider,model,effort,selection,pi_endpoint,pi_root,pi_node,claude_profile,requested_fork,claim_request,handoff"
+            for key in "version,repo,issue,donor,donor_id,approval,base,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,harness,harness_path,provider,model,requested_model,reported_model,effort,selection,pi_endpoint,pi_root,pi_node,claude_profile,requested_fork,claim_request,handoff"
                 .Split(',') {
                 if !RequestData.Same(J.Get(pending.Element(), key), J.Get(run.Element(), key)) {
                     Reject(directory)

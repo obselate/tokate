@@ -89,6 +89,10 @@ internal class ContributionAuthority {
             RequestData.Tools(declaredTools)
             policy.ValidateTools(declaredTools, run.Text("source"))
 
+            if run.Fields.ContainsKey("requested_model") && run.Text("requested_model") != run.Text("model") {
+                throw CliFailure("stale_approval", "Saved requested model differs from execution")
+            }
+
             let tools = J.Items(declaredTools)
 
             if run.Text("source") == "tokate" &&

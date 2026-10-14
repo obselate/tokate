@@ -791,11 +791,49 @@ internal class OwnerSetup {
             let fields = map[string, Object?]{}
 
             if upstream != "" {
-                existing = Policy(upstream)
-
-                for field in existing.Version3().EnumerateObject() {
+                let legacy = RequestData.Parse(upstream, 1024 * 1024)
+                for field in legacy.EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
+
+                if J.Number(legacy, "version") == 2 {
+                    let mode = J.Text(legacy, "model_policy")
+                    if J.Get(legacy, "model_policy")
+                        .ValueKind != JsonValueKind.Undefined &&
+                        (
+                        J.Get(legacy, "model_policy")
+                            .ValueKind != JsonValueKind.String ||
+                            (mode != "whitelist" && mode != "unrestricted")
+                    ) {
+                        throw Exception("Invalid version 2 model policy")
+                    }
+
+                    let models = J.Get(legacy, "models")
+                    if mode == "unrestricted" &&
+                        models.ValueKind != JsonValueKind.Undefined &&
+                        (models.ValueKind != JsonValueKind.Object || models.EnumerateObject().MoveNext()) {
+                        throw Exception("Unrestricted model policy requires omitted models or an empty object")
+                    }
+
+                    let tools = List[Object]()
+                    for tool in J.Items(J.Get(legacy, "allowed_tools")) {
+                        let pair = J.Select(tool, "harness,provider")
+                        if mode != "unrestricted" {
+                            pair["models"] = models
+                        }
+                        tools.Add(pair)
+                    }
+
+                    fields.Remove("models")
+                    fields.Remove("model_policy")
+                    fields["version"] = 3
+                    fields["allowed_tools"] = tools
+                    if J.Text(legacy, "eligibility") == "manual" {
+                        fields["eligibility"] = "trusted"
+                    }
+                }
+
+                existing = Policy(J.Write(fields))
             } else {
                 fields["version"] = 3
                 fields["approval_scope"] = "task"

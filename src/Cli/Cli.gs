@@ -1386,13 +1386,8 @@ internal class Cli {
                 RepositoryIdentity.Branch(args.Get("base-branch"))
             }
 
-            if args.Get("model") != "" && !Regex.IsMatch(
-                args.Get("model"),
-                args.Get("harness") == "pi" || args.Get("harness") == "omp" || args.Get("harness") == "" || args.Get(
-                    "profile"
-                ) != "" ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-            ) {
-                throw Exception("Invalid model name: --model")
+            if args.Get("model") != "" {
+                RequestData.ModelIdentifier(args.Get("model"))
             }
 
             if args.Get("profile") != "" {

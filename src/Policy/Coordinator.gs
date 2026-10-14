@@ -329,6 +329,7 @@ internal class Coordinator {
                     donor,
                     J.Text(metadata, "head")
                 )
+                ContributionReceipt.Models(receipt, metadata)
 
                 if correction.ValueKind != JsonValueKind.Undefined {
                     receipt["correction"] = correction

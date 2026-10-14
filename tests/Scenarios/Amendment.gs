@@ -1826,11 +1826,10 @@ internal class AmendmentFlow {
                 if modelPolicy != "" {
                     let path = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
                     let policy = Check.Json(File.ReadAllText(path))
-                    policy["model_policy"] = JsonValue.Create(modelPolicy)
                     if modelPolicy == "unrestricted" {
-                        policy.AsObject().Remove("models")
+                        Check.SetModels(policy, nil)
                     } else {
-                        (policy["models"] ?? throw Exception("Missing model whitelist"))[
+                        (policy["allowed_tools"]?[1]?["models"] ?? throw Exception("Missing model whitelist"))[
                             "claude-sonnet-4-6"
                         ] = Check.Json("[\"absent\"]")
                     }

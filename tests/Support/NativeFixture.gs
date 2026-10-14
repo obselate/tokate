@@ -55,10 +55,6 @@ internal open class NativeFixture : IDisposable {
         File.WriteAllText(Path.Combine(Upstream, ".github/tokate-pr.md"), TestResources.Template("tokate-pr.md"))
         let path = Path.Combine(Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(path))
-        policy["version"] = JsonValue.Create(2)
-        let tool = policy["allowed_tools"]?[0] ?? throw Exception("Missing default tool")
-        policy["models"] = tool["models"]?.DeepClone()
-        tool.AsObject().Remove("models")
         Check.That(Check.Text(policy["max_seconds"]) == "3600", "New policy budget must be 3600 seconds")
         policy["verification"] = Check.Json("[[\"/bin/sh\",\"-c\",\"test -f result.txt\"]]")
         File.WriteAllText(path, policy.ToJsonString())
@@ -361,15 +357,10 @@ internal open class NativeFixture : IDisposable {
         let path = Path.Combine(Upstream, ".github/tokate.json")
         let original = File.ReadAllText(path)
         let policy = Check.Json(original)
-        if mode == "" {
-            policy.AsObject().Remove("model_policy")
-        } else {
-            policy["model_policy"] = JsonValue.Create(mode)
-        }
-        if models == "omit" {
-            policy.AsObject().Remove("models")
+        if mode == "unrestricted" || models == "omit" {
+            Check.SetModels(policy, nil)
         } else if models != "" {
-            policy["models"] = Check.Json(models)
+            Check.SetModels(policy, Check.Json(models))
         }
         if policy.ToJsonString() != original {
             File.WriteAllText(path, policy.ToJsonString())

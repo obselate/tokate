@@ -201,6 +201,8 @@ internal class OriginalEvidence {
                 "policy_hash",
                 "branch",
                 "model",
+                "requested_model",
+                "reported_model",
                 "effort",
                 "seconds",
                 "source",

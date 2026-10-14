@@ -98,9 +98,9 @@ internal class AttemptContinuationChecks {
             )
             if harness == "pi" {
                 PiCatalog.Configure(test.Flow, endpoint)
-                policy["model_policy"] = JsonValue.Create("whitelist")
+
                 policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
-                policy["models"] = Check.Json("{\"fixture-model\":[\"absent\"]}")
+                Check.SetModels(policy, Check.Json("{\"fixture-model\":[\"absent\"]}"))
             }
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Continuation authority and complete-diff verification fixture")

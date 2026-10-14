@@ -91,10 +91,10 @@ internal partial class NativeFlow : NativeFixture {
         Check.Envelope(approval, "approve", "ok")
         let policy = Call([]string{"policy", "owner/project", "--json"})
         let value = Check.Envelope(policy, "policy", "ok")
-        Check.That(Check.Text(value["data"]?["policy"]?["version"]) == "2", "Missing projected policy")
+        Check.That(Check.Text(value["data"]?["policy"]?["version"]) == "3", "Missing projected policy")
         let legacy = Check.Json(Call([]string{"policy", "owner/project"}).Output)
         Check.That(
-            legacy["schema_version"] == nil && Check.Text(legacy["version"]) == "2",
+            legacy["schema_version"] == nil && Check.Text(legacy["version"]) == "3",
             "Legacy piped policy changed"
         )
         for flag in[]string{"--plain", "--ascii"} {
@@ -284,6 +284,11 @@ internal partial class NativeFlow : NativeFixture {
             Check.Text(saved["state"]) == "generated" && Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
             "Codex did not produce a verified candidate"
         )
+        Check.That(
+            Check.Text(saved["requested_model"]) == "gpt-6.1-sol" && saved.AsObject().ContainsKey("reported_model") &&
+                saved["reported_model"] == nil,
+            "Codex request was used as reported model evidence"
+        )
         Reload()
         let prompt = Check.Text(State["prompts"]?[0])
         let marker = "- Time limit: finish by "
@@ -318,6 +323,18 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
         let body = Check.Text(State["pulls"]?[0]?["body"])
+        let receiptStart = body.IndexOf("<!-- tokate-receipt:", StringComparison.Ordinal) +
+            "<!-- tokate-receipt:".Length
+        let receipt = Check.Json(
+            body.Substring(receiptStart, body.IndexOf(" -->", receiptStart, StringComparison.Ordinal) - receiptStart)
+        )
+        Check.That(
+            Check.Text(receipt["requested_model"]) == "gpt-6.1-sol" && receipt.AsObject().ContainsKey(
+                "reported_model"
+            ) &&
+                receipt["reported_model"] == nil,
+            "Receipt confused requested and reported models"
+        )
         Check.Contains(
             body,
             "| codex / openai | gpt-6.1-sol / high | " + Check.Text(saved["execution_seconds"]) +
@@ -373,60 +390,6 @@ internal partial class NativeFlow : NativeFixture {
     internal func ModelPolicyMalformed() {
         let path = Path.Combine(Upstream, ".github/tokate.json")
         let original = Check.Json(File.ReadAllText(path))
-        original.AsObject().Remove("models")
-        let text = original.ToJsonString()
-        for fixture in[][]string{
-            []string{"\"model_policy\":null", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":true", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":1", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":[]", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":{}", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":\"other\"", "model_policy must be exactly whitelist or unrestricted"},
-            []string{"\"model_policy\":\"whitelist\",\"model_policy\":\"unrestricted\"", "Duplicate JSON key"},
-            []string{"\"model_policy\":\"unrestricted\",\"model_policy\":\"unrestricted\"", "Duplicate JSON key"},
-            []string{
-                "\"model_policy\":\"unrestricted\",\"models\":{\"model\":[\"high\"]}",
-                "Unrestricted model policy requires omitted models or an empty object"
-            },
-            []string{
-                "\"model_policy\":\"unrestricted\",\"models\":null",
-                "Unrestricted model policy requires omitted models or an empty object"
-            },
-            []string{
-                "\"model_policy\":\"unrestricted\",\"models\":[]",
-                "Unrestricted model policy requires omitted models or an empty object"
-            },
-            []string{
-                "\"model_policy\":\"unrestricted\",\"models\":\"bad\"",
-                "Unrestricted model policy requires omitted models or an empty object"
-            },
-            []string{"\"model_policy\":\"unrestricted\",\"models\":{},\"models\":{}", "Duplicate JSON key"},
-            []string{"\"model_policy\":\"whitelist\"", "Policy models must map model names to effort arrays"},
-            []string{"\"model_policy\":\"whitelist\",\"models\":{}", "Set models and a max_seconds limit"},
-            []string{
-                "\"model_policy\":\"whitelist\",\"models\":null",
-                "Policy models must map model names to effort arrays"
-            },
-            []string{"\"model_policy\":\"whitelist\",\"models\":{\"bad model\":[\"high\"]}", "Invalid model name"},
-            []string{"\"model_policy\":\"whitelist\",\"models\":{\"model\":[]}", "Each model needs allowed efforts"},
-            []string{
-                "\"model_policy\":\"whitelist\",\"models\":{\"model\":\"high\"}",
-                "Each model needs allowed efforts"
-            },
-            []string{"\"model_policy\":\"whitelist\",\"models\":{\"model\":[null]}", "Invalid reasoning effort"},
-            []string{
-                "\"model_policy\":\"whitelist\",\"models\":{\"model\":[\"high,xhigh\"]}",
-                "Invalid reasoning effort"
-            },
-            []string{"\"models\":{}", "Set models and a max_seconds limit"},
-            []string{"\"models\":null", "Policy models must map model names to effort arrays"},
-            []string{"\"models\":{\"model\":[\"absent\"]}", "Invalid reasoning effort"},
-        } {
-            File.WriteAllText(path, text.Substring(0, text.Length - 1) + "," + fixture[0] + "}")
-            Commit("Malformed model policy fixture")
-            Reject([]string{"policy", "owner/project"}, fixture[1])
-        }
-        original["version"] = JsonValue.Create(3)
         for invalid in[]string{
             "null",
             "true",
@@ -934,7 +897,7 @@ internal partial class NativeFlow : NativeFixture {
                 timer.Elapsed.TotalSeconds >= (status == 0 || status == 503 ? 1.0: 2.0),
                 "Server retry delay was ignored"
             )
-            Check.That(Check.Text(Check.Json(result.Output)["version"]) == "2", "Retry lost policy result")
+            Check.That(Check.Text(Check.Json(result.Output)["version"]) == "3", "Retry lost policy result")
             Traffic(3, 0, 1, result)
         }
         for status in[]int32{0, 503, 401, 404, 422, 304, 403, 429} {

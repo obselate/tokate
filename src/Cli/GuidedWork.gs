@@ -153,12 +153,13 @@ internal class GuidedWork {
             DonorDefaults.NormalizePair(args)
             Startup.Check(args)
 
-            if args.Need("harness") == "claude" {
-                let models = List[string]()
-                let efforts = List[string]()
+            let harness = args.Need("harness")
+            let models = List[string]()
+            let providers = List[string]()
+            let efforts = List[string]()
+            labels.Clear()
 
-                labels.Clear()
-
+            if harness == "claude" {
                 if policy.Unrestricted("claude", "anthropic") {
                     args.Values["--model"] = WizardScreen.Read(
                         "Claude Code model",
@@ -172,30 +173,20 @@ internal class GuidedWork {
                         "Effort",
                         help: "Choose an effort supported by your model. Use the lowest level that gives you enough reasoning time."
                     )
-                } else {
-                    for model in policy.ToolModels("claude", "anthropic").EnumerateObject() {
-                        for level in J.Items(model.Value) {
-                            let effort = level.GetString() ?? ""
-                            if ClaudeCode.Pair(model.Name, effort) {
-                                models.Add(model.Name)
-                                efforts.Add(effort)
-                                labels.Add("Anthropic | Claude Code | Subscription | " + model.Name + " / " + effort)
-                            }
+                    return
+                }
+
+                for model in policy.ToolModels(harness, "anthropic").EnumerateObject() {
+                    for level in J.Items(model.Value) {
+                        let effort = level.GetString() ?? ""
+                        if policy.Allows(harness, "anthropic", model.Name, effort) {
+                            models.Add(model.Name)
+                            efforts.Add(effort)
+                            labels.Add("Anthropic | Claude Code | Subscription | " + model.Name + " / " + effort)
                         }
                     }
-
-                    if labels.Count == 0 {
-                        throw Exception("The owner policy permits no supported Claude model and effort")
-                    }
-
-                    let selected = ModelChecklist.Pick(
-                        labels.ToArray(),
-                        help: "Choose a model and effort allowed by the project. Use the lowest effort that is enough for the task."
-                    )
-                    args.Values["--model"] = models[selected]
-                    args.Values["--effort"] = efforts[selected]
                 }
-            } else if args.Need("harness") == "pi" {
+            } else if harness == "pi" {
                 if args.Get("pi-root") == "" && args.Get("harness-path") == "" && LocalPaths.Harness("pi") == "" {
                     MachineSetup.Harness(args)
                 }
@@ -208,59 +199,36 @@ internal class GuidedWork {
                     "Enter the URL of your existing local model server. Example: http://127.0.0.1:1234/v1. Tokate does not start the server."
                 )
                 PiHarness.Runtime(args)
-
-                let models = List[string]()
                 let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
-
                 try {
                     for entry in J.Items(J.Get(PiCatalog.Read(args.Need("node"), "", endpoint), "data")) {
-                        if policy.AllowsModel("pi", "local-chat-completions", J.Text(entry, "id")) {
+                        if policy.AllowsModel(harness, "local-chat-completions", J.Text(entry, "id")) {
                             models.Add(J.Text(entry, "id"))
                         }
                     }
                 } catch (error CliFailure) { }
 
-                var selected = models.Count + 1
-
-                if models.Count > 0 {
-                    labels.Clear()
-                    labels.AddRange(models)
-                    labels.Add("Enter another model ID")
-                    selected = WizardScreen.Choose(
-                        "Local model",
-                        "Choose a model advertised by your server and configured in Pi.",
-                        labels.ToArray(),
-                        "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
-                    )
-                }
-
-                args.Values["--model"] = selected <= models.Count ? models[selected - 1]: WizardScreen.Read(
+                args.Values["--model"] = ChooseModel(
                     "Local model",
-                    "Choose the exact model configured in Pi and advertised by your server.",
-                    "Model ID",
-                    help: "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
+                    models,
+                    "Choose a model advertised by your server and configured in Pi.",
+                    "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
                 )
-
                 let settings = PiBoundary.ModelSettings(
                     args.Need("pi-root"),
                     args.Need("node"),
                     args.Need("model"),
-                    PiBoundary.Endpoint(args.Need("endpoint"))
+                    endpoint
                 )
-
-                let efforts = List[string]()
-
                 for level in J.Items(J.Get(settings, "efforts")) {
                     let effort = level.GetString() ?? ""
-                    if policy.Allows("pi", "local-chat-completions", args.Need("model"), effort) {
+                    if policy.Allows(harness, "local-chat-completions", args.Need("model"), effort) {
                         efforts.Add(effort)
                     }
                 }
-
                 if efforts.Count == 0 {
                     throw Exception("The owner policy permits none of this Pi model's supported reasoning levels")
                 }
-
                 args.Values["--effort"] = efforts[
                     WizardScreen.Choose(
                         "Reasoning effort",
@@ -269,140 +237,94 @@ internal class GuidedWork {
                         "Choose an effort supported by Pi and allowed by the project. Use the lowest level that is enough for the task."
                     ) - 1
                 ]
-            } else if args.Need("harness") == "omp" {
+                return
+            } else if harness == "omp" {
                 OmpRuntime.Runtime(args)
-
-                let providers = List[string]()
-                let models = List[string]()
-                let efforts = List[string]()
-
-                labels.Clear()
-
-                if policy.Providers("omp").Exists(provider -> policy.Unrestricted("omp", provider)) {
+                var entries = OmpRuntime.Models(args.Need("harness-path"))
+                let unrestricted = policy.Providers(harness).Exists(provider -> policy.Unrestricted(harness, provider))
+                if unrestricted {
                     let selectors = List[string]()
-
-                    try {
-                        for entry in OmpRuntime.Models(args.Need("harness-path")) {
-                            if J.Text(entry, "kind") == "chat" && policy.AllowsModel(
-                                "omp",
-                                J.Text(entry, "provider"),
-                                J.Text(entry, "id")
-                            ) {
-                                selectors.Add(J.Text(entry, "selector"))
-                            }
+                    for entry in entries {
+                        if J.Text(entry, "kind") == "chat" && policy.AllowsModel(
+                            harness,
+                            J.Text(entry, "provider"),
+                            J.Text(entry, "id")
+                        ) {
+                            selectors.Add(J.Text(entry, "selector"))
                         }
-                    } catch (error Exception) { }
-
-                    var choice = selectors.Count + 1
-
-                    if selectors.Count > 0 {
-                        labels.AddRange(selectors)
-                        labels.Add("Enter another model ID")
-                        choice = WizardScreen.Choose(
-                            "OMP model",
-                            "Choose a model from your OMP catalog.",
-                            labels.ToArray(),
-                            "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
-                        )
-                        labels.Clear()
                     }
-
-                    let selector = choice <= selectors.Count ? selectors[choice - 1]: WizardScreen.Read(
+                    let selector = ChooseModel(
                         "OMP model",
-                        "Choose the exact model as OMP lists it.",
-                        "provider/model",
-                        "",
+                        selectors,
+                        "Choose a model from your OMP catalog.",
                         "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
                     )
-
                     let split = selector.IndexOf('/')
-
                     if split < 1 {
                         throw Exception("Use the provider/model selector that omp models lists")
                     }
-
-                    let settings = OmpRuntime.Model(
-                        args.Need("harness-path"),
-                        selector.Substring(0, split),
-                        selector.Substring(split + 1)
-                    )
-
-                    for level in J.Items(J.Get(settings, "efforts")) {
-                        if !policy.Allows(
-                            "omp",
+                    entries = List[JsonElement]{
+                        OmpRuntime.Model(
+                            args.Need("harness-path"),
                             selector.Substring(0, split),
-                            selector.Substring(split + 1),
-                            level.GetString() ?? ""
-                        ) {
-                            continue
-                        }
-
-                        providers.Add(selector.Substring(0, split))
-                        models.Add(selector.Substring(split + 1))
-                        efforts.Add(level.GetString() ?? "")
-                        labels.Add(selector + " / " + (level.GetString() ?? ""))
+                            selector.Substring(split + 1)
+                        )
                     }
-                } else {
-                    let allowed = policy.Providers("omp")
-
-                    for entry in OmpRuntime.Models(args.Need("harness-path")) {
-                        if !allowed.Contains(J.Text(entry, "provider")) || J.Text(entry, "kind") != "chat" {
-                            continue
-                        }
-
-                        for effort in OmpRuntime.Efforts(entry) {
-                            if policy.Allows("omp", J.Text(entry, "provider"), J.Text(entry, "id"), effort) {
-                                providers.Add(J.Text(entry, "provider"))
-                                models.Add(J.Text(entry, "id"))
-                                efforts.Add(effort)
-                                labels.Add(
-                                    J.Text(entry, "provider") + " | OMP | " + J.Text(entry, "id") + " / " + effort
-                                )
-                            }
+                }
+                for entry in entries {
+                    if !unrestricted && J.Text(entry, "kind") != "chat" {
+                        continue
+                    }
+                    let provider = J.Text(entry, "provider")
+                    let model = J.Text(entry, unrestricted ? "model": "id")
+                    let levels = unrestricted ? J.Items(J.Get(entry, "efforts")).ConvertAll(
+                        level -> level.GetString() ?? ""
+                    ): OmpRuntime.Efforts(entry)
+                    for effort in levels {
+                        if policy.Allows(harness, provider, model, effort) {
+                            providers.Add(provider)
+                            models.Add(model)
+                            efforts.Add(effort)
+                            labels.Add(
+                                (unrestricted ? provider + "/" + model: provider + " | OMP | " + model) + " / " + effort
+                            )
                         }
                     }
                 }
-
-                if labels.Count == 0 {
-                    throw Exception(
-                        "OMP lists no model and effort that the owner policy permits. Check omp models and your OMP sign-in."
-                    )
-                }
-
-                let selected = ModelChecklist.Pick(
-                    labels.ToArray(),
-                    help: "Choose a model and effort listed by OMP and allowed by the project. Use the lowest effort that is enough for the task."
-                )
-                args.Values["--provider"] = providers[selected]
-                args.Values["--model"] = models[selected]
-                args.Values["--effort"] = efforts[selected]
             } else {
-                let models = List[string]()
-                let efforts = List[string]()
-
-                labels.Clear()
-
                 for entry in CodexRuntime.Capabilities(args.Get("harness-path")) {
                     for effort in entry.Value {
-                        if policy.Allows("codex", "openai", entry.Key, effort) {
+                        if policy.Allows(harness, "openai", entry.Key, effort) {
                             models.Add(entry.Key)
                             efforts.Add(effort)
                             labels.Add("OpenAI | Codex | Subscription | " + entry.Key + " / " + effort)
                         }
                     }
                 }
-
-                if labels.Count == 0 {
-                    throw Exception("No permitted model and effort are advertised by the installed Codex")
-                }
-
-                let selected = ModelChecklist.Pick(
-                    labels.ToArray(),
-                    help: "Choose a model and effort supported by your Codex setup and allowed by the project. Use the lowest effort that is enough for the task."
-                )
-                args.Values["--model"] = models[selected]
-                args.Values["--effort"] = efforts[selected]
             }
+
+            if labels.Count == 0 {
+                throw Exception("The owner policy permits no supported model and effort listed by " + harness)
+            }
+            let selected = ModelChecklist.Pick(
+                labels.ToArray(),
+                help: "Choose a model and effort supported by your tool and allowed by the project. Use the lowest effort that is enough for the task."
+            )
+            args.Values["--model"] = models[selected]
+            args.Values["--effort"] = efforts[selected]
+            if harness == "omp" {
+                args.Values["--provider"] = providers[selected]
+            }
+        }
+
+        private func ChooseModel(title string, models List[string], note string, help string) string {
+            var choice = models.Count + 1
+            if models.Count > 0 {
+                let labels = List[string](models)
+                labels.Add("Enter another model ID")
+                choice = WizardScreen.Choose(title, note, labels.ToArray(), help)
+            }
+            return choice <= models.Count ? models[choice - 1]: WizardScreen.Read(title, note, "Model ID", help: help)
         }
 
         private func Label(value JsonElement, name string) string -> J.Text(value, "model") == "" ?

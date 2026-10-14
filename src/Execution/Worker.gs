@@ -405,6 +405,7 @@ internal class Worker {
                     let usage = CodexEvidence.CompletedUsage(directory, result.Output)
 
                     run.Fields["turn_completed"] = true
+                    run.Fields["reported_model"] = nil
                     run.Fields["usage"] = usage
                     run.Fields["execution_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
 

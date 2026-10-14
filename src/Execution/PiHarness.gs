@@ -225,26 +225,11 @@ internal class PiHarness {
         }
 
         internal func Select(args Args, policy Policy, source string) JsonElement {
-            if args.Need("provider") != "local-chat-completions" {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Unsupported pi provider; only local-chat-completions is managed"
-                )
-            }
-
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            policy.ValidatePi(model, effort, 1)
+            let selected = DonorSelection.Selection(args, policy, source)
             let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
-
-            if args.Get("availability") == "unavailable" {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Selected model is donor-reported unavailable; no retry or fallback"
-                )
-            }
-
             Runtime(args)
             PiBoundary.Probe(args.Need("pi-root"), args.Need("node"))
             let limits = PiBoundary.ModelSettings(args.Need("pi-root"), args.Need("node"), model, endpoint)
@@ -252,29 +237,18 @@ internal class PiHarness {
 
             let catalog = PiCatalog.Read(args.Need("node"), model, endpoint)
 
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "harness": "pi",
-                        "provider": "local-chat-completions",
-                        "model": model,
-                        "effort": effort,
-                        "source": source,
-                        "policy_hash": policy.Digest,
-                        "policy_eligible": true,
-                        "capability": "native Pi CLI with configured tools inside whole-process isolation",
-                        "availability": "advertised",
-                        "availability_evidence": "Selected endpoint advertises the exact model ID; weights and coding capability are unverified",
-                        "endpoint_catalog": catalog,
-                        "context_window": J.Number(limits, "contextWindow"),
-                        "max_tokens": J.Number(limits, "maxTokens")
-                    }
-                )
-            )
+            selected["capability"] = "native Pi CLI with configured tools inside whole-process isolation"
+            selected["availability"] = "advertised"
+            selected[
+                "availability_evidence"
+            ] = "Selected endpoint advertises the exact model ID; weights and coding capability are unverified"
+            selected["endpoint_catalog"] = catalog
+            selected["context_window"] = J.Number(limits, "contextWindow")
+            selected["max_tokens"] = J.Number(limits, "maxTokens")
+            return J.Parse(J.Write(selected))
         }
 
-        internal func ValidateSaved(run Data, policy Policy) {
-            policy.ValidatePi(run.Text("model"), run.Text("effort"), run.Number("seconds"))
+        internal func ValidateSaved(run Data) {
             PiBoundary.Endpoint(run.Text("pi_endpoint"))
 
             let args = Args(
@@ -412,6 +386,8 @@ internal class PiHarness {
                     J.Text(limits, "provider")
                 )
 
+                run.Fields["reported_model"] = usage["reported_model"]
+                usage.Remove("reported_model")
                 run.Fields["turn_completed"] = true
                 run.Fields["usage"] = usage
                 run.Fields[

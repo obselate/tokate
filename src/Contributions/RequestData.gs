@@ -361,7 +361,7 @@ internal class RequestData {
             } else if J.Text(value, "action") == "publish" {
                 Keys(
                     metadata,
-                    "fork,branch,head,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff"
+                    "fork,branch,head,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff,requested_model,reported_model"
                 )
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "head"))
@@ -373,6 +373,24 @@ internal class RequestData {
                 }
 
                 Tools(J.Get(metadata, "tools"))
+                for key in[]string{"requested_model", "reported_model"} {
+                    let model = J.Get(metadata, key)
+                    if model.ValueKind != JsonValueKind.Undefined && model.ValueKind != JsonValueKind.Null {
+                        ModelIdentifier(J.Text(metadata, key))
+                    }
+                }
+
+                if J.Get(metadata, "requested_model")
+                    .ValueKind != JsonValueKind.Undefined &&
+                    (
+                    J.Text(metadata, "source") != "tokate" || J.Text(metadata, "requested_model") != J.Text(
+                        J.Items(J.Get(metadata, "tools"))[0],
+                        "model"
+                    )
+                ) {
+                    throw CliFailure("invalid_state", "Requested model differs from the declared execution")
+                }
+
                 ContributionHandoff.Declaration(J.Get(metadata, "handoff"))
                 AttemptContinuation.Declaration(metadata)
 

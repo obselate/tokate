@@ -35,7 +35,8 @@ internal class ReceiptVerification {
         }
 
         internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string) {
-            for key in[]string{"version", "issue", "approval", "donor", "expected", "reservation", "incomplete"} {
+            for key in "version,issue,approval,donor,expected,reservation,incomplete,requested_model,reported_model"
+                .Split(',') {
                 if J.Get(receipt, key).ValueKind != JsonValueKind.Undefined {
                     run.Fields[key] = J.Get(receipt, key)
                 }
@@ -61,7 +62,7 @@ internal class ReceiptVerification {
         ) Data {
             RequestData.Keys(
                 receipt,
-                "version,repo,issue,approval,expected,reservation,donor,head,correction,amendment,synchronizations,predecessor,import_manifest_sha256,attempt,incomplete,handoff"
+                "version,repo,issue,approval,expected,reservation,donor,head,correction,amendment,synchronizations,predecessor,import_manifest_sha256,attempt,incomplete,handoff,requested_model,reported_model"
             )
 
             let state = CoordinationState.Load(repo, J.Number(receipt, "issue"))
@@ -257,7 +258,7 @@ internal class ReceiptVerification {
             policy.ValidateTools(J.Get(metadata, "tools"), J.Text(metadata, "source"))
             AttemptContinuation.Declaration(metadata)
 
-            for key in[]string{"predecessor", "import_manifest_sha256"} {
+            for key in[]string{"predecessor", "import_manifest_sha256", "requested_model", "reported_model"} {
                 if !RequestData.Same(J.Get(receipt, key), J.Get(metadata, key)) {
                     throw CliFailure(
                         "stale_approval",

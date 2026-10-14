@@ -9,6 +9,17 @@ import System.Text.Json.Nodes
 
 internal class Check {
     shared {
+        internal func SetModels(policy JsonNode, models JsonNode?) {
+            for tool in policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing allowed tools") {
+                let entry = tool ?? throw Exception("Missing tool")
+                if models == nil {
+                    entry.AsObject().Remove("models")
+                } else {
+                    entry["models"] = models.DeepClone()
+                }
+            }
+        }
+
         internal func Hash(path string) string -> Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)))
             .ToLowerInvariant()
 

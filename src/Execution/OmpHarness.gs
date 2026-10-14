@@ -34,42 +34,23 @@ internal class OmpHarness {
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            policy.ValidateOmp(provider, model, effort, 1)
-
-            if args.Get("availability") == "unavailable" {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Selected model is donor-reported unavailable; no retry or fallback"
-                )
-            }
-
+            let selected = DonorSelection.Selection(args, policy, source)
             let runtime = OmpRuntime.Runtime(args)
             let limits = OmpRuntime.Model(args.Need("harness-path"), provider, model)
             OmpRuntime.CheckEffort(limits, effort)
 
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "harness": "omp",
-                        "provider": provider,
-                        "model": model,
-                        "effort": effort,
-                        "source": source,
-                        "policy_hash": policy.Digest,
-                        "policy_eligible": true,
-                        "capability": "native OMP CLI with the donor's configuration and tools; no additional isolation",
-                        "availability": "listed",
-                        "availability_evidence": "OMP lists the exact provider and model ID; credentials, credits and remote identity are unverified",
-                        "version": J.Text(runtime, "version"),
-                        "context_window": J.Number(limits, "contextWindow"),
-                        "max_tokens": J.Number(limits, "maxTokens")
-                    }
-                )
-            )
+            selected["capability"] = "native OMP CLI with the donor's configuration and tools; no additional isolation"
+            selected["availability"] = "listed"
+            selected[
+                "availability_evidence"
+            ] = "OMP lists the exact provider and model ID; credentials, credits and remote identity are unverified"
+            selected["version"] = J.Text(runtime, "version")
+            selected["context_window"] = J.Number(limits, "contextWindow")
+            selected["max_tokens"] = J.Number(limits, "maxTokens")
+            return J.Parse(J.Write(selected))
         }
 
-        internal func ValidateSaved(run Data, policy Policy) {
-            policy.ValidateOmp(run.Text("provider"), run.Text("model"), run.Text("effort"), run.Number("seconds"))
+        internal func ValidateSaved(run Data) {
             if !Path.IsPathFullyQualified(run.Text("harness_path")) {
                 throw ExecutionFailure.Create("invalid_state", "Saved OMP run requires its original executable")
             }
@@ -192,6 +173,8 @@ internal class OmpHarness {
 
                 let usage = OmpEvidence.Completed(directory, result.Output, run.Text("model"), run.Text("provider"))
 
+                run.Fields["reported_model"] = usage["reported_model"]
+                usage.Remove("reported_model")
                 run.Fields["turn_completed"] = true
                 run.Fields["usage"] = usage
                 run.Fields[

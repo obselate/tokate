@@ -11,57 +11,19 @@ import System.Text.RegularExpressions
 internal class ClaudeHarness {
     shared {
         internal func Select(args Args, policy Policy, source string) JsonElement {
-            if args.Need("provider") != "anthropic" || !policy.AllowsTool("claude", "anthropic") {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Claude/anthropic is not allowed by the repository policy; no inference started."
-                )
-            }
-
-            let model = args.Need("model")
-            let effort = args.Need("effort")
-
-            policy.Validate("claude", "anthropic", model, effort, 1)
-
-            if !ClaudeCode.Pair(model, effort) {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Unsupported native Claude model/effort pair; no inference started."
-                )
-            }
-
-            if args.Get("availability") == "unavailable" {
-                throw ExecutionFailure.Create(
-                    "invalid_state",
-                    "Selected model is donor-reported unavailable; no retry or fallback"
-                )
-            }
-
+            let selected = DonorSelection.Selection(args, policy, source)
             let runtime = ClaudeCode.Runtime(args)
 
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "harness": "claude",
-                        "provider": "anthropic",
-                        "model": model,
-                        "effort": effort,
-                        "source": source,
-                        "policy_hash": policy.Digest,
-                        "policy_eligible": true,
-                        "capability": "native configured tools inside whole-process isolation",
-                        "availability": "unknown",
-                        "availability_evidence": "Native login status and explicit controls do not prove model availability or remote identity",
-                        "version": J.Text(runtime, "version")
-                    }
-                )
-            )
+            selected["capability"] = "native configured tools inside whole-process isolation"
+            selected["availability"] = "unknown"
+            selected[
+                "availability_evidence"
+            ] = "Native login status and explicit controls do not prove model availability or remote identity"
+            selected["version"] = J.Text(runtime, "version")
+            return J.Parse(J.Write(selected))
         }
 
-        internal func ValidateSaved(run Data, policy Policy) {
-            policy.ValidateTools(J.Get(run.Element(), "tools"), "tokate")
-            policy.Validate("claude", "anthropic", run.Text("model"), run.Text("effort"), run.Number("seconds"))
-
+        internal func ValidateSaved(run Data) {
             if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
                 run.Text("harness_path")
             ) {
@@ -218,6 +180,10 @@ internal class ClaudeHarness {
                     usage["cached_input_tokens"] = cached
                 }
 
+                run.Fields["reported_model"] = J.Get(reports, "model").ValueKind == JsonValueKind.String ? J.Text(
+                    reports,
+                    "model"
+                ): nil
                 run.Fields["native_reports"] = reports
                 run.Fields["turn_completed"] = true
                 run.Fields["usage"] = usage

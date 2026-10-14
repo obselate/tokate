@@ -140,14 +140,6 @@ internal class PublicOutput {
             )
             result["close_message"] = Policy.CloseMessage(value)
 
-            if J.Number(value, "version") == 2 {
-                let mode = J.Text(value, "model_policy")
-                result["model_policy"] = mode == "" ? "whitelist": mode
-                for field in PolicyModels(J.Get(value, "models")) {
-                    result[field.Key] = field.Value
-                }
-            }
-
             for key in[]string{"verification", "required_checks", "protected_paths"} {
                 let items = J.Items(J.Get(value, key))
                 let rows = List[Object]()
@@ -168,8 +160,7 @@ internal class PublicOutput {
                 let entries = J.Items(tools)
                 for i in 0 ... Math.Min(64, entries.Count) {
                     let tool = J.Select(entries[i], "harness,provider")
-                    if J.Number(value, "version") == 3 && J.Get(entries[i], "models")
-                        .ValueKind == JsonValueKind.Object {
+                    if J.Get(entries[i], "models").ValueKind == JsonValueKind.Object {
                         for field in PolicyModels(J.Get(entries[i], "models")) {
                             tool[field.Key] = field.Value
                         }
@@ -228,7 +219,7 @@ internal class PublicOutput {
             let value = run.Element()
             let result = J.Select(
                 value,
-                "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,effort,seconds,verification_reserve,unlimited,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,omp_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
+                "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,requested_model,reported_model,effort,seconds,verification_reserve,unlimited,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,omp_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
             )
 
             if run.Text("source") == "tokate" {

@@ -38,14 +38,6 @@ internal class EligibilityChecks {
             if version != 0 {
                 policy["version"] = JsonValue.Create(version)
             }
-            if version == 3 {
-                for tool in policy["allowed_tools"]?.AsArray() ?? JsonArray() {
-                    let entry = tool ?? throw Exception("Missing tool")
-                    entry["models"] = policy["models"]?.DeepClone()
-                }
-                policy.AsObject().Remove("models")
-                policy.AsObject().Remove("model_policy")
-            }
             let text = policy.ToJsonString()
             if File.ReadAllText(path) != text {
                 File.WriteAllText(path, text)
@@ -79,7 +71,7 @@ internal class EligibilityChecks {
         }
 
         private func Modes(binary string) {
-            for configuration in[]string{"2 open", "2 trusted", "2 manual", "3 open", "3 trusted"} {
+            for configuration in[]string{"3 open", "3 trusted"} {
                 let parts = configuration.Split(' ')
                 let version = Int32.Parse(parts[0])
                 let mode = parts[1]
@@ -89,14 +81,9 @@ internal class EligibilityChecks {
                 let state = test.State()["state"] ?? throw Exception("Missing state")
                 let approval = state["approval"] ?? throw Exception("Missing approval")
                 Check.That(
-                    Check.Text(approval["eligibility"]) == (mode == "manual" ? "trusted": mode),
+                    Check.Text(approval["eligibility"]) == mode,
                     "Approval did not use the current eligibility semantics"
                 )
-                if mode == "manual" {
-                    approval["eligibility"] = JsonValue.Create("manual")
-                    state["approval_id"] = JsonValue.Create(Check.FixtureDigest(approval))
-                    test.RewriteState(state)
-                }
                 let initial = Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
                 if mode != "open" {
                     Check.Contains(initial.Error, "Eligibility mode: trusted. Missing donor trust and issue grant.")

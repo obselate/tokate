@@ -23,12 +23,16 @@ internal open class CoordinationFixture : IDisposable {
         Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(policyPath))
-        policy["version"] = JsonValue.Create(2)
-        policy["allowed_tools"] = Check.Json(
-            "[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"claude\",\"provider\":\"anthropic\"}]"
+        let codex = policy["allowed_tools"]?[0]?.DeepClone() ?? throw Exception("Missing Codex tool")
+        let claude = Check.Map(
+            "harness",
+            "claude",
+            "provider",
+            "anthropic",
+            "models",
+            Check.Json("{\"claude-sonnet-4-6\":[\"unknown\"]}")
         )
-        let models = policy["models"] ?? throw Exception("Missing models")
-        models["claude-sonnet-4-6"] = Check.Json("[\"unknown\"]")
+        policy["allowed_tools"] = JsonArray(codex, claude)
         File.WriteAllText(policyPath, policy.ToJsonString())
         Flow.Commit("Owner tool policy")
         if approve {
