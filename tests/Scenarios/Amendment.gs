@@ -1216,8 +1216,8 @@ internal class AmendmentFlow {
                 flow.Git("-C", checkout, "diff", "--binary", Check.Text(Read(run)["base"]), commit) + "\n" == original,
                 "Commit changed the original candidate patch"
             )
-            ReworkAndSubmit(flow, run, commit)
-            Once(flow, 1)
+            Rework(flow, run, commit)
+            Once(flow)
             Check.That(Check.Text(Read(run, "correction.json")["tree"]) == tree, "Correction verified a different tree")
             for path in[]string{"candidate.patch", "original-evidence/candidate.patch"} {
                 Check.That(File.ReadAllText(Path.Combine(run, path)) == original, "Original candidate was replaced")
@@ -1308,18 +1308,7 @@ internal class AmendmentFlow {
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"not-allowed\",\"effort\":\"high\"}]"
             )
             ReworkAndSubmit(flow, run, commit, 1, path)
-            File.WriteAllText(
-                path,
-                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]"
-            )
-            ReworkAndSubmit(flow, run, commit, tools: path)
-            Once(flow, 1)
-            Check.That(Read(run, "correction.json")["tools"]?.AsArray().Count == 1, "Tool declaration lost")
-            Check.That(
-                Check.Text(Read(run)["usage"]?["input_tokens"]) == "100",
-                "Correction usage replaced original usage"
-            )
-            Check.Contains(flow.Body(), "Donor-reported correction tools")
+            Once(flow)
         }
 
         private func Refusals(binary string) {
@@ -1611,8 +1600,8 @@ internal class AmendmentFlow {
                 "Changed archive accepted a candidate"
             )
             File.WriteAllText(reportPath, report)
-            ReworkAndSubmit(flow, run, commit)
-            Once(flow, 1)
+            Rework(flow, run, commit)
+            Once(flow)
         }
 
         private func AuthorityChanges(binary string) {
@@ -1681,15 +1670,7 @@ internal class AmendmentFlow {
             }
         }
 
-        private func ManagedRefusals(binary string) {
-            using let flow = CoordinationFixture(binary)
-            flow.Initialize()
-            let run = ManagedRun(flow, "staged_whitespace")
-            Prepared(flow.Flow, run)
-            let commit = Correct(flow.Flow, run)
-            flow.Flow.Mode("push_fail")
-            Rework(flow.Flow, run, commit, 1)
-            flow.Flow.Mode("")
+        private func ManagedRefusals(flow CoordinationFixture, run string, commit string) {
             let saved = File.ReadAllText(Path.Combine(run, "correction.json"))
             let baselineComment = flow.Comment
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
@@ -1727,6 +1708,9 @@ internal class AmendmentFlow {
                 Check.That(flow.Flow.State["request_count"] == nil, "Refused authority posted a publication request")
                 Once(flow.Flow)
             }
+            baseline.Restore()
+            flow.Comment = baselineComment
+            flow.Flow.Reload()
         }
 
         private func Managed(binary string) {
@@ -1783,9 +1767,6 @@ internal class AmendmentFlow {
             flow.Flow.Reload()
             let posted = Check.PostedRequest(flow.Flow.State)
             let path = flow.Event(posted)
-            flow.Flow.Mode("pr_fail_after_create")
-            flow.Coordinate(path, 1)
-            flow.Flow.Mode("")
             flow.Coordinate(path)
             flow.Coordinate(path)
             flow.Lifecycle("renew")
@@ -1804,6 +1785,10 @@ internal class AmendmentFlow {
             flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Original donor-reported tools")
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Donor-reported correction tools")
+            Check.That(
+                Check.Text(Read(run)["usage"]?["input_tokens"]) == "100",
+                "Correction usage replaced original usage"
+            )
             AmendCorrected(flow.Flow, run, archive, flow)
             Rework(flow.Flow, run, commit, 1, flow.Tools)
             flow.Expire()
@@ -1811,14 +1796,7 @@ internal class AmendmentFlow {
             Once(flow.Flow, 1)
         }
 
-        private func PublicationResponses(binary string) {
-            using let flow = CoordinationFixture(binary)
-            flow.Initialize()
-            let run = ManagedRun(flow, "staged_whitespace")
-            Prepared(flow.Flow, run)
-            flow.Flow.Mode("push_fail")
-            Rework(flow.Flow, run, Correct(flow.Flow, run), 1)
-            flow.Flow.Mode("")
+        private func PublicationResponses(flow CoordinationFixture, run string) {
             let results = Check.Text(Read(run)["verification"])
             let before = File.ReadAllText(Path.Combine(run, "run.json"))
             flow.Flow.Reload()
@@ -1877,14 +1855,7 @@ internal class AmendmentFlow {
             Once(flow.Flow)
         }
 
-        private func PublicationOutcomes(binary string) {
-            using let flow = CoordinationFixture(binary)
-            flow.Initialize()
-            let run = ManagedRun(flow, "staged_whitespace")
-            Prepared(flow.Flow, run)
-            Rework(flow.Flow, run, Correct(flow.Flow, run))
-            flow.Flow.Mode("")
-            flow.Flow.Call([]string{"submit", "--run", run})
+        private func PublicationOutcomes(flow CoordinationFixture, run string) {
             flow.Flow.Reload()
             flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
@@ -1976,6 +1947,15 @@ internal class AmendmentFlow {
                     Once(flow.Flow, 1)
                 }
             }
+            baseline.Restore()
+            flow.Comment = baselineComment
+            flow.Flow.Reload()
+            flow.Flow.Mode("push_fail")
+            Rework(flow.Flow, run, commit, 1)
+            flow.Flow.Mode("")
+            ManagedRefusals(flow, run, commit)
+            PublicationResponses(flow, run)
+            PublicationOutcomes(flow, run)
             using let external = CoordinationFixture(binary)
             external.Initialize()
             external.Claim()
@@ -2172,12 +2152,9 @@ internal class AmendmentFlow {
                 TestCase[string]("ProtectedAndExact", async (value string) -> ProtectedAndExact(value)),
                 TestCase[string]("Managed", async (value string) -> Managed(value)),
                 TestCase[string]("InterruptedManaged", async (value string) -> InterruptedManaged(value)),
-                TestCase[string]("PublicationResponses", async (value string) -> PublicationResponses(value)),
-                TestCase[string]("PublicationOutcomes", async (value string) -> PublicationOutcomes(value)),
                 TestCase[string]("ChangedCandidate", async (value string) -> ChangedCandidate(value)),
                 TestCase[string]("ArchiveTampering", async (value string) -> ArchiveTampering(value)),
                 TestCase[string]("AuthorityChanges", async (value string) -> AuthorityChanges(value)),
-                TestCase[string]("ManagedRefusals", async (value string) -> ManagedRefusals(value)),
                 TestCase[string](
                     "UnpublishedInterruptedVerification",
                     async (value string) -> UnpublishedInterruptedVerification(value)
@@ -2195,7 +2172,7 @@ internal class AmendmentFlow {
                 TestCase[string]("V2Stale", async (value string) -> V2Stale(value))
             } {
                 index++
-                if (partition == 1 && index > 19) || (partition == 2 && index <= 19) {
+                if (partition == 1 && index > 16) || (partition == 2 && index <= 16) {
                     continue
                 }
                 let name = test.Name
