@@ -96,8 +96,9 @@ internal class SynchronizationChecks {
         ) string {
             flow.ResetTraffic()
             let args = List[string]{
-                "authorize-sync",
+                "sync",
                 "owner/project#10",
+                "authorize",
                 "--commit",
                 candidate,
                 "--upstream",
@@ -143,7 +144,10 @@ internal class SynchronizationChecks {
         }
 
         private func Revoke(flow NativeFixture, grant string) {
-            let result = flow.Call([]string{"revoke-sync", "owner/project", "--grant", grant, "--json"}, owner: true)
+            let result = flow.Call(
+                []string{"sync", "owner/project#10", "revoke", "--grant", grant, "--json"},
+                owner: true
+            )
             Check.That(
                 Check.Text(Check.Json(result.Output)["data"]?["grant"]) == grant,
                 "Revocation lost grant identity"

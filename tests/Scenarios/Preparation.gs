@@ -15,7 +15,7 @@ internal class PreparationChecks {
         }
 
         private func Resume(flow NativeFixture, run string, code int32 = 0) Result -> flow.Call(
-            []string{"prepare", "--run", run},
+            []string{"claim", "--run", run},
             code
         )
 
@@ -284,11 +284,7 @@ internal class PreparationChecks {
                 "External claim acquired a managed selection"
             )
             Check.That(Check.Text(result["status"]) == "pending", "External claim lost pending status")
-            Check.That(
-                !(result["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
-                "External pending claim offered managed inference"
-            )
-            flow.Call([]string{"work", "--run", run}, 1)
+            Check.Contains(result["next_actions"]?.ToJsonString() ?? "", "\"work\"")
             flow.Reload()
             let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing external claim")
             test.Coordinate(PostedEvent(test, comment))
@@ -388,10 +384,8 @@ internal class PreparationChecks {
             let root = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
             flow.Call(
                 []string{
-                    "prepare",
+                    "claim",
                     "owner/project#1",
-                    "--state",
-                    Check.Text(test.State()["sha"]),
                     "--source",
                     "external",
                     "--tools",
@@ -892,14 +886,14 @@ internal class PreparationChecks {
                 let state = test.State()
                 test.Flow.Call(
                     []string{
-                        "prepare",
+                        "claim",
                         "owner/project#1",
-                        "--state",
-                        Check.Text(state["sha"]),
                         "--source",
                         "external",
                         "--tools",
                         test.Tools,
+                        "--time",
+                        "30s",
                         "--fork",
                         "owner/project",
                         "--runs",
@@ -1023,7 +1017,7 @@ internal class PreparationChecks {
                         } else {
                             File.CreateSymbolicLink(path, target)
                         }
-                        for command in[]string{"prepare", "work", "external", "submit", "amend", "submit-correction",} {
+                        for command in[]string{"work", "external", "submit", "amend", "submit-correction",} {
                             let corrected = command.EndsWith("-correction")
                             if corrected {
                                 File.WriteAllText(Path.Combine(run, "correction.json"), "{}")
@@ -1234,7 +1228,6 @@ internal class PreparationChecks {
                 ) == "claim_pending",
                 "Pending JSON omitted its saved state"
             )
-            Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "prepare")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "work")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
             Check.Contains(
@@ -1413,6 +1406,9 @@ internal class PreparationChecks {
                     flow.Mode("missing_controls")
                 } else if gate == "competing" {
                     test.Claim()
+                    let state = test.State()["state"] ?? throw Exception("Missing state")
+                    (state["reservation"] ?? throw Exception("Missing reservation"))["actor"] = JsonValue.Create(124)
+                    test.RewriteState(state)
                 } else if gate == "revoked" {
                     flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                 } else {
@@ -1546,7 +1542,7 @@ internal class PreparationChecks {
             let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing claim")
             test.Coordinate(PostedEvent(test, comment))
             let unavailable = flow.Call([]string{"claim", "owner/project#1", "ready", "--time", "2m"}, 1)
-            Check.Contains(unavailable.Error, "An unexpired reservation already owns")
+            Check.Contains(unavailable.Error, "Saved contribution already exists")
             flow.NoInference()
             flow.NoPr()
         }

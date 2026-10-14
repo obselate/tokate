@@ -660,7 +660,7 @@ internal partial class NativeFlow : NativeFixture {
         Claim(code: 1)
         let directories = Directory.GetDirectories(Path.Combine(Temp.Root, "runs"))
         Check.That(directories.Length == 1, "Rejected repository configuration lost preparation")
-        Check.Contains(Call([]string{"prepare", "--run", directories[0]}, 1).Error, "Repository Codex configuration")
+        Check.Contains(Call([]string{"work", "--run", directories[0]}, 1).Error, "Repository Codex configuration")
         NoInference()
     }
 

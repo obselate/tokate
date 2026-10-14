@@ -80,7 +80,7 @@ internal class Check {
         }
 
         internal func PrepareGuidance(result JsonNode) {
-            let command = Check.Json("[\"tokate\",\"help\",\"prepare\",\"--json\"]").ToJsonString()
+            let command = Check.Json("[\"tokate\",\"help\",\"work\",\"--json\"]").ToJsonString()
             Check.That(result["data"]?["next"]?["command"]?.ToJsonString() == command, "Missing prepare guidance")
             var found bool
             for action in result["next_actions"]?.AsArray() ?? JsonArray() {

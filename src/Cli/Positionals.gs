@@ -238,7 +238,7 @@ internal class Positionals {
                         args.Command == "sync" ||
                             (args.Command == "work" && args.Get("issue") == "" && words[1] == "stop")
                     ) {
-                        args.Subject = "stop"
+                        args.Subject = words[1]
                     } else if words.Count > 1 {
                         if args.Get("issue") == "" || args.Get("attempt") != "" || args.Get("run") != "" {
                             throw Exception("A profile name must follow an issue number")

@@ -62,11 +62,15 @@ internal class CliCommand(
 
     internal func Needs(name string) bool -> ("," + Required + ",").Contains("," + name + ",")
 
-    internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "status"
+    internal prop SupportsSavedRun bool -> Name == "work" || Name == "claim" || Name == "checks" || Name == "status"
 
     internal prop Brief string -> Summary.Split([]string{". ", "; "}, StringSplitOptions.None)[0].TrimEnd('.')
 
-    internal prop Runs bool -> Target == "run" || Name == "work" || Name == "checks" || Name == "status"
+    internal prop Runs bool -> Target == "run" ||
+        Name == "work" ||
+        Name == "claim" ||
+        Name == "checks" ||
+        Name == "status"
 
     internal func ConflictsWithRun(name string) bool -> name != "run" &&
         name != "help" &&
@@ -75,7 +79,7 @@ internal class CliCommand(
         name != "plain" &&
         name != "ascii" &&
         (
-        (Name == "work" && name != "yes" && name != "non-interactive") ||
+        ((Name == "work" || Name == "claim") && name != "yes" && name != "non-interactive") ||
             (Name == "checks" && name != "watch" && name != "timeout" && name != "verbose") ||
             Name == "status"
     )
@@ -231,10 +235,10 @@ internal class Cli {
             ),
             CliCommand(
                 "claim",
-                "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,time,verify-time,unlimited,fork,runs,continue-from,from-pr",
+                "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from,from-pr",
                 "repo,issue",
-                "Reserve an approved issue and save a claim; name an issue, not only a repository. No inference or PR publication.",
-                "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]",
+                "Reserve an approved issue and save a claim; name an issue, not only a repository. With your active reservation, prepare a fresh attempt. No inference or PR publication.",
+                "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]\n       tokate claim RUN [--yes]",
                 "claim 42 --model gpt-6.1-sol --effort high",
                 effects: "local_read local_write github_read github_write",
                 target: "issue",
@@ -736,7 +740,7 @@ internal class Cli {
         internal func Positional(command CliCommand)[]string -> switch command.Name {
             case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME|stop"}
 
-            case "claim": []string{"ISSUE", "NAME"}
+            case "claim": []string{"ISSUE|RUN", "NAME"}
 
             case "status": []string{"ISSUE|OWNER/REPO|RUN"}
 
@@ -1155,6 +1159,7 @@ internal class Cli {
                     text.AppendLine(
                         name == "status" ? "Use RUN or --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
                         name == "work" ? "ISSUE alone continues its newest saved claim; otherwise it starts a new attempt. For a saved claim, use RUN or --run DIR instead of required inputs.":
+                        name == "claim" ? "Use RUN or --run DIR to finish a saved claim or its preparation without inference.":
                         "Use RUN or --run DIR instead of PR to check a saved run. A PR with one saved run uses that run."
                     )
                 }
@@ -1205,7 +1210,7 @@ internal class Cli {
                     )
                 }
             }
-            if args.Command == "claim" && args.Get("issue") == "" && !args.Help {
+            if args.Command == "claim" && args.Get("issue") == "" && args.Get("run") == "" && !args.Help {
                 throw Exception(
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )

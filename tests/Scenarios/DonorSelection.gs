@@ -448,14 +448,11 @@ internal class DonorSelectionChecks {
             coordination.Claim()
             let flow = coordination.Flow
             Set(flow)
-            let state = coordination.State()
             let args = List[string]{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(state["sha"]),
-                "--source",
-                "tokate",
+                "--time",
+                "30s",
                 "--runs",
                 Path.Combine(flow.Temp.Root, "runs"),
                 "--non-interactive"
@@ -655,18 +652,7 @@ internal class DonorSelectionChecks {
             Check.That(JsonNode.DeepEquals(calls, flow.State["api_calls"]), "Rejected profile reached GitHub")
             for args in[][]string{
                 []string{"work", "--run", "unused", "--profile", "cloud", "--json"},
-                []string{
-                    "prepare",
-                    "owner/project#1",
-                    "--state",
-                    String('a', 40),
-                    "--source",
-                    "external",
-                    "--tools",
-                    "unused",
-                    "cloud",
-                    "--json"
-                }
+                []string{"claim", "owner/project#1", "--source", "external", "--tools", "unused", "cloud", "--json"}
             } {
                 Check.Envelope(flow.Call(args, 1), args[0], "error", "invalid_arguments")
             }

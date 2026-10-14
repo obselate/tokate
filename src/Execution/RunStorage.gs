@@ -98,7 +98,7 @@ internal class RunStorage {
                                     Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
                                     ". Wait for each coordinator acceptance, then run " +
                                     Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
-                                    " for the continuation command with the current state SHA. No files were overwritten."
+                                    " for the continuation command. No files were overwritten."
                             )
                         }
                         throw ExecutionFailure.Create(

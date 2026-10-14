@@ -185,8 +185,11 @@ internal class Diagnostics {
             )
             Call(binary, temp, []string{"status", "--run", saved})
             Check.That(!File.Exists(calls), "Offline commands started prerequisite probes")
-            Call(binary, temp, []string{"work", "--run", saved}, "error", "invalid_state")
-            Check.That(!File.Exists(calls), "Rejected external saved work probed managed tools")
+            let resumed = Call(binary, temp, []string{"work", "--run", saved}, "error", "missing_tools")
+            Check.That(
+                resumed["data"]?["tools"]?.AsArray().Count == 1 && !File.ReadAllText(calls).Contains("codex"),
+                "External saved work probed managed tools"
+            )
             let incomplete = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
             Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Owner accepted missing Git")
             for name in[]string{"git", "curl", "tar"} {
@@ -272,29 +275,12 @@ internal class Diagnostics {
             let external = Call(
                 binary,
                 temp,
-                []string{
-                    "prepare",
-                    "owner/project#1",
-                    "--state",
-                    String('a', 40),
-                    "--source",
-                    "external",
-                    "--tools",
-                    tools
-                },
+                []string{"claim", "owner/project#1", "--source", "external", "--tools", tools},
                 "error",
                 "missing_tools"
             )
             Check.That(Check.Text(Row(external, "git")["status"]) == "missing", "External preparation omitted Git")
             Check.That(!File.ReadAllText(calls).Contains("codex"), "External preparation needed Codex")
-            let managed = Call(
-                binary,
-                temp,
-                []string{"prepare", "owner/project#1", "--state", String('a', 40), "--source", "tokate"},
-                "error",
-                "missing_tools"
-            )
-            Check.That(Check.Text(Row(managed, "codex")["status"]) == "missing", "Managed catalog route omitted Codex")
             for command in[]string{"claim", "select"} {
                 let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
                 let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")

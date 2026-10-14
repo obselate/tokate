@@ -139,8 +139,9 @@ internal class OverlapFlow : IDisposable {
                         .Envelope(
                         Flow.Call(
                             []string{
-                                "authorize-sync",
+                                "sync",
                                 "owner/project#" + (issue + 9).ToString(),
+                                "authorize",
                                 "--commit",
                                 candidate,
                                 "--upstream",
@@ -149,7 +150,7 @@ internal class OverlapFlow : IDisposable {
                             },
                             owner: true
                         ),
-                        "authorize-sync",
+                        "sync",
                         "ok"
                     )["data"]?["grant"]
                 )

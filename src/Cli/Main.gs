@@ -382,7 +382,8 @@ func Dispatch(options Args) int32 {
         }
 
         case "claim" {
-            let directory = ContributionPreparation.Acquire(options)
+            let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
+            ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)
 
             if Data.Load(directory).Text("state") == "claim_pending" {
                 return 8

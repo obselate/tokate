@@ -28,12 +28,8 @@ internal class AttemptContinuationChecks {
             endpoint string = ""
         )[]string {
             let args = List[string]{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(test.State()["sha"]),
-                "--source",
-                "tokate",
                 "--harness",
                 harness,
                 "--provider",
@@ -254,8 +250,8 @@ internal class AttemptContinuationChecks {
                 )
                 Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "tokate resume --run")
                 Check.That(
-                    Check.Text(status["data"]?["next"]?["command"]?[4]) == Check.Text(test.State()["sha"]),
-                    "Time-limited status omitted the current state SHA"
+                    Check.Text(status["data"]?["next"]?["command"]?[1]) == "work",
+                    "Time-limited status omitted the continuation command"
                 )
                 let refused = test.Flow.Call(Args(test, source, harness, endpoint: endpoint), 1)
                 Check.Contains(refused.Error, source)
@@ -283,10 +279,8 @@ internal class AttemptContinuationChecks {
                     }
                 }
                 args = selected.ToArray()
-                Check.That(
-                    args[Array.IndexOf(args, "--state") + 1] == state,
-                    "Continuation guidance used a stale state SHA"
-                )
+                Check.That(args[0] == "work", "Continuation guidance named another command")
+                args[0] = "claim"
                 Check.That(
                     args[Array.IndexOf(args, "--continue-from") + 1] == source,
                     "Continuation guidance selected another run"
@@ -327,8 +321,8 @@ internal class AttemptContinuationChecks {
                 !Directory.Exists(Path.Combine(fresh, "checkout/.verification-data")),
                 "Continuation imported generated source files"
             )
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            test.Flow.Call([]string{"prepare", "--run", fresh})
+            test.Flow.Call([]string{"claim", "--run", fresh, "--yes"})
+            test.Flow.Call([]string{"claim", "--run", fresh, "--yes"})
             Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
             test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
             test.Flow.Call([]string{"work", "--run", fresh}, 1)
@@ -336,7 +330,7 @@ internal class AttemptContinuationChecks {
             let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
             Directory.CreateDirectory(copied)
             File.Copy(Path.Combine(fresh, "run.json"), Path.Combine(copied, "run.json"))
-            test.Flow.Call([]string{"prepare", "--run", copied}, 1)
+            test.Flow.Call([]string{"claim", "--run", copied, "--yes"}, 1)
             test.Flow.Call([]string{"work", "--run", copied, "--yes"}, 1)
             Check.That(
                 !File.Exists(Path.Combine(copied, "events.jsonl")),
@@ -467,7 +461,7 @@ internal class AttemptContinuationChecks {
             )
             let args = List[string](Args(test, source))
             args.Add("--json")
-            let rejected = Check.Envelope(test.Flow.Call(args.ToArray(), 1), "prepare", "error", "invalid_state")
+            let rejected = Check.Envelope(test.Flow.Call(args.ToArray(), 1), "claim", "error", "invalid_state")
             Check.Contains(Check.Text(rejected["error"]?["message"]), "Source attempt is active or leased")
             active.Dispose()
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
@@ -665,8 +659,8 @@ internal class AttemptContinuationChecks {
                 Check.Text(Read(fresh)["continuation_phase"]) == "captured",
                 "Interrupted preparation lost capture evidence"
             )
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            test.Flow.Call([]string{"prepare", "--run", fresh})
+            test.Flow.Call([]string{"claim", "--run", fresh, "--yes"})
+            test.Flow.Call([]string{"claim", "--run", fresh, "--yes"})
             let sourceBytes = Bytes(source)
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for mode in[]string{
@@ -743,7 +737,7 @@ internal class AttemptContinuationChecks {
                 Save(fresh, saved)
                 let rejected = mode != "partial" && mode != "write" && mode != "capture"
                 let targetBytes = Bytes(Path.Combine(fresh, "checkout"))
-                test.Flow.Call([]string{"prepare", "--run", fresh}, rejected ? 1: 0)
+                test.Flow.Call([]string{"claim", "--run", fresh, "--yes"}, rejected ? 1: 0)
                 if rejected {
                     if mode == "target-hardlink" || mode == "capture-hardlink" {
                         let peer = Path.Combine(
@@ -760,7 +754,7 @@ internal class AttemptContinuationChecks {
                     Preserved(Path.Combine(fresh, "checkout"), targetBytes)
                     test.Flow.Call([]string{"work", "--run", fresh, "--yes"}, 1)
                 } else {
-                    test.Flow.Call([]string{"prepare", "--run", fresh})
+                    test.Flow.Call([]string{"claim", "--run", fresh, "--yes"})
                     Check.That(
                         File.ReadAllText(Path.Combine(fresh, "checkout/tracked.txt")) == "preserved\n" &&
                             File.ReadAllText(Path.Combine(fresh, "checkout/imported.txt")) == "untracked\n",

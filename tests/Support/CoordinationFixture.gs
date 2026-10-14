@@ -226,12 +226,9 @@ internal open class CoordinationFixture : IDisposable {
         reserve string = "",
         unlimited bool = false
     ) string {
-        let state = State()
         let args = List[string]{
-            "prepare",
+            "claim",
             "owner/project#1",
-            "--state",
-            Check.Text(state["sha"]),
             "--source",
             source,
             "--tools",

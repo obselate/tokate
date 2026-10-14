@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile sync coordinator-setup completion help --version coordination request admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -892,11 +892,12 @@ internal class CliDiscovery {
                 []string{"status", "--run", "saved", "owner/project#10", "--json"},
                 []string{"status", "--run", "saved", "1", "--json"},
                 []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
-                []string{"revoke-sync", "owner/project", "--grant", "invalid", "--json"},
-                []string{"revoke-sync", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
+                []string{"sync", "owner/project#10", "revoke", "--grant", "invalid", "--json"},
+                []string{"sync", "owner/project#10", "revoke", "--grant", String('a', 40) + "\n", "--json"},
                 []string{
-                    "authorize-sync",
+                    "sync",
                     "owner/project#10",
+                    "authorize",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -904,8 +905,9 @@ internal class CliDiscovery {
                     "--json"
                 },
                 []string{
-                    "authorize-sync",
+                    "sync",
                     "owner/project#10",
+                    "authorize",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -1518,8 +1520,8 @@ internal class CliDiscovery {
                 []string{"work", "owner/project", "--run=x"},
                 []string{"revoke", "https://github.com/owner/project/issues/0"},
                 []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
-                []string{"prepare", "owner/project#1", "--state=bad", "--source=external", "--tools=tools.json"},
-                []string{"prepare", "owner/project#1", "--source=invalid"},
+                []string{"claim", "owner/project#1", "--source=invalid"},
+                []string{"sync", "owner/project#10", "merge"},
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
                 []string{"coordinator-setup", "--repo=owner/project"},

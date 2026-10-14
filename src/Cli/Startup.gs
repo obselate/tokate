@@ -113,14 +113,16 @@ internal class Startup {
             var pi = options.Get("harness") == "pi"
             var claude = options.Get("harness") == "claude"
             var omp = options.Get("harness") == "omp"
-            if options.Get("run") != "" && command == "work" {
+            if options.Get("run") != "" {
                 let run = Data.Load(Path.GetFullPath(options.Need("run")))
                 let harness = run.Text("harness")
 
-                catalog = run.Text("source") != "external"
-                pi = harness == "pi"
-                claude = harness == "claude"
-                omp = harness == "omp"
+                if command == "work" || command == "claim" {
+                    catalog = run.Text("source") != "external"
+                    pi = harness == "pi"
+                    claude = harness == "claude"
+                    omp = harness == "omp"
+                }
             }
 
             if catalog && !pi && !claude && !omp {

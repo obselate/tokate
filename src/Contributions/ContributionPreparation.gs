@@ -21,6 +21,13 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
             Bind(run, state)
+
+            let directory = Allocate(
+                args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
+                run,
+                run.Text("attempt")
+            )
+
             WorkspacePreparation.Select(run, args.Get("fork"))
 
             if args.Get("continue-from") != "" {
@@ -42,12 +49,7 @@ internal class ContributionPreparation {
                 DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
 
-            let directory = Create(
-                args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
-                run,
-                run.Text("attempt")
-            )
-
+            Create(directory)
             using let lease = RunStorage.Lease(directory)
 
             WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
@@ -194,16 +196,17 @@ internal class ContributionPreparation {
             return run
         }
 
-        private func Create(store string, run Data, id string) string {
+        private func Allocate(store string, run Data, id string) string {
             let directory = RunStorage.Allocate(store, run.Text("repo"), run.Number("issue"), id)
             PublicOutput.RunDirectory = directory
             run.Fields["name"] = Path.GetFileName(directory)
-            Directory.CreateDirectory(
-                directory,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
             return directory
         }
+
+        private func Create(directory string) -> Directory.CreateDirectory(
+            directory,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+        )
 
         private func Bind(run Data, state CoordinationState) {
             let reservation = J.Get(state.Value(), "reservation")
@@ -228,8 +231,9 @@ internal class ContributionPreparation {
                 run.Fields["id"] = id
                 run.Fields["attempt"] = id
                 run.Fields["branch"] = "tokate/gratis-" + id
+                let directory = Allocate(RunStorage.Store(args), run, id)
                 WorkspacePreparation.Select(run, args.Get("fork"))
-                let directory = Create(RunStorage.Store(args), run, id)
+                Create(directory)
                 using let lease = RunStorage.Lease(directory)
                 WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
                 WorkspacePreparation.Complete(directory, run)
@@ -254,7 +258,9 @@ internal class ContributionPreparation {
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
                 if RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) == RepositoryIdentity.PositiveId(
                     J.Get(viewer, "id")
-                ) {
+                ) &&
+                    J
+                    .Get(state.Value(), "contribution").ValueKind != JsonValueKind.Object {
                     return Prepare(args, repo, issue, viewer, state, record)
                 }
 
@@ -298,7 +304,8 @@ internal class ContributionPreparation {
             run.Fields["requested_fork"] = args.Get("fork")
             run.Fields["state"] = "claim_pending"
 
-            let directory = Create(RunStorage.Store(args), run, J.Text(request, "uuid"))
+            let directory = Allocate(RunStorage.Store(args), run, J.Text(request, "uuid"))
+            Create(directory)
             using let lease = RunStorage.Lease(directory)
 
             WorkspacePreparation.Pending(directory, run)
@@ -311,7 +318,7 @@ internal class ContributionPreparation {
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
 
-            if run.Text("state") != "claim_pending" && run.Flag("preparation_complete") {
+            if args.Command == "work" && run.Flag("preparation_complete") {
                 return directory
             }
 

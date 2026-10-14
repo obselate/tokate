@@ -22,10 +22,11 @@ Bare `tokate` prints help. The GUI is the other interface.
 
 | Command | Usage | What it does |
 | --- | --- | --- |
-| `work` | `tokate work ISSUE [NAME] \| RUN [options]` | Code an approved issue and verify it. Uses donor inference. |
+| `work` | `tokate work ISSUE [NAME] \| RUN [options]` | Code an approved issue and verify it. Uses donor inference. Claims the issue, or prepares a fresh attempt under your active reservation. `RUN` resumes a pending claim or incomplete preparation, then codes. |
 | `work` repository | `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL] [options]` | Claim, work and submit approved issues until stopped. Bare `work` uses the local GitHub remote. |
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
-| `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. `OWNER/REPO` alone is invalid. |
+| `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. Under your active reservation, prepare a fresh attempt. `OWNER/REPO` alone is invalid. |
+| `claim` saved run | `tokate claim RUN [--yes]` | Finish or recheck a saved claim and its preparation without inference. |
 | `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
 | `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
 | `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
@@ -55,17 +56,14 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
 | `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
 | `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
-| `authorize-sync` | `tokate authorize-sync PR --commit SHA --upstream SHA` | Grant synchronization for exact commits. |
-| `revoke-sync` | `tokate revoke-sync [OWNER/REPO] --grant SHA` | Revoke a synchronization grant. |
+| `sync` authorize | `tokate sync PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]` | Owner: grant synchronization for exact commits. |
+| `sync` revoke | `tokate sync PR revoke --grant SHA` | Owner: revoke a synchronization grant of the PR. |
 | `coordinator-setup` | `tokate coordinator-setup [OWNER/REPO] --output FILE [--yes]` | Preview matching pins and workflow. Apply the file and Actions allowlist with confirmation. |
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |
 | `coordination` | `tokate coordination ISSUE` | Read authoritative issue state. |
 | `request` | `tokate request ISSUE --file FILE` | Post a strict claim or publication request. |
-| `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source tokate [options]` | Prepare a fresh reserved managed contribution. |
-| `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source external --tools FILE [options]` | Prepare an external contribution. |
-| `prepare` | `tokate prepare --run DIR` | Resume recorded preparation. |
 | `admit` | `tokate admit [OWNER/REPO] --event FILE` | Owner workflow: close unauthorized PRs. |
 | `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: update state and publish accepted requests. |
 | `claude-capabilities` | `tokate claude-capabilities --claude FILE --model MODEL --effort EFFORT` | Check native Claude interfaces and personal login. |
@@ -97,7 +95,7 @@ offer continuation. Other saved status reads are offline.
 
 | Input | Examples |
 | --- | --- |
-| Exact commit or authority | `--commit SHA`, `--state SHA`, `--upstream SHA`, `--grant SHA` |
+| Exact commit or authority | `--commit SHA`, `--upstream SHA`, `--grant SHA` |
 | File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE`, `--output FILE` |
 | Execution selection | `--harness codex`, `--model MODEL`, `--effort high`, `--provider openai` |
 | Time with a required unit | `--time 30m`, `--total 8h`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |
