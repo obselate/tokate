@@ -281,20 +281,18 @@ internal class Worker {
 
                 RuntimeBudget.Validate(run)
 
-                let prompt = TaskContext.Build(run, record)
-
                 if run.Text("harness") == "claude" {
-                    ClaudeHarness.Execute(directory, run, record, prompt)
+                    ClaudeHarness.Execute(directory, run, record)
                     return
                 }
 
                 if run.Text("harness") == "pi" {
-                    PiHarness.Execute(directory, run, record, prompt)
+                    PiHarness.Execute(directory, run, record)
                     return
                 }
 
                 if run.Text("harness") == "omp" {
-                    OmpHarness.Execute(directory, run, record, prompt)
+                    OmpHarness.Execute(directory, run, record)
                     return
                 }
 
@@ -376,7 +374,7 @@ internal class Worker {
                         result = Run(
                             directory,
                             args.ToArray(),
-                            prompt,
+                            TaskContext.Build(checkout, run, record, coding),
                             run.Flag("unlimited") ? 0: run.Number("seconds"),
                             true,
                             coding,
