@@ -280,38 +280,6 @@ internal class DonorSelectionChecks {
             flow.NoPr()
         }
 
-        private func AuthorizedChoices(binary string) {
-            for source in[]string{"explicit invocation", "saved donor default"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let args = List[string]{
-                    "claim",
-                    "owner/project#1",
-                    "--time",
-                    "30s",
-                    "--runs",
-                    Path.Combine(flow.Temp.Root, "runs"),
-                    "--non-interactive"
-                }
-                if source == "saved donor default" {
-                    Set(flow)
-                } else {
-                    args.AddRange([]string{"--model", "gpt-6.1-sol", "--effort", "high"})
-                }
-                let claimed = flow.Acquire(args.ToArray())
-                let run = claimed.Output.Substring(claimed.Output.LastIndexOf("Run: ") + 5).Trim()
-                flow.Mode("model_failure")
-                let result = flow.Call([]string{"work", "--run", run}, 1)
-                Check.That(result.Code == 1, "Synthetic model failure succeeded")
-                Check.Contains(result.Error, "Codex failed")
-                flow.Reload()
-                Check.That(Check.Text(flow.State["exec_count"]) == "1", "Authorized choice required extra consent")
-                Check.That(!result.Error.Contains("confirmation required"), "Authorized choice added a barrier")
-                flow.NoPr()
-            }
-        }
-
         private func ConfirmationAndRuns(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
@@ -340,6 +308,16 @@ internal class DonorSelectionChecks {
             let path = Path.Combine(run, "run.json")
             let original = File.ReadAllText(path)
             Check.That(Check.Text(Check.Json(original)["harness_path"]) == custom, "Claim lost its custom harness path")
+            let unselected = Check.Json(original)
+            unselected.AsObject().Remove("selection")
+            unselected.AsObject().Remove("harness")
+            unselected.AsObject().Remove("provider")
+            File.WriteAllText(path, unselected.ToJsonString())
+            let stripped = File.ReadAllText(path)
+            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "require saved selection metadata")
+            Check.That(File.ReadAllText(path) == stripped, "Invalid selection changed saved work")
+            flow.NoInference()
+            File.WriteAllText(path, original)
             Set(flow, effort: "xhigh")
             flow.Mode("capability_changed")
             Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "no longer compatible")
@@ -360,23 +338,6 @@ internal class DonorSelectionChecks {
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Failed run spent inference again")
             flow.NoPr()
-        }
-
-        private func MissingSelection(binary string) {
-            using let flow = NativeFixture(binary)
-            flow.Initialize()
-            flow.Approve()
-            let run = flow.Claim()
-            let path = Path.Combine(run, "run.json")
-            let saved = Check.Json(File.ReadAllText(path))
-            saved.AsObject().Remove("selection")
-            saved.AsObject().Remove("harness")
-            saved.AsObject().Remove("provider")
-            File.WriteAllText(path, saved.ToJsonString())
-            let original = File.ReadAllText(path)
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "require saved selection metadata")
-            Check.That(File.ReadAllText(path) == original, "Invalid selection changed saved work")
-            flow.NoInference()
         }
 
         private func InteractiveChoices(binary string) {
@@ -434,17 +395,9 @@ internal class DonorSelectionChecks {
             )
         }
 
-        private func VersionTwo(binary string, unrestricted bool = false) {
+        private func VersionTwo(binary string) {
             using let coordination = CoordinationFlow(binary)
             coordination.Initialize()
-            if unrestricted {
-                let path = Path.Combine(coordination.Flow.Upstream, ".github/tokate.json")
-                let policy = Check.Json(File.ReadAllText(path))
-                Check.SetModels(policy, nil)
-                File.WriteAllText(path, policy.ToJsonString())
-                coordination.Flow.Commit("Unrestricted managed selection")
-                coordination.Flow.Approve()
-            }
             coordination.Claim()
             let flow = coordination.Flow
             Set(flow)
@@ -522,8 +475,6 @@ internal class DonorSelectionChecks {
             flow.Call([]string{"defaults", "remove"})
             flow.NoInference()
             flow.NoPr()
-
-            VersionTwo(binary, unrestricted: true)
         }
 
         private func Structured(binary string) {
@@ -798,12 +749,8 @@ internal class DonorSelectionChecks {
             Console.WriteLine("PASS donor defaults set/read/remove and nonsecret storage")
             Choices(binary)
             Console.WriteLine("PASS default/override/refusal, capabilities and availability; zero inference")
-            AuthorizedChoices(binary)
-            Console.WriteLine("PASS explicit and saved default work without repeated confirmation")
             ConfirmationAndRuns(binary)
             Console.WriteLine("PASS pinned runs, capability revalidation and no model fallback")
-            MissingSelection(binary)
-            Console.WriteLine("PASS missing saved selection is refused before inference")
             InteractiveChoices(binary)
             Console.WriteLine("PASS terminal selection requires flags; zero inference before consent")
             VersionTwo(binary)

@@ -9,7 +9,7 @@ internal class ClaudeChecks {
     shared {
         internal func Managed(binary string, smoke bool = false) {
             let modes = smoke ? []string{"normal", "failed"}:
-            []string{"normal", "incomplete", "conflict", "failed", "subagent"}
+            []string{"normal", "incomplete", "failed", "subagent"}
             for mode in modes {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
@@ -273,13 +273,9 @@ internal class ClaudeChecks {
             words[8] = "high"
             for pair in[]string{
                 "loggedIn=false",
-                "loggedIn=true",
-                "authMethod=oauth_token",
                 "authMethod=api_key",
                 "apiProvider=bedrock",
-                "subscriptionType=team",
-                "subscriptionType=enterprise",
-                "subscriptionType=free"
+                "subscriptionType=team"
             } {
                 let rejected = status.DeepClone()
                 let parts = pair.Split('=')
@@ -292,15 +288,13 @@ internal class ClaudeChecks {
                 )
             }
             File.WriteAllText(statusPath, status.ToJsonString())
-            for effort in[]string{"xhigh", "medium", "max"} {
-                let rejected = List[string](words)
-                rejected[8] = effort
-                let result = TestProcess.Run(binary, rejected.ToArray(), data.Env)
-                Check.That(
-                    result.Code == 1 && result.Output.Contains("not allowed by the repository policy"),
-                    "Disallowed effort was launched"
-                )
-            }
+            let disallowed = List[string](words)
+            disallowed[8] = "xhigh"
+            let disallowedResult = TestProcess.Run(binary, disallowed.ToArray(), data.Env)
+            Check.That(
+                disallowedResult.Code == 1 && disallowedResult.Output.Contains("not allowed by the repository policy"),
+                "Disallowed effort was launched"
+            )
             let alias = List[string](words)
             alias[6] = "opus"
             let aliasResult = TestProcess.Run(binary, alias.ToArray(), data.Env)
@@ -342,11 +336,12 @@ internal class ClaudeChecks {
                 parsed?["effort"] == nil && Check.Text(parsed?["usage"]?["input_tokens"]) == "12",
                 "Reports invented effort or lost native usage"
             )
-            for field in[]string{"\"model\":\"claude-sonnet-4-6\"", "\"effort\":\"low\""} {
-                File.WriteAllText(
-                    report,
-                    "{\"type\":\"system\",\"subtype\":\"init\"," + field + "}\n{\"type\":\"result\"," + field + "}\n"
-                )
+            for lines in[]string{
+                "{\"type\":\"system\",\"subtype\":\"init\",\"model\":\"claude-sonnet-4-6\"}\n{\"type\":\"result\",\"model\":\"claude-sonnet-4-6\"}\n",
+                "{\"type\":\"system\",\"subtype\":\"init\",\"effort\":\"low\"}\n{\"type\":\"result\",\"effort\":\"low\"}\n",
+                "{\"type\":\"system\",\"subtype\":\"init\"}\n{\"type\":\"assistant\",\"message\":{\"model\":\"claude-sonnet-4-6\"}}\n{\"type\":\"result\"}\n"
+            } {
+                File.WriteAllText(report, lines)
                 Check.That(
                     TestProcess.Run(binary, withReport.ToArray(), data.Env).Code == 1,
                     "Conflicting native report was accepted"

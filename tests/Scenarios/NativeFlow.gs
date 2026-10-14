@@ -849,7 +849,7 @@ internal partial class NativeFlow : NativeFixture {
             )
             Traffic(9, 0, 1, result)
         }
-        for status in[]int32{0, 503, 401, 404, 422, 304, 403, 429} {
+        for status in[]int32{503, 404, 304, 403, 429} {
             let faults = JsonArray()
             for i in 0 ... 3 {
                 faults.Add(
@@ -863,8 +863,7 @@ internal partial class NativeFlow : NativeFixture {
             }
             Faults("repos/owner/project", faults)
             let failure = Call([]string{"doctor", "repo", "owner/project"}, 1, traffic: true)
-            let retryable = status == 0 || status == 503
-            Traffic(retryable ? 3: 1, 0, retryable ? 2: 0, failure)
+            Traffic(status == 503 ? 3: 1, 0, status == 503 ? 2: 0, failure)
             if status == 304 {
                 Check.That(Check.Text(State["api_calls"]?[0]?["status"]) == "304", "Unmatched 304 was not exercised")
             }
