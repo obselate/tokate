@@ -135,7 +135,6 @@ internal class CliDiscovery {
 
         private func Merge(flow NativeFixture) {
             flow.Git("-C", flow.Upstream, "merge", "-q", "--ff-only", "tokate-setup")
-            flow.Git("-C", flow.Upstream, "branch", "-q", "-D", "tokate-setup")
             flow.Reload()
             flow.State["pulls"] = nil
             flow.State["api_calls"] = JsonArray()
@@ -162,6 +161,14 @@ internal class CliDiscovery {
             flow.ResetTraffic()
             Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Bootstrap required")
             Unchanged(flow, "Failed setup changed GitHub")
+            flow.Reload()
+            flow.State["repo_permissions"] = Check.Map("push", true)
+            flow.Save()
+            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "admin permission is required")
+            Unchanged(flow, "Setup without admin changed GitHub")
+            flow.Reload()
+            flow.State["repo_permissions"] = nil
+            flow.Save()
             let selected = Check.Map(
                 "github_owned_allowed",
                 true,
@@ -228,7 +235,7 @@ internal class CliDiscovery {
             flow.Temp.Env["GH_TOKEN"] = token
             Check.Success(accepted)
             Check.That(accepted.Output.Split("Apply this setup? [y/N]").Length == 2, "Setup did not ask once")
-            Check.Contains(accepted.Output, "Opened setup PR https://github.com/owner/project/pull/10")
+            Check.Contains(accepted.Output, "Setup PR https://github.com/owner/project/pull/10.")
             flow.Reload()
             selected["patterns_allowed"]?.AsArray().Add(JsonValue.Create(pin) as JsonNode)
             Check.That(
@@ -276,7 +283,40 @@ internal class CliDiscovery {
                 !yaml.Contains("run:") && !yaml.Contains("checkout") && yaml.Split('\n').Length < 25,
                 "Setup copied runtime code"
             )
-            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Branch tokate-setup exists")
+            let branch = flow.Git("-C", flow.Upstream, "rev-parse", "tokate-setup")
+            flow.ResetTraffic()
+            Check.Contains(
+                flow.Call(Plus(args, "--yes"), owner: true).Output,
+                "Nothing to change. Review and merge the setup PR https://github.com/owner/project/pull/10"
+            )
+            flow.Reload()
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(Check.Text(call["method"]) == "GET", "Repeated setup with an open PR changed GitHub")
+            }
+            flow.State["pulls"] = nil
+            flow.State["api_calls"] = JsonArray()
+            flow.Save()
+            flow.Call(Plus(args, "--yes"), owner: true)
+            flow.Reload()
+            var mutations int32
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                if Check.Text(call["method"]) != "GET" {
+                    mutations++
+                    Check.That(
+                        Check.Text(call["path"]) == "repos/owner/project/pulls",
+                        "Lost PR recovery rewrote the branch"
+                    )
+                }
+            }
+            Check.That(
+                mutations == 1 && flow.State["pulls"]?.AsArray().Count == 1 && flow.Git(
+                    "-C",
+                    flow.Upstream,
+                    "rev-parse",
+                    "tokate-setup"
+                ) == branch,
+                "Setup did not reopen the PR for an existing branch"
+            )
             Merge(flow)
             Check.Contains(flow.Call(Plus(args, "--yes"), owner: true).Output, "Nothing to change")
             Unchanged(flow, "Repeated setup changed GitHub")
@@ -416,10 +456,20 @@ internal class CliDiscovery {
                     JsonArray(JsonValue.Create("*"), JsonValue.Create("!" + shared + "*"))
                 )
                 flow.Save()
-                let manual = flow.Call([]string{"init", "owner/project", "--yes"}, owner: true)
+                let manual = flow.Call([]string{"init", "owner/project", "--yes", "--json"}, owner: true)
                 Check.Contains(
                     manual.Error,
-                    "Manual: in owner/project > Settings > Actions > General > Actions permissions, allow " + pin
+                    "Manual: In owner/project > Settings > Actions > General > Actions permissions, allow " + pin
+                )
+                Check.That(
+                    Check
+                        .Envelope(manual, "init", "ok")["data"]?["manual"]
+                        ?.AsArray()
+                        .Count == 1 &&
+                        !manual
+                        .Error
+                        .Contains("already matches"),
+                    "Manual allowlist step was hidden"
                 )
                 Unchanged(flow, "Blocked allowlist was changed")
             }
