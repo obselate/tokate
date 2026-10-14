@@ -32,22 +32,62 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 
 ## Start here
 
+```sh
+curl -qfsSL https://tokate.dev/install.sh | sh
+gh auth login
+tokate doctor
+```
+
 - **Owners:** [Set up the repository, approve tasks and review donations](docs/owners.md).
+
+  ```sh
+  tokate init OWNER/REPO
+  tokate init OWNER/REPO --yes
+  gh pr merge tokate-setup -R OWNER/REPO
+  tokate approve OWNER/REPO#42
+  tokate access grant LOGIN OWNER/REPO#42
+  tokate checks OWNER/REPO#PR
+  gh pr ready PR -R OWNER/REPO
+  gh pr merge PR -R OWNER/REPO
+  ```
+
 - **Donors:** [Choose a tool, claim an issue and donate work](docs/donors.md).
+
+  ```sh
+  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
+  tokate submit OWNER/REPO#42
+  ```
+
+  Gratis work on a repository without a Tokate policy:
+
+  ```sh
+  tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
+  ```
+
 - **Existing work:** [Recover a run or update a PR](docs/recovery.md).
+
+  ```sh
+  tokate status
+  tokate status OWNER/REPO#42
+  tokate amend OWNER/REPO#42
+  tokate amend OWNER/REPO#42 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
+  tokate submit OWNER/REPO#42
+  ```
+
 - **Before running:** [Understand data access and isolation](docs/security.md).
+
+  ```sh
+  tokate doctor repo OWNER/REPO
+  tokate doctor HARNESS
+  ```
+
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
-Use plain CLI commands with flags or the GUI. Bare `tokate` prints help.
-Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful. Missing choices fail with `invalid_arguments` and name the required flag.
-`tokate work OWNER/REPO --yes` runs approved issues until stopped. Add `--total` to cap the session.
-Use `tokate work OWNER/REPO stop --yes` to stop. Bare `tokate work` uses the local GitHub remote.
-For one issue, use `tokate work 42 NAME --time 1h` in a checkout or `tokate work OWNER/REPO#42 NAME --time 1h` elsewhere. Supply a saved profile as `NAME` or use tool flags. A repository link selects the loop. An issue link names one issue.
-See the [positional arguments guide](docs/arguments.md) for references and command forms.
-Use `tokate help COMMAND` for exact options and `--json` for structured results.
-Owner setup: `gh auth login`, then `tokate init OWNER/REPO` to preview, then `tokate init OWNER/REPO --yes` to open a setup PR. Merge the setup PR to finish. No checkout is necessary. Init lists each GitHub setting with its current and proposed value, the access record and the setup PR. It asks once in a terminal. Non-terminal preview returns `applied=false`.
-Approve existing issues with `tokate approve 42`. Create issues with `gh issue create` or the GUI.
-Doctor explains installations with `--fix`, asks once in a terminal, applies with `--fix --yes`, and accepts `--harness-path FILE` for an existing harness.
-Save donor choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
+  ```sh
+  git clone https://github.com/obselate/tokate.git
+  cd tokate
+  bash scripts/build.sh
+  bash scripts/verify.sh
+  ```
 
 [Website](https://tokate.dev/) · [Releases](https://github.com/obselate/tokate/releases) · [Issues](https://github.com/obselate/tokate/issues) · [MIT license](LICENSE)
