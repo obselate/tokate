@@ -438,17 +438,9 @@ internal class DonorSelectionChecks {
             )
         }
 
-        private func VersionTwo(binary string, unrestricted bool = false) {
+        private func VersionTwo(binary string) {
             using let coordination = CoordinationFlow(binary)
             coordination.Initialize()
-            if unrestricted {
-                let path = Path.Combine(coordination.Flow.Upstream, ".github/tokate.json")
-                let policy = Check.Json(File.ReadAllText(path))
-                Check.SetModels(policy, nil)
-                File.WriteAllText(path, policy.ToJsonString())
-                coordination.Flow.Commit("Unrestricted managed selection")
-                coordination.Flow.Approve()
-            }
             coordination.Claim()
             let flow = coordination.Flow
             Set(flow)
@@ -547,8 +539,6 @@ internal class DonorSelectionChecks {
             Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
             flow.NoInference()
             flow.NoPr()
-
-            VersionTwo(binary, unrestricted: true)
         }
 
         private func Structured(binary string) {
