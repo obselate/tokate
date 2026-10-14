@@ -52,15 +52,35 @@ internal class Donate {
             return 0
         }
 
-        private func Pick(repo string, attempted HashSet[int32]) int32 {
+        private func Pick(repo string, attempted HashSet[int32], query string, pulls JsonElement) int32 {
             var page int32 = 1
             while true {
-                let query = "/issues?state=open&labels=tokate%3Aapproved&sort=created&direction=asc&per_page=100&page="
-                let issues = GitHub.Api("repos/" + repo + query + page.ToString())
+                let issues = GitHub.Api(
+                    "repos/" +
+                        repo +
+                        "/issues?state=open" +
+                        query +
+                        "&sort=created&direction=asc&per_page=100&page=" +
+                        page.ToString()
+                )
                 for issue in issues.EnumerateArray() {
                     let number = J.Number(issue, "number")
                     if attempted.Contains(number) || J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
                         continue
+                    }
+                    if query == "" {
+                        if J.Bool(issue, "locked") || J.Count(J.Get(issue, "assignees")) > 0 {
+                            continue
+                        }
+                        var covered bool
+                        for pull in J.Items(pulls) {
+                            for linked in J.Items(J.Get(pull, "issues")) {
+                                covered = covered || linked.GetInt32() == number
+                            }
+                        }
+                        if covered {
+                            continue
+                        }
                     }
                     return number
                 }
@@ -71,21 +91,33 @@ internal class Donate {
             }
         }
 
-        private func Task(options Args, issue int32) Dictionary[string, Object?] {
+        private func Task(options Args, issue int32, gratis JsonElement) Dictionary[string, Object?] {
             options.Values["--issue"] = issue.ToString()
             var directory string = ""
             let task = map[string, Object?]{"issue": issue, "result": "submitted"}
             try {
-                directory = ContributionPreparation.Acquire(options)
+                directory = ContributionPreparation.Acquire(options, gratis)
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
                 Dispatch(Args([]string{"submit", "--run", directory}))
+                if gratis.ValueKind != JsonValueKind.Undefined {
+                    let run = Data.Load(directory)
+                    task["result"] = run.Text("state") == "published" ? "submitted": "skipped"
+                    task["reason"] = run.Text("state")
+                    task["discussion_error"] = run.Text("discussion_error")
+                    task["discussion_url"] = run.Text("discussion_url")
+                }
             } catch (error Exception) when !(error is CommandInterrupted) {
                 directory = PublicOutput.RunDirectory
                 let unclaimed = directory == "" || Data.Load(directory).Text("id") == ""
                 let ineligible = error is CliFailure &&
                     (error.Code == "invalid_state" || error.Code == "stale_approval")
                 task["result"] = unclaimed && ineligible ? "skipped": "failed"
-                if !unclaimed {
+                task["error"] = error.Message
+                if !unclaimed && gratis.ValueKind != JsonValueKind.Undefined && Data.Load(directory).Number("pr") > 0 {
+                    task["result"] = "submitted"
+                    task["discussion_error"] = error.Message
+                }
+                if !unclaimed && gratis.ValueKind == JsonValueKind.Undefined {
                     ApiTransport.BeginDeadline(30)
                     try {
                         while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
@@ -112,19 +144,49 @@ internal class Donate {
             File.Delete(marker)
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
-            let policy = Policy.Load(repo, GitHub.Branch(repo, J.Text(info, "default_branch")))
-            let maximum = Math.Min(3600, J.Number(policy.Value, "max_seconds"))
+            let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
+            let policyFile = GitHub.Api(
+                "repos/" + repo + "/contents/.github/tokate.json?ref=" + revision,
+                missing: true
+            )
+            let gratis = policyFile.ValueKind == JsonValueKind.Undefined
+            if !gratis && options.Get("prompt") != "" {
+                throw CliFailure("invalid_arguments", "--prompt requires a repository without a Tokate policy")
+            }
+            let policy = gratis ? Gratis.PolicyFor(options): Policy.Load(repo, revision)
+            let guidance = gratis ? GratisGuidance.Find(repo, revision): Dictionary[string, Object?]()
+            let prompt = gratis ? GratisGuidance.Prompt(options.Get("prompt")): ""
+            let context = map[string, Object?]{
+                "policy": policy.Value,
+                "approval": map[string, Object?]{
+                    "base": revision,
+                    "base_branch": J.Text(info, "default_branch"),
+                    "policy_hash": policy.Digest
+                },
+                "guidance": guidance,
+                "prompt": prompt,
+                "prompt_sha256": Data.Hash(prompt)
+            }
+            if gratis {
+                Gratis.Context(context, List[Object]())
+            }
+            let maximum = gratis ? 3600: Math.Min(3600, J.Number(policy.Value, "max_seconds"))
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
             let selection = DonorSelection.Resolve(options, policy)
             let limit = Double.IsPositiveInfinity(total) ? "until stopped": total.ToString() + " seconds"
-            let consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(
+            var consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(
                 selection,
                 "model"
             ) +
                 "\nEffort: " +
                 J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() + " seconds\nTotal: " + limit
+            if gratis {
+                consent += "\nGratis mode. No owner approved the task.\nGuidance: " + String.Join(", ", guidance.Keys) +
+                    "\nTask instruction:\n" +
+                    prompt
+            }
             if options.Get("yes") != "true" {
                 if WizardScreen.Choose(repo, consent, []string{"Start", "Cancel"}, selected: 2) != 1 {
                     throw CliFailure("confirmation_required", "Donation start was not confirmed")
@@ -162,11 +224,23 @@ internal class Donate {
                         break
                     }
                     PublicOutput.RunDirectory = ""
-                    let issue = Pick(repo, attempted)
+                    let pulls = gratis ? Gratis.Snapshot(repo): List[Object]()
+                    let issue = gratis &&
+                        guidance.Count > 0 ? 0: Pick(
+                        repo,
+                        attempted,
+                        gratis ? "": "&labels=tokate%3Aapproved",
+                        J.Parse(J.Write(pulls))
+                    )
                     if File.Exists(marker) || seconds > total - timer.Elapsed.TotalSeconds {
                         continue
                     }
-                    if issue == 0 {
+                    if issue == 0 && !(gratis && guidance.Count > 0) {
+                        if gratis {
+                            session.Fields["reason"] = "no_eligible_issues"
+                            Terminal.Message("No unassigned, unlocked open issue without a linked open PR remains.")
+                            break
+                        }
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
                         let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
                         while !File.Exists(marker) && timer.Elapsed.TotalSeconds < next {
@@ -175,7 +249,13 @@ internal class Donate {
                         continue
                     }
                     attempted.Add(issue)
-                    let task = Task(options, issue)
+                    if gratis {
+                        context["issue"] = issue == 0 ? map[string, Object?]{
+                            "title": "Tokate donation",
+                            "body": "Choose a task from the repository guidance."
+                        }: GitHub.Issue(repo, issue)
+                    }
+                    let task = Task(options, issue, gratis ? Gratis.Context(context, pulls): JsonElement{})
                     tasks.Add(task)
                     let result = task["result"]?.ToString() ?? ""
                     session.Fields[result] = session.Number(result) + 1
@@ -189,6 +269,11 @@ internal class Donate {
                         }
                     }
                     session.Write(sessionPath)
+                    let refused = task.GetValueOrDefault("reason")?.ToString() == "refused"
+                    if gratis && (refused || (issue == 0 && task["pr_url"]?.ToString() == "")) {
+                        session.Fields["reason"] = refused ? "refused": "no_pr"
+                        break
+                    }
                 }
             } finally {
                 Active = false

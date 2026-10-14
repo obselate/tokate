@@ -119,7 +119,7 @@ internal class Publication {
 
             run.Save(directory)
 
-            Terminal.Message("Draft PR: " + run.Text("pr_url"))
+            Terminal.Message((run.Flag("gratis") && run.Flag("ready") ? "PR: ": "Draft PR: ") + run.Text("pr_url"))
         }
     }
 }

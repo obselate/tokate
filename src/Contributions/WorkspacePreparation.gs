@@ -59,6 +59,10 @@ internal class WorkspacePreparation {
                 identity = Data.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "handoff")))
             }
 
+            if run.Flag("gratis") {
+                identity = Data.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "gratis_context")))
+            }
+
             return AttemptContinuation.Has(run) ? Data.Hash(
                 identity + ":" + run.Text("continuation_source") + ":" + RequestData.Canonical(
                     J.Get(run.Element(), "continuation")
