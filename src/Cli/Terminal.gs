@@ -7,6 +7,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.Globalization
 import System.IO
+import System.Linq
 import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
@@ -227,30 +228,54 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(args Args, rows List[SavedRun], error bool = false) {
-            var width int32 = 3
+        internal func Runs(args Args, rows List[SavedRun], error bool = false, short bool = false) {
+            let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                width = Math.Max(width, RunReference.Label(args, row).Length)
+                let name = short ? row.Name: RunReference.Label(args, row)
+                table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
             }
 
-            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+            Table(table, error)
+        }
+
+        internal func Table(rows List[[]string], error bool = false, fit int32 = -1) {
+            let widths = List[int32]()
 
             for row in rows {
-                Line(
-                    Clean(
-                        "  " + RunReference.Label(args, row).PadRight(width) + "  " + row.Text("state").PadRight(20) +
-                            "  " +
-                            row
-                            .Age().PadRight(4) + "  " + row.Text("model")
-                    ),
-                    "default",
-                    error
-                )
+                for i in 0 ... row.Length {
+                    row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
 
-                if row.Next != "" {
-                    Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
+                    if widths.Count == i {
+                        widths.Add(0)
+                    }
+
+                    widths[i] = Math.Max(widths[i], row[i].GetCellWidth())
                 }
+            }
+
+            if fit >= 0 && !(error ? Console.IsErrorRedirected: Console.IsOutputRedirected) {
+                let room = Width(error) - widths.Sum() + widths[fit] - 2 * widths.Count + 2
+                widths[fit] = Math.Min(widths[fit], Math.Max(8, room))
+            }
+
+            for row in rows {
+                if fit >= 0 && row[fit].GetCellWidth() > widths[fit] {
+                    var text = row[fit]
+
+                    while text.Length > 0 &&
+                        (text.GetCellWidth() > widths[fit] - 3 || Char.IsHighSurrogate(text[text.Length - 1])) {
+                        text = text.Substring(0, text.Length - 1)
+                    }
+
+                    row[fit] = text + "..."
+                }
+
+                for i in 0 ... row.Length - 1 {
+                    row[i] += String(' ', widths[i] - row[i].GetCellWidth())
+                }
+
+                Line(String.Join("  ", row), "default", error)
             }
         }
 

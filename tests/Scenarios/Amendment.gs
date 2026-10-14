@@ -813,12 +813,12 @@ internal class AmendmentFlow {
                 Amend(flow.Flow, run, second)
                 AssertPublished(flow.Flow, run, second)
                 let current = Check.Envelope(
-                    flow.Flow.Call([]string{"coordination", "owner/project#1", "--json"}),
-                    "coordination",
+                    flow.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                    "status",
                     "ok"
                 )
                 Check.That(
-                    Check.Text(current["data"]?["contribution"]?["head"]) == second,
+                    Check.Text(current["data"]?["coordination"]?["contribution"]?["head"]) == second,
                     "Structured coordination omitted current amended head"
                 )
                 Check.That(

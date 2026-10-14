@@ -897,6 +897,18 @@ internal class ContributionStatus {
         Result["pending_requests_observed"] = Requests.Count
         Truncated = Truncated || Text(Result, "requests_truncated") == "True"
 
+        if issue != 0 {
+            Result["coordination"] = nil
+            Observe(
+                Result,
+                "coordination",
+                async () -> {
+                    let state = CoordinationState.Load(Repo, issue, missing: true)
+                    Result["coordination"] = state.Sha == "" ? nil: PublicOutput.Coordination(state.Value(), state.Sha)
+                }
+            )
+        }
+
         Observe(
             Result,
             "discovery",
@@ -1062,7 +1074,7 @@ internal class ContributionStatus {
             }
 
             if !PublicOutput.Enabled {
-                Print(J.Parse(J.Write(status.Result)))
+                Print(J.Parse(J.Write(status.Result)), args.Get("issue") == "")
             }
 
             if let failure = status.Failure {
@@ -1070,7 +1082,7 @@ internal class ContributionStatus {
             }
         }
 
-        internal func Print(value JsonElement) {
+        internal func Print(value JsonElement, repository bool = false) {
             if Console.IsOutputRedirected && !Terminal.Plain && !Terminal.Ascii {
                 Console.WriteLine(J.Write(value))
                 return
@@ -1110,6 +1122,11 @@ internal class ContributionStatus {
 
             let observed = J.Text(value, "remote_status") == "observed"
 
+            if repository {
+                Repository(value, J.Items(work), observed)
+                return
+            }
+
             for row in J.Items(work) {
                 let drafts = J.Items(J.Get(row, "drafts"))
                 Table(
@@ -1128,6 +1145,43 @@ internal class ContributionStatus {
                     Action(J.Get(value, "next"))
                 )
             }
+        }
+
+        private func Repository(value JsonElement, work List[JsonElement], observed bool) {
+            if !observed || work.Count <= 1 || J.Count(J.Get(value, "pending_requests")) > 0 {
+                Cell("Next", Action(J.Get(value, "next")), "default")
+            }
+
+            if work.Count == 0 {
+                return
+            }
+
+            let viewer = J.Get(value, "viewer")
+            let repo = J.Text(value, "repo")
+            let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU", "NEXT"}}
+
+            for task in work {
+                let issue = J.Number(task, "issue").ToString()
+                let next = J.Get(task, "next")
+                let role = J.Text(next, "role")
+                let reservation = J.Get(task, "reservation")
+                let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
+                J.Get(reservation, "actor").ToString()
+                let mine = role == J.Text(viewer, "role") &&
+                    (role != "donor" || holder == "" || holder == J.Get(viewer, "actor").ToString())
+                let command = Terminal.Command(J.Get(next, "command"))
+                table.Add(
+                    []string{
+                        "#" + issue,
+                        J.Text(task, "title"),
+                        J.Text(task, "state"),
+                        J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no",
+                        command != "" ? command: work.Count == 1 ? "-": "tokate status " + repo + "#" + issue
+                    }
+                )
+            }
+
+            Terminal.Table(table, fit: 1)
         }
 
         private func Action(next JsonElement) string {

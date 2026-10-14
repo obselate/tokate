@@ -147,6 +147,7 @@ internal class Cli {
             "fork LOGIN/REPO: Explicit donor fork; otherwise discover one or create it once",
             "runs DIR: Run storage; default: tokate/runs under XDG_STATE_HOME, or ~/.local/state/tokate/runs",
             "run DIR: Exact saved run directory",
+            "all: Also list finished saved runs",
             "from-pr N: Seed a donation from another donor's last coordinated PR commit",
             "continue-from DIR: Import stopped unpublished same-donor managed work into a fresh active attempt",
             "path DIR: Repository directory; default: current directory",
@@ -177,7 +178,7 @@ internal class Cli {
             "ISSUE": "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL",
             "PR": "PR 10 of the local GitHub remote, OWNER/REPO#10 or a PR URL",
             "PR...": "2 to 16 unique PR numbers; outside a checkout qualify each as OWNER/REPO#N",
-            "RUN": "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate runs lists them",
+            "RUN": "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate status lists them",
             "OWNER/REPO": "Repository or repository URL; default: the local GitHub remote",
             "NAME": "Saved donor profile",
             "LOGIN": "Donor login; @me uses your signed-in account",
@@ -217,10 +218,10 @@ internal class Cli {
                 "submit 42"
             ),
             CliCommand(
-                "status donate local_read,github_read repo",
-                "[ISSUE|OWNER/REPO|RUN]",
-                "run",
-                "Show issue state and who acts next, or a saved run offline; no writes or inference. Repository status is bounded and may report truncation. Blocked work and failed CI still exit 0 after a successful read.",
+                "status donate local_read,github_read",
+                "[ISSUE|OWNER/REPO|RUN] [--all]",
+                "run,all",
+                "Show your saved work, repository issues and who acts next, or one issue or saved run; no writes or inference. Bare status lists your saved work, only for this repository inside a checkout. Repository status is bounded and may report truncation. Blocked work and failed CI still exit 0 after a successful read.",
                 "status 42"
             ),
             CliCommand(
@@ -229,13 +230,6 @@ internal class Cli {
                 "run,watch,timeout,verbose",
                 "Read PR receipt, report, CI and freshness gates; a saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
                 "checks 10 --watch"
-            ),
-            CliCommand(
-                "runs donate local_read",
-                "[ISSUE|OWNER/REPO]",
-                "",
-                "List saved runs on this computer; offline, no writes or inference.",
-                "runs 42"
             ),
             CliCommand(
                 "pause donate local_read,local_write,github_read,github_write run",
@@ -399,13 +393,6 @@ internal class Cli {
                 "help work"
             ),
             CliCommand("--version more local_read", "", "", "Print installed version locally.", "--version"),
-            CliCommand(
-                "coordination internal local_read,github_read repo,issue",
-                "ISSUE",
-                "",
-                "Read authoritative v2 issue state from GitHub; no inference or publication.",
-                "coordination 42"
-            ),
             CliCommand(
                 "request internal local_read,local_write,github_read,github_write repo,issue,file",
                 "ISSUE --file FILE",
@@ -1083,6 +1070,10 @@ internal class Cli {
                 throw Exception("Claim tool declarations require --source external")
             }
 
+            if args.Get("all") != "" && (args.Get("repo") != "" || args.Get("issue") != "" || args.Get("run") != "") {
+                throw Exception("--all applies only to bare status")
+            }
+
             if args.Get("run") != "" && command.SupportsSavedRun {
                 return
             }
@@ -1099,7 +1090,9 @@ internal class Cli {
                 throw Exception("Required: " + String.Join(", ", missing))
             }
 
-            if command.Needs("repo") && args.Get("repo") == "" {
+            let local = command.Needs("repo") || (args.Command == "status" && args.Get("issue") != "")
+
+            if local && args.Get("repo") == "" {
                 args.Values["--repo"] = RepositoryInput.Local()
             }
         }

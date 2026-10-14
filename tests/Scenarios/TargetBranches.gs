@@ -263,8 +263,8 @@ internal class TargetBranches {
                 test.Text("synthetic-private-owner-instruction-marker\n")
                 let base = Target(flow, "release")
                 flow.Call([]string{"approve", "owner/project#1", "--base-branch", "release", "--json"}, owner: true)
-                let result = flow.Call([]string{"coordination", "owner/project#1", "--json"})
-                let approval = Check.Envelope(result, "coordination", "ok")["data"]?["approval"]
+                let result = flow.Call([]string{"status", "owner/project#1", "--json"})
+                let approval = Check.Envelope(result, "status", "ok")["data"]?["coordination"]?["approval"]
                 Check.That(
                     Check.Text(approval?["base_branch"]) == "release" && Check.Text(approval?["base"]) == base &&
                         Check.Text(approval?["authority_branch"]) == "main",

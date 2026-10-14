@@ -244,10 +244,10 @@ Add `--provider PROVIDER` when the policy allows more than one command tool.
 
 ## Check or control a run
 
-1. List saved runs offline.
+1. List your unfinished saved runs.
 
    ```sh
-   tokate runs
+   tokate status
    ```
 
 2. Inspect the exact attempt.

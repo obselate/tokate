@@ -150,18 +150,6 @@ internal class RunStorage {
             return roots.ToArray()
         }
 
-        internal func Discover() JsonElement {
-            var repo = ""
-
-            try {
-                repo = RepositoryInput.Local()
-            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) { }
-
-            let saved = SavedRuns(Roots(), 128, listingRepo: repo)
-
-            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated, saved.SkippedEntries)))
-        }
-
         private func Size(path string) int64 {
             let info = FileInfo(path)
 

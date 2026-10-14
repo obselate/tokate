@@ -109,7 +109,7 @@ Never inspect credential files or mixed harness settings to discover defaults.
 
 Use `tokate claim ISSUE [NAME]` with a selected profile or model/effort and an
 explicit budget, such as `--time 1h`. It creates the request without inference and
-saves the run as an attempt such as `42-1`. `tokate runs` lists saved runs offline.
+saves the run as an attempt such as `42-1`. `tokate status` lists your unfinished saved work.
 After coordinator acceptance, use `tokate work 42`, then `tokate submit 42`.
 A bare issue number selects its newest attempt only. If its state does not fit, the
 command fails, writes nothing and lists the attempts. Name one as `42-1`.

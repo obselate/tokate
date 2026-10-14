@@ -529,6 +529,43 @@ internal class ContributionStatusChecks {
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, "State  " + lifecycle + "_contribution")
                     Check.Contains(human.Output, "Next   gh issue view 1 --repo owner/project")
+                    if !deleted {
+                        let copy = Path.Combine(test.Flow.Temp.Env["HOME"], ".local/state/tokate/runs/published")
+                        let record = Check.Json(File.ReadAllText(Path.Combine(published.Run, "run.json")))
+                        record["pr"] = test.Flow.State["pulls"]?[0]?["number"]?.DeepClone()
+                        Directory.CreateDirectory(copy)
+                        File.WriteAllText(Path.Combine(copy, "run.json"), record.ToJsonString())
+                        let saved = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        let all = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--all", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        var outcome = ""
+                        for item in all["data"]?["runs"]?.AsArray() ?? JsonArray() {
+                            if Check.Text(item["run"]) == copy {
+                                outcome = Check.Text(item["outcome"])
+                            }
+                        }
+                        Check.That(
+                            !saved.ToJsonString().Contains(copy) && outcome == (merged ? "merged": "closed"),
+                            "Saved status did not hide a merged or closed PR run and show it with --all"
+                        )
+                    }
                     let owner = Row(Read(test, owner: true))
                     Check.That(
                         Check.Text(owner["state"]) == Check.Text(row["state"]) && owner["next"]?.ToJsonString() == row[
@@ -839,7 +876,7 @@ internal class ContributionStatusChecks {
             TestTerminal.Save("status-failed", failed)
             Check.Contains(failed, "Next   Inspect unavailable required remote records")
             Check.Contains(failed, "GitHub read failed (HTTP 403).")
-            Check.Contains(failed, "Issue  owner/project#1")
+            Check.Contains(failed, "#1     " + title)
             Check.That(!failed.Contains("tokate access list"), "Failed status read retained earlier actions")
             test.Flow.Reload()
             test.Flow.State["fault_path"] = nil
@@ -847,7 +884,7 @@ internal class ContributionStatusChecks {
             test.Flow.Save()
             let healthy = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-healthy", healthy)
-            Check.Contains(healthy, "State  reservation_needed")
+            Check.Contains(healthy, "reservation_needed  yes")
             Check.That(
                 !healthy.Contains("unavailable") && !healthy.Contains("tokate access list") && !healthy.Contains(
                     "Oversized title"
