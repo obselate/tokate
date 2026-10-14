@@ -902,6 +902,10 @@ internal class CorrectionChecks {
                 Prepared(flow.Flow, run)
                 Check.That(Read(run)["public_summary"] != nil, "Original managed summary is missing")
                 let originalTools = Check.Text(Read(run)["tools"])
+                let publishedTools = Check.Json(originalTools)
+                let publishedTool = publishedTools[0] ?? throw Exception("Missing original tool")
+                publishedTool["coding_seconds"] = Read(run)["execution_seconds"]?.DeepClone()
+                publishedTool["usage"] = Check.Json("{\"input_tokens\":100,\"output_tokens\":10}")
                 let commit = Correct(flow.Flow, run)
                 File.WriteAllText(
                     flow.Tools,
@@ -930,10 +934,17 @@ internal class CorrectionChecks {
                 let request = Read(run, "request.json")
                 Check.That(Check.Text(request["metadata"]?["source"]) == "tokate", "Correction replaced v2 source")
                 Check.That(
-                    Check.Text(request["metadata"]?["tools"]) == originalTools,
-                    "Publication replaced original tools"
+                    JsonNode.DeepEquals(request["metadata"]?["tools"], publishedTools),
+                    "Publication changed original execution attribution"
                 )
                 Check.That(Check.Text(request["metadata"]?["correction"]?["head"]) == commit, "v2 correction head lost")
+                Check.That(
+                    JsonNode.DeepEquals(
+                        request["metadata"]?["correction"]?["tools"],
+                        Check.Json(File.ReadAllText(flow.Tools))
+                    ),
+                    "Publication changed correction tools"
+                )
                 flow.Flow.Call([]string{"submit", "--run", run})
                 flow.Flow.Reload()
                 Check.That(
