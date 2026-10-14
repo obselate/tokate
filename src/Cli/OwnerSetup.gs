@@ -102,15 +102,7 @@ internal class OwnerSetup {
                             }
 
                             items.Add(
-                                (
-                                    switch J.Text(entry, "harness") {
-                                        case "codex": "Codex (Subscription)"
-                                        case "claude": "Claude Code (Subscription)"
-                                        case "pi": "Pi (Local)"
-                                        case "omp": "OMP (" + J.Text(entry, "provider") + ")"
-                                        default: J.Text(entry, "harness") + " (" + J.Text(entry, "provider") + ")"
-                                    }
-                                ) +
+                                Harness.Describe(J.Text(entry, "harness"), J.Text(entry, "provider")) +
                                     ": " +
                                     (
                                     models.ValueKind == JsonValueKind.Undefined ? "any model": String.Join(
@@ -201,9 +193,8 @@ internal class OwnerSetup {
 
             if !requested.Contains('/') {
                 for tool in J.Items(J.Get(value, "allowed_tools")) {
-                    if (!DonorSelection.Supported(tool) || J.Text(tool, "harness") == "omp") && selected.Add(
-                        J.Text(tool, "harness") + "/" + J.Text(tool, "provider")
-                    ) {
+                    if (!DonorSelection.Supported(tool) || Harness.DefaultProvider(J.Text(tool, "harness")) == "") &&
+                        selected.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider")) {
                         tools.Add(tool.Clone())
                     }
                 }
@@ -212,7 +203,7 @@ internal class OwnerSetup {
             for name in requested.Split(',') {
                 let parts = name.Trim().Split('/')
                 let harness = parts[0]
-                let provider = parts.Length == 2 ? parts[1]: DonorDefaults.Provider(harness)
+                let provider = parts.Length == 2 ? parts[1]: Harness.DefaultProvider(harness)
 
                 if parts.Length > 2 || !Regex.IsMatch(harness, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}\\z") || !Regex.IsMatch(
                     provider,

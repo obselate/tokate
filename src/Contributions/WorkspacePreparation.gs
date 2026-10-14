@@ -49,7 +49,7 @@ internal class WorkspacePreparation {
                 identity = Data.Hash(identity + ":" + run.Text("harness_path"))
             }
 
-            if run.Text("harness") == "claude" {
+            if Harness.Owns(run.Text("harness"), "claude-profile") {
                 identity = Data.Hash(identity + ":" + run.Text("claude_profile"))
             }
 
@@ -696,12 +696,13 @@ internal class WorkspacePreparation {
                 Reject(checkout)
             }
 
-            if run.Text("source") != "external" && run.Text("harness") == "codex" {
+            let adapter = Harness.Find(run.Text("harness"))
+            if run.Text("source") != "external" && adapter != nil && adapter.Config != "" {
                 for file in Commands.Git(checkout, "ls-files").Split('\n') {
-                    if file.StartsWith(".codex/") || file.Contains("/.codex/") {
+                    if file.StartsWith(adapter.Config + "/") || file.Contains("/" + adapter.Config + "/") {
                         throw CliFailure(
                             "invalid_state",
-                            "Repository Codex configuration is not supported in donor runs"
+                            "Repository " + adapter.Title + " configuration is not supported in donor runs"
                         )
                     }
                 }

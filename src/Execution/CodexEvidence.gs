@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Text.Json
 
 internal class CodexEvidence {
@@ -51,7 +52,9 @@ internal class CodexEvidence {
                     throw CliFailure("inference_failed", "Codex did not produce a completed turn and report")
                 }
                 return evidence
-            } catch (error Exception) when error is JsonException ||
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException ||
                 error.GetType() == typeof(InvalidOperationException) {
                 throw ExecutionFailure.From(error, "inference_failed")
             }

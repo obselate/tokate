@@ -272,7 +272,8 @@ internal class Policy {
         }
 
         if !external {
-            let catalog = harness == "pi" || harness == "omp"
+            let adapter = Harness.Find(harness)
+            let catalog = adapter?.Catalog == true
             if model == "unknown" ||
                 effort == "unknown" ||
                 (
@@ -283,13 +284,12 @@ internal class Policy {
                 )
             }
 
-            if harness == "claude" && (provider != "anthropic" || !ClaudeCode.Pair(model, effort)) {
+            if adapter?.Pair is Func[string, string, bool]pair &&
+                (!Harness.Accepts(harness, provider) || !pair(model, effort)) {
                 throw Exception("Unsupported native Claude model/effort pair. No inference started.")
             }
 
-            if (harness == "codex" && provider != "openai") ||
-                (harness == "pi" && provider != "local-chat-completions") ||
-                (harness != "codex" && harness != "claude" && harness != "pi" && harness != "omp") {
+            if !Harness.Accepts(harness, provider) {
                 throw Exception("Unsupported managed harness/provider pair. No inference started.")
             }
         }

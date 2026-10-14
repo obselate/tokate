@@ -366,7 +366,7 @@ internal class Startup {
         private func DoctorHarnesses(options Args) {
             let installed = List[ToolCheck]()
 
-            for name in DonorDefaults.Harnesses {
+            for name in Harness.Table.Keys {
                 let path = LocalPaths.Harness(name, options.Get("harness") == name ? options.Get("harness-path"): "")
 
                 if path != "" && LocalPaths.Executable(path) {
@@ -392,7 +392,7 @@ internal class Startup {
                 let labels = List[string]()
 
                 for tool in installed {
-                    labels.Add(tool.Name + (DonorDefaults.Provider(tool.Name) == "" ? " (external work)": ""))
+                    labels.Add(tool.Name + (Harness.DefaultProvider(tool.Name) == "" ? " (external work)": ""))
                 }
 
                 labels.Add("Keep the current choice")
@@ -483,8 +483,8 @@ internal class Startup {
 
                 if probe && adapter is Harness selected && selected.Doctor is Action[Args, ToolCheck]check {
                     let runtime = ToolCheck{Name: options.Get("harness"), Hint: selected.Hint}
-                    let missing = selected.Nix != "" && options.Get("pi-root") == "" &&
-                        options.Get("harness-path") == "" &&
+                    let installable = selected.Nix != ""
+                    let missing = installable && options.Get("pi-root") == "" && options.Get("harness-path") == "" &&
                         LocalPaths.Harness(options.Get("harness")) == ""
                     try {
                         check(options, runtime)
@@ -495,9 +495,11 @@ internal class Startup {
                             runtime.Code = failure.Code
                         }
 
-                        runtime.Detail = error.Message +
-                            (selected.Nix != "" && SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
-                        if selected.Nix != "" && options.Get("fix") == "true" {
+                        runtime.Detail = error.Message
+                        if installable && SetupUserId() == 0 {
+                            runtime.Detail += ". If running as root, retry as a regular user."
+                        }
+                        if installable && options.Get("fix") == "true" {
                             Terminal.Message(error.Message, "yellow", true)
                         }
 

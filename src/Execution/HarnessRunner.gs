@@ -31,7 +31,9 @@ internal class Harness(
     tools[]string? = nil,
     catalog bool = false,
     continues bool = true,
-    nix string = ""
+    nix string = "",
+    installer string = "",
+    config string = ""
 ) {
     internal let Title string = title
     internal let Billing string = billing
@@ -57,6 +59,8 @@ internal class Harness(
     internal let Catalog bool = catalog
     internal let Continues bool = continues
     internal let Nix string = nix
+    internal let Installer string = installer
+    internal let Config string = config
 
     shared {
         internal let Table Dictionary[string, Harness] = map[string, Harness]{
@@ -69,7 +73,8 @@ internal class Harness(
                 Worker.Prepare,
                 Worker.Read,
                 Worker.Activity,
-                nix: "nixpkgs#codex"
+                nix: "nixpkgs#codex",
+                config: ".codex"
             ),
             "pi": Harness(
                 "Pi",
@@ -87,7 +92,8 @@ internal class Harness(
                 options: []string{"endpoint", "pi-root", "node"},
                 tools: []string{"/bin/bash"},
                 catalog: true,
-                nix: "github:earendil-works/pi/stable"
+                nix: "github:earendil-works/pi/stable",
+                installer: "https://pi.dev/install.sh"
             ),
             "claude": Harness(
                 "Claude Code",
@@ -126,7 +132,21 @@ internal class Harness(
 
         internal func DefaultProvider(name string) string -> Find(name)?.Provider ?? ""
 
-        internal func Owns(name string, option string) bool -> Array.IndexOf(Find(name)?.Options ?? []string{}, option) >= 0
+        internal func Accepts(name string, provider string) bool -> Find(name) is Harness adapter &&
+            (adapter.Provider == "" || adapter.Provider == provider)
+
+        internal func Describe(name string, provider string) string {
+            let billing = Find(name)?.Billing ?? ""
+            return (Find(name)?.Title ?? name) + " (" + (billing == "" ? provider: billing) + ")"
+        }
+
+        internal func Owns(name string, option string) bool {
+            let options = Find(name)?.Options ?? []string{}
+            return Array.IndexOf(options, option) >= 0
+        }
+
+        internal func Resumes(name string, provider string) bool -> Find(name)?.Continues == true &&
+            Accepts(name, provider)
     }
 }
 
