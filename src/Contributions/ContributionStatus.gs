@@ -1001,6 +1001,22 @@ internal class ContributionStatus {
 
             status.Result["work_observed"] = status.Work.Count
 
+            for item in status.Work {
+                let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
+                if row.ContainsKey("drafts") && row["drafts"] is List[Object]drafts {
+                    for entry in drafts {
+                        let draft = entry as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+
+                        if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
+                            draft["checks_observed"] = checks.Count
+                            checks.RemoveRange(16, checks.Count - 16)
+                            draft["checks_truncated"] = true
+                            status.Truncated = true
+                        }
+                    }
+                }
+            }
+
             while System.Text.Encoding.UTF8.GetByteCount(J.Write(status.Result)) > 56000 && status.Work.Count > 0 {
                 status.Work.RemoveAt(status.Work.Count - 1)
                 status.Result["presentation_truncated"] = true
@@ -1009,28 +1025,27 @@ internal class ContributionStatus {
 
             status.Result["truncated"] = status.Truncated
 
-            let attempts = args.Get("issue") == "" ? List[SavedRun](): RunReference.Recent(
-                SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue"))
-            )
-
             if args.Get("issue") != "" {
+                let attempts = RunReference.Recent(
+                    SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue"))
+                )
                 status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
-            }
 
-            if attempts.Count > 0 && status.Failure == nil {
-                let latest = attempts[attempts.Count - 1]
-                let donor = J.Get(latest.Value, "donor_id").ToString()
-                var next Object?
+                if attempts.Count > 0 && status.Failure == nil {
+                    let latest = attempts[attempts.Count - 1]
+                    let donor = J.Get(latest.Value, "donor_id").ToString()
+                    var next Object?
 
-                if donor == J.Get(status.Viewer, "id").ToString() && PublicOutput.RunSummary(latest.Location)
-                    .TryGetValue("next", out next) {
-                    for item in status.Work {
-                        let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
-                        if status.Text(row, "state") == "claim_accepted" &&
-                            row["reservation"] is Dictionary[string, Object?]reservation &&
-                            status.Text(reservation, "actor") == donor {
-                            row["next"] = next
-                            status.Result["next"] = next
+                    if donor == J.Get(status.Viewer, "id").ToString() && PublicOutput.RunSummary(latest.Location)
+                        .TryGetValue("next", out next) {
+                        for item in status.Work {
+                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+                            if status.Text(row, "state") == "claim_accepted" &&
+                                row["reservation"] is Dictionary[string, Object?]reservation &&
+                                status.Text(reservation, "actor") == donor {
+                                row["next"] = next
+                                status.Result["next"] = next
+                            }
                         }
                     }
                 }
@@ -1075,9 +1090,25 @@ internal class ContributionStatus {
                 }
 
                 let issue = J.Get(value, "issue").ToString()
-                Table(repo == "" ? "": repo + "#" + issue, J.Text(value, "state"), J.Text(value, "pr_url"), next)
+                let correction = J.Get(value, "correction")
+                var state = J.Text(value, "state")
+                var reason = J.Text(J.Get(value, "error"), "message")
+
+                if J.Text(correction, "state") != "" {
+                    state += ", correction " + J.Text(correction, "state")
+                    reason = reason == "" ? J.Text(J.Get(correction, "error"), "message"): reason
+                }
+
+                Table(
+                    repo == "" ? "": repo + (issue == "" ? "": "#" + issue),
+                    state + (reason == "" ? "": ": " + reason),
+                    J.Text(value, "pr_url"),
+                    next
+                )
                 return
             }
+
+            let observed = J.Text(value, "remote_status") == "observed"
 
             for row in J.Items(work) {
                 let drafts = J.Items(J.Get(row, "drafts"))
@@ -1085,12 +1116,17 @@ internal class ContributionStatus {
                     repo + "#" + J.Number(row, "issue").ToString(),
                     J.Text(row, "state"),
                     drafts.Count == 0 ? "": J.Text(drafts[drafts.Count - 1], "url"),
-                    Action(J.Get(J.Count(work) == 1 ? value: row, "next"))
+                    Action(J.Get(J.Count(work) == 1 || !observed ? value: row, "next"))
                 )
             }
 
             if J.Count(work) == 0 {
-                Table(repo, J.Text(value, "remote_status"), "", Action(J.Get(value, "next")))
+                Table(
+                    repo,
+                    observed ? "no_work_observed": J.Text(value, "remote_status"),
+                    "",
+                    Action(J.Get(value, "next"))
+                )
             }
         }
 
@@ -1100,18 +1136,16 @@ internal class ContributionStatus {
         }
 
         private func Table(issue string, state string, pr string, next string) {
-            let rows = []string{"Issue", issue, "State", state, "PR", pr, "Next", next}
-
-            for i in 0 ... 4 {
-                Terminal.Line(
-                    Terminal.Clean(rows[2 * i].PadRight(7) + (rows[2 * i + 1] == "" ? "none": rows[2 * i + 1])).Replace(
-                        '\n',
-                        ' '
-                    ),
-                    i == 1 ? (state == "failed" ? "red": "yellow"): "default",
-                    false
-                )
-            }
+            Cell("Issue", issue, "default")
+            Cell("State", state, state.Contains("failed") ? "red": "yellow")
+            Cell("PR", pr, "default")
+            Cell("Next", next, "default")
         }
+
+        private func Cell(label string, value string, color string) -> Terminal.Line(
+            Terminal.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
+            color,
+            false
+        )
     }
 }

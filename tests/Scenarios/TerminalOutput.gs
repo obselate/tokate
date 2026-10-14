@@ -180,7 +180,7 @@ internal class TerminalOutput {
                 let dumb = TestTerminal.Pty(binary, []string{"status", "--run", saved}, temp, width)
                 Check.That(dumb.Code == 0, dumb.Output + dumb.Error)
                 Plain(dumb.Output)
-                Check.Contains(dumb.Output, "State  failed")
+                Check.Contains(dumb.Output, "State  failed: Independent verification failed.")
                 TestTerminal.Save(width.ToString() + "-dumb", dumb.Output)
                 temp.Env["TERM"] = "xterm-256color"
                 let json = TestTerminal.Pty(
@@ -222,6 +222,7 @@ internal class TerminalOutput {
             Check.Success(generated)
             Check.Contains(generated.Output, "Next   tokate submit --run")
             Check.That(!generated.Output.Contains("--json"), "Human action selected machine output")
+            Check.Contains(generated.Output, "State  generated, correction failed: Independent verification failed.")
             Check.That(
                 !generated.Output.Contains("private-correction-marker"),
                 "Correction status leaked private evidence"
