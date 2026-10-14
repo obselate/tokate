@@ -269,6 +269,11 @@ internal partial class NativeFlow : NativeFixture {
     internal func CrossAccountFlow() {
         Approve()
         let run = Claim()
+        State["event_stream"] = JsonValue.Create(
+            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n" +
+                "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":6,\"cached_input_tokens\":76379,\"output_tokens\":812}}\n"
+        )
+        Save()
         Call([]string{"work", "--run", run})
         let checkout = Path.Combine(run, "checkout")
         let replay = Path.Combine(Temp.Root, "candidate-replay")
@@ -290,6 +295,12 @@ internal partial class NativeFlow : NativeFixture {
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
+        let body = Check.Text(State["pulls"]?[0]?["body"])
+        Check.Contains(
+            body,
+            "| codex / openai | gpt-6.1-sol / high | " + Check.Text(saved["execution_seconds"]) +
+                " | input: 6; cached input: 76379; output: 812 tokens |"
+        )
         Check.That(
             Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
             "Cross-account PR must disable maintainer modification"
