@@ -583,7 +583,7 @@ internal class SynchronizationChecks {
                 flow.Reload()
                 flow.State["diff_fault"] = JsonValue.Create("wrong-identical-base")
                 flow.Save()
-                let refused = flow.Receipt("owner/project#10", false, true)
+                let refused = flow.Call([]string{"checks", "owner/project#10"}, 1, true)
                 Check.Contains(
                     refused.Output + refused.Error,
                     "Missing or mismatched synchronization ancestry evidence"

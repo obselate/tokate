@@ -1765,7 +1765,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         receipt["expected"] = JsonValue.Create(previous)
         pull["body"] = JsonValue.Create(body.Substring(0, start) + receipt.ToJsonString() + body.Substring(end))
         Flow.Save()
-        let failure = Flow.Receipt("owner/project#10", false, true)
+        let failure = Flow.Call([]string{"checks", "owner/project#10"}, 1, true)
         Check.That(
             failure.Error.Contains("Model/effort pair") || failure.Error.Contains("reasoning effort") ||
                 failure
