@@ -1,9 +1,18 @@
 package Tokate
 
 import System
+import System.IO
+import System.Text.Json
 
 internal class ExecutionFailure {
     shared {
+        internal func Handled(error Exception) bool -> error is CliFailure ||
+            error is IOException ||
+            error is UnauthorizedAccessException ||
+            error is JsonException ||
+            error is CommandInterrupted ||
+            error.GetType() == typeof(Exception)
+
         internal func Create(code string, message string) CliFailure ->
         CliFailure(code, message, summary: PublicOutput.Message(PublicOutput.FailureCode))
 

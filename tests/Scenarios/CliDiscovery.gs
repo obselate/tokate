@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -1367,7 +1367,7 @@ internal class CliDiscovery {
                 "Interrupted verification leaked private output"
             )
             for action in stopped["next_actions"]?.AsArray() ?? JsonArray() {
-                Check.That(Check.Text(action[1]) != "recover", "Interrupted inference suggested recovery")
+                Check.That(Check.Text(action[1]) != "amend", "Interrupted inference suggested recovery")
             }
             record["failure_reason"] = JsonValue.Create("verification_failed")
             File.WriteAllText(Path.Combine(saved, "run.json"), record.ToJsonString())
@@ -1401,7 +1401,7 @@ internal class CliDiscovery {
                 "Correction summary lost incomplete verification state"
             )
             for action in corrected["next_actions"]?.AsArray() ?? JsonArray() {
-                Check.That(Check.Text(action[1]) != "recover", "Suggested legacy recovery for explicit correction")
+                Check.That(Check.Text(action[1]) != "recover", "Suggested removed recovery command")
             }
             File.Copy(binary, Path.Combine(temp.Root, "tokate-cli"))
             let pty = TestProcess.Run(
@@ -1741,7 +1741,6 @@ internal class CliDiscovery {
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
             Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
-            Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
             Check.Contains(
                 Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
                 "Use at most 24h: --max-time"
@@ -1773,7 +1772,7 @@ internal class CliDiscovery {
                 []string{"checks", "--run=x", "--repo=owner/project"},
                 []string{"work", "--run=x", "--time=1s"},
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
-                []string{"recover", "--run=x", "--time=0s"},
+                []string{"amend", "--run=x", "--time=0s"},
                 []string{"checks", "--run=x", "--timeout=86401s"},
                 []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},

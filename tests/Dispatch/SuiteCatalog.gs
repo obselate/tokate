@@ -68,11 +68,11 @@ internal class SuiteCatalog {
                 case "LeaseLifecycle" {
                     CoordinationFlow.All(binary, leases: true)
                 }
-                case "Correction" {
-                    CorrectionChecks.All(binary)
+                case "AmendmentFirst" {
+                    AmendmentFlow.All(binary, partition: 1)
                 }
-                case "Amendment" {
-                    AmendmentFlow.All(binary)
+                case "AmendmentSecond" {
+                    AmendmentFlow.All(binary, partition: 2)
                 }
                 case "Decree" {
                     DecreeFlow.All(binary)
@@ -120,8 +120,8 @@ internal class SuiteCatalog {
                     Job("Coordination"),
                     Job("Admission"),
                     Job("LeaseLifecycle"),
-                    Job("Correction"),
-                    Job("Amendment"),
+                    Job("AmendmentFirst"),
+                    Job("AmendmentSecond"),
                     Job("Decree"),
                     Job("Targets"),
                     Job("Preparation"),

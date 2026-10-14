@@ -238,7 +238,7 @@ internal class PublicDescriptions {
                         "Original summary has no patch binding"
                     )
                 }
-                flow.Call([]string{"recover", "--run", run})
+                flow.Call([]string{"amend", "--run", run})
                 let checkout = Path.Combine(run, "checkout")
                 File.Delete(Path.Combine(checkout, "other.txt"))
                 File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
@@ -252,7 +252,7 @@ internal class PublicDescriptions {
                 File.WriteAllText(toolsPath, tools)
                 flow.Call(
                     []string{
-                        "recover",
+                        "amend",
                         "--run",
                         run,
                         "--commit",

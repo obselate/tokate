@@ -43,7 +43,7 @@ It uses the completed work without new inference. Do not start another run.
 1. Archive the completed evidence before editing.
 
    ```sh
-   tokate recover 42-1
+   tokate amend 42-1
    ```
 
 2. Edit the run's `checkout` directory.
@@ -56,19 +56,19 @@ It uses the completed work without new inference. Do not start another run.
    ```
 
 4. Declare the actual correction tools in `TOOLS_FILE` and the public summary in `SUMMARY_FILE`.
-5. Verify the exact corrected commit with a separate budget.
+5. Verify and request publication of the exact corrected commit with a separate budget.
 
    ```sh
-   tokate recover 42-1 --commit SHA --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
+   tokate amend 42-1 --commit SHA --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
    ```
 
-6. Publish verified work.
+6. After the coordinator publishes the draft, record its result.
 
    ```sh
    tokate submit 42-1
    ```
 
-This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
+`--commit` defaults to HEAD of the saved checkout. A call with no budget or commit archives the original evidence. This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
 
 ## Amend a published PR
 
@@ -198,12 +198,12 @@ Keep saved work and inspect current state before any explicit next action.
 
 ### Publication failure codes
 
-Correction publication keeps the underlying code when its message starts with `publication_interrupted (interrupted_publication):`.
+Amendment publication keeps the underlying error code. Inspect saved publication intent before continuing.
 
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
 | `invalid_state` | `No PR has been published for this run` | Inspect `tokate status --run DIR --json` before submitting or reading checks. |
-| `invalid_state` | `Public summary needs bounded changes, verification and limitations lists`, `Set head in the summary to SHA.` or invalid public text | Supply a valid summary for the exact candidate before an explicit submit, recover or amend command. |
+| `invalid_state` | `Public summary needs bounded changes, verification and limitations lists`, `Set head in the summary to SHA.` or invalid public text | Supply a valid summary for the exact candidate before an explicit submit or amend command. |
 | `invalid_state` | Malformed or ambiguous Tokate receipt or report, unsupported receipt protocol, missing public report or changed original evidence | Preserve saved evidence. Restore the report from its current authority or declare a corrected candidate. |
 | `invalid_state` | `incomplete_turn:` followed by the failure | Correction requires a completed successful inference turn. Inspect stopped work before continuation or incomplete publication. |
 | `invalid_state` | `interrupted_publication:` followed by incomplete, invalid or ambiguous physical PR history | Inspect physical PRs and saved intent before resuming publication. Do not create another request to bypass the refusal. |
@@ -293,10 +293,10 @@ For a provider capacity error, inspect the saved run before selecting a differen
 | --- | --- |
 | `Owner verification failed. Inspect the private verification.json artifact before explicit recovery.` | `tokate status 42-1 --json` |
 | `Independent verification failed. Inspect the private verification artifact.` | `tokate status 42-1 --json` |
-| `Owner verification failed for the explicit correction` | `tokate status 42-1 --json` |
+| `Owner verification did not pass` | `tokate status 42-1 --json` |
 | `Amendment owner verification failed` | `tokate status 42-1 --json` |
 
-Open the private verification artifact listed by status. Correct completed work with `recover`, or published work with `amend`, using the steps above.
+Open the private verification artifact listed by status. Correct completed or published work with `amend` using the steps above.
 
 ### Submit and publication
 
