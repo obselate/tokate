@@ -6,7 +6,7 @@ import System.Text
 
 /// The donor's saved runs. Runs are found on disk, read in the background by eight readers and cached. The
 /// visible page is read first and shown in one update, so later pages show at once. A run can be selected to
-/// continue, submit, verify again or amend.
+/// continue, submit, check or amend.
 class SavedWorkService {
     private let commands CommandRunner
     private let activity ActivityService
@@ -18,7 +18,7 @@ class SavedWorkService {
     private var readers []RunReader = []RunReader{}
     /// Increases whenever reading stops, so results from an earlier page or discovery are ignored.
     private var revision int32
-    /// The request that the coordinator has, which is checked every five seconds.
+    /// The request that the coordinator has, which is checked every minute.
     private var request CoordinatorRequest?
     private var requestTimer IDisposable?
     private var requestCheck CliClient?
@@ -423,7 +423,8 @@ class SavedWorkService {
     private func Await(sent CoordinatorRequest) {
         request = sent
         Set(Current with{Waiting = true, Note = Feedback{Message: RunActions.Requested(sent.Action), Report: "", Tone: Tone.Wait}})
-        requestTimer = window.Every(5000, () -> CheckRequest())
+        requestTimer = window.Every(60000, () -> CheckRequest())
+        CheckRequest()
     }
 
     /// Stops the wait and shows `message`. The request stays with the coordinator.
@@ -454,7 +455,7 @@ class SavedWorkService {
     }
 
     private func ReadRequest(client CliClient, sent CoordinatorRequest) {
-        let reply = client.Run[string](TokateCommands.Coordination(sent.Repo, sent.Issue.ToString()), RunCodec.ContributionHead)
+        let reply = client.Run[string](TokateCommands.IssueStatus(sent.Repo, sent.Issue.ToString()), RunCodec.ContributionHead)
         let recorded = reply.Outcome.Succeeded && reply.Value == sent.Head
         window.Post(() -> RequestChecked(client, recorded))
     }
@@ -485,7 +486,7 @@ class SavedWorkService {
             completeOnError: true
         )
         if !started {
-            requestTimer = window.Every(5000, () -> CheckRequest())
+            requestTimer = window.Every(60000, () -> CheckRequest())
         }
     }
 

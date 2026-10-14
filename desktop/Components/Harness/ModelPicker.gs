@@ -25,7 +25,7 @@ data struct ModelPicker {
 
     func Build() Blob {
         let fields = List[Blob]()
-        if Harness == "omp" {
+        if Harness == "omp" || Harness == "command" {
             let providers = List[ComboBoxOption]()
             for provider in Providers {
                 providers.Add(Option(provider, provider))
@@ -40,7 +40,7 @@ data struct ModelPicker {
                 )
             )
         }
-        if Harness == "pi" && Models.Length == 0 {
+        if (Harness == "pi" || Harness == "command") && Models.Length == 0 {
             fields.Add(Field("Model", Model, OnModel, "Exact model ID", 230))
         } else {
             let models = List[ComboBoxOption]()

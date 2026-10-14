@@ -15,6 +15,9 @@ data struct HarnessEditorInput {
 /// Which harnesses donors may use, and which providers of OMP. Holds the provider name being typed.
 open class HarnessEditor : Cell[HarnessEditorInput] {
     private var provider string = ""
+    private var commandProvider string = ""
+    private var commandArgv string = ""
+    private var commandOutput string = "session"
 
     protected override func Build(input HarnessEditorInput) Blob {
         let owner = input.Owner
@@ -25,13 +28,16 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
         for pair in pairs {
             if pair.StartsWith("omp/") {
                 allowed.Add(pair.Substring(4))
-            } else if !Known(pair) {
+            } else if !pair.StartsWith("command/") && !Known(pair) {
                 kept.Add(pair)
             }
         }
         let cards = List[Blob]()
         for option in HarnessOption.All {
             let id = option.Id
+            if id == "command" {
+                continue
+            }
             let selected = id == "omp" ? allowed.Count > 0: Array.IndexOf(pairs, id + "/" + option.Provider) >= 0
             cards.Add(
                 ChoiceCard{
@@ -50,6 +56,43 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "The coding tools that a donor can use."}.Build(),
             Row{Children: cards.ToArray()}.Build(),
         }
+        children.Add(Rule{}.Build())
+        children.Add(Heading{Content: "Command harness", Size: AppTheme.ItemSize}.Build())
+        children.Add(Label{
+            Content: "Declare a fixed executable and JSON argv. Include {model}. Optional placeholders: {prompt_file}, {effort}, {checkout}. Add its allowed models below. The command runs without isolation.",
+            Size: AppTheme.SmallSize, Muted: true,
+        }.Build())
+        for tool in state.Setup.ToolModels {
+            if tool.Tool.StartsWith("command/") && Array.IndexOf(pairs, tool.Tool) >= 0 {
+                let current = tool
+                children.Add(Row{Children: []Blob{
+                    Label{Content: tool.Tool + ": " + Json.StringArray(tool.Command) + " (" + tool.Output + ")"}.Build(),
+                    (input.Button with{Label = "Edit " + tool.Tool, OnClick = () -> {
+                        commandProvider = current.Tool.Substring(8)
+                        commandArgv = Json.StringArray(current.Command)
+                        commandOutput = current.Output
+                    }}).Build(),
+                    (input.Button with{Label = "Remove " + tool.Tool, OnClick = () -> owner.RemoveCommandTool(current.Tool)}).Build(),
+                }}.Build())
+            }
+        }
+        children.Add(InputField{
+            Label: "Command provider", Value: commandProvider, OnChange: value -> {commandProvider = value},
+            Placeholder: "my-tool", Width: 260, Disabled: input.Busy,
+        }.Build())
+        children.Add(InputField{
+            Label: "Command argv", Value: commandArgv, OnChange: value -> {commandArgv = value},
+            Placeholder: "[\"my-tool\",\"--model\",\"{model}\",\"{prompt_file}\"]", Width: 650, Disabled: input.Busy,
+        }.Build())
+        children.Add(PresetGroup{
+            Button: input.Button, Labels: []string{"codex", "claude", "session"},
+            Selected: commandOutput == "codex" ? 0: commandOutput == "claude" ? 1: 2,
+            OnChoose: index -> {commandOutput = index == 0 ? "codex": index == 1 ? "claude": "session"},
+        }.Build())
+        children.Add((input.Button with{
+            Label = "Save command harness", OnClick = () -> owner.AddCommandTool(commandProvider, commandArgv, commandOutput),
+            Disabled = String.IsNullOrWhiteSpace(commandProvider) || String.IsNullOrWhiteSpace(commandArgv),
+        }).Build())
         if allowed.Count > 0 || state.OmpOpen {
             children.Add(Rule{}.Build())
             children.Add(Providers(input, state.OmpProviders(), allowed))

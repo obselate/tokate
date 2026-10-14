@@ -12,6 +12,8 @@ data struct ToolAllowance {
     var Tool string
     var Models []ModelAllowance
     var Restricted bool
+    var Command []string
+    var Output string
 }
 
 data struct Policy {

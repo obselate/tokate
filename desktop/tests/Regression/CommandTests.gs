@@ -15,14 +15,14 @@ func NodeArray(values IEnumerable[string]) JsonArray {
 func CommandTests() {
     let draft = DonationDraft.Initial
     Regression.Equal(
-        Regression.Args(TokateCommands.Select("o/r", draft)),
-        "select o/r --harness codex --model gpt-6.1-sol --effort high --non-interactive",
-        "select arguments"
+        Regression.Args(TokateCommands.DefaultsCheck("o/r", draft)),
+        "defaults check o/r --harness codex --model gpt-6.1-sol --effort high",
+        "check selection arguments"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.Select("o/r", draft with{Profile = "fast"})),
-        "select o/r fast --non-interactive",
-        "select with a profile"
+        Regression.Args(TokateCommands.DefaultsCheck("o/r", draft with{Profile = "fast"})),
+        "defaults check o/r fast",
+        "check selection with a profile"
     )
     Regression.Equal(
         Regression.Args(
@@ -37,14 +37,27 @@ func CommandTests() {
     let pi = draft with{Harness = "pi", Model = " qwen ", Effort = "absent", Endpoint = " http://127.0.0.1:8080/v1 "}
     Regression.Equal(
         Regression.Args(TokateCommands.Claim("o/r", pi with{Profile = "local"}, "42", 3600)),
-        "claim o/r#42 local --harness pi --model qwen --effort absent --endpoint http://127.0.0.1:8080/v1 --non-interactive --time 3600s --verify-time 30m",
+        "claim o/r#42 local --harness pi --model qwen --effort absent --endpoint http://127.0.0.1:8080/v1 --non-interactive --time 3600s --verify-time 30m --yes",
         "claim arguments"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.Claim("o/r", draft with{Unlimited = true}, "42", 1800)),
-        "claim o/r#42 --harness codex --model gpt-6.1-sol --effort high --non-interactive --unlimited --verify-time 30m",
+        "claim o/r#42 --harness codex --model gpt-6.1-sol --effort high --non-interactive --unlimited --verify-time 30m --yes",
         "unlimited claim arguments"
     )
+    let command = draft with{Harness = "command", Provider = "custom", Model = "model", Effort = "high"}
+    Regression.Equal(
+        Regression.Args(TokateCommands.DefaultsCheck("o/r", command)),
+        "defaults check o/r --harness command --model model --effort high --provider custom",
+        "command selection requires its provider"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.Claim("o/r", command, "42", 3600)),
+        "claim o/r#42 --harness command --model model --effort high --provider custom --non-interactive --time 3600s --verify-time 30m --yes",
+        "command claim arguments"
+    )
+    Regression.Equal(Regression.Args(TokateCommands.IssueStatus("o/r", "42")), "status o/r#42", "coordination uses issue status")
+    Regression.Equal(Regression.Args(TokateCommands.RunAction(RunAction.Claim, "/runs/1", AmendmentDraft.Initial)), "claim --run /runs/1 --yes", "saved claim resumes without inference")
     Regression.Equal(
         Regression.Args(TokateCommands.Access("o/r", "grant", "alice", "42")),
         "access grant alice o/r#42",
@@ -66,7 +79,6 @@ func CommandTests() {
     )
 
     let setup = SetupDraft.From(Policy.Empty with{Loaded = true}) with{
-        Path = "/work/repo",
         Commands = [][]string{[]string{"/bin/sh", "-c", "dotnet test"}},
         CommandsChanged = true,
         Checks = []string{"build"},
@@ -83,29 +95,26 @@ func CommandTests() {
     }
     Regression.Equal(
         Regression.Args(TokateCommands.Init("o/r", setup)),
-        "init o/r --path /work/repo --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --max-time 30m --allowed-tools [{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}] --eligibility open --yes",
+        "init o/r --non-interactive --verification [[\"/bin/sh\",\"-c\",\"dotnet test\"]] --required-checks [\"build\"] --max-time 30m --allowed-tools [{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}] --eligibility open --yes",
         "init arguments"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))) with{Path = "/p"})),
-        "init o/r --path /p --non-interactive --yes",
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))))),
+        "init o/r --non-interactive --yes",
         "unchanged init leaves upstream tool permissions untouched"
     )
-    Regression.Equal(Regression.Args(TokateCommands.OwnerDoctor("o/r")), "doctor owner o/r --auth", "owner repository health")
+    Regression.Equal(Regression.Args(TokateCommands.Policy("o/r")), "doctor repo o/r", "policy comes from repository doctor")
+    Regression.Equal(Regression.Args(TokateCommands.OwnerDoctor()), "doctor external --auth", "owner prerequisites")
+    Regression.Equal(Regression.Args(TokateCommands.PullRequestCheck("o/r", "7")), "checks o/r#7", "combined receipt and CI check")
     Regression.Equal(
         Regression.Args(TokateCommands.Approve("o/r", "42", "main")),
         "approve o/r#42 --base-branch main --yes",
         "confirmed approval can replace stale authority"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.CoordinatorSetup("o/r", "/p/new.yml")),
-        "coordinator-setup o/r --output /p/new.yml --non-interactive",
-        "coordinator preview does not apply"
-    )
-    Regression.Equal(
-        Regression.Args(TokateCommands.CoordinatorSetup("o/r", "/p/new.yml", true)),
-        "coordinator-setup o/r --output /p/new.yml --non-interactive --yes",
-        "confirmed coordinator apply"
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))), false)),
+        "init o/r --non-interactive",
+        "setup preview does not apply"
     )
 
     let amendment = AmendmentDraft.Initial with{

@@ -34,7 +34,7 @@ class DonationSteps {
 data struct HarnessOption {
     var Id string
     var Name string
-    /// The one provider of the harness, or "" for OMP, which has many.
+    /// The one provider of the harness, or "" when the owner or donor selects it.
     var Provider string
 
     shared {
@@ -43,6 +43,7 @@ data struct HarnessOption {
             HarnessOption{Id: "claude", Name: "Claude", Provider: "anthropic"},
             HarnessOption{Id: "omp", Name: "OMP", Provider: ""},
             HarnessOption{Id: "pi", Name: "Pi / local", Provider: "local-chat-completions"},
+            HarnessOption{Id: "command", Name: "Owner command", Provider: ""},
         }
 
         func ProviderOf(id string) string {
@@ -111,21 +112,20 @@ data struct ModelChoice {
         /// A model with its effort, for one line of text.
         func Pair(model string, effort string) string -> effort == "" ? model: model + " / " + EffortLabel(effort)
 
-        /// The name of a harness, with the provider of an OMP selection.
-        func Tool(harness string, provider string) string -> harness == "omp" && (provider ?? "") != "" ?
+        /// The name of a harness, with its selected provider.
+        func Tool(harness string, provider string) string -> (harness == "omp" || harness == "command") && (provider ?? "") != "" ?
         HarnessOption.NameOf(harness) + " \u00b7 " + provider: HarnessOption.NameOf(harness)
 
         func EffortLabel(value string) string -> value == "xhigh" ? "Extra high": value == "absent" ? "Not set": value == "" ? "": char.ToUpperInvariant(
             value[0]
         ).ToString() + value.Substring(1)
 
-        /// The models to choose from for `harness`: its catalog, limited to the models and efforts of a
-        /// whitelist of the owner. Pi has no catalog, so a whitelist offers its models that no other
-        /// catalog has.
+        /// The harness catalog, limited to owner permissions. Pi and command tools use the owner's
+        /// model and effort declarations instead of a catalog.
         func Catalog(harness string, provider string, codex []ModelChoice, omp []ModelChoice, policy Policy) []ModelChoice {
             let offered = harness == "codex" ? codex: harness == "claude" ? Claude: harness == "omp" ? omp: []ModelChoice{}
             let result = List[ModelChoice]()
-            let toolProvider = harness == "omp" ? provider: HarnessOption.ProviderOf(harness)
+            let toolProvider = harness == "omp" || harness == "command" ? provider: HarnessOption.ProviderOf(harness)
             let restricted = policy.RestrictsTool(harness, toolProvider)
             let allowances = policy.ModelsFor(harness, toolProvider)
             for model in offered {
@@ -148,7 +148,7 @@ data struct ModelChoice {
                     }
                 }
             }
-            if harness == "pi" && restricted {
+            if (harness == "pi" || harness == "command") && restricted {
                 for allowance in allowances {
                     let slug = allowance.Model
                     if policy.Version >= 3 || (!Array.Exists(codex, model -> model.Slug == slug) && !Array.Exists(Claude, model -> model.Slug == slug)) {
@@ -174,7 +174,7 @@ data struct ModelChoice {
 
 data struct DonationDraft {
     var Harness string
-    /// The provider of an OMP donation. Other tools have one provider, which Tokate selects.
+    /// The provider of an OMP or command donation.
     var Provider string
     var Model string
     var Effort string
@@ -218,7 +218,7 @@ data struct DonationDraft {
                 return model.Efforts
             }
         }
-        return Harness == "pi" && models.Length == 0 ? DonationDraft.Efforts: []string{}
+        return (Harness == "pi" || Harness == "command") && models.Length == 0 ? DonationDraft.Efforts: []string{}
     }
 
     /// Selects a model. An effort that the new model does not support is cleared.
@@ -331,7 +331,7 @@ data struct DonationState {
     func Settled() DonationState {
         let harness = Draft.Harness
         if Draft.Profile != "" || (harness == "codex" && Models.Length == 0) || (harness == "omp" && OmpModels.Length == 0) ||
-            (harness == "pi" && !Policy.RestrictsTool(harness, HarnessOption.ProviderOf(harness))) {
+            ((harness == "pi" || harness == "command") && !Policy.RestrictsTool(harness, harness == "command" ? Draft.Provider: HarnessOption.ProviderOf(harness))) {
             return this
         }
         let models = Catalog()

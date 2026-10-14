@@ -48,7 +48,7 @@ class LimitsStepView {
                             ModelPicker{
                                 Harness: draft.Harness,
                                 Provider: draft.Provider,
-                                Providers: state.Policy.Providers("omp"),
+                                Providers: state.Policy.Providers(draft.Harness),
                                 Model: draft.Model,
                                 Effort: draft.Effort,
                                 Endpoint: draft.Endpoint,

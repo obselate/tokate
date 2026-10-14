@@ -71,8 +71,18 @@ func OwnerTests() {
     owner.Current = owner.Current with{Written = "files"}
     owner.SetStep(2)
     Regression.Check(owner.Current.Written == "files" && owner.Current.Setup.Step == 2, "changing steps keeps the report")
-    owner.SetPath("/tmp")
+    owner.SetMinutes("30")
     Regression.Check(owner.Current.Written == "", "editing setup discards the report")
+    owner.AddCommandTool("custom", "[\"tool\",\"--model\",\"{model}\",\"{prompt_file}\"]", "session")
+    owner.AddModel("custom-model", "high")
+    let command = Array.Find(owner.Current.Setup.ToolModels, tool -> tool.Tool == "command/custom")
+    Regression.Check(command.Command[2] == "{model}" && command.Output == "session" && command.Models.Length == 1, "model edits preserve command argv and output")
+    let encoded = Json.Parse(Json.AllowedTools(owner.Current.Setup.EffectiveTools(), owner.Current.Setup.ToolModels))
+    let commandJson = Array.Find(Json.Items(encoded), tool -> Json.Text(tool, "harness") == "command")
+    Regression.Check(Json.Strings(commandJson, "command")[3] == "{prompt_file}" && Json.Text(commandJson, "output") == "session", "command harness declaration matches CLI shape")
+    owner.Current = owner.Current with{SetupPreviewed = true}
+    owner.SetMinutes("31")
+    Regression.Check(!owner.Current.SetupPreviewed, "editing setup invalidates the preview")
 
     owner.SelectTab(OwnerTab.Setup)
     Regression.Check(!owner.Current.Browsing, "setup is not browsing")

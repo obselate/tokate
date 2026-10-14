@@ -64,6 +64,17 @@ func DonationTests() {
     donation.Review()
     Regression.Equal(feedback.Current.Message, "The time budget exceeds the limit of 1 minutes.", "review checks the budget first")
     Regression.Check(!activity.Busy, "an invalid budget runs no command")
+    donation.Current = donation.Current with{
+        Policy = Policy.Empty,
+        Draft = DonationDraft.Initial with{Harness = "command", Provider = "custom"},
+    }
+    donation.Reserve()
+    Regression.Equal(
+        feedback.Current.Message,
+        "Tokate did not provide the owner command. Inspect the repository policy before donating.",
+        "command donations require owner argv for consent"
+    )
+    Regression.Check(!activity.Busy, "missing command argv starts no claim")
 
     donation.Current = donation.Current with{
         Step = DonationStep.Donation,

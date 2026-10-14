@@ -10,6 +10,10 @@ func CodecTests() {
     Regression.Check(!CliCodec.Matches(pending, 0, "claim"), "envelope rejects a different exit code")
     Regression.Check(pending.Error == nil, "null error decodes as none")
     Regression.Equal(pending.NextActions[1].Command, "work", "managed pending claim next action")
+    Regression.Equal(String.Join(" ", pending.NextActions[1].Arguments), "tokate work owner/repo#42-1 --json", "exact saved action arguments")
+    Regression.Check(pending.NextActions[0].NamesRun, "saved status names an exact attempt")
+    let authority = NextAction{Arguments: []string{"tokate", "status", "owner/repo#42"}}
+    Regression.Check(!authority.NamesRun, "authority status is not a saved attempt")
     Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/state/tokate/runs/abc", "run path")
     Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("Do not repost"), "pending claim preserves recovery guidance")
 
@@ -55,11 +59,19 @@ func CodecTests() {
         "{\"version\":2,\"model_policy\":\"whitelist\",\"models\":{\"gpt\":[\"high\"]},\"eligibility\":\"manual\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}]}"
     ))
     Regression.Check(legacy.ModelsFor("codex", "openai").Length == 1 && legacy.Eligibility == "trusted", "legacy model and eligibility permissions survive migration")
-    let coordinator = PolicyCodec.Coordinator(Json.Parse(
-        "{\"repo\":\"o/r\",\"output\":\"/p/new.yml\",\"current_version\":\"0.4.0\",\"new_version\":\"0.5.0\",\"current_commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"new_commit\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"compare_url\":\"https://github.com/obselate/tokate/compare/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa...bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"release_url\":\"https://github.com/obselate/tokate/releases/tag/v0.5.0\",\"actions_allowlist\":\"Updated the Actions allowlist to permit obselate/tokate/.github/workflows/tokate-shared.yml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.\"}"
+    let noPolicy = PolicyCodec.FromPolicyResult(Json.Parse("{\"scope\":\"repo\",\"checks\":[{\"check\":\"policy\",\"status\":\"problem\",\"message\":\"No policy\"}]}"))
+    Regression.Check(!noPolicy.Loaded && noPolicy.Verification.Length == 0, "successful doctor without a policy means no policy yet")
+    let setup = PolicyCodec.Setup(Json.Parse(
+        "{\"applied\":false,\"changes\":[{\"change\":\"Setup PR\",\"old\":\"\",\"new\":\"Set up Tokate\"}],\"manual\":[\"Review branch protection\"],\"pull_request\":\"https://github.com/o/r/pull/2\"}"
     ))
-    Regression.Check(coordinator.Loaded && coordinator.Applied && coordinator.CurrentVersion == "0.4.0" && coordinator.NewVersion == "0.5.0", "coordinator pin comparison")
-    Regression.Check(coordinator.CompareUrl != "" && coordinator.ReleaseUrl != "" && coordinator.Allowlist.StartsWith("Updated"), "coordinator links and allowlist result")
+    Regression.Check(!setup.Applied && setup.Manual.Length == 1 && setup.PullRequest.EndsWith("/2"), "setup preview and PR fields")
+    let combined = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"pending\"}"))
+    Regression.Check(combined.Receipt == "verified" && combined.Ci == "pending", "receipt can pass while CI is pending")
+    let commandPolicy = PolicyCodec.Policy(Json.Parse(
+        "{\"version\":3,\"allowed_tools\":[{\"harness\":\"command\",\"provider\":\"custom\",\"command\":[\"tool\",\"{model}\",\"{prompt_file}\"],\"output\":\"session\",\"models\":{\"custom-model\":[\"high\"]}}]}"
+    ))
+    let commandDraft = SetupDraft.From(commandPolicy)
+    Regression.Check(commandDraft.ToolModels[0].Command[2] == "{prompt_file}" && commandDraft.ToolModels[0].Output == "session", "command declarations survive policy decoding and setup")
 
     let search = IssueCodec.Search(Regression.Fixture("search.json"))
     Regression.Check(search.Total == 1203 && search.Rows.Length == 2, "search totals")

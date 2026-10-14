@@ -14,12 +14,12 @@ data struct CliError {
     prop Recovery string -> switch Code {
         case "stale_approval": "Keep the saved work. Ask the owner to review current authority and re-approve the issue."
         case "authentication_required": "Use the original donor account. Inspect saved status before continuing."
-        case "inference_failed": "Preserve partial work. Inspect status before fresh preparation with a new explicit budget."
+        case "inference_failed": "Preserve partial work. Inspect status before a fresh claim or work attempt with a new explicit budget."
         case "verification_failed": "Inspect saved verification results. Preserve original evidence before editing, then amend the exact commit."
         case "invalid_state": "Inspect saved state and artifacts. Do not overwrite evidence or start another attempt to bypass this refusal."
         case "invalid_arguments": "Read command help and correct the arguments before continuing."
         case "missing_tools": "Repair the selected installation, then run doctor. No inference has started."
-        case "endpoint_unavailable": "Check the local endpoint and exact model before fresh preparation."
+        case "endpoint_unavailable": "Check the local endpoint and exact model before starting new work."
         default: "Inspect saved and remote state before repeating this command. No automatic retry is made."
     }
 }
@@ -28,6 +28,11 @@ data struct NextAction {
     var Arguments []string
 
     prop Command string -> Arguments.Length > 1 ? Arguments[1]: ""
+
+    prop NamesRun bool -> Arguments.Length > 2 && System.Text.RegularExpressions.Regex.IsMatch(
+        Arguments[2],
+        "^[^/#]+/[^/#]+#[0-9]+-[0-9]+$"
+    )
 }
 
 data struct Envelope {

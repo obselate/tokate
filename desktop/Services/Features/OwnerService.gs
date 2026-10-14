@@ -3,7 +3,6 @@ package TokateDesktop
 import System
 import System.Text.RegularExpressions
 import System.Collections.Generic
-import System.IO
 
 /// The owner's project: issues and their contributions, donor access, and project setup.
 class OwnerService {
@@ -38,8 +37,8 @@ class OwnerService {
         changed()
     }
 
-    /// Changes to the project or setup clear the report of the last written setup.
-    private func Edit(next OwnerState) -> Set(next with{Written = ""})
+    /// Changes to the project or setup clear the last preview and result.
+    private func Edit(next OwnerState) -> Set(next with{Written = "", SetupPreviewed = false, SetupReport = SetupReport{}})
 
     private func EditSetup(setup SetupDraft) -> Edit(Current with{Setup = setup})
 
@@ -91,7 +90,7 @@ class OwnerService {
         Issues.Reset(reply.Value.Repository, IssueFilter.All)
         Set(Current with{
             Open = true, Selected = nil, Project = reply.Value, Written = "", DoctorReport = "",
-            CoordinatorOutput = "", Coordinator = CoordinatorReport{},
+            SetupPreviewed = false, SetupReport = SetupReport{},
         })
         activity.Activate("Refresh project")
         commands.Cli[Policy](
@@ -112,12 +111,17 @@ class OwnerService {
                 Policy = policy,
                 PolicyTruncated = reply.Outcome.Envelope?.Truncated ?? false,
                 Project = project,
-                Setup = SetupDraft.From(policy) with{Path = Current.Setup.Path, Step = Current.Setup.Step},
+                Setup = SetupDraft.From(policy) with{Step = Current.Setup.Step},
             }
         )
         if reply.Outcome.ExitCode != 0 {
             Set(Current with{Tab = OwnerTab.Setup})
             feedback.Show("Project policy could not be loaded. Check access before applying setup.")
+            return
+        }
+        if !policy.Loaded {
+            Set(Current with{Tab = OwnerTab.Setup})
+            feedback.Show("No policy yet. Preview project setup, or check repository health.")
             return
         }
         LoadAccess(() -> Refresh())
@@ -133,7 +137,7 @@ class OwnerService {
     func CheckPrerequisites() {
         let repository = Current.Open ? Repository: ""
         commands.Cli[string](
-            TokateCommands.OwnerDoctor(repository),
+            Current.Open ? TokateCommands.Policy(Repository): TokateCommands.OwnerDoctor(),
             PolicyCodec.OwnerHealth,
             (reply Reply[string]) -> {
                 let outcome = reply.Outcome
@@ -209,26 +213,26 @@ class OwnerService {
         false
     )
 
-    func CheckPullRequest(pr string, command string) {
-        commands.Cli[string](
-            TokateCommands.PullRequestCheck(command, Repository, pr),
-            PullRequestCodec.ChecksStatus,
-            (reply Reply[string]) -> {
-                let failed = commands.Failed(reply.Outcome)
-                let status = (reply.Value ?? "").Replace('_', ' ')
-                if command != "verify" && status == "" {
+    func CheckPullRequest(pr string) {
+        commands.Cli[DraftReview](
+            TokateCommands.PullRequestCheck(Repository, pr),
+            PullRequestCodec.Review,
+            (reply Reply[DraftReview]) -> {
+                if commands.Failed(reply.Outcome) && !reply.Outcome.Pending {
                     return
                 }
-                if command != "verify" && status == DraftReview.NeedsApproval {
+                if String.IsNullOrEmpty(reply.Value.Receipt) && String.IsNullOrEmpty(reply.Value.Ci) {
+                    return
+                }
+                if reply.Value.Ci == DraftReview.NeedsApproval {
                     feedback.Show(
                         "The workflows of PR #" + pr + " wait for your approval. Inspect the diff, then approve the runs in GitHub.",
                         Tone.Need
                     )
                 }
-                let known = Current.ReviewFor(pr)
                 let reviews = List[DraftReview](Current.Reviews)
                 reviews.RemoveAll(existing -> existing.Pr == pr)
-                reviews.Add(command == "verify" ? known with{Receipt = failed ? "failed": "verified"}: known with{Ci = status})
+                reviews.Add(reply.Value with{Pr = pr})
                 Set(Current with{Reviews = reviews.ToArray()})
             }
         )
@@ -376,7 +380,8 @@ class OwnerService {
     func SetModelPolicy(policy string) {
         let setup = Current.Setup
         let tools = List[ToolAllowance](setup.ToolModels)
-        let allowance = ToolAllowance{Tool: setup.ModelTool, Models: setup.Models, Restricted: policy == "whitelist"}
+        let previous = Array.Find(setup.ToolModels, tool -> tool.Tool == setup.ModelTool)
+        let allowance = previous with{Tool = setup.ModelTool, Models = setup.Models, Restricted = policy == "whitelist"}
         let index = tools.FindIndex(tool -> tool.Tool == setup.ModelTool)
         if index >= 0 {
             tools[index] = allowance
@@ -422,93 +427,80 @@ class OwnerService {
 
     func SetMinutes(value string) -> EditSetup(Current.Setup with{Minutes = value})
 
-    func SetPath(path string) -> EditSetup(Current.Setup with{Path = path})
-
-    func SetCoordinatorOutput(path string) -> Set(Current with{CoordinatorOutput = path, Coordinator = CoordinatorReport{}})
-
-    func PreviewCoordinator() {
-        if !Path.IsPathFullyQualified(Current.CoordinatorOutput) {
-            feedback.Show("Enter an absolute path for a new workflow file outside .github.", Tone.Fail)
-            return
-        }
-        commands.Cli[CoordinatorReport](
-            TokateCommands.CoordinatorSetup(Repository, Current.CoordinatorOutput),
-            PolicyCodec.Coordinator,
-            (reply Reply[CoordinatorReport]) -> {
-                if !commands.Failed(reply.Outcome) {
-                    Set(Current with{Coordinator = reply.Value})
-                }
-            }
-        )
-    }
-
-    func ApplyCoordinator() {
-        let preview = Current.Coordinator
-        if !preview.Loaded || preview.Applied {
-            return
-        }
-        dialogs.Ask(
-            Confirmation{
-                Title: "Generate coordinator workflow?",
-                Text: Repository + "\n\nWrite the current release workflow to " + preview.Output +
-                    "." + (preview.NewCommit != "" ? "\n\nPreviewed shared workflow commit: " + preview.NewCommit + ".": "") +
-                    "\n\nThis also checks Actions and updates its allowlist to permit the new shared workflow. " +
-                    "Review the generated file, then install and commit it yourself.",
-                ConfirmLabel: "Generate and update allowlist",
-                Heading: "",
-            },
-            () -> {
-                commands.Cli[CoordinatorReport](
-                    TokateCommands.CoordinatorSetup(Repository, preview.Output, true),
-                    PolicyCodec.Coordinator,
-                    (reply Reply[CoordinatorReport]) -> {
-                        if !commands.Failed(reply.Outcome) {
-                            Set(Current with{Coordinator = reply.Value})
-                        }
-                    }
-                )
-            }
-        )
-    }
-
-    /// Writes the policy and workflow into the checkout after confirmation, and keeps the report of the files.
-    func Apply() {
+    func AddCommandTool(provider string, argv string, output string) {
         try {
-            let repository = RepositoryRef.Parse(Repository).FullName
-            let setup = Current.Setup
+            let name = provider.Trim()
+            let words = Json.Strings(Json.Parse(argv))
+            let pair = "command/" + name
+            let tools = List[ToolAllowance](Current.Setup.ToolModels)
+            let index = tools.FindIndex(tool -> tool.Tool == pair)
+            let previous = index >= 0 ? tools[index]: ToolAllowance{Models: []ModelAllowance{}}
+            let tool = previous with{Tool = pair, Command = words, Output = output, Restricted = true}
+            if index >= 0 {
+                tools[index] = tool
+            } else {
+                tools.Add(tool)
+            }
+            let pairs = List[string](Current.Setup.EffectiveTools())
+            if !pairs.Contains(pair) {
+                pairs.Add(pair)
+            }
+            EditSetup(Current.Setup with{Tools = String.Join(",", pairs), ToolModels = tools.ToArray(), PermissionsChanged = true})
+            SetModelTool(pair)
+        } catch (error Exception) {
+            feedback.Show(error.Message, Tone.Fail)
+        }
+    }
+
+    func RemoveCommandTool(pair string) -> TogglePair(pair)
+
+    func PreviewSetup() {
+        try {
             if Current.PolicyTruncated {
                 throw Exception("The CLI omitted policy entries. Use tokate init to preserve the complete tool permissions.")
             }
-            if !Directory.Exists(setup.CheckedPath()) {
-                throw Exception("Enter an existing absolute checkout path.")
-            }
-            let arguments = TokateCommands.Init(repository, setup)
-            dialogs.Ask(
-                Confirmation{
-                    Title: "Write project setup?",
-                    Text: "Write the policy and workflow into " + setup.Path + ".\n\nTokate also applies missing GitHub Actions settings and adds the required checks to branch protection on the target branch.\n\nReview and commit these files before approving work. Existing checks are preserved unless you explicitly replaced them.",
-                    ConfirmLabel: "Confirm",
-                    Heading: "",
-                },
-                () -> {
-                    commands.Cli(
-                        arguments,
-                        (outcome CommandOutcome) -> {
-                            if commands.Failed(outcome) {
-                                return
-                            }
-                            Set(Current with{Written = String.Join("\n", Array.FindAll(
-                                []string{outcome.Report, outcome.Diagnostics},
-                                part -> part != ""
-                            ))})
-                            feedback.Show("Setup written. Review and commit the files before approving issues.", Tone.Done)
-                        },
-                        directory: setup.Path
-                    )
+            commands.Cli[SetupReport](
+                TokateCommands.Init(Repository, Current.Setup, false),
+                PolicyCodec.Setup,
+                (reply Reply[SetupReport]) -> {
+                    let failed = commands.Failed(reply.Outcome)
+                    Set(Current with{
+                        SetupReport = reply.Value, SetupPreviewed = !failed,
+                        Written = reply.Outcome.Diagnostics,
+                    })
                 }
             )
         } catch (error Exception) {
             feedback.Show(error.Message, Tone.Fail)
         }
+    }
+
+    /// Applies the previewed GitHub setup after confirmation.
+    func Apply() {
+        if !Current.SetupPreviewed || Current.SetupReport.Applied {
+            return
+        }
+        let arguments = TokateCommands.Init(Repository, Current.Setup)
+        dialogs.Ask(
+            Confirmation{
+                Title: "Apply project setup?",
+                Text: Repository + "\n\nCreate or update the setup PR with the policy and pinned coordinator workflow. " +
+                    "Tokate also updates the Actions workflow allowlist and event policy, allows Actions to create and approve pull requests, " +
+                    "adds required checks to target-branch protection, and initializes the donor access record when missing." +
+                    "\n\nReview and merge the setup PR before approving work. Complete the reported manual steps. Existing checks are preserved unless you explicitly replaced them.",
+                ConfirmLabel: "Confirm", Heading: "",
+            },
+            () -> commands.Cli[SetupReport](
+                arguments,
+                PolicyCodec.Setup,
+                (reply Reply[SetupReport]) -> {
+                    Set(Current with{SetupReport = reply.Value, Written = reply.Outcome.Diagnostics})
+                    if !commands.Failed(reply.Outcome) {
+                        Set(Current with{SetupPreviewed = false})
+                        feedback.Show(reply.Value.Applied ? "Setup applied. Review and merge the setup PR before approving issues.": "Setup already matches. Complete any manual steps and review the setup PR.", Tone.Done)
+                    }
+                }
+            )
+        )
     }
 }

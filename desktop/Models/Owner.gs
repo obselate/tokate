@@ -2,7 +2,6 @@ package TokateDesktop
 
 import System
 import System.Collections.Generic
-import System.IO
 
 enum OwnerTab {
     Contributions,
@@ -86,7 +85,6 @@ data struct AccessList {
 
 data struct SetupDraft {
     var Step int32
-    var Path string
     var Commands [][]string
     var Checks []string
     var Models []ModelAllowance
@@ -130,28 +128,23 @@ data struct SetupDraft {
         return minutes * 60
     }
 
-    func CheckedPath() string {
-        if !System.IO.Path.IsPathFullyQualified(this.Path) {
-            throw Exception("Enter an existing absolute checkout path.")
-        }
-        return this.Path
-    }
-
     shared {
         func From(policy Policy) SetupDraft {
             let pairs = policy.Loaded && policy.ToolProviders.Length > 0 ? policy.ToolProviders: []string{"codex/openai"}
             let tools = List[ToolAllowance]()
             for pair in pairs {
                 let split = pair.IndexOf('/')
+                let declaration = Array.Find(policy.ToolModels, item -> item.Tool == pair)
                 tools.Add(ToolAllowance{
                     Tool: pair,
                     Models: policy.ModelsFor(pair.Substring(0, split), pair.Substring(split + 1)),
                     Restricted: policy.RestrictsTool(pair.Substring(0, split), pair.Substring(split + 1)),
+                    Command: declaration.Command ?? []string{},
+                    Output: declaration.Output ?? "",
                 })
             }
             let selected = tools[0]
             return SetupDraft{
-                Path: "",
                 Commands: policy.Verification,
                 Checks: policy.RequiredChecks,
                 Models: selected.Models,
@@ -167,17 +160,10 @@ data struct SetupDraft {
     }
 }
 
-data struct CoordinatorReport {
-    var Loaded bool
+data struct SetupReport {
     var Applied bool
-    var Output string
-    var CurrentVersion string
-    var NewVersion string
-    var CurrentCommit string
-    var NewCommit string
-    var CompareUrl string
-    var ReleaseUrl string
-    var Allowlist string
+    var Manual []string
+    var PullRequest string
 }
 
 /// Everything the owner page shows. Text typed into the setup editors lives in their components.
@@ -200,11 +186,11 @@ data struct OwnerState {
     var Omp []ModelChoice
     /// Whether the list of OMP providers shows before a provider is allowed.
     var OmpOpen bool
-    /// What the CLI reported when setup was last written.
+    /// The diagnostics from the last setup preview or apply.
     var Written string
+    var SetupPreviewed bool
+    var SetupReport SetupReport
     var DoctorReport string
-    var CoordinatorOutput string
-    var Coordinator CoordinatorReport
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
 
@@ -259,7 +245,6 @@ data struct OwnerState {
             Omp: []ModelChoice{},
             Written: "",
             DoctorReport: "",
-            CoordinatorOutput: "",
         }
     }
 }

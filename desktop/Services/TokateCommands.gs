@@ -3,11 +3,15 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
-/// Argument arrays for Tokate 0.4.0. An issue or pull request is named as OWNER/REPO#NUMBER and a time
+/// Argument arrays for Tokate 0.6.0. An issue or pull request is named as OWNER/REPO#NUMBER and a time
 /// limit takes a unit.
 class TokateCommands {
     shared {
-        func Select(repo string, draft DonationDraft) []string -> Selection("select", repo, draft).ToArray()
+        func DefaultsCheck(repo string, draft DonationDraft) []string {
+            let args = Selection("defaults", repo, draft)
+            args.Insert(1, "check")
+            return args.ToArray()
+        }
 
         func Claim(
             repo string,
@@ -24,6 +28,7 @@ class TokateCommands {
             }
             args.Add("--verify-time")
             args.Add(int32.Parse(draft.Verification).ToString() + "m")
+            args.Add("--yes")
             return args.ToArray()
         }
 
@@ -34,7 +39,7 @@ class TokateCommands {
             }
             if draft.Profile == "" || command == "claim" {
                 args.AddRange([]string{"--harness", draft.Harness, "--model", draft.Model.Trim(), "--effort", draft.Effort.Trim()})
-                if draft.Harness == "omp" && draft.Provider != "" {
+                if (draft.Harness == "omp" || draft.Harness == "command") && draft.Provider != "" {
                     args.Add("--provider")
                     args.Add(draft.Provider)
                 }
@@ -43,7 +48,9 @@ class TokateCommands {
                     args.Add(draft.Endpoint.Trim())
                 }
             }
-            args.Add("--non-interactive")
+            if command != "defaults" {
+                args.Add("--non-interactive")
+            }
             return args
         }
 
@@ -53,7 +60,6 @@ class TokateCommands {
         func DefaultsSet(name string, draft DonationDraft) []string {
             let args = Selection("defaults", "set", draft with{Profile = "", Provider = draft.Provider.Trim()})
             args.Insert(2, name)
-            args.Remove("--non-interactive")
             return args.ToArray()
         }
 
@@ -65,7 +71,7 @@ class TokateCommands {
         /// Removes the default. The profiles stay.
         func DefaultsClear() []string -> []string{"defaults", "remove"}
 
-        func Policy(repo string) []string -> []string{"policy", repo}
+        func Policy(repo string) []string -> []string{"doctor", "repo", repo}
 
         func Status(run string) []string -> []string{"status", "--run", run}
 
@@ -73,24 +79,16 @@ class TokateCommands {
 
         func Work(run string) []string -> []string{"work", "--run", run, "--yes"}
 
-        func Coordination(repo string, issue string) []string -> []string{"coordination", repo + "#" + issue}
-
         func HarnessDoctor(harness string) []string -> []string{"doctor", "managed", harness}
 
-        func OwnerDoctor(repo string = "") []string -> repo == "" ? []string{"doctor", "owner", "--auth"}:
-        []string{"doctor", "owner", repo, "--auth"}
-
-        func CoordinatorSetup(repo string, output string, apply bool = false) []string -> apply ?
-        []string{"coordinator-setup", repo, "--output", output, "--non-interactive", "--yes"}:
-        []string{"coordinator-setup", repo, "--output", output, "--non-interactive"}
+        func OwnerDoctor() []string -> []string{"doctor", "external", "--auth"}
 
         func Approve(repo string, issue string, branch string) []string ->
         []string{"approve", repo + "#" + issue, "--base-branch", branch, "--yes"}
 
         func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue}
 
-        /// `command` is "verify" for the receipt or "checks" for the CI gates.
-        func PullRequestCheck(command string, repo string, pr string) []string -> []string{command, repo + "#" + pr}
+        func PullRequestCheck(repo string, pr string) []string -> []string{"checks", repo + "#" + pr}
 
         func Access(repo string, operation string, donor string = "", issue string = "") []string {
             let args = List[string]{"access", operation}
@@ -101,8 +99,8 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        func Init(repo string, draft SetupDraft) []string {
-            let args = List[string]{"init", repo, "--path", draft.Path, "--non-interactive"}
+        func Init(repo string, draft SetupDraft, yes bool = true) []string {
+            let args = List[string]{"init", repo, "--non-interactive"}
             if draft.CommandsChanged {
                 args.Add("--verification")
                 args.Add(Json.NestedArrays(draft.Commands))
@@ -123,7 +121,9 @@ class TokateCommands {
                 args.Add("--eligibility")
                 args.Add(draft.Eligibility)
             }
-            args.Add("--yes")
+            if yes {
+                args.Add("--yes")
+            }
             return args.ToArray()
         }
 
@@ -131,6 +131,9 @@ class TokateCommands {
         /// holds the written amendment files; without it the command has only the commit and budget.
         func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "", files string = "") []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
+            if action == RunAction.Claim {
+                args.Add("--yes")
+            }
             if RunActions.NeedsBudget(action) {
                 args.Add("--time")
                 args.Add(amendment.VerificationMinutes().ToString() + "m")

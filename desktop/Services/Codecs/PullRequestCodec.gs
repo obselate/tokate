@@ -29,5 +29,13 @@ class PullRequestCodec {
         /// because the checks cannot finish before the owner approves them.
         func ChecksStatus(data JsonElement) string -> Json.Items(data, "workflow_runs_awaiting_approval").Length > 0 ?
         DraftReview.NeedsApproval: Json.Text(data, "machine_status") == "historical" ? "historical": Json.Text(data, "checks_status")
+
+        func Review(data JsonElement) DraftReview {
+            let receipt = Json.Text(Json.Get(Json.Get(data, "gates"), "receipt"), "status")
+            return DraftReview{
+                Receipt: receipt == "passed" ? "verified": receipt,
+                Ci: ChecksStatus(data).Replace('_', ' '),
+            }
+        }
     }
 }

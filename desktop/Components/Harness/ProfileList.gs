@@ -27,7 +27,9 @@ data struct ProfileList {
             }
             let row = List[Blob]()
             if let logo = Logo {
-                row.Add(Container{Width: 28, Height: 28, FlexShrink: 0, logo(item.Harness)})
+                if item.Harness != "command" {
+                    row.Add(Container{Width: 28, Height: 28, FlexShrink: 0, logo(item.Harness)})
+                }
             }
             row.Add(
                 Container{

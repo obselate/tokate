@@ -110,6 +110,10 @@ class DonationService {
                     return
                 }
                 Set(Current with{Policy = reply.Value})
+                if !reply.Value.Loaded {
+                    feedback.Show("This repository has no valid Tokate policy. Ask the owner to finish setup.", Tone.Need)
+                    return
+                }
                 if requested == 0 {
                     Issues.Search(1, true)
                 } else {
@@ -201,7 +205,7 @@ class DonationService {
 
     func ChooseHarness(id string) {
         let providers = Current.Policy.Providers(id)
-        SetDraft(Current.Draft.ForHarness(id) with{Provider = id == "omp" && providers.Length > 0 ? providers[0]: ""})
+        SetDraft(Current.Draft.ForHarness(id) with{Provider = (id == "omp" || id == "command") && providers.Length > 0 ? providers[0]: ""})
         LoadModels()
     }
 
@@ -244,7 +248,7 @@ class DonationService {
         try {
             Current.Draft.BudgetSeconds(Current.Policy)
             commands.Cli[DonorProfile](
-                TokateCommands.Select(Current.Repository, Current.Draft),
+                TokateCommands.DefaultsCheck(Current.Repository, Current.Draft),
                 DonorCodec.Selection,
                 (reply Reply[DonorProfile]) -> {
                     if commands.Failed(reply.Outcome) {
@@ -255,6 +259,7 @@ class DonationService {
                         Current with{
                             Draft = Current.Draft with{
                                 Harness = selection.Harness,
+                                Provider = selection.Provider,
                                 Model = selection.Model,
                                 Effort = selection.Effort,
                             },
@@ -281,10 +286,23 @@ class DonationService {
                 Current.Issue,
                 draft.BudgetSeconds(Current.Policy)
             )
+            var consent = ""
+            if draft.Harness == "command" {
+                var command = ""
+                for tool in Current.Policy.ToolModels {
+                    if tool.Tool == "command/" + draft.Provider && tool.Command.Length > 0 {
+                        command = Json.StringArray(tool.Command)
+                    }
+                }
+                if command == "" {
+                    throw Exception("Tokate did not provide the owner command. Inspect the repository policy before donating.")
+                }
+                consent = "This owner-defined command runs with your tools and has no isolation.\n\n" + command
+            }
             dialogs.Ask(
                 Confirmation{
                     Title: "Reserve this contribution?",
-                    Text: "",
+                    Text: consent,
                     ConfirmLabel: "Send request",
                     Heading: Current.Identity,
                     Tiles: []ConfirmationTile{
@@ -349,7 +367,7 @@ class DonationService {
         )
     }
 
-    /// Shows a reserved run. A run still waiting for approval is checked now and every five seconds.
+    /// Shows a reserved run. A run still waiting for approval is checked now and every minute.
     func Open(run Run, directory string) {
         commands.RememberRun?.Invoke(directory)
         Stop()
@@ -370,7 +388,7 @@ class DonationService {
             }
         )
         if run.State == "claim_pending" {
-            approvalTimer = window.Every(5000, () -> CheckApproval())
+            approvalTimer = window.Every(60000, () -> CheckApproval())
             CheckApproval()
         }
     }
@@ -392,7 +410,7 @@ class DonationService {
         try {
             let claim = RunStore.ClaimId(directory)
             let reply = client.Run[Reservation](
-                TokateCommands.Coordination(run.Repo, run.Issue.ToString()),
+                TokateCommands.IssueStatus(run.Repo, run.Issue.ToString()),
                 RunCodec.Reservation
             )
             if reply.Outcome.Failure != "" || reply.Outcome.ExitCode != 0 {
@@ -434,7 +452,7 @@ class DonationService {
         dialogs.Ask(
             Confirmation{
                 Title: "Start donation?",
-                Text: "",
+                Text: run.Harness == "command" ? "This owner-defined command runs with your tools and has no isolation.": "",
                 ConfirmLabel: "Start this donation",
                 Heading: run.Identity,
                 Tiles: []ConfirmationTile{

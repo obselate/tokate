@@ -19,7 +19,6 @@ data struct OwnerIssueCard {
     var Button CommandButton
     var OnApproval Action?
     var OnReview Action[string]?
-    var OnVerify Action[string]?
     var OnChecks Action[string]?
 
     func Build() Blob {
@@ -95,7 +94,6 @@ data struct OwnerIssueCard {
 
     private func Draft(pr string) Blob {
         let review = OnReview
-        let verify = OnVerify
         let checks = OnChecks
         var known = DraftReview{Pr: pr, Receipt: "", Ci: ""}
         for item in Reviews {
@@ -109,8 +107,7 @@ data struct OwnerIssueCard {
                 Result(known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt, known.Receipt == "", known.ReceiptTone),
                 Result(known.Ci == "" ? "CI not checked": "CI " + known.Ci, known.Ci == "", known.CiTone),
                 Spacer{}.Build(),
-                (Button with{Label = "Verify receipt", Name = "Verify PR #" + pr, OnClick = () -> verify?.Invoke(pr)}).Build(),
-                (Button with{Label = "Check CI", Name = "Check CI #" + pr, OnClick = () -> checks?.Invoke(pr)}).Build(),
+                (Button with{Label = "Check receipt and CI", Name = "Check PR #" + pr, OnClick = () -> checks?.Invoke(pr)}).Build(),
                 (Button with{
                     Label = "Review",
                     Name = "Review PR #" + pr,

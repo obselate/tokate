@@ -134,7 +134,7 @@ func Script(directory string, name string, body string) {
     File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
 }
 
-func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
+func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donation DonationService) {
     let fixture = Path.Combine(Path.GetTempPath(), "tokate-gui-flow-" + Guid.NewGuid().ToString("N"))
     let previous = Environment.GetEnvironmentVariable("PATH")
     Directory.CreateDirectory(fixture, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
@@ -149,7 +149,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         Script(
             fixture,
             "tokate",
-            "case \"$1\" in\npolicy) data='{\"policy\":{\"version\":2,\"allow_unlimited\":true,\"max_seconds\":3600,\"model_policy\":\"unrestricted\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]}}';;\ndefaults) data='{\"profiles\":{},\"default\":{\"harness\":\"codex\",\"model\":\"obsolete-default\",\"effort\":\"low\"}}';;\nselect) data='{\"harness\":\"codex\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}';;\n*) exit 1;;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"success\",\"exit_code\":0,\"data\":%s}' \"$1\" \"$$data\"\n"
+            "case \"$1\" in\ndoctor) data='{\"policy\":{\"version\":3,\"allow_unlimited\":true,\"max_seconds\":3600,\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]}}';;\ndefaults) if [ \"$2\" = check ]; then data='{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}'; else data='{\"profiles\":{},\"default\":{\"harness\":\"codex\",\"model\":\"obsolete-default\",\"effort\":\"low\"}}'; fi;;\n*) exit 1;;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"ok\",\"exit_code\":0,\"data\":%s}' \"$1\" \"$$data\"\n"
         )
         Directory.CreateDirectory(Path.Combine(fixture, "run"))
         let request = Guid.NewGuid().ToString("D")
@@ -165,16 +165,15 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
             "/release-claim' ] && break; sleep .05; done; data='{\"run\":\"" +
             fixture +
             "/run\"}';;\n"
-        let status = "status) data='{\"run\":\"" +
+        let status = "status) if [ \"$$2\" = --run ]; then data='{\"run\":\"" +
             fixture +
-            "/run\",\"state\":\"claim_pending\",\"approval\":\"approval-fixture\",\"donor_id\":7,\"repo\":\"owner/repo\",\"issue\":278,\"model\":\"gpt-6.1-sol\",\"effort\":\"high\",\"seconds\":1800,\"verification_reserve\":1800,\"unlimited\":true,\"coding_seconds\":null}';;\n"
-        let coordination = "coordination) touch '" +
+            "/run\",\"state\":\"claim_pending\",\"approval\":\"approval-fixture\",\"donor_id\":7,\"repo\":\"owner/repo\",\"issue\":278,\"model\":\"gpt-6.1-sol\",\"effort\":\"high\",\"seconds\":1800,\"verification_reserve\":1800,\"unlimited\":true,\"coding_seconds\":null}'; else touch '" +
             fixture +
             "/approval-checked'; claim=unrelated; [ -e '" +
             fixture +
             "/approve' ] && claim='" +
             request +
-            "'; data='{\"approval_id\":\"approval-fixture\",\"revoked\":false,\"reservation\":{\"lease\":\"'\"$$claim\"'\",\"attempt\":\"'\"$$claim\"'\",\"actor\":7,\"status\":\"active\",\"expires\":4102444800}}';;\n"
+            "'; data='{\"coordination\":{\"approval_id\":\"approval-fixture\",\"revoked\":false,\"reservation\":{\"lease\":\"'\"$$claim\"'\",\"attempt\":\"'\"$$claim\"'\",\"actor\":7,\"status\":\"active\",\"expires\":4102444800}}}'; fi;;\n"
         let work = "work) touch '" +
             fixture +
             "/work-started'; trap 'touch \"" +
@@ -182,9 +181,9 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
             "/cancelled\"; exit 0' INT; printf 'Preparing checkout\\n' >&2; for j in $$(seq 1 50); do printf 'Output line %s\\n' \"$$j\" >&2; done; for i in $$(seq 1 200); do sleep .05; done;;\n"
         var script = File.ReadAllText(commandPath).Replace(
             "*) exit 1;;",
-            claim + status + coordination + work + "*) exit 1;;"
+            claim + status + work + "*) exit 1;;"
         )
-        script = script.Replace("\"data\":%s}", "\"data\":%s,\"next_actions\":[[\"tokate\",\"work\"]]}")
+        script = script.Replace("\"data\":%s}", "\"data\":%s,\"next_actions\":[[\"tokate\",\"work\",\"owner/repo#278-1\",\"--json\"]]}")
         File.WriteAllText(commandPath, script)
         Script(
             fixture,
@@ -355,7 +354,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         )
         let claimed = File.ReadAllText(Path.Combine(fixture, "claim-args"))
         Require(
-            claimed.Contains("--unlimited\n") && !claimed.Contains("--time\n") && claimed.Contains(
+            claimed.Contains("--yes\n") && claimed.Contains("--unlimited\n") && !claimed.Contains("--time\n") && claimed.Contains(
                 "--verify-time\n30m\n"
             ),
             "Unlimited claim arguments do not match the CLI"
@@ -384,6 +383,8 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility) {
         )
         Require(!File.Exists(Path.Combine(fixture, "work-started")), "Inference started without consent")
         File.WriteAllText(Path.Combine(fixture, "approve"), "approved")
+        let progress = donation.Current.Progress
+        donation.Open(progress.Run, progress.Path)
         AwaitControl(host, adapter, AccessibilityRole.Button, "Start donation", enabled: true)
         Activate(window, adapter, "Start donation")
         Settle(host)
@@ -528,7 +529,7 @@ func TestDesktop() {
     Require(window.PlatformInput.Editor?.Text == "", "Backspace did not remove selected text")
     Settle(host)
     Require(Find(adapter.Root, AccessibilityRole.TextInput)?.Value == "", "The empty input was not retained")
-    DonateFlow(host, window, adapter)
+    DonateFlow(host, window, adapter, desktop.Donation)
 }
 
 func AwaitChildStopped(pid int32) {

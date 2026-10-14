@@ -26,8 +26,8 @@ data struct ProfilesState {
         if Name.Trim() == "" {
             return "Enter a profile name."
         }
-        if Draft.Harness == "omp" && Draft.Provider.Trim() == "" {
-            return "Select the OMP provider."
+        if (Draft.Harness == "omp" || Draft.Harness == "command") && Draft.Provider.Trim() == "" {
+            return "Enter the provider."
         }
         if Draft.Model.Trim() == "" {
             return "Select the model."

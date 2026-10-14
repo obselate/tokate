@@ -4,9 +4,8 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The local checkout to set up, a summary, the control that writes the files and the report of the write.
+/// A setup summary, its GitHub preview, and the confirmed setup PR.
 data struct SetupReview {
-    var Path string
     var Repository string
     var CommandCount int32
     var CheckCount int32
@@ -16,11 +15,13 @@ data struct SetupReview {
     /// The time limit of a donation, or "" when the policy has none.
     var Limit string
     var Written string
+    var Report SetupReport
+    var Previewed bool
     var Disabled bool
     var Compact bool
     var Button CommandButton
-    var OnPath Action[string]?
     var OnApply Action?
+    var OnPreview Action?
 
     func Build() Blob {
         let facts = List[Blob]{
@@ -44,26 +45,28 @@ data struct SetupReview {
                 IconHeading{
                     Icon: "folder_open",
                     Content: "Project setup",
-                    Detail: "Tokate writes version 3 policy with per-tool model permissions. Existing workflows are preserved. " +
-                        "Update an old coordinator pin before committing. Review the Actions report and any issues that need fresh approval.",
-                }.Build(),
-                InputField{
-                    Label: "Local checkout",
-                    Value: Path,
-                    OnChange: OnPath,
-                    Placeholder: "/path/to/project",
-                    Width: 650,
-                    Disabled: Disabled,
+                    Detail: "Tokate opens a setup PR with version 3 policy, per-tool model permissions and the coordinator pin update. " +
+                        "Preview first, then apply GitHub settings. Review and merge the PR before approving work.",
                 }.Build(),
                 Rule{}.Build(),
                 Stack{Gap: 10, Children: facts.ToArray()}.Build(),
                 Row{
                     Children: []Blob{
-                        (Button with{Label = "Write setup files", OnClick = OnApply, Primary = true, Disabled = Path == ""}).Build(),
+                        (Button with{Label = "Preview setup", OnClick = OnPreview, Primary = !Previewed}).Build(),
+                        (Button with{Label = "Apply setup", OnClick = OnApply, Primary = Previewed, Disabled = !Previewed || Report.Applied}).Build(),
                     },
                 }.Build(),
             },
         }.Build()
+        for step in Report.Manual ?? []string{} {
+            review.Children.Add(Label{Content: "Manual: " + step, Size: AppTheme.SmallSize}.Build())
+        }
+        if !String.IsNullOrEmpty(Report.PullRequest) {
+            review.Children.Add((Button with{
+                Label = "Open setup PR", Icon = "open_in_new", Kind = ButtonKind.Quiet,
+                AllowWhileBusy = true, OnClick = () -> Browser.Open(Report.PullRequest),
+            }).Build())
+        }
         if Written != "" {
             review.Children.Add(ReportText{Content: Written, MaxHeight: 420}.Build())
         }

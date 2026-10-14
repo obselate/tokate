@@ -78,7 +78,7 @@ data struct SavedRun {
 
 enum RunAction {
     Work,
-    Prepare,
+    Claim,
     Submit,
     Checks,
     Amend,
@@ -89,7 +89,7 @@ class RunActions {
     shared {
         func Command(action RunAction) string -> switch action {
             case RunAction.Work: "work"
-            case RunAction.Prepare: "prepare"
+            case RunAction.Claim: "claim"
             case RunAction.Submit: "submit"
             case RunAction.Checks: "checks"
             case RunAction.Amend: "amend"
@@ -98,7 +98,7 @@ class RunActions {
 
         func Parse(command string) RunAction? -> switch command {
             case "work": RunAction.Work
-            case "prepare": RunAction.Prepare
+            case "claim": RunAction.Claim
             case "submit": RunAction.Submit
             case "checks": RunAction.Checks
             case "amend": RunAction.Amend
@@ -108,11 +108,11 @@ class RunActions {
         func From(actions []NextAction, state string) []RunAction {
             let result = List[RunAction]()
             for action in actions {
-                if action.Arguments.Length < 2 {
+                if action.Arguments.Length < 3 || action.Arguments[0] != "tokate" {
                     continue
                 }
                 if let parsed = Parse(action.Command) {
-                    if parsed == RunAction.Prepare && Array.IndexOf(action.Arguments, "--continue-from") >= 0 {
+                    if Array.IndexOf(action.Arguments, "--continue-from") >= 0 {
                         continue
                     }
                     if !result.Contains(parsed) {
@@ -120,15 +120,15 @@ class RunActions {
                     }
                 }
             }
-            if state == "claim_pending" && !result.Contains(RunAction.Prepare) {
-                result.Add(RunAction.Prepare)
+            if state == "claim_pending" && !result.Contains(RunAction.Claim) && !result.Contains(RunAction.Work) {
+                result.Add(RunAction.Claim)
             }
             return result.ToArray()
         }
 
         func ButtonLabel(action RunAction) string -> switch action {
             case RunAction.Work: "Start donation"
-            case RunAction.Prepare: "Check reservation"
+            case RunAction.Claim: "Check reservation"
             case RunAction.Submit: "Submit draft PR"
             case RunAction.Checks: "Check PR and CI"
             case RunAction.Amend: "Amend contribution"
@@ -196,7 +196,7 @@ data struct RunGuide {
                 Step: 0,
                 Heading: "Waiting for approval",
                 Text: "The coordinator must accept this reservation.",
-                Main: RunAction.Prepare,
+                Main: RunAction.Claim,
             }
             case "Claimed, not started": RunGuide{
                 Step: 1,
@@ -217,7 +217,7 @@ data struct RunGuide {
             case "Initial donation failed": RunGuide{
                 Step: 1,
                 Heading: "The donation failed",
-                Text: "Inspect the saved work and status. Fresh preparation needs current approval and an explicit new time budget.",
+                Text: "Inspect the saved work and status. A fresh claim or work attempt needs current approval and an explicit new time budget.",
             }
             case "Verification failed": RunGuide{
                 Step: 1,

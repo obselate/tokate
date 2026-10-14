@@ -108,8 +108,14 @@ class Json {
                     writer.WriteStartObject()
                     writer.WriteString("harness", pair.Substring(0, split))
                     writer.WriteString("provider", pair.Substring(split + 1))
+                    let command = pair.StartsWith("command/")
                     for tool in tools {
-                        if tool.Tool == pair && tool.Restricted {
+                        if tool.Tool == pair && command {
+                            writer.WritePropertyName("command")
+                            WriteStrings(writer, tool.Command ?? []string{})
+                            writer.WriteString("output", tool.Output)
+                        }
+                        if tool.Tool == pair && (tool.Restricted || command) {
                             writer.WritePropertyName("models")
                             writer.WriteStartObject()
                             for model in tool.Models {

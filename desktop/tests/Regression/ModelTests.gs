@@ -92,15 +92,15 @@ func ModelTests() {
     Regression.Equal(SavedRun.Pending("/x").Identity(2), "Saved contribution 3", "pending identity")
 
     let actions = []NextAction{
-        NextAction{Arguments: []string{"tokate", "status", "--run", "x"}},
-        NextAction{Arguments: []string{"tokate", "submit", "--run", "x"}},
-        NextAction{Arguments: []string{"tokate", "checks", "--run", "x"}},
-        NextAction{Arguments: []string{"tokate", "submit", "--run", "x"}},
+        NextAction{Arguments: []string{"tokate", "status", "owner/repo#7-1"}},
+        NextAction{Arguments: []string{"tokate", "submit", "owner/repo#7-1"}},
+        NextAction{Arguments: []string{"tokate", "checks", "owner/repo#7-1"}},
+        NextAction{Arguments: []string{"tokate", "submit", "owner/repo#7-1"}},
         NextAction{Arguments: []string{"tokate"}},
     }
     let derived = RunActions.From(actions, "claim_pending")
     Regression.Check(
-        derived.Length == 3 && derived[0] == RunAction.Submit && derived[1] == RunAction.Checks && derived[2] == RunAction.Prepare,
+        derived.Length == 3 && derived[0] == RunAction.Submit && derived[1] == RunAction.Checks && derived[2] == RunAction.Claim,
         "next actions are filtered, deduplicated and extended"
     )
     Regression.Equal(RunActions.ButtonLabel(RunAction.Amend), "Amend contribution", "amend label")

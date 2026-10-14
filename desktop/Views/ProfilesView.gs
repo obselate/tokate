@@ -101,7 +101,7 @@ class ProfilesView {
                 ModelPicker{
                     Harness: draft.Harness,
                     Provider: draft.Provider,
-                    Providers: ModelChoice.Providers(state.OmpModels),
+                    Providers: draft.Harness == "omp" ? ModelChoice.Providers(state.OmpModels): []string{},
                     Model: draft.Model,
                     Effort: draft.Effort,
                     Endpoint: draft.Endpoint,

@@ -21,7 +21,7 @@ func SavedTests() {
     saved.Select(SavedRun.Pending("/runs/b") with{Run = run})
     Regression.Check(saved.Current.Selected && saved.Current.RunPath == "/runs/b", "selecting a run")
     Regression.Check(
-        saved.Current.Actions.Length == 1 && saved.Current.Actions[0] == RunAction.Prepare,
+        saved.Current.Actions.Length == 1 && saved.Current.Actions[0] == RunAction.Claim,
         "a pending reservation can be checked"
     )
     saved.Select(SavedRun.Pending("/runs/c"))
@@ -68,7 +68,7 @@ func SavedTests() {
     )
     Regression.Equal(PublicSummary.Problem("Set retries=3 by default."), "", "a summary line can have an equals sign, as Tokate accepts it")
     Regression.Check(
-        RunActions.From([]NextAction{NextAction{Arguments: []string{"tokate", "prepare", "owner/repo#42", "--continue-from", "/runs/stopped", "--time", "2h"}}}, "failed").Length == 0,
+        RunActions.From([]NextAction{NextAction{Arguments: []string{"tokate", "work", "owner/repo#42", "--continue-from", "/runs/stopped", "--time", "2h"}}}, "failed").Length == 0,
         "continuation cannot discard the fresh attempt arguments"
     )
     Regression.Check(RunGuide.For("Initial donation failed", false).Main == nil, "failed inference is not restarted in the same attempt")

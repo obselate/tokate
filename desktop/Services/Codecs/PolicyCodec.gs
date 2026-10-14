@@ -34,7 +34,10 @@ class PolicyCodec {
                         allowances.Add(ModelAllowance{Model: model.Name, Efforts: Json.Strings(model.Value)})
                     }
                 }
-                toolModels.Add(ToolAllowance{Tool: pair, Models: allowances.ToArray(), Restricted: Json.IsObject(toolEntries)})
+                toolModels.Add(ToolAllowance{
+                    Tool: pair, Models: allowances.ToArray(), Restricted: Json.IsObject(toolEntries),
+                    Command: Json.Strings(tool, "command"), Output: Json.Text(tool, "output"),
+                })
             }
             return Policy{
                 Loaded: Json.IsObject(value),
@@ -55,17 +58,9 @@ class PolicyCodec {
 
         func FromPolicyResult(data JsonElement) Policy -> Policy(Json.Get(data, "policy"))
 
-        func Coordinator(data JsonElement) CoordinatorReport -> CoordinatorReport{
-            Loaded: Json.IsObject(data),
-            Applied: Json.Text(data, "actions_allowlist") != "",
-            Output: Json.Text(data, "output"),
-            CurrentVersion: Json.Text(data, "current_version"),
-            NewVersion: Json.Text(data, "new_version"),
-            CurrentCommit: Json.Text(data, "current_commit"),
-            NewCommit: Json.Text(data, "new_commit"),
-            CompareUrl: Json.Text(data, "compare_url"),
-            ReleaseUrl: Json.Text(data, "release_url"),
-            Allowlist: Json.Text(data, "actions_allowlist"),
+        func Setup(data JsonElement) SetupReport -> SetupReport{
+            Applied: Json.Bool(data, "applied"),
+            Manual: Json.Strings(data, "manual"), PullRequest: Json.Text(data, "pull_request"),
         }
 
         func OwnerHealth(data JsonElement) string {

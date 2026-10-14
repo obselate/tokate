@@ -54,10 +54,11 @@ class RunCodec {
         func Reader(path string) Func[JsonElement, Run] -> (data JsonElement) -> Run(data, path)
 
         func Reservation(state JsonElement) Reservation {
-            let reservation = Json.Get(state, "reservation")
+            let coordination = Json.Get(state, "coordination")
+            let reservation = Json.Get(coordination, "reservation")
             return Reservation{
-                ApprovalId: Json.Text(state, "approval_id"),
-                Revoked: Json.BoolOrNil(state, "revoked"),
+                ApprovalId: Json.Text(coordination, "approval_id"),
+                Revoked: Json.BoolOrNil(coordination, "revoked"),
                 Lease: Json.Text(reservation, "lease"),
                 Attempt: Json.Text(reservation, "attempt"),
                 Actor: Json.Text(reservation, "actor"),
@@ -66,8 +67,8 @@ class RunCodec {
             }
         }
 
-        /// The head commit of the contribution in the coordination state, or "" before publication.
-        func ContributionHead(state JsonElement) string -> Json.Text(Json.Get(state, "contribution"), "head")
+        /// The head commit in issue status coordination, or "" before publication.
+        func ContributionHead(state JsonElement) string -> Json.Text(Json.Get(Json.Get(state, "coordination"), "contribution"), "head")
 
         func AmendmentFailure(record JsonElement) string -> Json.Text(record, "state") == "failed" ?
         AmendmentFailures.Explain(Json.Text(record, "failure_reason"), Json.Text(record, "error")): ""

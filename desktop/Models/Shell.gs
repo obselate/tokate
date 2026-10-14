@@ -65,8 +65,6 @@ data struct Activity {
         func TitleFor(command string) string -> switch command {
             case "claim": "Reserving donation"
             case "work": "Donation running"
-            case "prepare": "Preparing donation"
-            case "select": "Checking model selection"
             case "status": "Loading saved work"
             case "init": "Preparing project setup"
             case "doctor": "Checking prerequisites"

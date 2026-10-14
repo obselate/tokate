@@ -26,9 +26,9 @@ data struct HarnessPicker {
             cards.Add(
                 ChoiceCard{
                     Title: option.Name,
-                    Detail: allowed ? "": "Not allowed",
+                    Detail: !allowed ? "Not allowed": id == "command" ? "Owner-defined argv. No isolation.": "",
                     Icon: "terminal",
-                    Art: Logo?.Invoke(id),
+                    Art: id == "command" ? nil: Logo?.Invoke(id),
                     Compact: true,
                     Selected: Selected == id,
                     OnChoose: () -> choose?.Invoke(id),
