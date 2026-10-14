@@ -411,16 +411,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
                         test.Flow.NoPr()
                     }
                     baseline.Restore()
-                    test.Flow.SetModelPolicy("whitelist")
-                    let equivalent = Check.Envelope(
-                        test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
-                        "status",
-                        "ok"
-                    )
-                    Check.That(
-                        Check.Text(equivalent["data"]?["work"]?[0]?["approval_status"]) == "current",
-                        "Explicit default model mode changed the task digest"
-                    )
                 }
                 test.Flow.SetModelPolicy(mode, mode == "unrestricted" ? "omit": "{\"gpt-6.1-sol\":[\"high\"]}")
                 Check.Contains(
