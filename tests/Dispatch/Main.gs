@@ -34,6 +34,15 @@ func Main(args[]string) int32 {
             "artifacts/linux-x64/tokate"
         )
         switch args.Length == 0 ? "": args[0] {
+            case "--claude-smoke" when args.Length == 1 {
+                ClaudeChecks.Managed(binary, smoke: true)
+            }
+            case "--omp-smoke" when args.Length == 1 {
+                OmpChecks.Managed(binary, smoke: true)
+            }
+            case "--pi-smoke" when args.Length == 1 {
+                PiChecks.Managed(binary)
+            }
             case "--claude" when args.Length == 1 {
                 ClaudeChecks.All(binary)
             }

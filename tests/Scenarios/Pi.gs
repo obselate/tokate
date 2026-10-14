@@ -7,7 +7,13 @@ import System.Text.Json.Nodes
 
 internal class PiChecks {
     shared {
-        internal func Runtime(binary string, sdk string = "") {
+        internal func Managed(binary string) {
+            for mode in[]string{"normal", "failed"} {
+                Runtime(binary, mode: mode)
+            }
+        }
+
+        internal func Runtime(binary string, sdk string = "", mode string = "") {
             using let test = CoordinationFixture(binary)
             using let catalog = PiCatalog()
             test.Initialize(approve: false)
@@ -88,6 +94,44 @@ internal class PiChecks {
                 "--endpoint",
                 catalog.Endpoint,
                 "--non-interactive"
+            }
+            if mode != "" {
+                flow.Approve()
+                File.Delete(Path.Combine(flow.Bin, "codex"))
+                File.Delete(Path.Combine(flow.Bin, "codex-impl"))
+                File.WriteAllText(Path.Combine(agent, "mode"), mode)
+                let claim = List[string](args)
+                claim[0] = "claim"
+                claim[1] = "owner/project#1"
+                claim.AddRange(
+                    []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, mode)}
+                )
+                let prepared = flow.Acquire(claim.ToArray())
+                let index = prepared.Output.LastIndexOf("Run: ")
+                Check.That(index >= 0, "Pi claim did not return a run")
+                let run = prepared.Output.Substring(index + 5).Trim()
+                Check.Envelope(
+                    flow.Call(
+                        []string{"work", "--run", run, "--yes", "--non-interactive", "--json"},
+                        mode == "normal" ? 0: 1
+                    ),
+                    "work",
+                    mode == "normal" ? "ok": "error",
+                    mode == "normal" ? "": "inference_failed"
+                )
+                if mode == "normal" {
+                    let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                    Check.That(
+                        Check.Text(saved["state"]) == "generated" && Check.Text(
+                            saved["verification"]?[0]?["exit_code"]
+                        ) == "0",
+                        "Pi did not produce a verified candidate"
+                    )
+                } else {
+                    Check.FailedRun(flow, run)
+                }
+                Console.WriteLine("PASS Pi fixture claim, completion, verification and saved failure guidance: " + mode)
+                return
             }
             let codex = Path.Combine(flow.Bin, "codex")
             let hiddenCodex = Path.Combine(flow.Bin, "unused-codex")

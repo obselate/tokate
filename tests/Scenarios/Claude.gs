@@ -7,8 +7,10 @@ import System.Text.Json.Nodes
 
 internal class ClaudeChecks {
     shared {
-        private func Managed(binary string) {
-            for mode in[]string{"normal", "incomplete", "conflict", "failed", "subagent"} {
+        internal func Managed(binary string, smoke bool = false) {
+            let modes = smoke ? []string{"normal", "failed"}:
+            []string{"normal", "incomplete", "conflict", "failed", "subagent"}
+            for mode in modes {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 let flow = test.Flow
@@ -161,6 +163,9 @@ internal class ClaudeChecks {
                     )
                     if mode == "subagent" {
                         Check.Contains(Check.Text(saved["error"]), "Claude used claude-haiku-5-5")
+                    }
+                    if mode == "failed" {
+                        Check.FailedRun(flow, run)
                     }
                     flow.NoPr()
                 }

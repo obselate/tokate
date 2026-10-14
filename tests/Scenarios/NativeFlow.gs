@@ -280,6 +280,10 @@ internal partial class NativeFlow : NativeFixture {
         let checkout = Path.Combine(run, "checkout")
         let replay = Path.Combine(Temp.Root, "candidate-replay")
         let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+        Check.That(
+            Check.Text(saved["state"]) == "generated" && Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
+            "Codex did not produce a verified candidate"
+        )
         Reload()
         let prompt = Check.Text(State["prompts"]?[0])
         let marker = "- Time limit: finish by "
@@ -350,6 +354,20 @@ internal partial class NativeFlow : NativeFixture {
             Check.That(result.Code == 1, "Verify accepted an issue")
             Check.Contains(result.Error, "verify takes an open contribution PR, for example tokate verify 42.")
         }
+        using let failed = NativeFixture(Binary)
+        failed.Initialize()
+        failed.Approve()
+        let failedRun = failed.Claim()
+        failed.Mode("model_failure")
+        Check.Envelope(
+            failed.Call([]string{"work", "--run", failedRun, "--json"}, 1),
+            "work",
+            "error",
+            "inference_failed"
+        )
+        Check.FailedRun(failed, failedRun)
+        failed.Reload()
+        Check.That(Check.Text(failed.State["exec_count"]) == "1", "Failed Codex inference was repeated")
     }
 
     internal func ModelPolicyMalformed() {
