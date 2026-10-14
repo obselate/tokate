@@ -325,7 +325,7 @@ internal class AccessState {
             GitHub.Issue(repo, issue)
             let viewer = GitHub.Api("user")
             let actor = RepositoryIdentity.PositiveId(J.Get(viewer, "id"))
-            let requestScope = args.Get("scope", "issue")
+            let requestScope = args.Get("trust") == "true" ? "trust": "issue"
 
             let comments = Pages("repos/" + repo + "/issues/" + issue.ToString() + "/comments?")
 
@@ -488,7 +488,7 @@ internal class AccessState {
 
             let history = List[Object]()
 
-            if args.Get("operation") == "history" {
+            if args.Subject == "history" {
                 for pull in Pages("repos/" + repo + "/pulls?state=all&") {
                     try {
                         let receipt = PrBody.Receipt(J.Text(pull, "body"))
@@ -520,7 +520,7 @@ internal class AccessState {
             }
 
             let pending = List[JsonElement]()
-            if args.Get("operation") == "list" {
+            if args.Subject == "list" {
                 Pending(repo, access, pending, args.Get("issue") == "" ? 0: args.Number("issue"), actor)
             }
 
@@ -534,7 +534,7 @@ internal class AccessState {
             }
 
             if !PublicOutput.Enabled {
-                if args.Get("operation") == "history" {
+                if args.Subject == "history" {
                     Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor access and owner review")
                 } else {
                     Terminal.Heading("Donor access")
@@ -574,9 +574,9 @@ internal class AccessState {
 
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let operation = args.Need("operation")
+            let operation = args.Subject
 
-            if operation != "request" && args.Get("scope") != "" {
+            if operation != "request" && args.Get("trust") != "" {
                 throw Exception("Only access request takes --trust")
             }
 

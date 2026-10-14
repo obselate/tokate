@@ -22,7 +22,7 @@ internal class RunReference {
 
             if args.Run != "" || args.Get("run") != "" ||
                 (args.Get("issue") == "" && !pull) ||
-                (command.Target != "run" && !named && !optional) {
+                (!command.RunTarget && !named && !optional) {
                 return
             }
 

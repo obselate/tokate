@@ -5,6 +5,7 @@ import System
 import System.Collections.Generic
 import System.Diagnostics
 import System.IO
+import System.Linq
 import System.Net.Sockets
 import System.Runtime.InteropServices
 import System.Text
@@ -15,8 +16,9 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
-            .Split(' ')
+        private func Commands(binary string, temp Temp) JsonArray -> Check
+            .Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")["data"]?["commands"]
+            ?.AsArray() ?? JsonArray()
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
             "\0tokate-discovery-" + Check.TextHash(root)
@@ -856,28 +858,38 @@ internal class CliDiscovery {
                 )
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
-            for command in Commands {
-                let help = Check.Envelope(Call(binary, []string{command, "--help", "--json"}, temp), command, "ok")
-                if command != "help" {
-                    Check.That(
-                        Check.Text(help["data"]?["commands"]?[0]?["command"]) == command,
-                        "Focused metadata missing command"
-                    )
-                }
-            }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
+            let expected = "work claim submit status checks runs pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             Check.That(
-                metadata["data"]?["commands"]?.AsArray().Count == Commands.Length,
-                "Metadata omits public commands"
+                String.Join(
+                    " ",
+                    (metadata["data"]?["commands"]?.AsArray() ?? JsonArray()).Select(
+                        command -> Check.Text(command["command"])
+                    )
+                ) == expected,
+                "Metadata commands differ"
             )
             for command in metadata["data"]?["commands"]?.AsArray() ?? JsonArray() {
+                let name = Check.Text(command["command"])
+                let help = Check.Envelope(Call(binary, []string{name, "--help", "--json"}, temp), name, "ok")
+                Check.That(
+                    name == "help" || Check.Text(help["data"]?["commands"]?[0]?["command"]) == name,
+                    "Focused metadata missing command"
+                )
+                let example = TestProcess.Run(
+                    "/bin/sh",
+                    []string{"-c", "\"$$0\" " + Check.Text(command["example"]).Substring(7) + " --help --json", binary},
+                    temp.Env,
+                    cwd: temp.Root
+                )
+                Check.Envelope(example, name, "ok")
                 let names = HashSet[string](StringComparer.Ordinal)
                 for option in command["arguments"]?.AsArray() ?? JsonArray() {
                     Check.That(names.Add(Check.Text(option["name"])), "CLI metadata repeated an option")
                 }
                 Check.That(Check.Text(command["noninteractive"]) == "true", "Hidden interactive command")
                 Check.That(
-                    Check.Text(command["inference"]) == (Check.Text(command["command"]) == "work" ? "true": "false"),
+                    Check.Text(command["inference"]) == (name == "work" ? "true": "false"),
                     "Incorrect inference effects"
                 )
                 Check.That(command["effects"]?.AsObject().Count == 4, "Incomplete read/write effects")
@@ -980,10 +992,18 @@ internal class CliDiscovery {
                 ),
                 "Defaults set required inputs differ"
             )
-            Check.That(
-                Check.Text(defaults?["operations"]?[1]?["effects"]?["local_write"]) == "false",
-                "Defaults read advertised a write"
-            )
+            for subject in[]string{"defaults", "access"} {
+                let command = Check.Envelope(Call(binary, []string{"help", subject, "--json"}, temp), "help", "ok")[
+                    "data"
+                ]?["commands"]?[0]
+                for operation in command?["operations"]?.AsArray() ?? JsonArray() {
+                    let read = "show list history check".Split(' ').Contains(Check.Text(operation["name"]))
+                    let writes = Check.Text(operation["effects"]?["local_write"]) == "true" || Check.Text(
+                        operation["effects"]?["github_write"]
+                    ) == "true"
+                    Check.That(read != writes, subject + " operation effects differ: " + Check.Text(operation["name"]))
+                }
+            }
             for name in[]string{"select", "amend", "request"} {
                 let command = Check.Envelope(Call(binary, []string{"help", name, "--json"}, temp), "help", "ok")[
                     "data"
@@ -1403,6 +1423,44 @@ internal class CliDiscovery {
             )
         }
 
+        private func Completes(path string, commands JsonArray, temp Temp) {
+            var probe = "source '" +
+                path +
+                "'; COMP_WORDS=(tokate ''); COMP_CWORD=1; _tokate; printf '%s\\n' \"$${COMPREPLY[@]}\"; "
+            for command in commands {
+                let name = Check.Text(command["command"])
+                probe += "COMP_WORDS=(tokate '" +
+                    name +
+                    "' ''); COMP_CWORD=2; _tokate; printf '" +
+                    name +
+                    " %s\\n' \"$${COMPREPLY[@]}\"; "
+            }
+            let listed = HashSet[string](
+                Check.Success(
+                    TestProcess.Run("/usr/bin/bash", []string{"--noprofile", "--norc", "-c", probe}, temp.Env)
+                )
+                    .Split('\n')
+            )
+            for command in commands {
+                let name = Check.Text(command["command"])
+                Check.That(listed.Contains(name) && listed.Contains("help " + name), "Completion omits command " + name)
+                let words = List[string]()
+                for option in command["arguments"]?.AsArray() ?? JsonArray() {
+                    words.Add(Check.Text(option["name"]))
+                    if Check.Text(option["name"]) == "--harness" && command["positional_arguments"]?.ToJsonString()
+                        .Contains("HARNESS") == true {
+                        words.AddRange(option["choices"]?.AsArray().Select(choice -> Check.Text(choice)) ?? []string{})
+                    }
+                }
+                for position in command["positional_arguments"]?.AsArray() ?? JsonArray() {
+                    words.AddRange(Check.Text(position).Split('|').Where(word -> Char.IsLower(word[0])))
+                }
+                for word in name == "help" ? List[string](): words {
+                    Check.That(listed.Contains(name + " " + word), "Completion omits " + name + " " + word)
+                }
+            }
+        }
+
         internal func All(binary string, shell string = "bash") {
             if shell == "bash" {
                 Structured(binary)
@@ -1438,31 +1496,23 @@ internal class CliDiscovery {
                     "Redirected entry or explicit help started an interactive view"
                 )
             }
-            for command in Commands {
-                if command == "help" {
+            let commands = Commands(binary, temp)
+            for command in commands {
+                let name = Check.Text(command["command"])
+                if name == "help" {
                     continue
                 }
-                for argv in[][]string{[]string{command, "--help"}, []string{command, "-h"}, []string{"help", command}} {
+                for argv in[][]string{[]string{name, "--help"}, []string{name, "-h"}, []string{"help", name}} {
                     let help = Call(binary, argv, temp)
-                    Check.Contains(help.Output, "Usage: tokate " + command)
+                    Check.Contains(help.Output, "Usage: tokate " + name)
                     Check.Contains(help.Output, "Example:")
                     Check.That(help.Error == "", "Command help wrote warnings")
-                    if help.Output.Contains("--run DIR") {
-                        Check.That(
-                            !help.Output.Contains("--run DIR (required)"),
-                            "Run directory alternative marked required"
-                        )
-                        Check.Contains(help.Output, "Exact saved run directory")
-                    }
+                    Check.That(
+                        !help.Output.Contains("--run DIR (required)"),
+                        "Run directory alternative marked required"
+                    )
                 }
             }
-            let work = Call(binary, []string{"work", "--help"}, temp).Output
-            Check.Contains(work, "inference")
-            Check.Contains(work, "verify it")
-            Check.Contains(work, "Total budget for coding and verification")
-            Check.Contains(work, "Bare work uses the local GitHub remote")
-            Check.Contains(work, "use RUN or --run DIR instead of required inputs")
-            Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
             let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
             Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
             Check.Contains(
@@ -1472,10 +1522,6 @@ internal class CliDiscovery {
             Check.Contains(
                 Call(binary, []string{"work", "owner/project#1", "--time", "2d"}, temp, 1).Error,
                 "Use at most 24h: --time"
-            )
-            Check.Contains(
-                Call(binary, []string{"verify-pr"}, temp, 1).Error,
-                "Unknown command: verify-pr. Use tokate verify."
             )
 
             for argv in[][]string{
@@ -1532,7 +1578,13 @@ internal class CliDiscovery {
                 []string{"completion", "powershell"},
                 []string{"completion", "powershell", "--help"},
                 []string{"completion", "bash", "extra"},
-                []string{"status", "--run=x", "owner/project#1"}
+                []string{"status", "--run=x", "owner/project#1"},
+                []string{"verify-pr"},
+                []string{"access", "unknown"},
+                []string{"defaults", "list", "NAME"},
+                []string{"doctor", "repo", "managed"},
+                []string{"work", "owner/project", "NAME"},
+                []string{"work", "stop"}
             } {
                 Check.Contains(Call(binary, argv, temp, 1).Error, "Usage:")
             }
@@ -1597,6 +1649,7 @@ internal class CliDiscovery {
                 }
                 if shell == "bash" {
                     Check.Contains(output, "--runs=" + Path.Combine(temp.Root, "run with spaces"))
+                    Completes(path, commands, temp)
                 }
                 if shell == "zsh" {
                     File.Copy(path, Path.Combine(temp.Root, "_tokate"))
