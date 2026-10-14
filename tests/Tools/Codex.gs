@@ -297,7 +297,7 @@ internal partial class Fixture {
             File.WriteAllText(Path.Combine(checkout, ".github/workflows/verify.yml"), "tampered")
         }
         if mode == "protected_entrypoint" {
-            File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "exit 0\n")
+            File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "test -s result.txt\n")
         }
         if mode == "index_assume" || mode == "index_skip" || mode == "replacement" {
             let template = ".github/tokate-pr.md"
