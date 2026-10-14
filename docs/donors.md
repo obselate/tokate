@@ -92,7 +92,7 @@ tokate work OWNER/REPO stop --yes
 
 Use the default donor profile or override it with `--harness`, `--model` and `--effort`.
 Save one with `tokate defaults set NAME --harness codex --model MODEL --effort high`,
-then `tokate defaults use NAME`. Check it with `tokate select OWNER/REPO NAME --non-interactive`.
+then `tokate defaults use NAME`. Check it with `tokate defaults check OWNER/REPO NAME`.
 Repository links, such as release or tree links, select the loop.
 `--time` covers coding and verification per task, defaulting to the lower of one hour
 and the owner limit. Without `--total`, it runs until stopped. A task starts only
@@ -153,7 +153,7 @@ Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positi
 | `tokate defaults` | List profiles. |
 | `tokate defaults use my-codex` | Make the profile your default. |
 | `tokate doctor codex --set-default` | Save the named installed harness as the default. |
-| `tokate select OWNER/REPO my-codex` | Choose a permitted model without inference. |
+| `tokate defaults check OWNER/REPO my-codex` | Check a permitted model without inference. |
 
 Profiles save tool settings, not time budgets. The owner must allow your tool, provider, model and effort.
 
@@ -180,7 +180,7 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 8. Select an allowed model choice.
 
    ```sh
-   tokate select OWNER/REPO local
+   tokate defaults check OWNER/REPO local
    ```
 
 9. Start the donation.

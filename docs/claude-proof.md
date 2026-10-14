@@ -21,7 +21,7 @@ These checks exercise native Claude controls with local synthetic responses. The
 4. Read the diagnostic gate requirements.
 
    ```sh
-   tokate help claude-capabilities
+   tokate help doctor
    ```
 
 ## Evidence

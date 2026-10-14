@@ -43,13 +43,13 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `access grant`, `remove` | `tokate access OPERATION LOGIN ISSUE` | Change one issue grant. |
 | `access check` | `tokate access check ISSUE` | Check your eligibility. |
 | `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
-| `verify` | `tokate verify PR` | Check a receipt against owner approval. |
 | `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
 | `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
+| `doctor claude` | `tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]` | Also check the Claude invocation for one owner-permitted model and effort. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
+| `defaults check` | `tokate defaults check [OWNER/REPO] [NAME] [options]` | Check a profile or explicit choice under owner policy. |
 | `update` | `tokate update` | Install the latest stable release. |
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
-| `select` | `tokate select [OWNER/REPO] [NAME] [options]` | Select a tool and model under owner policy. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
 | `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
 | `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
@@ -68,14 +68,13 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `prepare` | `tokate prepare --run DIR` | Resume recorded preparation. |
 | `admit` | `tokate admit [OWNER/REPO] --event FILE` | Owner workflow: close unauthorized PRs. |
 | `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: update state and publish accepted requests. |
-| `claude-capabilities` | `tokate claude-capabilities --claude FILE --model MODEL --effort EFFORT` | Check native Claude interfaces and personal login. |
 
 ## Issue and run names
 
 | Form | Meaning |
 | --- | --- |
-| `42` | Issue 42 in the checkout's GitHub remote. `verify` and `checks` use PR 42. |
-| `OWNER/REPO#42` | Issue 42 in that repository. `verify` and `checks` use PR 42. |
+| `42` | Issue 42 in the checkout's GitHub remote. `checks` uses PR 42. |
+| `OWNER/REPO#42` | Issue 42 in that repository. `checks` uses PR 42. |
 | `https://github.com/OWNER/REPO/issues/42` | Exact issue reference. |
 | `https://github.com/OWNER/REPO/pull/10` | Exact PR reference for a PR command. |
 | `OWNER/REPO` or repository URL | Repository target. `work` loops until stopped. `claim` requires a named issue. |
