@@ -465,7 +465,7 @@ func Dispatch(options Args) int32 {
 
             summary["truncated"] = PublicOutput.Truncated
             PublicOutput.Next(options, "")
-            Terminal.SavedRun(J.Parse(J.Write(summary)))
+            ContributionStatus.Print(J.Parse(J.Write(summary)))
         }
     }
 
