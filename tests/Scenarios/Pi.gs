@@ -100,8 +100,8 @@ internal class PiChecks {
                 File.Delete(Path.Combine(flow.Bin, "codex-impl"))
                 File.WriteAllText(Path.Combine(agent, "mode"), mode)
                 let claim = List[string](args)
-                claim[0] = "claim"
-                claim[1] = "owner/project#1"
+                claim.RemoveRange(0, 3)
+                claim.InsertRange(0, []string{"claim", "owner/project#1"})
                 claim.AddRange(
                     []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, mode)}
                 )
