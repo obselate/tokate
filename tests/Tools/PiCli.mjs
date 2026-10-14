@@ -20,8 +20,8 @@ if (mode === 'failed') process.exit(1);
 emit({ type: 'tool_execution_start', toolName: 'write', args: { prompt } });
 await writeFile(path.join(cwd, 'tracked.txt'), 'preserved\n');
 await writeFile(path.join(cwd, 'imported.txt'), 'untracked\n');
-if (mode !== 'normal' && !prompt.startsWith('This is a fresh v2 attempt seeded from unpublished interrupted work.') &&
-    !prompt.startsWith('Continue the published work of another donor from preserved commit ')) {
+if (mode !== 'normal' && !prompt.includes('\n## Continuation and handoff\n\nThis is a fresh v2 attempt seeded from unpublished interrupted work.') &&
+    !prompt.includes('\n## Continuation and handoff\n\nContinue the published work of another donor from preserved commit ')) {
     await mkdir(path.join(cwd, '.verification-data'), { recursive: true });
     await writeFile(path.join(cwd, '.verification-data/source-only'), 'Preserved source fixture output.');
     await new Promise(resolve => setTimeout(resolve, 120000));
