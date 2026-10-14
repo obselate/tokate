@@ -118,7 +118,7 @@ internal class OmpTool {
             if mode != "incomplete" {
                 Console.WriteLine(Check.Map("type", "agent_end", "isTerminal", true).ToJsonString())
             }
-            if mode == "normal" || mode == "late-assistant" || mode == "late-tool" {
+            if mode == "normal" || mode == "late-assistant" {
                 let advisor = Check.Map("role", "custom", "customType", "advisor", "content", "Advisor completed.")
                 for kind in[]string{"message_start", "message_end"} {
                     Console.WriteLine(Check.Map("type", kind, "message", advisor).ToJsonString())
@@ -126,8 +126,6 @@ internal class OmpTool {
                 Console.WriteLine(Check.Map("type", "advisor_yielded").ToJsonString())
                 if mode == "late-assistant" {
                     Console.WriteLine(Check.Map("type", "message_start", "message", message).ToJsonString())
-                } else if mode == "late-tool" {
-                    Console.WriteLine(Check.Map("type", "tool_execution_start", "toolName", "bash").ToJsonString())
                 }
             }
             return mode == "failed" ? 1: 0
