@@ -230,10 +230,10 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 
 ## Check or control a run
 
-1. List saved runs offline.
+1. List your unfinished saved runs.
 
    ```sh
-   tokate runs
+   tokate status
    ```
 
 2. Inspect the exact attempt.

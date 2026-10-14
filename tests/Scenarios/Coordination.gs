@@ -995,7 +995,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Check.Contains(refused.Output + refused.Error, "--yes")
             Check.That(State().ToJsonString() == published, "Unconfirmed approval changed published authority")
         }
-        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        File.WriteAllText(Path.Combine(Flow.Temp.Env["GH_CONFIG_DIR"], "identity"), "owner")
         Flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
         let machine = TestTerminal.Pty(
             Flow.Binary,
@@ -1007,7 +1007,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(machine.Code == 1, machine.Output + machine.Error)
         Check.Contains(machine.Output, "published PR owner/project#10")
         Check.That(State().ToJsonString() == published, "JSON approval accepted terminal confirmation")
-        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        File.WriteAllText(Path.Combine(Flow.Temp.Env["GH_CONFIG_DIR"], "identity"), "owner")
         let declined = TestTerminal.Pty(
             Flow.Binary,
             []string{"approve", "owner/project#1", "--base-branch", "main"},
@@ -1019,7 +1019,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(declined.Output, "published PR owner/project#10")
         Check.Contains(declined.Output, "Replace approval? [y/N]")
         Check.That(State().ToJsonString() == published, "Declined approval changed published authority")
-        Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
+        File.WriteAllText(Path.Combine(Flow.Temp.Env["GH_CONFIG_DIR"], "identity"), "owner")
         let confirmed = TestTerminal.Pty(
             Flow.Binary,
             []string{"approve", "owner/project#1", "--base-branch", "main"},

@@ -185,6 +185,7 @@ internal class Cli {
                 "Run storage; default: tokate/runs under XDG_STATE_HOME, or ~/.local/state/tokate/runs"
             ),
             CliOption("run", "DIR", "Exact saved run directory"),
+            CliOption("all", "", "Also list finished saved runs"),
             CliOption("from-pr", "N", "Seed a donation from another donor's last coordinated PR commit"),
             CliOption(
                 "continue-from",
@@ -255,10 +256,10 @@ internal class Cli {
             ),
             CliCommand(
                 "status",
-                "run",
-                "repo",
-                "Show issue state and who acts next, or a saved run offline; no writes or inference.",
-                "[ISSUE | OWNER/REPO | RUN]",
+                "run,all",
+                "",
+                "Show your saved work, repository issues and who acts next, or one issue or saved run; no writes or inference.",
+                "[ISSUE | OWNER/REPO | RUN] [--all]",
                 "status 42",
                 effects: "local_read github_read",
                 target: "issue",
@@ -273,17 +274,6 @@ internal class Cli {
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
                 target: "pr",
-                group: "donate"
-            ),
-            CliCommand(
-                "runs",
-                "",
-                "",
-                "List saved runs on this computer; offline, no writes or inference.",
-                "[ISSUE | OWNER/REPO]",
-                "runs 42",
-                effects: "local_read",
-                target: "issue",
                 group: "donate"
             ),
             CliCommand(
@@ -573,17 +563,6 @@ internal class Cli {
                 group: "more"
             ),
             CliCommand(
-                "coordination",
-                "",
-                "repo,issue",
-                "Read authoritative v2 issue state from GitHub; no inference or publication.",
-                "ISSUE",
-                "coordination 42",
-                effects: "local_read github_read",
-                target: "issue",
-                group: "internal"
-            ),
-            CliCommand(
                 "request",
                 "file",
                 "repo,issue,file",
@@ -768,8 +747,6 @@ internal class Cli {
 
             case "checks": []string{"PR|RUN"}
 
-            case "runs": []string{"ISSUE|OWNER/REPO"}
-
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
 
             case "doctor": []string{
@@ -890,11 +867,12 @@ internal class Cli {
                 }
 
                 if command.Name == "status" {
-                    for mode in[]string{"repository", "run"} {
+                    for mode in[]string{"saved", "repository", "run"} {
+                        let required = mode == "saved" ? []string{}: []string{mode == "run" ? "run": "repo"}
                         modes.Add(
                             map[string, Object?]{
                                 "name": mode,
-                                "required_inputs": []string{mode == "run" ? "run": "repo"},
+                                "required_inputs": required,
                                 "effects": map[string, Object?]{
                                     "local_read": true,
                                     "local_write": false,
@@ -921,7 +899,6 @@ internal class Cli {
                             command.Target == "access" ? (
                             command.Target == "issue" ? (
                                 command.Name == "status" ||
-                                    command.Name == "runs" ||
                                     command.Name == "work" ||
                                     command.Name == "claim" ? []string{
                                     "repo",
@@ -1067,7 +1044,7 @@ internal class Cli {
                     OptionHelp(
                         text,
                         (
-                            name == "status" || name == "runs" || name == "work" ? "ISSUE|OWNER/REPO":
+                            name == "status" || name == "work" ? "ISSUE|OWNER/REPO":
                             "ISSUE"
                         ) +
                             (command.Needs("issue") ? " (required)": ""),
@@ -1130,7 +1107,7 @@ internal class Cli {
                     OptionHelp(
                         text,
                         "RUN" + (command.Needs("run") ? " (required)": ""),
-                        "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate runs lists them" +
+                        "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate status lists them" +
                             (command.Target == "run" ? "; 42 uses the newest attempt of issue 42": ""),
                         width
                     )
@@ -1150,8 +1127,10 @@ internal class Cli {
                     )
                 }
 
-                if name == "status" || name == "runs" {
-                    text.AppendLine("For repository status or saved runs, use OWNER/REPO or a GitHub repository URL.")
+                if name == "status" {
+                    text.AppendLine(
+                        "Bare status lists your saved work, only for this repository inside a checkout. For repository status, use OWNER/REPO or a GitHub repository URL."
+                    )
                 }
 
                 if name == "work" || name == "claim" {
@@ -1509,7 +1488,9 @@ internal class Cli {
                 throw Exception("Required: " + String.Join(", ", missing))
             }
 
-            if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {
+            let local = command.Needs("repo") || (args.Command == "status" && args.Get("issue") != "")
+
+            if local && args.Get("repo") == "" && args.Command != "init" {
                 args.Values["--repo"] = RepositoryInput.Local()
             }
         }

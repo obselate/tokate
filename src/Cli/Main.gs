@@ -170,7 +170,7 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
-    if options.Command == "runs" {
+    if options.Command == "status" && options.Get("repo") == "" && options.Get("run") == "" {
         RunReference.Print(options)
 
         return 0
@@ -275,19 +275,6 @@ func Dispatch(options Args) int32 {
 
         case "admit" {
             Admission.Run(options)
-        }
-
-        case "coordination" {
-            let state = CoordinationState.Load(RepositoryIdentity.Repo(options.Need("repo")), options.Number("issue"))
-
-            if PublicOutput.Enabled {
-                PublicOutput.ResultData = PublicOutput.Coordination(state.Value(), state.Sha)
-            } else {
-                Terminal.Json(
-                    J.Parse(J.Write(map[string, Object?]{"sha": state.Sha, "state": state.Value()})),
-                    "Contribution coordination"
-                )
-            }
         }
 
         case "request" {

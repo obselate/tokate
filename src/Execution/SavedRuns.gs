@@ -15,12 +15,20 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         location,
         RunStorage.Prefix(J.Text(value, "repo"), J.Number(value, "issue"))
     )
+    internal var Outcome string = ""
 
     internal prop Issue int32 -> J.Number(Value, "issue")
 
     internal prop Name string -> Issue.ToString() + "-" + Number.ToString()
 
-    internal prop Next string -> (Text("state") == "claim_pending" || Text("state") == "claimed") &&
+    internal prop State string -> Outcome == "" ? Text("state"): Outcome
+
+    internal prop Finished bool -> Outcome != "" || Array.IndexOf(
+        []string{"failed", "refused", "skipped"},
+        Text("state")
+    ) >= 0
+
+    internal prop Next string -> Outcome != "" ? "": (Text("state") == "claim_pending" || Text("state") == "claimed") &&
         Text("source") == "tokate" ? "work":
     J.Number(Value, "pr") > 0 ? "checks":
     Text("state") == "generated" || Text("state") == "incomplete_generated" ? "submit": ""
@@ -57,6 +65,8 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         "model": Text("model"),
         "state": Text("state"),
         "pr": J.Number(Value, "pr"),
+        "outcome": Outcome,
+        "finished": Finished,
         "modified": Modified.ToString("yyyy-MM-ddTHH:mm:ssZ")
     }
 }
@@ -93,7 +103,7 @@ internal class SavedRuns {
         }
     }
 
-    internal init(roots[]string, limit int32 = Int32.MaxValue, listingRepo string? = nil) {
+    internal init(roots[]string, limit int32 = Int32.MaxValue) {
         let legacy = List[SavedRun]()
         var scanned int32
 
@@ -199,17 +209,6 @@ internal class SavedRuns {
                 .Number
                 .CompareTo(b.Number): String.CompareOrdinal(a.Location, b.Location)
         )
-
-        if listingRepo != nil {
-            Rows.Sort(
-                (a, b) -> {
-                    let current = String.Equals(b.Text("repo"), listingRepo, StringComparison.OrdinalIgnoreCase)
-                        .CompareTo(String.Equals(a.Text("repo"), listingRepo, StringComparison.OrdinalIgnoreCase))
-                    let newest = b.Modified.CompareTo(a.Modified)
-                    return current != 0 ? current: newest != 0 ? newest: String.CompareOrdinal(a.Location, b.Location)
-                }
-            )
-        }
     }
 
     internal func Has(directory string) bool {

@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -1301,7 +1301,7 @@ internal class CliDiscovery {
             File.WriteAllText(Path.Combine(second, "run.json"), record.ToJsonString())
             File.SetLastWriteTimeUtc(Path.Combine(first, "run.json"), DateTime(2024, 2, 1))
             File.SetLastWriteTimeUtc(Path.Combine(second, "run.json"), DateTime(2024, 1, 1))
-            let offline = Check.Envelope(Call(binary, []string{"runs", "--json"}, temp), "runs", "ok")
+            let offline = Check.Envelope(Call(binary, []string{"status", "--json"}, temp), "status", "ok")
             Check.That(
                 offline["data"]?["runs"]?.AsArray().Count == 2,
                 "Local repository failure stopped saved-run listing"
@@ -1321,7 +1321,7 @@ internal class CliDiscovery {
             File.WriteAllText(Path.Combine(broken, "run.json"), "{")
             File.WriteAllText(Path.Combine(oversized, "run.json"), String('x', 1024 * 1024 + 1))
             Directory.CreateSymbolicLink(Path.Combine(root, "linked"), first)
-            Call(binary, []string{"runs", "--json"}, temp)
+            Call(binary, []string{"status", "--json"}, temp)
             Check.That(
                 File.ReadAllText(Path.Combine(obsolete, "run.json")) == obsoleteText,
                 "Unsupported saved run was changed"
@@ -1340,7 +1340,7 @@ internal class CliDiscovery {
             Directory.CreateDirectory(named)
             File.Copy(Path.Combine(second, "run.json"), Path.Combine(named, "run.json"))
             File.SetLastWriteTimeUtc(Path.Combine(named, "run.json"), DateTime(2024, 3, 1))
-            let listed = Check.Envelope(Call(binary, []string{"runs", "owner/project", "--json"}, temp), "runs", "ok")
+            let listed = Check.Envelope(Call(binary, []string{"status", "--json"}, temp), "status", "ok")
             Check.That(
                 Check.Text(listed["data"]?["runs"]?[0]?["name"]) == "owner/project#1-7" && Check.Text(
                     listed["data"]?["runs"]?[1]?["run"]
@@ -1372,16 +1372,27 @@ internal class CliDiscovery {
             File.WriteAllText(git, "#!/bin/sh\nprintf '%s\\n' 'origin https://github.com/OWNER/PROJECT.git (fetch)'\n")
             File.SetUnixFileMode(git, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             temp.Env["PATH"] += ":/usr/bin:/bin"
-            let ordered = Check.Envelope(Call(binary, []string{"runs", "--json"}, temp), "runs", "ok")
+            let failed = Path.Combine(root, "failed")
+            Directory.CreateDirectory(failed)
+            record["state"] = JsonValue.Create("failed")
+            File.WriteAllText(Path.Combine(failed, "run.json"), record.ToJsonString())
+            let ordered = Check.Envelope(Call(binary, []string{"status", "--json"}, temp), "status", "ok")
             Check.That(
-                Check.Text(ordered["data"]?["runs"]?[0]?["run"]) == named && Check.Text(
-                    ordered["data"]?["runs"]?[1]?["run"]
-                ) == first &&
-                    Check.Text(ordered["data"]?["runs"]?[2]?["run"]) == second && Check.Text(
-                    ordered["data"]?["runs"]?[3]?["run"]
-                ) == other,
-                "Saved list did not put the local repository first and newest entries first"
+                ordered["data"]?["runs"]?.AsArray().Count == 3 && Check.Text(
+                    ordered["data"]?["runs"]?[0]?["run"]
+                ) == named &&
+                    Check.Text(ordered["data"]?["runs"]?[1]?["run"]) == first && Check.Text(
+                    ordered["data"]?["runs"]?[2]?["run"]
+                ) == second &&
+                    Check.Text(ordered["data"]?["hidden"]) == "1",
+                "Checkout status did not list only local unfinished runs, newest first"
             )
+            let all = Check.Envelope(Call(binary, []string{"status", "--all", "--json"}, temp), "status", "ok")
+            Check.That(
+                all["data"]?["runs"]?.AsArray().Count == 4 && Check.Text(all["data"]?["hidden"]) == "0",
+                "Status --all hid finished runs"
+            )
+            Directory.Delete(failed, true)
             File.Delete(git)
             temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
             Directory.Delete(other, true)

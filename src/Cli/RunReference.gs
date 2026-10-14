@@ -3,6 +3,7 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.IO
+import System.Linq
 
 internal class RunReference {
     shared {
@@ -68,7 +69,7 @@ internal class RunReference {
             let name = repo + "#" + args.Get("issue") + (named ? "-" + args.Get("attempt"): "")
 
             if rows.Count == 0 {
-                throw Exception("No saved run " + name + ". List saved runs with tokate runs")
+                throw Exception("No saved run " + name + ". List saved runs with tokate status")
             }
 
             if named && rows.Count > 1 {
@@ -118,30 +119,70 @@ internal class RunReference {
         }
 
         internal func Print(args Args) {
-            var localRepo = ""
+            var repo = ""
             try {
-                localRepo = RepositoryInput.Local()
+                repo = RepositoryInput.Local()
             } catch (error Exception) { }
 
-            let saved = SavedRuns(RunStorage.Roots(), listingRepo: localRepo)
-            let repo = args.Get("issue") != "" && args.Get("repo") == "" ? RepositoryInput.Local(): args.Get("repo")
-            let rows = List[SavedRun]()
-
-            for row in saved.Rows {
-                if (repo == "" || String.Equals(row.Text("repo"), repo, StringComparison.OrdinalIgnoreCase)) &&
-                    (args.Get("issue") == "" || row.Issue == args.Number("issue")) {
-                    rows.Add(row)
-                }
-            }
+            let saved = SavedRuns(RunStorage.Roots())
+            let rows = saved
+                .Rows
+                .Where(row -> repo == "" || String.Equals(row.Text("repo"), repo, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(row -> row.Modified)
+                .ThenBy(row -> row.Location, StringComparer.Ordinal)
+                .ToList()
+            Outcomes(rows)
+            let shown = args.Get("all") == "true" ? rows: rows.FindAll(row -> !row.Finished)
+            let hidden = rows.Count - shown.Count
 
             if PublicOutput.Enabled {
-                PublicOutput.ResultData = SavedRuns.Summary(rows, saved.Skipped, saved.Truncated, saved.SkippedEntries)
-                PublicOutput.Truncated = saved.Truncated || rows.Count > 128
-            } else if rows.Count == 0 {
+                let data = SavedRuns.Summary(shown, saved.Skipped, saved.Truncated, saved.SkippedEntries)
+                data["hidden"] = hidden
+                PublicOutput.ResultData = data
+                PublicOutput.Truncated = saved.Truncated || shown.Count > 128
+                return
+            }
+
+            if shown.Count == 0 {
                 Terminal.Message("No saved runs.", "default")
             } else {
-                Terminal.Runs(args, rows)
+                Terminal.Runs(args, shown, short: repo != "")
             }
+
+            if hidden > 0 {
+                Terminal.Message(
+                    hidden.ToString() + " finished runs hidden. Show them with tokate status --all.",
+                    "default"
+                )
+            }
+        }
+
+        private func Outcomes(rows List[SavedRun]) {
+            let pulls = rows.Where(row -> J.Number(row.Value, "pr") > 0 && !row.Finished).Take(100).ToList()
+
+            if pulls.Count == 0 {
+                return
+            }
+
+            var query = ""
+
+            for i in 0 ... pulls.Count {
+                let repo = pulls[i].Text("repo").Split('/')
+                query += "p" + i.ToString() + ":repository(owner:\"" + repo[0] + "\",name:\"" + repo[1] + "\")"
+                query += "{pullRequest(number:" + J.Number(pulls[i].Value, "pr").ToString() + "){state}}"
+            }
+
+            try {
+                let data = J.Get(GitHub.Api("graphql", map[string, Object?]{"query": "query{" + query + "}"}), "data")
+
+                for i in 0 ... pulls.Count {
+                    let state = J.Text(J.Get(J.Get(data, "p" + i.ToString()), "pullRequest"), "state")
+
+                    if state == "MERGED" || state == "CLOSED" {
+                        pulls[i].Outcome = state.ToLowerInvariant()
+                    }
+                }
+            } catch (error Exception) { }
         }
     }
 }

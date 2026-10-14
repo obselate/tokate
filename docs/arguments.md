@@ -27,9 +27,10 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
 | `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. `OWNER/REPO` alone is invalid. |
 | `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
-| `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
+| `status` | `tokate status [--all]` | List your saved work as a table. Inside a checkout, list only that repository. Finished runs are hidden and counted. `--all` shows them. One GitHub query marks merged or closed PRs as finished. Offline, saved state is used. |
+| `status` repository | `tokate status OWNER/REPO` | List approved issues with title, state, whether you act next and the next command. |
+| `status` issue or run | `tokate status ISSUE \| RUN` | Show state and the next action. Issue `--json` data includes `coordination`. |
 | `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
-| `runs` | `tokate runs [ISSUE \| OWNER/REPO]` | List saved runs offline. |
 | `pause` | `tokate pause RUN` | Pause your reservation. |
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
@@ -61,7 +62,6 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |
-| `coordination` | `tokate coordination ISSUE` | Read authoritative issue state. |
 | `request` | `tokate request ISSUE --file FILE` | Post a strict claim or publication request. |
 | `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source tokate [options]` | Prepare a fresh reserved managed contribution. |
 | `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source external --tools FILE [options]` | Prepare an external contribution. |

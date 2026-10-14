@@ -2,10 +2,10 @@
 
 Find the code or message below, then use the action in its row. Keep the original checkout and saved evidence.
 
-1. List saved attempts.
+1. List saved attempts. Add `--all` to include finished attempts.
 
    ```sh
-   tokate runs
+   tokate status --all
    ```
 
 2. Inspect the exact attempt and its next action.

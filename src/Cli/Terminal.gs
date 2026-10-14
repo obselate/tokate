@@ -7,6 +7,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.Globalization
 import System.IO
+import System.Linq
 import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
@@ -227,30 +228,49 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(args Args, rows List[SavedRun], error bool = false) {
-            var width int32 = 3
+        internal func Runs(args Args, rows List[SavedRun], error bool = false, short bool = false) {
+            let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                width = Math.Max(width, RunReference.Label(args, row).Length)
+                let name = short ? row.Name: RunReference.Label(args, row)
+                table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
             }
 
-            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+            Table(table, error)
+        }
+
+        private func Table(rows List[[]string], error bool = false, fit int32 = -1) {
+            let widths = List[int32]()
 
             for row in rows {
-                Line(
-                    Clean(
-                        "  " + RunReference.Label(args, row).PadRight(width) + "  " + row.Text("state").PadRight(20) +
-                            "  " +
-                            row
-                            .Age().PadRight(4) + "  " + row.Text("model")
-                    ),
-                    "default",
-                    error
-                )
+                for i in 0 ... row.Length {
+                    row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
 
-                if row.Next != "" {
-                    Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
+                    if widths.Count == i {
+                        widths.Add(0)
+                    }
+
+                    widths[i] = Math.Max(widths[i], row[i].Length)
                 }
+            }
+
+            if fit >= 0 {
+                let room = Width(error) - widths.Sum() + widths[fit] - 2 * widths.Count + 2
+                widths[fit] = Math.Min(widths[fit], Math.Max(8, room))
+            }
+
+            for row in rows {
+                if fit >= 0 && row[fit].Length > widths[fit] {
+                    let length = widths[fit] - 3
+                    row[fit] = row[fit].Substring(0, Char.IsHighSurrogate(row[fit][length - 1]) ? length - 1: length) +
+                        "..."
+                }
+
+                for i in 0 ... row.Length - 1 {
+                    row[i] = row[i].PadRight(widths[i])
+                }
+
+                Line(String.Join("  ", row), "default", error)
             }
         }
 
@@ -565,10 +585,6 @@ internal class Terminal {
         }
 
         internal func ContributionStatus(value JsonElement) {
-            if PublicOutput.Enabled {
-                return
-            }
-
             if Console.IsOutputRedirected && !Plain && !Ascii {
                 Console.WriteLine(J.Write(value))
 
@@ -592,48 +608,33 @@ internal class Terminal {
                 StatusAction(J.Get(value, "next"))
             }
 
-            Row("Repository", J.Text(value, "repo"))
-
-            if pending > 0 {
-                Row("Pending access requests", pending.ToString(), "yellow")
-            }
-
             if work.Count == 0 {
-                Row("Issue", "none observed")
-
-                if remote == "observed" {
-                    Row(
-                        "State",
-                        pending > 0 ?
-                        "access review needed": "no approved work observed"
-                    )
-                }
+                return
             }
+
+            let viewer = J.Get(value, "viewer")
+            let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU", "NEXT"}}
 
             for task in work {
-                if remote == "observed" {
-                    StatusAction(J.Get(task, "next"))
-                }
-
-                let title = Clean(J.Text(task, "title")).Replace('\n', ' ').Trim()
-                let prefix = "Issue: #" + J.Number(task, "issue").ToString() + " "
-                let limit = Math.Max(4, Math.Min(80, Width() - prefix.Length))
-                var length = Math.Min(limit - 3, title.Length)
-
-                if length > 0 && Char.IsHighSurrogate(title[length - 1]) {
-                    length--
-                }
-
-                Message(prefix + (title.Length > limit ? title.Substring(0, length) + "...": title), "default")
-                Message("State: " + J.Text(task, "state").Replace('_', ' '), "yellow")
-                Row("Issue URL", J.Text(task, "url"))
-
-                for draft in J.Items(J.Get(task, "drafts")) {
-                    Row("PR", J.Text(draft, "url"))
-                    Row("Contribution", J.Text(draft, "lifecycle").Replace('_', ' '))
-                    Row("Receipt", J.Text(draft, "receipt"))
-                }
+                let issue = J.Number(task, "issue").ToString()
+                let next = J.Get(task, "next")
+                let role = J.Text(next, "role")
+                let holder = J.Get(J.Get(task, "reservation"), "actor").ToString()
+                let mine = role == J.Text(viewer, "role") &&
+                    (role != "donor" || holder == "" || holder == J.Get(viewer, "actor").ToString())
+                let command = Command(J.Get(next, "command"))
+                table.Add(
+                    []string{
+                        "#" + issue,
+                        J.Text(task, "title"),
+                        J.Text(task, "state"),
+                        J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no",
+                        command == "" ? "tokate status " + J.Text(value, "repo") + "#" + issue: command
+                    }
+                )
             }
+
+            Table(table, fit: 1)
         }
 
         internal func Row(label string, value string, color string = "default", error bool = false) {

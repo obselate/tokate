@@ -527,9 +527,8 @@ internal class ContributionStatusChecks {
                         )
                     }
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
-                    Check.Contains(human.Output, "State: " + (lifecycle + "_contribution").Replace('_', ' '))
-                    Check.Contains(human.Output, "Contribution: " + lifecycle.Replace('_', ' '))
-                    Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
+                    Check.Contains(human.Output, lifecycle + "_contribution")
+                    Check.Contains(human.Output, "gh issue view 1 --repo owner/project")
                     let owner = Row(Read(test, owner: true))
                     Check.That(
                         Check.Text(owner["state"]) == Check.Text(row["state"]) && owner["next"]?.ToJsonString() == row[
@@ -795,9 +794,8 @@ internal class ContributionStatusChecks {
             test.Flow.Temp.Env["TERM"] = "xterm-256color"
             let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
-            Check.Contains(narrow.Output, "Issue: #1 Implement fixture")
-            Check.Contains(narrow.Output, "State: reservation needed")
-            Check.Contains(narrow.Output, "Role: donor")
+            Check.Contains(narrow.Output, "ISSUE  TITLE")
+            Check.Contains(narrow.Output, "reservation_needed  yes  tokate status owner/project#1")
             Check.That(!narrow.Output.Contains('\u001b'), "Narrow plain status contains escapes")
         }
 
@@ -843,7 +841,7 @@ internal class ContributionStatusChecks {
             TestTerminal.Save("status-failed", failed)
             Check.Contains(failed, "unavailable; partial facts only")
             Check.Contains(failed, "GitHub read failed (HTTP 403).")
-            Check.Contains(failed, "Issue: #1 " + title)
+            Check.Contains(failed, "#1     " + title)
             Check.That(!failed.Contains("Bounded snapshot:"), "Failed status read retained earlier truncation")
             test.Flow.Reload()
             test.Flow.State["fault_path"] = nil
@@ -851,8 +849,7 @@ internal class ContributionStatusChecks {
             test.Flow.Save()
             let healthy = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-healthy", healthy)
-            Check.Contains(healthy, "State: reservation needed")
-            Check.Contains(healthy, "Role: donor")
+            Check.Contains(healthy, "reservation_needed  yes")
             Check.That(
                 !healthy.Contains("unavailable") && !healthy.Contains("Bounded snapshot:") && !healthy.Contains(
                     "Review donor access"
