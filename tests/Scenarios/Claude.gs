@@ -289,8 +289,11 @@ internal class ClaudeChecks {
             disallowed[9] = "xhigh"
             let disallowedResult = TestProcess.Run(binary, disallowed.ToArray(), data.Env)
             Check.That(
-                disallowedResult.Code == 1 && disallowedResult.Output.Contains("not allowed by the repository policy"),
-                "Disallowed effort was launched"
+                disallowedResult.Code == 1 && disallowedResult.Output.Contains(
+                    "not allowed by the repository policy"
+                ) &&
+                    Check.Text(Check.Json(disallowedResult.Output)["error"]?["code"]) == "verification_failed",
+                "Disallowed effort was launched or not refused as verification_failed"
             )
             let alias = List[string](words)
             alias[7] = "opus"

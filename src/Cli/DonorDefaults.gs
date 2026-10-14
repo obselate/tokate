@@ -134,7 +134,7 @@ internal class DonorDefaults {
                 }
 
                 for key in[]string{"pi-root", "node"} {
-                    if J.Text(value, key) != "" {
+                    if partial ? J.Text(value, key) != "": J.Get(value, key).ValueKind != JsonValueKind.Undefined {
                         LocalPaths.RuntimePath(J.Text(value, key))
                     }
                 }
@@ -248,11 +248,16 @@ internal class DonorDefaults {
             if args.Subject == "check" {
                 let repo = RepositoryIdentity.Repo(args.Need("repo"))
                 let policy = Policy.Load(repo, J.Text(GitHub.Api("repos/" + repo), "default_branch"))
-                let fields = "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
-
                 let selection = DonorSelection.Resolve(args, policy)
 
-                return PublicOutput.Enabled ? J.Parse(J.Write(J.Select(selection, fields))): selection
+                return PublicOutput.Enabled ? J.Parse(
+                    J.Write(
+                        J.Select(
+                            selection,
+                            "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
+                        )
+                    )
+                ): selection
             }
 
             if args.Subject == "show" || args.Subject == "use" {

@@ -24,12 +24,12 @@ internal class ClaudeHarness {
         internal func Doctor(options Args, tool ToolCheck) {
             let authenticate = options.Get("auth") == "true" || options.Get("model") != ""
             let result = ClaudeCode.Runtime(options, authenticate: authenticate)
-            tool.Report = options.Get("model") == "" ? nil: ClaudeCode.Gate(options, result)
             tool.Path = options.Need("harness-path")
             tool.Detail = J.Text(result, "version") +
                 (
                 authenticate ? "; personal native-login status checked.": "; native controls checked without authentication status."
             )
+            tool.Report = options.Get("model") == "" ? nil: result
         }
 
         internal func ValidateSaved(run Data) {

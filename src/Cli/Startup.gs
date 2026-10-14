@@ -484,6 +484,14 @@ internal class Startup {
                 }
 
                 tools.Add(runtime)
+
+                if runtime.Status == "ready" && runtime.Report is JsonElement native {
+                    try {
+                        runtime.Report = ClaudeCode.Gate(options, native)
+                    } catch (error Exception) {
+                        throw CliFailure("verification_failed", error.Message)
+                    }
+                }
             }
 
             if doctorScope == "managed" && adapter?.Doctor == nil {
@@ -543,7 +551,7 @@ internal class Startup {
 
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
-                fields["authentication_requested"] = options.Get("auth") == "true"
+                fields["authentication_requested"] = options.Get("auth") == "true" || options.Get("model") != ""
                 if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is Object report {
                     fields["claude"] = report
                 }
