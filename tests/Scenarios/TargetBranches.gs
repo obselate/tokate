@@ -205,9 +205,10 @@ internal class TargetBranches {
                     flow.Commit("Owner configuration changed")
                 }
                 let result = flow.Call([]string{"external", "--run", run, "--commit", base}, 1)
-                if change != "deleted" {
-                    Check.Contains(result.Error, "The owner must run: tokate approve owner/project#1")
-                }
+                Check.Contains(
+                    result.Error,
+                    change == "deleted" ? "GitHub read failed (HTTP 404)": "The owner must run: tokate approve owner/project#1"
+                )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == saved,
                     "Failed freshness check rewrote saved run"

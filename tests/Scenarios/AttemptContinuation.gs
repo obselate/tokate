@@ -481,6 +481,8 @@ internal class AttemptContinuationChecks {
                 "repository",
                 "issue",
                 "approval",
+                "base",
+                "identity",
                 "same-attempt",
                 "lineage",
                 "revoked",
@@ -489,7 +491,8 @@ internal class AttemptContinuationChecks {
                 "expired",
                 "paused",
                 "reapproved",
-                "legacy"
+                "legacy",
+                "selection"
             } {
                 baseline.Restore()
                 test.Flow.Reload()
@@ -522,6 +525,12 @@ internal class AttemptContinuationChecks {
                     case "approval" {
                         run["approval"] = JsonValue.Create(String('a', 64))
                     }
+                    case "base" {
+                        run["base"] = JsonValue.Create(String('a', 40))
+                    }
+                    case "identity" {
+                        run["id"] = JsonValue.Create(Guid.NewGuid().ToString("D"))
+                    }
                     case "same-attempt" {
                         run["attempt"] = test.State()["state"]?["reservation"]?["attempt"]?.DeepClone()
                     }
@@ -553,6 +562,9 @@ internal class AttemptContinuationChecks {
                         let state = test.State()["state"] ?? throw Exception("Missing state")
                         state.AsObject().Remove("identity")
                         test.RewriteState(state)
+                    }
+                    case "selection" {
+                        run["effort"] = JsonValue.Create("xhigh")
                     }
                 }
                 Save(source, run)
@@ -773,6 +785,7 @@ internal class AttemptContinuationChecks {
                 "hardlink",
                 "fifo",
                 "directory-file",
+                "file-directory",
                 "source-repo-id",
                 "source-head-id",
                 "missing-source-id",
@@ -823,6 +836,10 @@ internal class AttemptContinuationChecks {
                 } else if mode == "directory-file" {
                     Directory.Delete(Path.Combine(checkout, "folder"), true)
                     File.WriteAllText(Path.Combine(checkout, "folder"), "replacement\n")
+                } else if mode == "file-directory" {
+                    File.Delete(Path.Combine(checkout, "baseline.txt"))
+                    Directory.CreateDirectory(Path.Combine(checkout, "baseline.txt"))
+                    File.WriteAllText(Path.Combine(checkout, "baseline.txt/child"), "replacement\n")
                 } else if mode == "source-repo-id" || mode == "source-head-id" || mode == "missing-source-id" {
                     let saved = Read(source)
                     let markerPath = Path.Combine(checkout, ".git/tokate-preparation.json")

@@ -107,7 +107,7 @@ internal class OverlapFlow : IDisposable {
             return argv.ToArray()
         }
 
-        internal func Create(binary string, version int32, layout string = "overlap") OverlapFlow {
+        internal func Create(binary string, version int32, layout string) OverlapFlow {
             let test = OverlapFlow(binary, version)
             test.Initialize(layout)
             return test
