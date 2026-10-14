@@ -31,6 +31,9 @@ elif [[ "$#" -gt 0 ]]; then
 else
     selectors=(
         '--flow CrossAccountFlow'
+        '--claude-smoke'
+        '--omp-smoke'
+        '--pi-smoke'
         '--coordination CanonicalSubmit'
         '--coordination RepositoryDonation'
         '--flow VerificationNetwork'
