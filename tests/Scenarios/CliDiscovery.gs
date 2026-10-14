@@ -155,10 +155,13 @@ internal class CliDiscovery {
             flow.State["hosted_workflow"] = JsonValue.Create(true)
             flow.Save()
             flow.Approve()
-            flow.Call(
-                []string{"approve", "owner/project", "--title", "Second task", "--body", "Another task"},
-                owner: true
-            )
+            flow.Reload()
+            let secondIssue = flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
+            secondIssue["number"] = JsonValue.Create(2)
+            secondIssue["title"] = JsonValue.Create("Second task")
+            flow.State["issues"] = Check.Map("1", flow.State["issue"]?.DeepClone(), "2", secondIssue)
+            flow.Save()
+            flow.Call([]string{"approve", "owner/project#2"}, owner: true)
             let sharedWorkflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
             for setting in[]string{"disabled", "local_only", "stale", "empty", "excluded"} {
                 flow.Reload()
@@ -229,10 +232,7 @@ internal class CliDiscovery {
                         "\n1\n2\n"
                     )
                     Check.Success(screen)
-                    Check.Contains(screen.Output, "Review project setup")
-                    Check.Contains(screen.Output, "Settings > Actions > General > Actions permissions")
                     Check.Contains(screen.Output, sharedWorkflow + String('a', 40))
-                    Check.Contains(screen.Output, "Who can contribute?")
                     Check.Contains(screen.Output, "Commit and push")
                 }
                 Check.That(
@@ -523,33 +523,6 @@ internal class CliDiscovery {
             Publish(flow, routed)
             flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             Check.That(File.ReadAllText(policyPath) == routed, "Repeat changed per-tool models")
-            let modelEditToken = flow.Temp.Env["GH_TOKEN"]
-            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
-            let perTool = TestTerminal.Pty(
-                binary,
-                []string{
-                    "init",
-                    "owner/project",
-                    "--path",
-                    root,
-                    "--allowed-tools",
-                    routes,
-                    "--eligibility",
-                    "open",
-                    "--plain"
-                },
-                flow.Temp,
-                80,
-                "3\n2\n2\nadd\nmodel-b\nhigh\n\n1\n2\n"
-            )
-            flow.Temp.Env["GH_TOKEN"] = modelEditToken
-            Check.Success(perTool)
-            let edited = Check.Json(File.ReadAllText(policyPath))
-            Check.That(
-                edited["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"claude-opus-5-5\":[\"high\"]}" &&
-                    edited["allowed_tools"]?[1]?["models"]?["model-b"]?.ToJsonString() == "[\"high\"]",
-                "Guided model editing changed another tool or lost the selected pair"
-            )
             Publish(flow, nil)
             let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
             Checkout(flow, interactiveRoot)
@@ -558,9 +531,6 @@ internal class CliDiscovery {
                     .Error,
                 "Choose --model-policy"
             )
-            let command = "'" + binary + "' init owner/project --path '" + interactiveRoot + "' --plain"
-            let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
-            env["GH_TOKEN"] = "fixture-owner"
             for missing in[]string{"events", "pull-requests", "both"} {
                 flow.Reload()
                 flow.State["actions_policies"] = missing == "pull-requests" ? nil:
@@ -573,14 +543,23 @@ internal class CliDiscovery {
                 )
                 flow.State["api_calls"] = JsonArray()
                 flow.Save()
-                let blocked = flow.Call([]string{"init", "--path", interactiveRoot, "--non-interactive"}, 1, true)
+                let blocked = flow.Call(
+                    []string{
+                        "init",
+                        "--path",
+                        interactiveRoot,
+                        "--model-policy",
+                        "unrestricted",
+                        "--verification",
+                        "[[\"/usr/bin/true\"]]",
+                        "--required-checks",
+                        "[\"verify\"]"
+                    },
+                    1,
+                    true
+                )
                 Check.Contains(blocked.Error, "Missing GitHub settings")
-                if missing != "pull-requests" {
-                    Check.Contains(blocked.Error, "Actions event policy")
-                }
-                if missing != "events" {
-                    Check.Contains(blocked.Error, "Allow GitHub Actions to create and approve pull requests")
-                }
+                Check.Contains(blocked.Error, "--yes")
                 Check.That(
                     !Directory.Exists(Path.Combine(interactiveRoot, ".github")),
                     "Missing settings wrote setup files"
@@ -590,75 +569,31 @@ internal class CliDiscovery {
                     Check.That(Check.Text(call["method"]) == "GET", "Noninteractive setup changed GitHub settings")
                 }
             }
-            let declined = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                env,
-                "?\n\n"
-            )
-            Check.That(declined.Code == 1, declined.Output + declined.Error)
-            Check.Contains(declined.Output, "1  Apply")
-            Check.Contains(declined.Output, "2  Cancel")
-            Check.Contains(declined.Output, "Choice [2]")
-            Check.Contains(declined.Output, "Choose Apply only if you want Tokate to make these changes.")
-            Check.Contains(
-                declined.Output,
-                "Create the Actions policy \"Tokate coordinator events\" that allows issues, issue_comment, pull_request_target and workflow_call for .github/workflows/tokate-coordinator.yml"
-            )
-            Check.Contains(
-                declined.Output,
-                "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay read)"
-            )
-            Check.That(!declined.Output.Contains('{'), "Settings confirmation showed raw API bodies")
-            Check.That(
-                !declined.Output.Contains("Who can contribute?"),
-                "Setup asked policy questions before settings approval"
+            flow.Call(
+                []string{
+                    "init",
+                    "owner/project",
+                    "--path",
+                    interactiveRoot,
+                    "--yes",
+                    "--verification",
+                    "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]",
+                    "--required-checks",
+                    "[\"verify\",\"build\"]",
+                    "--base-branch",
+                    "release",
+                    "--max-time",
+                    "2h",
+                    "--reservation-time",
+                    "30m",
+                    "--pr-text",
+                    "Owner notes",
+                    "--allowed-tools",
+                    "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"model-a\":[\"high\",\"xhigh\"]}},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]"
+                },
+                owner: true
             )
             flow.Reload()
-            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                Check.That(Check.Text(call["method"]) == "GET", "Declined setup changed GitHub settings")
-            }
-            Check.That(!Directory.Exists(Path.Combine(interactiveRoot, ".github")), "Declined setup wrote files")
-            flow.State["checks"] = JsonArray()
-            flow.Save()
-            let terminal = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                env,
-                "1\n1\n2\nadd\nmodel-a\nhigh xhigh\n\n\n/usr/bin/true\n\n\n, ,\nverify, build\n2\n2\n2h\n2\n4\nrelease\n2\n5\n30m\n2\n6\nOwner notes\n4\n4\n1\n?\n1\n"
-            )
-            Check.Success(terminal)
-            Check.Contains(terminal.Output, "Trusted donors or donors granted this issue")
-            Check.Contains(terminal.Output, "Anyone you have not denied")
-            Check.That(!terminal.Output.Contains("Choose each time"), "Setup offered removed eligibility mode")
-            Check.Contains(terminal.Output, "A verification command is a shell command that runs the project's tests")
-            Check.Contains(terminal.Output, "which Tokate runs on donor work before it opens a PR.")
-            Check.Contains(
-                terminal.Output,
-                "Examples: python3 -m unittest, npm test, cargo test, go test ./..., make test."
-            )
-            Check.Contains(terminal.Output, "Required checks are the GitHub CI check names that must pass on the PR.")
-            Check.Contains(terminal.Output, "The names are CI job names.")
-            Check.That(
-                terminal.Output.IndexOf("GitHub Actions settings", StringComparison.Ordinal) < terminal.Output.IndexOf(
-                    "Who can contribute?",
-                    StringComparison.Ordinal
-                ),
-                "Setup asked policy questions before checking GitHub settings"
-            )
-            Check.Contains(terminal.Output, "Maximum donor time (--max-time) [1h]")
-            Check.Contains(terminal.Output, "Target branch (--base-branch) [main]")
-            Check.Contains(terminal.Output, "Reservation time [24h]")
-            Check.Contains(terminal.Output, "Required checks   verify build")
-            Check.Contains(terminal.Output, "PR text   none")
-            Check.That(!terminal.Output.Contains('{'), "Setup result showed raw configuration")
-            flow.Reload()
-            Check.Contains(terminal.Output, "GitHub branch protection")
-            Check.Contains(terminal.Output, "Require checks on release: verify, build. No other protection changes.")
-            Check.Contains(
-                terminal.Output,
-                "Apply requires only the listed checks on the target branch. Skip changes nothing, and you can add them later in GitHub Settings > Branches."
-            )
             Check.That(
                 flow.State["branch_protection"]?.ToJsonString() ==
                 "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\",\"build\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
@@ -696,12 +631,12 @@ internal class CliDiscovery {
             )
             Check.That(
                 File.Exists(Path.Combine(interactiveRoot, ".github/tokate.json")),
-                "Interactive confirmation did not apply setup"
+                "Explicit confirmation did not apply setup"
             )
             let selected = Check.Json(File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
             Check.That(
                 Check.Text(selected["max_seconds"]) == "7200" && Check.Text(selected["reservation_seconds"]) == "1800",
-                "Interactive setup did not accept times with units"
+                "Flag setup did not accept times with units"
             )
             Check.That(
                 Check.Text(selected["version"]) == "3" &&
@@ -709,7 +644,7 @@ internal class CliDiscovery {
                     selected["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\",\"xhigh\"]}" &&
                     selected["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]" &&
                     selected["required_checks"]?.ToJsonString() == "[\"verify\",\"build\"]",
-                "Interactive setup lost selected models, commands or check names"
+                "Flag setup lost selected models, commands or check names"
             )
             Check.That(
                 Check.Text(selected["target_branch"]) == "release" && Check.Text(
@@ -717,165 +652,9 @@ internal class CliDiscovery {
                 ) == "Owner notes" &&
                     selected["allowed_tools"]?.ToJsonString() ==
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"model-a\":[\"high\",\"xhigh\"]}},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
-                "Guided init lost branch, PR text or tool choices"
+                "Init lost branch, PR text or tool choices"
             )
             Publish(flow, File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
-            let guidedAgain = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                env,
-                "\n1\n\n1\n"
-            )
-            Check.Success(guidedAgain)
-            Check.That(
-                Check.Json(File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json"))).ToJsonString() ==
-                selected.ToJsonString(),
-                "Repeated guided init changed existing policy choices"
-            )
-            Publish(flow, nil)
-            var suggestionIndex int32
-            for sample in[]string{
-                "pyproject.toml| |python3 -m unittest",
-                "setup.py| |python3 -m unittest",
-                "tests/test_project.py| |python3 -m unittest",
-                "package.json|{\"scripts\":{\"test\":\"node test.js\"}}|npm test",
-                "Cargo.toml| |cargo test",
-                "go.mod| |go test ./...",
-                "Makefile|test:\n\ttrue\n|make test",
-                "package.json|{\"scripts\":{\"build\":\"true\"}}|",
-                "Makefile|test = true\n|",
-                "package.json|invalid|",
-                "Cargo.toml| |cargo test|manual"
-            } {
-                let parts = sample.Split('|')
-                let suggestionRoot = Path.Combine(flow.Temp.Root, "suggestion-" + (++ suggestionIndex).ToString())
-                Checkout(flow, suggestionRoot)
-                let manifest = Path.Combine(suggestionRoot, parts[0])
-                Directory.CreateDirectory(Path.GetDirectoryName(manifest) ?? suggestionRoot)
-                File.WriteAllText(manifest, parts[1])
-                flow.Reload()
-                flow.State["checks"] = Check.Json(
-                    "[{\"name\":\"verify\",\"bucket\":\"pass\"},{\"name\":\"verify\",\"bucket\":\"pass\"},{\"name\":\"build (linux, debug)\",\"bucket\":\"pass\"}]"
-                )
-                flow.State["api_calls"] = JsonArray()
-                flow.State["branch_protection"] = Check.Json(
-                    "{\"required_status_checks\":{\"contexts\":[\"verify\",\"build\"],\"checks\":[{\"context\":\"build (linux, debug)\"}]}}"
-                )
-                flow.Save()
-                let suggested = TestProcess.Run(
-                    "/usr/bin/script",
-                    []string{
-                        "-q",
-                        "-e",
-                        "-c",
-                        "'" +
-                            binary +
-                            "' init --path '" +
-                            suggestionRoot +
-                            "' --plain --eligibility trusted --model-policy unrestricted --base-branch release",
-                        "/dev/null"
-                    },
-                    env,
-                    parts.Length == 4 ? "2\n\n/usr/bin/true\n\n2\n1\n":
-                    parts[2] == "" ? "/usr/bin/true\n\n3\n\nverify, build\n1\n": "\n1\n\n\n2\n1\n"
-                )
-                Check.Success(suggested)
-                Check.That(
-                    !suggested.Output.Contains("GitHub branch protection"),
-                    "Setup offered checks already required"
-                )
-                Check.Contains(suggested.Output, "1  verify")
-                Check.Contains(suggested.Output, "2  build (linux, debug)")
-                Check.Contains(suggested.Output, "3  Enter names")
-                if parts[2] != "" {
-                    Check.Contains(suggested.Output, "Suggested: " + parts[2])
-                    Check.Contains(suggested.Output, "Enter a command")
-                } else {
-                    Check.That(!suggested.Output.Contains("Suggested:"), "Non-test files produced a suggestion")
-                }
-                let configured = Check.Json(File.ReadAllText(Path.Combine(suggestionRoot, ".github/tokate.json")))
-                Check.That(
-                    Check.Text(configured["verification"]?[0]?[2]) == (
-                        parts[2] == "" || parts.Length == 4 ? "/usr/bin/true": parts[2]
-                    ) &&
-                        configured["required_checks"]?.ToJsonString() == (
-                        parts[2] == "" ? "[\"verify\",\"build\"]": "[\"build (linux, debug)\"]"
-                    ),
-                    "Suggested setup lost the command or selected check names"
-                )
-                flow.Reload()
-                var reads int32
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    if Check.Text(call["path"]).Contains("/check-runs") {
-                        reads++
-                        Check.That(
-                            Check.Text(call["method"]) == "GET" && Check.Text(call["path"]) ==
-                            "repos/owner/project/commits/release/check-runs?per_page=100&page=1",
-                            "Setup did not read one bounded page from the target branch"
-                        )
-                    }
-                }
-                Check.That(reads == 1, "Setup did not make exactly one check-name read")
-                if suggestionIndex == 1 {
-                    configured["verification"] = Check.Json(
-                        "[[\"/bin/sh\",\"-c\",\"python3 -m unittest -v\"],[\"/usr/bin/true\"]]"
-                    )
-                    let current = configured.ToJsonString()
-                    let savedPolicy = Path.Combine(suggestionRoot, ".github/tokate.json")
-                    File.WriteAllText(savedPolicy, current)
-                    Publish(flow, current)
-                    let keep = TestProcess.Run(
-                        "/usr/bin/script",
-                        []string{
-                            "-q",
-                            "-e",
-                            "-c",
-                            "'" +
-                                binary +
-                                "' init --path '" +
-                                suggestionRoot +
-                                "' --plain --eligibility trusted --model-policy unrestricted",
-                            "/dev/null"
-                        },
-                        env,
-                        "2\n1\n\n1\n"
-                    )
-                    Check.Success(keep)
-                    Check.Contains(keep.Output, "1  Keep: python3 -m unittest -v, /usr/bin/true")
-                    Check.Contains(keep.Output, "2  Replace with: python3 -m unittest")
-                    Check.Contains(keep.Output, "nothing to commit")
-                    Check.That(File.ReadAllText(savedPolicy) == current, "Keep changed existing verification commands")
-                    let replace = TestProcess.Run(
-                        "/usr/bin/script",
-                        []string{
-                            "-q",
-                            "-e",
-                            "-c",
-                            "'" +
-                                binary +
-                                "' init --path '" +
-                                suggestionRoot +
-                                "' --plain --eligibility trusted --model-policy unrestricted",
-                            "/dev/null"
-                        },
-                        env,
-                        "2\n1\n2\n\n1\n"
-                    )
-                    Check.Success(replace)
-                    let result = replace.Output.Substring(replace.Output.IndexOf("Updated ", StringComparison.Ordinal))
-                    Check.Contains(result, "Checks   python3 -m unittest")
-                    Check.That(
-                        !result.Contains("Limit    ") && !result.Contains('{'),
-                        "Result included unchanged settings or raw configuration"
-                    )
-                    let replaced = Check.Json(File.ReadAllText(savedPolicy))
-                    Check.That(
-                        replaced["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"python3 -m unittest\"]]",
-                        "Replace did not apply the selected suggestion"
-                    )
-                    Publish(flow, nil)
-                }
-            }
             let savedToken = flow.Temp.Env["GH_TOKEN"]
             flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
             for flag in[]string{"", "--non-interactive", "--json", "redirected"} {
@@ -920,14 +699,8 @@ internal class CliDiscovery {
                 TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "1\n": "")
                 Check.Success(options)
                 if flag == "" {
-                    Check.Contains(options.Output, "Claude Code (Subscription): model-a / high")
-                    Check.Contains(options.Output, "aider (openrouter): model-a / high")
                     Check.That(!options.Output.Contains('{'), "Setup result showed raw explicit configuration")
                 }
-                Check.That(
-                    options.Output.Contains("Review project setup") == (flag == ""),
-                    "Init used the wrong interactive mode"
-                )
                 Check.That(
                     !options.Output.Contains("Who can contribute?") && !options.Output.Contains(
                         "Choose how much control"
@@ -982,44 +755,6 @@ internal class CliDiscovery {
                     "--endpoint",
                     "http://127.0.0.1:12345/v1"
                 }
-            )
-            let pickerScript = Path.Combine(flow.Temp.Root, "model-checklist.py")
-            File.WriteAllText(pickerScript, TestResources.Template("model-checklist.py"))
-            let picker = TestProcess.Run(
-                "python3",
-                []string{pickerScript, binary, Path.Combine(flow.Temp.Root, "checklist")},
-                env
-            )
-            Check.Success(picker)
-            Console.Write(picker.Output)
-            let previousToken = flow.Temp.Env["GH_TOKEN"]
-            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
-            flow.Reload()
-            flow.State["checks"] = JsonArray()
-            flow.Save()
-            Checkout(flow, flow.Temp.Root)
-            let guided = TestTerminal.Pty(
-                binary,
-                []string{},
-                flow.Temp,
-                80,
-                "\x1b[B\nowner/project\n\n\n\x1b[B\n/usr/bin/true\n\nverify\n\x1b[B\n\x1b[B\n10m\n\nq\n"
-            )
-            flow.Temp.Env["GH_TOKEN"] = previousToken
-            Check.Success(guided)
-            Check.Contains(guided.Output, "Review project setup")
-            Check.That(File.Exists(Path.Combine(flow.Temp.Root, ".github/tokate.json")), guided.Output + guided.Error)
-            let guidedPolicy = Check.Json(File.ReadAllText(Path.Combine(flow.Temp.Root, ".github/tokate.json")))
-            Check.That(
-                Check.Text(guidedPolicy["max_seconds"]) == "600" && Check.Text(
-                    guidedPolicy["eligibility"]
-                ) == "trusted" &&
-                    Check.Text(guidedPolicy["version"]) == "3" &&
-                    guidedPolicy["model_policy"] == nil &&
-                    guidedPolicy["models"] == nil &&
-                    guidedPolicy["allowed_tools"]?[0]?["models"] == nil &&
-                    guidedPolicy["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]",
-                "Accepted owner workflow changed the reviewed policy"
             )
             flow.NoInference()
             flow.NoPr()
@@ -1123,7 +858,10 @@ internal class CliDiscovery {
                     String('a', 40) + "\n",
                     "--json"
                 },
-                []string{"approve", "0", "--json"}
+                []string{"approve", "0", "--json"},
+                []string{"approve", "owner/project", "--json"},
+                []string{"approve", "owner/project#1", "--title", "Removed", "--json"},
+                []string{"doctor", "--set-default", "--json"}
             } {
                 Check.Envelope(Call(binary, argv, temp, 1), argv[0], "error", "invalid_arguments")
             }
@@ -1505,32 +1243,10 @@ internal class CliDiscovery {
             File.WriteAllText(Path.Combine(broken, "run.json"), "{")
             File.WriteAllText(Path.Combine(oversized, "run.json"), String('x', 1024 * 1024 + 1))
             Directory.CreateSymbolicLink(Path.Combine(root, "linked"), first)
-            let command = []string{"-q", "-e", "-c", "exec '" + executable.Replace("'", "'\"'\"'") + "'", "/dev/null"}
-            let selected = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n99\n1\n3\n3\n2\nq\n")
-            Check.Success(selected)
-            Check.Contains(selected.Output, "claimed | 1-1")
+            Call(binary, []string{"runs", "--json"}, temp)
             Check.That(
                 File.ReadAllText(Path.Combine(obsolete, "run.json")) == obsoleteText,
                 "Unsupported saved run was changed"
-            )
-            Check.Contains(selected.Output, "generated | 1-2")
-            Check.That(
-                !selected.Output.Contains("a first") && !selected.Output.Contains("b second"),
-                "Saved rows exposed storage names"
-            )
-            Check.Contains(
-                selected.Output.Replace("\r\n", " ").Replace("\n", " "),
-                "Unreadable entries skipped: 4 (unsupported, invalid or unsafe metadata). Inspect entries with tokate runs --json."
-            )
-            Check.Contains(selected.Output, "Choose a number from 1 to 2.")
-            Check.Contains(selected.Output, "Start reserved donation")
-            let last = selected.Output.Substring(selected.Output.LastIndexOf("Continue contribution"))
-            Check.Contains(last, "Submit verified work")
-            Check.That(!last.Contains("Start reserved donation"), "Saved selection retained the previous run action")
-            Check.That(!selected.Output.Contains("\u001b[31m"), "Saved metadata injected terminal controls")
-            Check.That(
-                !selected.Output.Contains("repo> ") && !selected.Output.Contains("Missing tools"),
-                "Offline selection required repository tools"
             )
             Check.That(
                 Check.Hash(Path.Combine(first, "run.json")) == firstBytes && Check.Hash(
@@ -1588,21 +1304,6 @@ internal class CliDiscovery {
                 ) == other,
                 "Saved list did not put the local repository first and newest entries first"
             )
-            let orderedScreen = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
-            Check.Success(orderedScreen)
-            Check.That(
-                orderedScreen.Output.IndexOf("generated | 1-7") < orderedScreen.Output.IndexOf("claimed | 1-1") &&
-                    orderedScreen
-                    .Output
-                    .IndexOf("claimed | 1-1") < orderedScreen.Output.IndexOf("generated | 1-2") &&
-                    orderedScreen
-                    .Output
-                    .IndexOf("generated | 1-2") < orderedScreen.Output.IndexOf("aaa/other #1") &&
-                    !orderedScreen
-                    .Output
-                    .Contains(Path.GetFileName(other)),
-                "Saved screen lost ordering or exposed a run UUID"
-            )
             File.Delete(git)
             temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
             Directory.Delete(other, true)
@@ -1616,68 +1317,8 @@ internal class CliDiscovery {
                 Call(binary, []string{"status", "owner/project#1-9"}, temp, 1).Error,
                 "No saved run owner/project#1-9"
             )
-            Directory.Delete(named, true)
-            let firstText = File.ReadAllText(Path.Combine(first, "run.json"))
-            let unlimited = Check.Json(firstText)
-            unlimited["unlimited"] = JsonValue.Create(true)
-            unlimited["seconds"] = JsonValue.Create(20)
-            File.WriteAllText(Path.Combine(first, "run.json"), unlimited.ToJsonString())
-            let budget = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n1\n1\n2\n3\nq\n")
-            Check.Success(budget)
-            Check.Contains(budget.Output, "unlimited coding time, independent verification budget 20s")
-            Check.That(!budget.Output.Contains("Coding  0"), "Unlimited saved work displayed zero coding time")
-            Check.That(
-                File.ReadAllText(Path.Combine(first, "run.json")) == unlimited.ToJsonString(),
-                "Declined donation changed saved work"
-            )
-            File.WriteAllText(Path.Combine(first, "run.json"), firstText)
-            let secondText = File.ReadAllText(Path.Combine(second, "run.json"))
-            let partial = Check.Json(secondText)
-            partial["state"] = JsonValue.Create("incomplete_generated")
-            partial["incomplete"] = JsonValue.Create(true)
-            File.WriteAllText(Path.Combine(second, "run.json"), partial.ToJsonString())
-            File.SetLastWriteTimeUtc(Path.Combine(first, "run.json"), DateTime(2024, 2, 1))
-            File.SetLastWriteTimeUtc(Path.Combine(second, "run.json"), DateTime(2024, 3, 1))
-            let incomplete = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\n1\n3\nq\n")
-            Check.Success(incomplete)
-            Check.Contains(incomplete.Output, "Submit incomplete work for a draft PR")
-            Check.That(!incomplete.Output.Contains("Submit verified work"), "Incomplete work was labeled verified")
-            Check.That(
-                File.ReadAllText(Path.Combine(second, "run.json")) == partial.ToJsonString(),
-                "Inspection published incomplete work"
-            )
-            File.WriteAllText(Path.Combine(second, "run.json"), secondText)
-            Directory.Delete(second, true)
-            let cancelled = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
-            Check.Success(cancelled)
-            Check.That(!cancelled.Output.Contains("Donor run"), "Only remaining contribution was selected implicitly")
-            let stateHome = Path.Combine(temp.Root, "new state")
-            let current = Path.Combine(stateHome, "tokate/runs/a first")
-            Directory.CreateDirectory(current)
-            File.WriteAllText(Path.Combine(current, "run.json"), record.ToJsonString())
-            temp.Env["XDG_STATE_HOME"] = stateHome
-            let combined = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
-            Check.Success(combined)
-            Check.Contains(combined.Output, "1  ")
-            Check.Contains(combined.Output, "2  ")
-            Check.Contains(combined.Output.Replace("\r\n", " ").Replace("\n", " "), "previous storage")
-            Check.That(Check.Hash(Path.Combine(first, "run.json")) == firstBytes, "XDG discovery migrated old work")
-            temp.Env.Remove("XDG_STATE_HOME")
-            record["model"] = JsonValue.Create(String('x', 257))
-            File.WriteAllText(Path.Combine(first, "run.json"), record.ToJsonString())
-            let empty = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nq\n")
-            Check.Success(empty)
-            Check.Contains(empty.Output, "No readable saved contributions were found.")
-            Check.Contains(empty.Output, "tokate runs --json")
-            Check.That(!empty.Output.Contains("Saved contribution number"), "Empty list requested a selection")
-            for index in 0 ... 130 {
-                Directory.CreateDirectory(Path.Combine(root, "extra-" + index.ToString()))
-            }
-            let bounded = TestProcess.Run("/usr/bin/script", command, temp.Env, input: "3\nh\nq\n")
-            Check.Success(bounded)
-            Check.Contains(bounded.Output, "Showing the first 128 inspected entries.")
             Console.WriteLine(
-                "PASS offline saved contribution selection, cancellation, invalid and linked metadata, bounded discovery, private state preservation and action reset"
+                "PASS offline saved contribution names, invalid and linked metadata, ordering and private state preservation"
             )
         }
 

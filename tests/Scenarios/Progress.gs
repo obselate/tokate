@@ -17,7 +17,7 @@ internal class ProgressChecks {
                 return
             }
             if filter == "Tty" {
-                for mode in[]string{"tty", "no_color", "plain", "dumb", "cancel"} {
+                for mode in[]string{"tty", "no_color", "plain", "dumb"} {
                     Tty(binary, mode)
                 }
                 return
@@ -40,7 +40,7 @@ internal class ProgressChecks {
             } {
                 Failure(binary, scenario)
             }
-            for mode in[]string{"tty", "plain", "no_color", "dumb", "cancel"} {
+            for mode in[]string{"tty", "plain", "no_color", "dumb"} {
                 Tty(binary, mode)
             }
             Console.WriteLine(
@@ -234,18 +234,6 @@ internal class ProgressChecks {
             flow.Approve()
             test.Claim()
             flow.Temp.Env["TERM"] = "dumb"
-            let guided = TestTerminal.Pty(
-                binary,
-                []string{"work", "owner/project#1", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"},
-                flow.Temp,
-                80,
-                "unlimited\n1\nq\n"
-            )
-            Check.That(guided.Code == 1, guided.Output + guided.Error)
-            Check.Contains(guided.Output, "Review donation")
-            Check.Contains(guided.Output, "No time limit")
-            Check.Contains(guided.Output, "Unlimited coding is allowed.")
-            Check.Contains(guided.Output, "Timed donations and verification are limited to 60 minutes.")
             flow.NoInference()
             Check.Contains(
                 flow.Call(
@@ -385,14 +373,6 @@ internal class ProgressChecks {
             if mode == "no_color" {
                 flow.Temp.Env["NO_COLOR"] = ""
             }
-            if mode == "tty" || mode == "no_color" || mode == "cancel" {
-                let script = Path.Combine(flow.Temp.Root, "donation-view.py")
-                File.WriteAllText(script, TestResources.Template("donation-view.py"))
-                let result = TestProcess.Run("python3", []string{script, binary, run, mode}, flow.Temp.Env)
-                Check.Success(result)
-                Console.Write(result.Output)
-                return
-            }
             let command = "stty cols 80 rows 24; " +
                 Quote(binary) +
                 " work --run " +
@@ -410,7 +390,9 @@ internal class ProgressChecks {
             let visible = Regex.Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
             Check.Contains(visible, "Run completed. Run: " + run)
             Check.Contains(visible, "Next: tokate status --run " + run + " --json")
-            Check.That(!result.Output.Contains('\x1b'), "Plain progress contains escape codes")
+            if mode == "plain" || mode == "dumb" {
+                Check.That(!result.Output.Contains('\x1b'), "Plain progress contains escape codes")
+            }
         }
     }
 }

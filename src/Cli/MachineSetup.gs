@@ -34,19 +34,8 @@ internal class MachineSetup {
                 return true
             }
 
-            if !DonorSelection.Interactive(options) {
-                Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
-
-                return false
-            }
-
-            return WizardScreen.Choose(
-                "Install requirements",
-                message,
-                []string{"Install", "Cancel"},
-                "Choose Install to add the listed requirements. Choose Cancel to keep the computer unchanged.",
-                selected: 2
-            ) == 1
+            Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
+            return false
         }
 
         private func PackageManager() string {
@@ -176,11 +165,9 @@ internal class MachineSetup {
         }
 
         internal func TryFix(options Args, tools List[ToolCheck]) bool {
-            if !DonorSelection.Interactive(options) && !(options.Command == "doctor" && options.Get("fix") == "true") {
+            if options.Command != "doctor" || options.Get("fix") != "true" {
                 return false
             }
-
-            WizardScreen.Close()
 
             let manager = PackageManager()
             let packages = List[string]()
@@ -298,11 +285,9 @@ internal class MachineSetup {
                 return false
             }
 
-            if !DonorSelection.Interactive(options) && !(options.Command == "doctor" && options.Get("fix") == "true") {
+            if options.Command != "doctor" || options.Get("fix") != "true" {
                 return false
             }
-
-            WizardScreen.Close()
 
             if NixManaged() || NixHost() {
                 Terminal.Message(
@@ -320,46 +305,8 @@ internal class MachineSetup {
                 Terminal.Message("For an SDK installation, use --pi-root DIR --node FILE.", error: true)
             }
 
-            var choice = 2
-
-            if !(options.Command == "doctor" && options.Get("yes") == "true") {
-                if !DonorSelection.Interactive(options) {
-                    Terminal.Message(
-                        "Supply --harness-path FILE, or confirm installation with --fix --yes.",
-                        error: true
-                    )
-
-                    return false
-                }
-
-                choice = WizardScreen.Choose(
-                    "Set up " + name,
-                    "Use an existing installation or install the coding tool.",
-                    []string{"Use an existing path", "Install " + name, "Cancel"},
-                    "Use an existing installation if you have one. Otherwise install the tool, or cancel setup.",
-                    selected: 3
-                )
-            }
-
-            if choice == 1 {
-                let path = WizardScreen.Read(
-                    "Existing executable path",
-                    "",
-                    "Executable path",
-                    help: "Enter the full path to the existing executable. Example: /usr/local/bin/codex."
-                )
-
-                if path == "" {
-                    return false
-                }
-
-                options.Values["--harness-path"] = LocalPaths.RuntimePath(path)
-                Terminal.Message("Using --harness-path " + options.Need("harness-path"), error: true)
-
-                return true
-            }
-
-            if choice != 2 {
+            if options.Get("yes") != "true" {
+                Terminal.Message("Supply --harness-path FILE, or confirm installation with --fix --yes.", error: true)
                 return false
             }
 
@@ -400,7 +347,7 @@ internal class MachineSetup {
                     if code != 0 {
                         throw CliFailure(
                             "missing_tools",
-                            "The official Pi installer did not complete. Run interactive doctor pi --fix for its Node setup prompts; existing configuration was kept."
+                            "The official Pi installer did not complete. Run the official Pi installer for its Node setup prompts; existing configuration was kept."
                         )
                     }
 

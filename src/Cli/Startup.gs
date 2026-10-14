@@ -399,32 +399,6 @@ internal class Startup {
             }
 
             var selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
-            if selected == "" && DonorSelection.Interactive(options) &&
-                installed.Count > 0 &&
-                (
-                options.Get("set-default") == "true" || (options.Get("fix") == "true" && J.Text(saved, "harness") == "")
-            ) {
-                let labels = List[string]()
-
-                for tool in installed {
-                    labels.Add(tool.Name + (DonorDefaults.Provider(tool.Name) == "" ? " (external work)": ""))
-                }
-
-                labels.Add("Keep the current choice")
-
-                let index = WizardScreen.Choose(
-                    "Choose your default harness",
-                    "Choose a discovered harness or keep the current choice.",
-                    labels.ToArray(),
-                    "Choose the coding tool to use by default, or keep the current choice.",
-                    selected: labels.Count
-                )
-
-                if index <= installed.Count {
-                    selected = installed[index - 1].Name
-                }
-            }
-
             if selected != "" {
                 var choice ToolCheck? = nil
 

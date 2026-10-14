@@ -236,9 +236,9 @@ Execution keeps saved failure stages, interruption evidence and verification res
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor owner --auth --fix` |
+| `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor owner --auth --fix --yes` |
 | `Authentication is required with the appropriate account.` | `gh auth login` |
-| `GitHub settings were not changed` | `tokate init OWNER/REPO` |
+| `Missing GitHub settings. Pass --yes to apply the previewed changes.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
 
 ### Claim and work
 

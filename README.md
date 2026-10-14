@@ -38,11 +38,16 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 - **Before running:** [Understand data access and isolation](docs/security.md).
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
-Run `tokate` for guided donation, owner setup, repository status and saved work.
-`tokate work OWNER/REPO` runs approved issues until stopped. Add `--total` to cap the session.
-Use `tokate work OWNER/REPO stop` to stop. Bare `tokate work` uses the local GitHub remote.
-For one issue, use `tokate work 42` in a checkout or `tokate work OWNER/REPO#42` elsewhere. A repository link selects the loop. An issue link names one issue.
+Use plain CLI commands with flags or the GUI. Bare `tokate` prints help.
+Commands never prompt. A missing choice fails with `invalid_arguments` and names the required flag.
+`tokate work OWNER/REPO --yes` runs approved issues until stopped. Add `--total` to cap the session.
+Use `tokate work OWNER/REPO stop --yes` to stop. Bare `tokate work` uses the local GitHub remote.
+For one issue, use `tokate work 42 NAME --time 1h` in a checkout or `tokate work OWNER/REPO#42 NAME --time 1h` elsewhere. Supply a saved profile as `NAME` or use tool flags. A repository link selects the loop. An issue link names one issue.
 See the [positional arguments guide](docs/arguments.md) for references and command forms.
-Use `tokate help COMMAND` for exact options. Scripts can use `--json` without prompts.
+Use `tokate help COMMAND` for exact options and `--json` for structured results.
+Init requires policy choices as flags. Add `--yes` to apply its previewed GitHub Actions and branch protection changes.
+Approve existing issues with `tokate approve 42`. Create issues with `gh issue create` or the GUI.
+Doctor previews installations with `--fix`, applies them with `--fix --yes`, and accepts `--harness-path FILE` for an existing harness.
+Save donor choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
 
 [Website](https://tokate.dev/) · [Releases](https://github.com/obselate/tokate/releases) · [Issues](https://github.com/obselate/tokate/issues) · [MIT license](LICENSE)

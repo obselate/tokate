@@ -49,42 +49,6 @@ internal class ClaudeChecks {
                     )
                         .ToJsonString()
                 )
-                if mode == "normal" {
-                    flow.Temp.Env["TERM"] = "dumb"
-                    flow.Temp.Env["NO_COLOR"] = "1"
-                    let credentials = Path.Combine(profile, ".credentials.json")
-                    let original = File.ReadAllText(credentials)
-                    for authenticated in[]bool{true, false} {
-                        if !authenticated {
-                            File.Delete(credentials)
-                        }
-                        let cancelled = TestTerminal.Pty(
-                            binary,
-                            []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
-                            flow.Temp,
-                            100,
-                            "1\n1\nq\n"
-                        )
-                        Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
-                        Check.Contains(cancelled.Output, "Claude Code | Subscription")
-                        Check.Contains(
-                            cancelled.Output.Replace("\r\n", " "),
-                            authenticated ? "Review donation": "Sign in with Claude Code"
-                        )
-                        Check.That(
-                            !cancelled.Output.Contains("Profile directory"),
-                            "Wizard demanded a separate login profile"
-                        )
-                        Check.That(!cancelled.Output.Contains("sole-use"), "Wizard demanded sole-use authentication")
-                        Check.That(
-                            !cancelled.Output.Contains("Uses your Codex subscription"),
-                            "Claude wizard claimed Codex billing"
-                        )
-                        flow.NoInference()
-                        flow.NoPr()
-                    }
-                    File.WriteAllText(credentials, original)
-                }
                 flow.Call(
                     []string{
                         "defaults",

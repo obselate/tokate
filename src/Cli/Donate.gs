@@ -29,12 +29,6 @@ internal class Donate {
         internal func Stop(options Args) int32 {
             let repo = options.Need("repo")
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
-            if options.Get("yes") != "true" {
-                if WizardScreen.Choose("Stop donating?", repo, []string{"Stop", "Cancel"}, selected: 2) != 1 {
-                    throw CliFailure("confirmation_required", "Donation stop was not confirmed")
-                }
-            }
-            WizardScreen.Close()
             Directory.CreateDirectory(directory)
             if Running(directory) {
                 File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
@@ -187,12 +181,6 @@ internal class Donate {
                     "\nTask instruction:\n" +
                     prompt
             }
-            if options.Get("yes") != "true" {
-                if WizardScreen.Choose(repo, consent, []string{"Start", "Cancel"}, selected: 2) != 1 {
-                    throw CliFailure("confirmation_required", "Donation start was not confirmed")
-                }
-            }
-            WizardScreen.Close()
             Terminal.Message(consent, error: true)
             options.Values["--yes"] = "true"
             for key in[]string{"harness", "provider", "model", "effort"} {

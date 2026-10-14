@@ -13,7 +13,6 @@ internal class Args {
     internal var Subject string = ""
     internal var Run string = ""
     internal var Attempts List[SavedRun] = List[SavedRun]()
-    internal var Guided bool
     internal var SavedDefaults JsonElement
     internal var HarnessFromDefault bool
 
@@ -111,7 +110,7 @@ internal class Args {
         let value = Get(key)
 
         if value == "" {
-            throw Exception("Required: " + Cli.Label(key))
+            throw CliFailure("invalid_arguments", "Required: " + Cli.Label(key))
         }
 
         return value

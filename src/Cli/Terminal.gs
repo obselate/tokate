@@ -18,14 +18,12 @@ internal class TerminalProgress : IDisposable {
     private let Budget RuntimeBudget
     private let Total RuntimeBudget?
     private let Interactive bool
-    private let Live bool
 
     internal init(phase string, budget RuntimeBudget, total RuntimeBudget? = nil) {
         Phase = Terminal.Clean(phase).Replace('\n', ' ')
         Budget = budget
         Total = total
-        Live = DonationView.Start()
-        Interactive = !Live && Terminal.Rich(true) && Terminal.Width(true) >= 80
+        Interactive = Terminal.Rich(true) && Terminal.Width(true) >= 80
         Draw()
         go Update()
     }
@@ -33,9 +31,7 @@ internal class TerminalProgress : IDisposable {
     private func Draw() {
         let value = Phase + ": " + Budget.Status() + (Total == nil ? "": "; total " + (Total?.Left() ?? "") + " left")
 
-        if Live {
-            DonationView.Status(value)
-        } else if Interactive {
+        if Interactive {
             let width = Terminal.Width(true) - 1
 
             Console.Error.Write("\r\x1b[2K" + value.Substring(0, Math.Min(width, value.Length)))
@@ -46,7 +42,7 @@ internal class TerminalProgress : IDisposable {
 
     private func Update() {
         try {
-            let interval int32 = Live ? 1: 5
+            let interval int32 = 5
 
             while true {
                 using let tick = after(TimeSpan.FromSeconds(interval))
@@ -189,16 +185,6 @@ internal class Terminal {
         }
 
         internal func Message(text string, color string = "green", error bool = false) {
-            if DonationView.Active() {
-                DonationView.Append(text)
-
-                return
-            }
-
-            if WizardScreen.Pending(text) {
-                return
-            }
-
             let stderr = error || PublicOutput.Enabled
             let value = Clean(PublicOutput.Enabled ? PublicOutput.Prose(text): text)
             let width = (stderr ? Console.IsErrorRedirected: Console.IsOutputRedirected) ? int32.MaxValue: Width(stderr)
@@ -436,14 +422,6 @@ internal class Terminal {
         internal func Help(command string = "") {
             Heading(command == "" ? "Commands": "Command: " + command)
             Message(Cli.Help(command, Width()), "default")
-        }
-
-        internal func InteractiveHeading() {
-            if Rich() && Width() >= 40 {
-                Message("--< tokate", "green")
-            } else {
-                Message("tokate", "default")
-            }
         }
 
         private func StatusAction(next JsonElement) {

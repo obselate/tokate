@@ -229,23 +229,6 @@ internal class PiChecks {
             }
             catalog.Metadata = ""
             flow.Approve()
-            flow.Temp.Env["TERM"] = "dumb"
-            flow.Temp.Env["NO_COLOR"] = "1"
-            for modelChoice in[]string{"1\n", "2\nfixture-model\n"} {
-                let guided = TestTerminal.Pty(
-                    binary,
-                    []string{"work", "owner/project#1", "--time", "60s", "--plain"},
-                    flow.Temp,
-                    100,
-                    "1\n" + catalog.Endpoint + "\n" + modelChoice + "1\nq\n"
-                )
-                Check.That(guided.Code == 1, guided.Output + guided.Error)
-                Check.Contains(guided.Output, "Enter another model ID")
-                Check.Contains(guided.Output, "Review donation")
-                Check.Contains(guided.Output, "fixture-model / absent")
-                flow.NoInference()
-                flow.NoPr()
-            }
             flow.NoInference()
             Console.WriteLine("PASS Pi endpoint context aliases and invalid metadata without inference")
             File.Delete(Path.Combine(flow.Bin, "pi"))
@@ -520,20 +503,6 @@ internal class PiChecks {
                     rejected[Array.IndexOf(rejected, "--effort") + 1] = unsupportedEffort
                     Check.Contains(flow.Flow.Call(rejected, 1).Error, "does not support the selected reasoning effort")
                 }
-                flow.Flow.Temp.Env["TERM"] = "dumb"
-                flow.Flow.Temp.Env["NO_COLOR"] = "1"
-                let guided = TestTerminal.Pty(
-                    binary,
-                    []string{"work", "owner/project#1"},
-                    flow.Flow.Temp,
-                    80,
-                    "1\n1\n1\n" + endpoint + "\n1\n1\nq\n"
-                )
-                Check.That(guided.Code == 1, guided.Output + guided.Error)
-                Check.Contains(guided.Output, "Reasoning effort")
-                Check.Contains(guided.Output, "Review donation")
-                Check.Contains(guided.Output, "synthetic/model:exact / high")
-                flow.Flow.NoInference()
                 flow.Flow.Call(
                     []string{
                         "defaults",
@@ -658,11 +627,7 @@ internal class PiChecks {
                 flow.Flow.Temp.Env["TERM"] = "xterm-256color"
                 worked = TestTerminal.Pty(binary, work.ToArray(), flow.Flow.Temp, 100)
                 Check.Success(worked)
-                Check.Contains(worked.Output, "tokate / Donation")
-                Check.Contains(worked.Output, "bash: setsid sh")
-                Check.Contains(worked.Output, "Assistant: Changes: synthetic edits.")
                 Check.Contains(worked.Output, "Verification 1:")
-                Check.Contains(worked.Output, "\x1b[?1049l")
             } else {
                 worked = flow.Flow.Call(work.ToArray(), success ? 0: 1)
             }

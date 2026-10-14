@@ -7,11 +7,6 @@ import System.Text.Json
 
 internal class DonorSelection {
     shared {
-        internal func Interactive(args Args) bool -> !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
-            !Console.IsInputRedirected &&
-            !Console.IsOutputRedirected &&
-            !Console.IsErrorRedirected
-
         internal func Supported(value JsonElement) bool ->
         (J.Text(value, "harness") == "codex" && J.Text(value, "provider") == "openai") ||
             (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions") ||
@@ -94,7 +89,8 @@ internal class DonorSelection {
                 let allowed = policy.Providers("omp")
 
                 if allowed.Count != 1 {
-                    throw Exception(
+                    throw CliFailure(
+                        "invalid_arguments",
                         "Choose --provider for OMP: the owner policy allows " +
                             (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
                             ". No inference started."
@@ -197,28 +193,7 @@ internal class DonorSelection {
                     "Saved default harness/provider does not match the selected codex/openai harness."
                 }
 
-                if !Interactive(args) {
-                    throw Exception(reason + guidance)
-                }
-
-                Terminal.Message(reason + " Choose an eligible pair (availability unknown):", "yellow", true)
-
-                let eligible = List[JsonElement](choices.Values)
-                var selected int32
-
-                try {
-                    selected = ModelChecklist.Pick(
-                        List[string](choices.Keys).ToArray(),
-                        help: "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
-                    )
-                } catch (error OperationCanceledException) {
-                    throw Exception("Explicit donor choice was not supplied. No inference started.")
-                }
-
-                model = J.Text(eligible[selected], "model")
-                effort = J.Text(eligible[selected], "effort")
-                source = "interactive donor choice"
-                availability = "unknown"
+                throw CliFailure("invalid_arguments", reason + guidance)
             }
 
             args.Values["--model"] = model
@@ -254,39 +229,6 @@ internal class DonorSelection {
         }
 
         internal func Confirm(args Args, selection JsonElement) {
-            if args.Guided && args.Get("yes") != "true" {
-                Terminal.Heading(args.Command == "claim" ? "Confirm reservation request": "Confirm donation")
-                Terminal.Row("Task", args.Need("repo") + " #" + args.Need("issue"))
-                Terminal.Row("Tool", J.Text(selection, "harness") + " / " + J.Text(selection, "provider"))
-                Terminal.Row("Model", J.Text(selection, "model") + " / " + J.Text(selection, "effort"))
-                Terminal.Row(
-                    "Budget",
-                    (
-                        args.Get("unlimited") == "true" ? "Unlimited coding; ": args.Need("seconds") +
-                            " seconds total; "
-                    ) +
-                        args.Get("verification-reserve", "0") + " reserved for verification"
-                )
-                Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
-                Terminal.Row("Availability", J.Text(selection, "availability"))
-
-                if WizardScreen.Choose(
-                    "Confirm donation",
-                    args.Command == "claim" ? "Post this claim without inference?": "Post this claim and start this donation when accepted?",
-                    []string{"Post", "Cancel"},
-                    "Post the reservation request without running the tool, or cancel. A donation starts only after the owner accepts it.",
-                    selected: 2
-                ) != 1 {
-                    throw Exception("Donation was not confirmed. No claim or inference was started.")
-                }
-
-                if args.Command == "work" {
-                    args.Values["--yes"] = "true"
-                }
-
-                return
-            }
-
             let source = J.Text(selection, "source")
 
             if args.Get("yes") == "true" ||
@@ -298,27 +240,10 @@ internal class DonorSelection {
 
             let pair = J.Text(selection, "model") + " / " + J.Text(selection, "effort")
 
-            if !Interactive(args) {
-                throw Exception(
-                    "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
-                )
-            }
-
-            if WizardScreen.Choose(
-                "Confirm inference",
-                "Use your allowance with " + J.Text(selection, "harness") + "/" + J.Text(selection, "provider") +
-                    ": " +
-                    pair +
-                    " (" +
-                    J.Text(selection, "availability") + ")?",
-                []string{"Use", "Cancel"},
-                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing.",
-                selected: 2
-            ) != 1 {
-                throw Exception("Inference was not confirmed. No inference started.")
-            }
-
-            args.Values["--yes"] = "true"
+            throw CliFailure(
+                "invalid_arguments",
+                "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
+            )
         }
 
         internal func Revalidate(run Data, policy Policy) {

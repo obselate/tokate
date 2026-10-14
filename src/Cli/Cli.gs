@@ -15,12 +15,12 @@ internal class CliOption(name string, value string, description string, choices 
     internal let Choices string = choices
 
     internal func Describe(command string) string -> switch Name {
+        case "yes" when command == "init": "Apply the listed GitHub Actions settings and branch protection changes"
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
-        case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
@@ -96,14 +96,14 @@ internal class Cli {
                 "Existing Claude configuration directory; defaults to your normal Claude profile"
             ),
             CliOption("policy", "FILE", "Repository policy; default: .github/tokate.json in the selected checkout"),
-            CliOption(
-                "set-default",
-                "",
-                "Choose an installed harness as the default; name the harness for a noninteractive choice"
-            ),
+            CliOption("set-default", "", "Save the installed harness named with --harness as the default"),
             CliOption("trust", "", "Request trusted donor access instead of access to one issue"),
             CliOption("auth", "", "Explicitly check tool-owned authentication status; never print credential values"),
-            CliOption("fix", "", "Offer installation or an existing path for missing prerequisites"),
+            CliOption(
+                "fix",
+                "",
+                "Preview missing prerequisite installations; --yes applies them; use --harness-path for an existing harness"
+            ),
             CliOption(
                 "model-policy",
                 "MODE",
@@ -125,9 +125,6 @@ internal class Cli {
             CliOption("required-checks", "JSON", "Required GitHub check names as a JSON array"),
             CliOption("reservation-time", "TIME", "Reservation lifetime from 5m to 7d"),
             CliOption("pr-text", "TEXT", "Optional literal owner text appended to PRs; no template expressions"),
-            CliOption("title", "TEXT", "Title of a new issue to create and approve; excludes ISSUE"),
-            CliOption("body", "TEXT", "Plain text description of the new issue; excludes --body-file"),
-            CliOption("body-file", "FILE", "Read the new issue description from a file; excludes --body"),
             CliOption(
                 "close-message",
                 "TEXT",
@@ -335,21 +332,21 @@ internal class Cli {
             ),
             CliCommand(
                 "init",
-                "path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive",
+                "path,model-policy,models,allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive,yes",
                 "repo",
                 "Write owner policy and a pinned workflow into a checkout; starts from the policy on GitHub and options change only what they name.",
                 "[OWNER/REPO] [--path DIR] [options]",
-                "init owner/project",
-                effects: "local_read local_write github_read",
+                "init owner/project --model-policy unrestricted --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'",
+                effects: "local_read local_write github_read github_write",
                 target: "repo",
                 group: "own"
             ),
             CliCommand(
                 "approve",
-                "base-branch,yes,title,body,body-file,non-interactive",
-                "repo",
-                "Create or approve an issue for donors with a GitHub record and label; no donor assignment.",
-                "[ISSUE | --title TEXT [--body TEXT | --body-file FILE]] [--base-branch BRANCH] [--non-interactive] [--yes]",
+                "base-branch,yes,non-interactive",
+                "repo,issue",
+                "Approve an existing issue for donors with a GitHub record and label; create issues with gh issue create or the GUI.",
+                "ISSUE [--base-branch BRANCH] [--yes]",
                 "approve 42",
                 effects: "local_read github_read github_write",
                 target: "issue",
@@ -401,7 +398,7 @@ internal class Cli {
             ),
             CliCommand(
                 "doctor",
-                "repo,auth,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "repo,auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
                 "",
                 "Check prerequisites or owner repository health; repository checks are read-only; no inference.",
                 "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
@@ -1024,7 +1021,7 @@ internal class Cli {
             if name == "" {
                 text.AppendLine("Tokate " + ApplicationInfo.Version() + " (toh-KAH-teh)")
                 text.AppendLine("Donate AI usage to approved GitHub issues.\n\nUsage: tokate <command> [options]\n")
-                text.AppendLine("Run tokate for guided setup, donations and saved work.\n")
+                text.AppendLine("Run tokate help COMMAND for flags, or use the GUI.\n")
 
                 let more = List[string]()
 
@@ -1159,8 +1156,8 @@ internal class Cli {
 
                 if name == "work" || name == "claim" {
                     text.AppendLine(
-                        name == "work" ? "Bare work uses the local GitHub remote. Repository work uses tool flags or a default profile and one confirmation. Named issues guide missing tool and budget choices. Redirected repository work and --json require --yes.":
-                        "Name an issue. Missing tool and budget choices are guided in a terminal. Redirected input and --json never prompt."
+                        name == "work" ? "Bare work uses the local GitHub remote. Repository work uses tool flags or a default profile and requires --yes. Named issues require explicit tool and budget choices or a saved profile.":
+                        "Name an issue and supply tool and budget flags or a saved profile. Commands never prompt."
                     )
                 }
 
@@ -1204,7 +1201,7 @@ internal class Cli {
             return numbers
         }
 
-        internal func Validate(args Args, guided bool = false) {
+        internal func Validate(args Args) {
             let command = Find(args.Command)
 
             if RepositoryWork(args) && !args.Help {
@@ -1218,8 +1215,8 @@ internal class Cli {
                         "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
                     )
                 }
-                if !DonorSelection.Interactive(args) && args.Get("yes") != "true" {
-                    throw CliFailure("confirmation_required", "Noninteractive repository work requires --yes")
+                if args.Get("yes") != "true" {
+                    throw CliFailure("invalid_arguments", "Repository work requires --yes")
                 }
             }
             if args.Command == "claim" && args.Get("issue") == "" && !args.Help {
@@ -1235,20 +1232,6 @@ internal class Cli {
             }
             if RepositoryWork(args) && args.Get("unlimited") == "true" && !args.Help {
                 throw Exception("Repository work uses --time and --total, not --unlimited")
-            }
-
-            if args.Command == "approve" {
-                if args.Get("issue") != "" && args.Get("title") + args.Get("body") + args.Get("body-file") != "" {
-                    throw Exception("ISSUE excludes --title, --body and --body-file")
-                }
-
-                if args.Get("body") != "" && args.Get("body-file") != "" {
-                    throw Exception("--body and --body-file are mutually exclusive")
-                }
-
-                if !args.Help && args.Get("issue") == "" && !DonorSelection.Interactive(args) {
-                    args.Need("title")
-                }
             }
 
             if !args.Help {
@@ -1267,7 +1250,7 @@ internal class Cli {
                     throw Exception("--unlimited requires fresh managed work and excludes --time and --continue-from")
                 }
 
-                if !guided && !args.Help {
+                if !args.Help {
                     args.Need("verification-reserve")
                 }
             }
@@ -1287,9 +1270,8 @@ internal class Cli {
                     throw Exception("Repository diagnostics require doctor owner and are read-only")
                 }
 
-                if args.Get("set-default") == "true" && args.Get("harness") == "" &&
-                    (args.Get("json") == "true" || !DonorSelection.Interactive(args)) {
-                    throw Exception("Name the harness when setting a default noninteractively")
+                if args.Get("set-default") == "true" && args.Get("harness") == "" {
+                    args.Need("harness")
                 }
 
                 if args.Get("yes") == "true" && args.Get("fix") != "true" {
@@ -1515,10 +1497,6 @@ internal class Cli {
             }
 
             if args.Get("run") != "" && command.SupportsSavedRun {
-                return
-            }
-
-            if guided && (args.Command == "work" || args.Command == "claim") && args.Get("continue-from") == "" {
                 return
             }
 

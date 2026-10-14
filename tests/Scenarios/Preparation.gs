@@ -405,25 +405,13 @@ internal class PreparationChecks {
             let run = Directory.GetDirectories(root)[0]
             let path = Path.Combine(run, "run.json")
             let before = File.ReadAllText(path)
-            let result = TestTerminal.Pty(binary, []string{}, flow.Temp, 80, "3\n1\n2\n1\n\n3\nq\n")
-            Check.Success(result)
-            Check.Contains(result.Output, "Manage reservation")
-            Check.Contains(result.Output, "Pause reservation")
+            let result = flow.Call([]string{"pause", "--run", run}, 8)
             Check.Contains(result.Output, "Reservation request pending")
             flow.Reload()
-            Check.That(
-                Check.Text(flow.State["request_count"]) == "1",
-                "Reservation menu posted more than the selected request"
-            )
+            Check.That(Check.Text(flow.State["request_count"]) == "1", "Pause posted more than one request")
             flow.CoordinatePosted()
             flow.Call([]string{"pause", "--run", run})
-            Check.That(File.ReadAllText(path) == before, "Guided reservation changed execution history")
-            let paused = TestTerminal.Pty(binary, []string{}, flow.Temp, 80, "3\n1\n2\n4\n3\nq\n")
-            Check.Success(paused)
-            Check.Contains(paused.Output, "Resume reservation")
-            Check.That(!paused.Output.Contains("Pause reservation"), "Paused menu still offered pause")
-            flow.Reload()
-            Check.That(Check.Text(flow.State["request_count"]) == "1", "Canceled reservation menu posted a request")
+            Check.That(File.ReadAllText(path) == before, "Pause changed execution history")
             flow.NoInference()
             flow.NoPr()
         }
@@ -1522,94 +1510,43 @@ internal class PreparationChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let flow = test.Flow
-            flow.Temp.Env["TERM"] = "dumb"
-            flow.Temp.Env["NO_COLOR"] = "1"
             flow.Call([]string{"defaults", "set", "ready", "--model", "gpt-6.1-sol", "--effort", "high"})
-            flow.Call([]string{"defaults", "set", "rejected", "--model", "not-allowed", "--effort", "high"})
             flow.Temp.Env["XDG_STATE_HOME"] = Path.Combine(flow.Temp.Root, "new state")
-            let runRoot = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
-            let args = []string{"work", "owner/project#1"}
-            let cancelled = TestTerminal.Pty(binary, args, flow.Temp, 80, "q\n")
-            Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
-            Check.Contains(cancelled.Output, "Set your limit")
-            Check.Contains(cancelled.Output, "Cancelled")
-            let declined = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\nq\n")
-            Check.That(declined.Code == 1, declined.Output + declined.Error)
-            Check.Contains(declined.Output, "Review donation")
-            Check.Contains(declined.Output, "owner/project #1")
-            Check.Contains(declined.Output, "1 minutes")
-            Check.Contains(declined.Output, "Cancelled")
-            Check.That(!declined.Output.Contains("rejected |"), "Guided menu offered an owner-rejected profile")
-            let home = TestTerminal.Pty(binary, []string{"work", "owner/project#1"}, flow.Temp, 80, "1\n1\n1\nh\nq\n")
-            Check.Success(home)
-            Check.Contains(home.Output, "Review donation")
-            Check.Contains(home.Output, "Welcome")
+            let root = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
+            let missing = TestTerminal.Pty(
+                binary,
+                []string{"work", "owner/project#1", "ready"},
+                flow.Temp,
+                80,
+                "1\n1\n"
+            )
+            Check.That(missing.Code == 1, missing.Output + missing.Error)
+            Check.Contains(missing.Output, "--time")
             flow.Reload()
             Check.That(
                 flow.State["request_count"] == nil && flow.State["fork_creations"] == nil,
-                "Cancelled wizard wrote remotely"
+                "Missing budget wrote remotely"
             )
-            Check.That(!Directory.Exists(runRoot), "Cancelled wizard created a run")
+            Check.That(!Directory.Exists(root), "Missing budget created a run")
             flow.NoInference()
-            {
-                using let baseline = FixtureSnapshot(flow.Temp.Root)
-                for limit in[]int32{14400, 3659} {
-                    baseline.Restore()
-                    let path = Path.Combine(flow.Upstream, ".github/tokate.json")
-                    let policy = Check.Json(File.ReadAllText(path))
-                    policy["max_seconds"] = JsonValue.Create(limit)
-                    File.WriteAllText(path, policy.ToJsonString())
-                    flow.Commit("Set owner budget")
-                    flow.Approve()
-                    let budget = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\nq\n")
-                    Check.That(budget.Code == 1, budget.Output + budget.Error)
-                    Check.Contains(budget.Output, "Owner limit: " + (limit / 60).ToString() + " minutes")
-                    Check.Contains(budget.Output, "Review donation")
-                    Check.That(
-                        !budget.Output.Contains("Unlimited coding"),
-                        "Wizard advertised forbidden unlimited coding"
-                    )
-                    let refused = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n240\n1\nq\n")
-                    Check.That(refused.Code == 1, refused.Output + refused.Error)
-                    Check.Contains(refused.Output, "Use positive whole minutes.")
-                    Check.That(!refused.Output.Contains("Review donation"), "Wizard accepted an excessive budget")
-                    flow.NoInference()
-                }
-                baseline.Restore()
-                flow.Reload()
-            }
-            let owner = TestTerminal.Pty(binary, []string{}, flow.Temp, 60, "2\nq\n")
-            Check.Success(owner)
-            Check.Contains(owner.Output, "Project")
-            Check.That(
-                !Directory.Exists(Path.Combine(flow.Temp.Root, ".github")),
-                "Cancelled owner setup wrote configuration"
+            let accepted = flow.Call(
+                []string{"claim", "owner/project#1", "ready", "--time", "2m", "--verify-time", "1m"},
+                8
             )
-            flow.Call([]string{"work", "owner/project", "--non-interactive"}, 1)
-            flow.Call([]string{"work", "owner/project", "--json"}, 1)
-            let accepted = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\n1\n")
-            Check.That(accepted.Code == 8, accepted.Output + accepted.Error)
-            let runs = Directory.GetDirectories(runRoot)
-            Check.That(runs.Length == 1, "Guided claim did not use the selected state root")
-            let run = runs[0]
-            let pending = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
-            Check.That(Check.Text(pending["state"]) == "claim_pending", "Guided work lost pending state")
+            let runs = Directory.GetDirectories(root)
+            Check.That(runs.Length == 1, "Claim did not use the selected state root")
+            let pending = Check.Json(File.ReadAllText(Path.Combine(runs[0], "run.json")))
+            Check.That(Check.Text(pending["state"]) == "claim_pending", "Claim lost pending state")
             Check.That(
                 Check.Text(pending["seconds"]) == "120" && Check.Text(pending["verification_reserve"]) == "60",
-                "Guided budget changed"
+                "Claim budget changed"
             )
             flow.Reload()
-            let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing guided claim")
-            Check.That(Check.Text(flow.State["request_count"]) == "1", "Guided work posted more than once")
-            flow.NoInference()
+            Check.That(Check.Text(flow.State["request_count"]) == "1", "Claim posted more than once")
+            let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing claim")
             test.Coordinate(PostedEvent(test, comment))
-            let fresh = []string{"work", "owner/project#1", "ready"}
-            let unavailable = TestTerminal.Pty(binary, fresh, flow.Temp, 40, "1\n1\n1\n1\n")
-            Check.That(unavailable.Code == 1, unavailable.Output + unavailable.Error)
-            Check.Contains(
-                unavailable.Output.Replace("\r\n", " ").Replace("\n", " "),
-                "An unexpired reservation already owns"
-            )
+            let unavailable = flow.Call([]string{"claim", "owner/project#1", "ready", "--time", "2m"}, 1)
+            Check.Contains(unavailable.Error, "An unexpired reservation already owns")
             flow.NoInference()
             flow.NoPr()
         }

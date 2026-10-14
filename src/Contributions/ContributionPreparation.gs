@@ -284,7 +284,7 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
-            if args.Command == "work" || args.Guided {
+            if args.Command == "work" {
                 DonorSelection.Confirm(args, J.Get(run.Element(), "selection"))
             }
 

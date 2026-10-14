@@ -383,91 +383,12 @@ internal class DonorSelectionChecks {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             ExpandPolicy(flow)
-            let command = "'" + binary + "' select owner/project --plain"
-            let result = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                flow.Temp.Env,
-                "?\n2\n"
-            )
-            Check.Success(result)
-            Check.Contains(
-                result.Output,
-                "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
-            )
-            Check.Contains(result.Output, "Model: gpt-6.1-sol\r\n")
-            Check.Contains(result.Output, "Effort: xhigh\r\n")
-            Check.Contains(result.Output, "Source: interactive donor choice\r\n")
-            Check.That(!File.Exists(Settings(flow)), "Interactive choice saved preferences implicitly")
-            flow.Temp.Env["TERM"] = "xterm-256color"
-            let explained = TestTerminal.Pty(binary, []string{"select", "owner/project"}, flow.Temp, 160, "?\x1b[B\n")
-            Check.Success(explained)
-            Check.Contains(
-                explained.Output,
-                "Choose a model and effort allowed by the project and supported by your tool."
-            )
-            Check.Contains(explained.Output, "Availability is not checked before you start.")
-            Check.Contains(explained.Output, "Effort: xhigh")
-            flow.Temp.Env.Remove("TERM")
-            let refused = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                flow.Temp.Env,
-                "\nq\n"
-            )
-            Check.That(refused.Code == 1, "Blank input accepted the first eligible pair")
-            Check.Contains(refused.Output, "No inference started")
-            let noninteractive = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command + " --non-interactive", "/dev/null"},
-                flow.Temp.Env,
-                "1\n"
-            )
-            Check.That(noninteractive.Code == 1, "Noninteractive selection accepted terminal input")
-            Check.Contains(noninteractive.Output, "Explicit donor choice required")
+            let refused = TestTerminal.Pty(binary, []string{"select", "owner/project", "--plain"}, flow.Temp, 80, "1\n")
+            Check.That(refused.Code == 1, "Terminal input supplied a missing model choice")
+            Check.Contains(refused.Output, "--model")
+            Check.Contains(refused.Output, "--effort")
             flow.NoInference()
             flow.NoPr()
-            flow.Approve()
-            let work = "'" + binary + "' work owner/project#1 --runs '" + Path.Combine(flow.Temp.Root, "runs") +
-                "' --harness codex --time 30s --plain"
-            let declined = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", work, "/dev/null"},
-                flow.Temp.Env,
-                "1\n?\n\n"
-            )
-            Check.Contains(
-                declined.Output,
-                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing."
-            )
-            Check.That(declined.Code == 1, "Declined confirmation launched work")
-            Check.Contains(declined.Output, "Inference was not confirmed")
-            flow.NoInference()
-            flow.NoPr()
-            flow.Mode("model_failure")
-            let confirmed = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", work, "/dev/null"},
-                flow.Temp.Env,
-                "1\n1\n"
-            )
-            Check.That(confirmed.Code == 8, "Confirmed claim did not wait for owner coordination")
-            Check.Contains(confirmed.Output, "Claim pending")
-            flow.NoInference()
-            flow.CoordinatePosted()
-            let run = Directory.GetDirectories(Path.Combine(flow.Temp.Root, "runs"))[0]
-            Check.Contains(flow.Call([]string{"work", "--run", run, "--yes"}, 1).Error, "Codex failed")
-            flow.Reload()
-            Check.That(
-                Check.Text(flow.State["exec_count"]) == "1",
-                "Confirmed terminal work retried or did not execute"
-            )
-            Check.That(
-                Check.Text(flow.State["requested_model"]) == "gpt-6.1-sol" && Check.Text(
-                    flow.State["requested_effort"]
-                ) == "model_reasoning_effort=\"high\"",
-                "Confirmation forwarded the wrong tuple"
-            )
         }
 
         private func VersionTwo(binary string, unrestricted bool = false) {
@@ -559,24 +480,6 @@ internal class DonorSelectionChecks {
                 Check.Contains(Check.Text(rejected["error"]), "known model")
             }
             flow.Call([]string{"defaults", "remove"})
-            let command = "'" + binary + "' select owner/project --plain"
-            let chosen = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                flow.Temp.Env,
-                "1\n"
-            )
-            Check.Success(chosen)
-            Check.Contains(chosen.Output, "Model: gpt-6-sol\r\n")
-            Check.Contains(chosen.Output, "Effort: high\r\n")
-            Check.Contains(chosen.Output, "Source: interactive donor choice\r\n")
-            let cancelled = TestProcess.Run(
-                "/usr/bin/script",
-                []string{"-q", "-e", "-c", command, "/dev/null"},
-                flow.Temp.Env,
-                "\nq\n"
-            )
-            Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
             flow.NoInference()
             flow.NoPr()
 
@@ -768,7 +671,7 @@ internal class DonorSelectionChecks {
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 flow.Temp.Env
             )
-            Check.Envelope(terminal, "select", "error", "command_failed")
+            Check.Envelope(terminal, "select", "error", "invalid_arguments")
             Check.That(!terminal.Output.Contains("Choice number"), "JSON terminal selection prompted")
             flow.NoInference()
         }
@@ -852,7 +755,7 @@ internal class DonorSelectionChecks {
                     )
                 } else if selected == "InteractiveChoices" {
                     InteractiveChoices(binary)
-                    Console.WriteLine("PASS actual terminal selection and confirmation; zero inference before consent")
+                    Console.WriteLine("PASS terminal selection requires flags; zero inference before consent")
                 } else {
                     throw Exception("Unknown selection test group")
                 }
@@ -873,7 +776,7 @@ internal class DonorSelectionChecks {
             MissingSelection(binary)
             Console.WriteLine("PASS missing saved selection is refused before inference")
             InteractiveChoices(binary)
-            Console.WriteLine("PASS actual terminal selection and confirmation; zero inference before consent")
+            Console.WriteLine("PASS terminal selection requires flags; zero inference before consent")
             VersionTwo(binary)
             ModelPolicy(binary)
             Console.WriteLine("PASS unrestricted explicit/default/terminal selection, known controls and no fallback")

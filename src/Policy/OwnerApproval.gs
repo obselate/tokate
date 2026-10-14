@@ -9,73 +9,14 @@ internal class OwnerApproval {
     shared {
         internal func Approve(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            var number = args.Get("issue") == "" ? 0: args.Number("issue")
-            var title = args.Get("title")
-            var body = args.Get("body-file") == "" ? args.Get("body"): File.ReadAllText(args.Need("body-file"))
-
-            if number == 0 && title == "" {
-                while title == "" {
-                    title = WizardScreen.Read(
-                        "Write an issue",
-                        repo,
-                        "Title",
-                        help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
-                    )
-                }
-
-                if args.Get("body") == "" && args.Get("body-file") == "" {
-                    let lines = List[string]()
-
-                    while true {
-                        let line = WizardScreen.Read(
-                            "Describe the issue",
-                            "Title: " + title + "\n\n" + String.Join("\n", lines),
-                            "Description (Enter on an empty line finishes)",
-                            help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
-                        )
-
-                        if line == "" {
-                            break
-                        }
-
-                        lines.Add(line)
-                    }
-
-                    body = String.Join("\n", lines)
-                }
-
-                if WizardScreen.Choose(
-                    "Review issue",
-                    repo + "\n\nTitle: " + title + "\n\nDescription:\n" + body,
-                    []string{"Create and approve", "Cancel"},
-                    "Create and approve opens the issue and approves it for donors. Cancel creates nothing."
-                ) == 2 {
-                    return
-                }
-            }
-
-            WizardScreen.Close()
-
+            let number = args.Number("issue")
             let info = RepositoryAccess.RequireOwner(repo)
-            var issue = number == 0 ? default(JsonElement): GitHub.Issue(repo, number)
+            let issue = GitHub.Issue(repo, number)
             let approval = Capture(args, info, issue)
             let firstApproval = !PublicOutput.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
             )
                 .GetArrayLength() == 0
-
-            if number == 0 {
-                issue = GitHub.Api("repos/" + repo + "/issues", map[string, Object?]{"title": title, "body": body})
-                args.Values["--issue"] = J.Number(issue, "number").ToString()
-                number = args.Number("issue")
-                PublicOutput.ResultData = map[string, Object?]{
-                    "repo": repo,
-                    "issue": number,
-                    "issue_url": J.Text(issue, "html_url")
-                }
-
-                Terminal.Message(J.Text(issue, "html_url"))
-            }
 
             let label = GitHub.Api("repos/" + repo + "/labels/tokate%3Aapproved", missing: true)
 

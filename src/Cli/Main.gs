@@ -23,16 +23,8 @@ func Main(args[]string) int32 {
     var exitCode int32
 
     try {
-        if args.Length == 0 && Interactive.Available() {
-            validated = true
-
-            return Interactive.Run()
-        }
-
         options = Args(args)
         traffic = options.Get("traffic") == "true"
-        Cli.Validate(options, guided: DonorSelection.Interactive(options))
-        GuidedWork.Fill(options)
         Cli.Validate(options)
         validated = true
         PublicOutput.Command = options.Command
@@ -57,14 +49,7 @@ func Main(args[]string) int32 {
                 options.Command == "checks" ? "verification_failed": "command_failed"
             )
         }
-    } catch (error WizardHome) {
-        DonationView.Close()
-        WizardScreen.Close()
-
-        return Interactive.Run()
     } catch (error Exception) {
-        DonationView.Close()
-        WizardScreen.Close()
         exitCode = 1
         code = !validated ? "invalid_arguments": PublicOutput.FailureCode
 
@@ -120,9 +105,6 @@ func Main(args[]string) int32 {
             }
         }
     } finally {
-        DonationView.Close()
-        WizardScreen.Close()
-
         if traffic {
             ApiTransport.Report()
         }

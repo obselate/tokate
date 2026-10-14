@@ -1017,7 +1017,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Check.That(declined.Code == 1, declined.Output + declined.Error)
         Check.Contains(declined.Output, "published PR owner/project#10")
-        Check.Contains(declined.Output, "Re-approve")
         Check.That(State().ToJsonString() == published, "Declined approval changed published authority")
         Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
         let confirmed = TestTerminal.Pty(
@@ -1792,7 +1791,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Check.Text(missing["error"]?["message"]), "tokate work OWNER/REPO --harness")
         Flow.Call([]string{"defaults", "set", "donor", "--model", "gpt-6.1-sol", "--effort", "high"})
         Flow.Call([]string{"defaults", "use", "donor"})
-        Check.Envelope(Flow.Call(start, 1), "work", "error", "confirmation_required")
+        Check.Envelope(Flow.Call(start, 1), "work", "error", "invalid_arguments")
         Flow.Git("-C", Flow.Upstream, "remote", "add", "origin", "https://github.com/owner/project")
         let total = []string{"work", "--total", "1s", "--yes", "--json"}
         let exhaustedRun = TestProcess.Run(Flow.Binary, total, Flow.Temp.Env, cwd: Flow.Upstream)

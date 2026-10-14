@@ -208,18 +208,7 @@ internal class CoordinationState {
                 }
 
                 if !yes {
-                    if PublicOutput.Enabled || Console.IsInputRedirected {
-                        throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
-                    }
-                    if WizardScreen.Choose(
-                        "Replace approval",
-                        warning,
-                        []string{"Re-approve", "Cancel"},
-                        "Re-approving replaces the issue's approval. The existing donor must return to you before continuing.",
-                        2
-                    ) != 1 {
-                        throw CliFailure("confirmation_required", "Re-approval was not confirmed. Approval unchanged.")
-                    }
+                    throw CliFailure("invalid_arguments", warning + " Pass --yes to confirm.")
                 } else {
                     Terminal.Message(warning, error: true)
                 }

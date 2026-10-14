@@ -13,32 +13,6 @@ internal class ApprovalBase {
                 return RepositoryIdentity.Branch(args.Get("base-branch"))
             }
 
-            if !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
-                !Console.IsInputRedirected &&
-                !Console
-                .IsOutputRedirected {
-                var note = ""
-
-                while true {
-                    let answer = WizardScreen.Read(
-                        "Target branch",
-                        "Choose the branch that receives contributions." + note,
-                        "Target branch",
-                        fallback,
-                        "Enter a Git branch name, or press Enter to keep the default."
-                    )
-
-                    try {
-                        let branch = RepositoryIdentity.Branch(answer)
-                        WizardScreen.Close()
-
-                        return branch
-                    } catch (error Exception) {
-                        note = "\n\n" + error.Message
-                    }
-                }
-            }
-
             return RepositoryIdentity.Branch(fallback)
         }
 

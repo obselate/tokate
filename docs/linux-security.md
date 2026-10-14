@@ -69,7 +69,7 @@ Ask an administrator to repair the named host policy before you repeat the check
 
 | Symptom (message text) | Do (exact command) |
 | --- | --- |
-| `Required tools are missing or failed diagnostics. Run doctor.` | `tokate doctor managed --fix` |
+| `Required tools are missing or failed diagnostics. Run doctor.` | `tokate doctor managed --fix --yes` |
 | `User namespaces are disabled. Ask an administrator to review the host or container namespace policy.` | `tokate doctor managed --json` |
 | `Namespace startup was denied while AppArmor namespace restrictions are enabled. Ask an administrator to review the relevant AppArmor denials.` | `tokate doctor managed --json` |
 | `Namespace startup failed. Ask an administrator to review kernel support, namespace limits and host or container security policy.` | `tokate doctor managed --json` |

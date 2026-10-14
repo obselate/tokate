@@ -16,6 +16,8 @@ Use [installation](README.md), the [owner guide](docs/owners.md) or the
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
 In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or a GitHub URL.
 Do not infer support for another platform, forge or harness.
+Use CLI flags or the GUI. Bare `tokate` prints help. Commands never prompt.
+A missing choice fails with `invalid_arguments` and names the required flag.
 
 ## Install Tokate and its dependencies
 
@@ -60,13 +62,19 @@ Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
 ## Guide an owner
 
 Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
-repository. Preserve existing checks and customization. Review the generated policy
+repository with `--model-policy` or per-tool `--allowed-tools JSON`,
+`--verification JSON` and `--required-checks JSON` for new policy choices.
+Missing GitHub Actions settings are previewed without changes and require `--yes`.
+Branch protection changes are previewed without `--yes` and applied with it. Preserve existing checks and customization. Review the generated policy
 and pinned workflow, verify configuration, and commit it before approving tasks.
 Setup writes version 3 with models and efforts inside each allowed tool. A tool
 without models allows any model. Version 2 remains readable with its original
 model permissions. Update the coordinator pin before committing a version 3 policy.
 Older coordinators reject version 3. Use per-tool model choices in owner setup.
-Initialize access once, approve the issue, then trust the donor or grant that issue.
+Initialize access once. Create issues with `gh issue create` or the GUI.
+Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
+Use `--yes` to replace active reservation or published PR authority.
+Then trust the donor or grant that issue.
 Never grant access merely because someone requested it. In `trusted` eligibility,
 trusted donors and donors granted the issue may claim. With no trusted donors,
 grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
@@ -93,7 +101,10 @@ workflow execution. The owner decides acceptance and merge.
 
 Use the donor's account and selected harness. Check project tools and access first.
 Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
+Save choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
 Use `defaults` and `select` to reuse a permitted model choice without inference.
+Machine doctor previews installations with `--fix` and applies them with `--fix --yes`.
+Use `--harness-path FILE` for an existing harness and `--harness HARNESS --set-default` to save it.
 Never inspect credential files or mixed harness settings to discover defaults.
 
 Use `tokate claim ISSUE [NAME]` with a selected profile or model/effort and an
@@ -105,12 +116,11 @@ command fails, writes nothing and lists the attempts. Name one as `42-1`.
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
-Use `tokate work OWNER/REPO [--time PER_TASK] [--total TOTAL]` with
+Use `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL]` with
 `--harness`, `--model`, `--effort` or the default donor profile to donate successive tasks.
-One confirmation names the repository, tool, model, effort and time limits. It
-consents to every task claimed in that repository within those limits.
-Noninteractive and JSON use require `--yes`. Without `--total`, it runs until stopped.
-`tokate work OWNER/REPO stop` waits for the current task and prints the report.
+`--yes` consents to every task claimed in that repository with the selected tool,
+model, effort and time limits. Repository work always requires `--yes`. Without `--total`, it runs until stopped.
+`tokate work OWNER/REPO stop --yes` waits for the current task and prints the report.
 The loop submits drafts, rechecks idle repositories every ten minutes, releases failed tasks and stops after three consecutive failures.
 
 Before inference, obtain consent for the task, harness/model and time allocation.

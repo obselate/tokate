@@ -1,6 +1,8 @@
 # Positional arguments
 
 Use this command reference for current main. Put the target after the command.
+Commands never prompt. Missing choices fail with `invalid_arguments` and name a flag.
+Bare `tokate` prints help. The GUI is the other interface.
 
 1. Show all command metadata.
 
@@ -21,8 +23,8 @@ Use this command reference for current main. Put the target after the command.
 | Command | Usage | What it does |
 | --- | --- | --- |
 | `work` | `tokate work ISSUE [NAME] \| RUN [options]` | Code an approved issue and verify it. Uses donor inference. |
-| `work` repository | `tokate work OWNER/REPO [--time PER_TASK] [--total TOTAL] [options]` | Claim, work and submit approved issues until stopped. Bare `work` uses the local GitHub remote. |
-| `work` stop | `tokate work OWNER/REPO stop [--yes]` | Wait for the current task and print the session report. |
+| `work` repository | `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL] [options]` | Claim, work and submit approved issues until stopped. Bare `work` uses the local GitHub remote. |
+| `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
 | `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. `OWNER/REPO` alone is invalid. |
 | `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
 | `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
@@ -32,8 +34,8 @@ Use this command reference for current main. Put the target after the command.
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Write owner policy and a pinned workflow. |
-| `approve` | `tokate approve [ISSUE \| --title TEXT] [options]` | Create or approve an issue for donors. |
+| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Write owner policy and a pinned workflow. Preview GitHub settings and protection, apply with `--yes`. |
+| `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
 | `access init` | `tokate access init [OWNER/REPO]` | Initialize access authority. |
@@ -43,7 +45,7 @@ Use this command reference for current main. Put the target after the command.
 | `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
 | `verify` | `tokate verify PR` | Check a receipt against owner approval. |
 | `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
-| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` offers prerequisite setup. |
+| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` previews installations, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
 | `update` | `tokate update` | Install the latest stable release. |
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
