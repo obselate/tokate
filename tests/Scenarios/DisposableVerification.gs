@@ -250,7 +250,7 @@ internal class DisposableVerificationChecks {
                     "-q",
                     "-e",
                     "-c",
-                    "echo $$$$ > verifier.pid; exec ./tokate-verifier work --run '" + run + "'",
+                    "echo $$$$ > verifier.pid; exec ./tokate-verifier work --run '" + run + "' --yes",
                     "/dev/null"
                 }
             }
