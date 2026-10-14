@@ -207,7 +207,7 @@ func Dispatch(options Args) int32 {
         return Donate.Stop(options)
     }
 
-    if options.Command != "doctor" && options.Command != "defaults" {
+    if (options.Command != "doctor" || options.Subject == "repo") && options.Command != "defaults" {
         DonorSelection.ApplyDefaults(options)
         Startup.Check(options)
     }
@@ -434,18 +434,6 @@ func Dispatch(options Args) int32 {
 
         case "checks" {
             return Checks.Run(options)
-        }
-
-        case "policy" {
-            let repo = RepositoryIdentity.Repo(options.Need("repo"))
-            let info = GitHub.Api("repos/" + repo)
-            let value = Policy.Load(repo, J.Text(info, "default_branch")).Value
-
-            if PublicOutput.Enabled {
-                PublicOutput.ResultData = map[string, Object?]{"repo": repo, "policy": PublicOutput.Policy(value)}
-            } else {
-                Terminal.Json(value, "Repository policy")
-            }
         }
 
         case "verify" {

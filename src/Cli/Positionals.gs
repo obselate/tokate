@@ -158,13 +158,13 @@ internal class Positionals {
             Limit(args, 2)
 
             for word in args.Words {
-                if word == "owner" || word == "managed" || word == "external" {
-                    if args.Get("owner") + args.Get("managed") + args.Get("external") != "" {
-                        throw Exception("Choose one doctor scope: owner, managed or external")
+                if word == "repo" || word == "managed" || word == "external" {
+                    if args.Subject != "" {
+                        throw Exception("Choose one doctor scope: repo, managed or external")
                     }
 
-                    args.Values["--" + word] = "true"
-                } else if args.Get("owner") == "true" {
+                    args.Subject = word
+                } else if args.Subject == "repo" {
                     Repo(args, word)
                 } else if args.Get("harness") != "" {
                     throw Exception("Unexpected argument: " + word)

@@ -236,7 +236,7 @@ Execution keeps saved failure stages, interruption evidence and verification res
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor owner --auth --fix --yes` |
+| `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor external --auth --fix --yes` |
 | `Authentication is required with the appropriate account.` | `gh auth login` |
 | `Pass --yes to apply the previewed project setup. Nothing changed.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
 
@@ -283,7 +283,7 @@ Refusals name changed task fields when the approved policy can be read and its
 task digest matches. Otherwise they state that previous task fields are unavailable
 or use a legacy digest. Issue text and PR-template changes are named separately.
 
-Model and effort permissions apply to the exact harness/provider pair. Use `tokate policy OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
+Model and effort permissions apply to the exact harness/provider pair. Use `tokate doctor repo OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
 
 For a provider capacity error, inspect the saved run before selecting a different model. Tokate has no automatic retry or fallback.
 

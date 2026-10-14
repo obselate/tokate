@@ -685,20 +685,12 @@ internal class EligibilityChecks {
             health.Flow.Commit("Add owner workflow")
             health.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             health.Flow.Reload()
-            health.Flow.State["latest_release"] = Check.Map(
-                "tag_name",
-                "v" + version,
-                "draft",
-                false,
-                "prerelease",
-                false
-            )
             health.Flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
             health.Flow.State["workflow_runs"] = Check.Json(
                 "[{\"status\":\"completed\",\"conclusion\":\"startup_failure\",\"html_url\":\"https://example.test/coordinator\"}]"
             )
             health.Flow.Save()
-            let healthArgs = []string{"doctor", "owner", "owner/project", "--json"}
+            let healthArgs = []string{"doctor", "repo", "owner/project", "--json"}
             for pattern in[]string{
                 "actions/*",
                 "obselate/tokate/.github/workflows/tokate-shared.yml@" + String('b', 40),
@@ -762,7 +754,7 @@ internal class EligibilityChecks {
             let next = broken["next_actions"]?.ToJsonString() ?? ""
             Check.Contains(next, "[\"tokate\",\"access\",\"init\",\"owner/project\"]")
             Check.Contains(next, "[\"tokate\",\"approve\",\"owner/project#1\"]")
-            let human = health.Flow.Call([]string{"doctor", "owner", "owner/project"}, owner: true).Output
+            let human = health.Flow.Call([]string{"doctor", "repo", "owner/project"}, owner: true).Output
             Check.Contains(human, "tokate access init owner/project")
             Check.Contains(human, "tokate approve owner/project#1")
             Check.Contains(human, "Settings > Actions > General")

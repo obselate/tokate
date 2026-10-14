@@ -623,13 +623,15 @@ internal class PublicOutput {
                 }
 
                 Actions.Add(known ? []string{"tokate", "help", Command, "--json"}: []string{"tokate", "help", "--json"})
-            } else if code == "missing_tools" {
-                if Command != "doctor" {
-                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "managed": (
-                        Command == "external" || Command == "amend" || Command == "submit" ? "external": "owner"
-                    )
-                    Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
-                }
+            } else if code == "missing_tools" && Command != "doctor" {
+                Actions.Add(
+                    []string{
+                        "tokate",
+                        "doctor",
+                        Startup.NeedsCatalog(Command, options) ? "managed": "external",
+                        "--json"
+                    }
+                )
             }
 
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {

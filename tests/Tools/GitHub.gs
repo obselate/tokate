@@ -439,7 +439,9 @@ internal partial class Fixture {
                         "push",
                         State["fork_push"] ?? JsonValue.Create(
                             String.Equals(actor, parts[1], StringComparison.OrdinalIgnoreCase)
-                        ) as JsonNode
+                        ) as JsonNode,
+                        "admin",
+                        String.Equals(actor, parts[1], StringComparison.OrdinalIgnoreCase)
                     ),
                     "parent",
                     Check.Map(

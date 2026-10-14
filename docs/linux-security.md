@@ -4,10 +4,10 @@ Tokate uses Linux user and PID namespaces for descendant cleanup. File restricti
 
 ## Check your host
 
-1. Check owner tools.
+1. Check the common tools.
 
    ```sh
-   tokate doctor owner --json
+   tokate doctor external --json
    ```
 
 2. Check the harness you use.
