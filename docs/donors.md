@@ -63,11 +63,11 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
 5. If submission is pending, inspect `tokate status 42-1` before repeating submit.
 
-Use CLI flags or the GUI. Commands never prompt. Missing choices fail with
+Use CLI flags or the GUI. Claim and work show the task, tool, model, effort and budget and ask once in a terminal unless `--yes` is set. Missing choices fail with
 `invalid_arguments` and name the required flag. Bare `tokate` prints help.
 Outside a checkout, use `tokate work OWNER/REPO#42` for one issue.
 Use `tokate claim 42 NAME --time 1h` to reserve without inference.
-Doctor previews installations with `--fix`, applies them with `--fix --yes`, and
+Doctor explains installations with `--fix`, asks once in a terminal, applies with `--fix --yes`, and
 accepts `--harness-path FILE` for an existing installation.
 Use `tokate doctor --harness codex --harness-path FILE --set-default` to save the harness.
 
@@ -98,7 +98,7 @@ Repository links, such as release or tree links, select the loop.
 and the owner limit. Without `--total`, it runs until stopped. A task starts only
 while `--time` fits in the remaining total. Claim and submission waits can run past it.
 `--yes` consents to every task claimed with the selected repository, harness, model, effort and budgets.
-Repository work and stop always require `--yes`.
+Repository work and stop ask once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, they preview without changes and fail with `confirmation_required` naming `--yes`.
 Approved issues are selected oldest first across pages. Reserved, stale, inaccessible,
 dependency-blocked and already attempted issues are skipped. Each task uses claim, work and submit.
 Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.

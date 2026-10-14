@@ -34,6 +34,27 @@ internal class ClaudeHarness {
             }
         }
 
+        private func Activity(line string) {
+            let value = J.Parse(line)
+
+            if J.Text(value, "type") != "assistant" {
+                return
+            }
+
+            for item in J.Items(J.Get(J.Get(value, "message"), "content")) {
+                if J.Text(item, "type") == "text" {
+                    DonationView.Append("Assistant: " + J.Text(item, "text"))
+                } else if J.Text(item, "type") == "tool_use" {
+                    let input = J.Get(item, "input")
+                    DonationView.Append(
+                        J.Text(item, "name") +
+                            ": " +
+                            (J.Text(input, "command") == "" ? J.Text(input, "file_path"): J.Text(input, "command"))
+                    )
+                }
+            }
+        }
+
         internal func Execute(directory string, run Data, record JsonElement) {
             let timer = Stopwatch.StartNew()
             let coding = RuntimeBudget(timer, run.Number("seconds") - run.Number("verification_reserve"))
@@ -100,6 +121,11 @@ internal class ClaudeHarness {
                         RuntimeBudget(timer, run.Flag("unlimited") ? 0: run.Number("seconds"))
                     )
 
+                    var activity Action[string]? = nil
+                    if DonationView.Active() {
+                        activity = line -> Activity(line)
+                    }
+
                     result = Commands.Run(
                         LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
@@ -110,7 +136,8 @@ internal class ClaudeHarness {
                         strictOutput: true,
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
-                        budget: coding
+                        budget: coding,
+                        outputLine: activity
                     )
                 }
 

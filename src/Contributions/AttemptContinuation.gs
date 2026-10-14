@@ -104,7 +104,7 @@ internal class AttemptContinuation {
             return next
         }
 
-        internal func Confirm(args Args, selection JsonElement) {
+        internal func Confirm(args Args, selection JsonElement, run Data? = nil) {
             let confirmed = map[string, Object?]{}
 
             for field in selection.EnumerateObject() {
@@ -113,7 +113,7 @@ internal class AttemptContinuation {
 
             confirmed["source"] = "explicit continuation import"
 
-            DonorSelection.Confirm(args, J.Parse(J.Write(confirmed)))
+            DonorSelection.Confirm(args, J.Parse(J.Write(confirmed)), run)
         }
 
         private func Id(value string) {

@@ -22,13 +22,21 @@ internal class OwnerSetup {
             Console.Error.WriteLine(Terminal.Clean(after))
         }
 
-        internal func Confirm(args Args) bool {
+        internal func Confirm(args Args, prompt string = "Apply these changes?") bool {
             if args.Get("yes") == "true" {
                 return true
             }
 
-            Terminal.Message("Preview only; use --yes to apply these changes.", "cyan", true)
-            return false
+            if PublicOutput.Enabled || args.Get("json") == "true" || args.Get("non-interactive") == "true" ||
+                Console.IsInputRedirected ||
+                Console.IsOutputRedirected ||
+                Console.IsErrorRedirected {
+                Terminal.Message("Preview only; use --yes to apply these changes.", "cyan", true)
+                return false
+            }
+
+            Console.Error.Write(Terminal.Clean(prompt) + " [y/N]: ")
+            return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
         }
 
         private func Report(value JsonElement, before string = "") string {
@@ -463,161 +471,170 @@ internal class OwnerSetup {
             let events = CoordinatorSetup.EventPolicy(repo, Path.GetRelativePath(root, workflow), required: false)
             let pullRequests = J.Bool(permissions, "can_approve_pull_request_reviews")
 
-            if !events || !pullRequests {
-                let eventPolicy = map[string, Object?]{
-                    "name": "Tokate coordinator events",
-                    "enforcement": "active",
-                    "conditions": map[string, Object?]{
-                        "workflow_path": map[string, Object?]{
-                            "include": []string{Path.GetRelativePath(root, workflow)},
-                            "exclude": []string{}
-                        }
-                    },
-                    "rules": []Object{
-                        map[string, Object?]{
-                            "type": "restrict_action_events",
-                            "parameters": map[string, Object?]{
-                                "allowed_events": []string{
-                                    "issues",
-                                    "issue_comment",
-                                    "pull_request_target",
-                                    "workflow_call"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let workflowPermissions = map[string, Object?]{
-                    "default_workflow_permissions": J.Text(permissions, "default_workflow_permissions"),
-                    "can_approve_pull_request_reviews": true
-                }
-
-                let changes = List[string]()
-
-                if !events {
-                    changes.Add(
-                        "Create the Actions policy \"Tokate coordinator events\" that allows issues, issue_comment, pull_request_target and workflow_call for " +
-                            Path.GetRelativePath(root, workflow)
-                    )
-                }
-
-                if !pullRequests {
-                    if J.Text(permissions, "default_workflow_permissions") != "read" && J.Text(
-                        permissions,
-                        "default_workflow_permissions"
-                    ) != "write" {
-                        throw Exception("Cannot preserve default_workflow_permissions from the GitHub Actions settings")
-                    }
-
-                    changes.Add(
-                        "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay " +
-                            J.Text(permissions, "default_workflow_permissions") + ")"
-                    )
-                }
-
-                Terminal.Message(
-                    String.Join("\n", changes) +
-                        (args.Get("yes") == "true" ? "": "\nPreview only. Pass --yes to apply GitHub settings."),
-                    error: true
-                )
-
-                if args.Get("yes") != "true" {
-                    throw CliFailure(
-                        "invalid_arguments",
-                        "Missing GitHub settings. Pass --yes to apply the previewed changes."
-                    )
-                }
-
-                if !events {
-                    GitHub.Api("repos/" + repo + "/actions/policies", eventPolicy, method: "POST")
-                }
-
-                if !pullRequests {
-                    GitHub.Api(permissionsPath, workflowPermissions, method: "PUT")
-                }
-            }
-
             let text = before != "" && RequestData.Canonical(J.Parse(before)) == RequestData.Canonical(
                 policy.Value
             ) ? before: Pretty(policy.Value)
-
+            let branch = J.Text(policy.Value, "target_branch") == "" ? J.Text(info, "default_branch"): J.Text(
+                policy.Value,
+                "target_branch"
+            )
+            let protectionPath = "repos/" + repo + "/branches/" + Uri.EscapeDataString(branch) + "/protection"
+            var protection JsonElement
+            let missing = List[string]()
             var protectionNote = ""
             try {
-                let branch = J.Text(policy.Value, "target_branch") == "" ? J.Text(info, "default_branch"): J.Text(
-                    policy.Value,
-                    "target_branch"
-                )
-                let protectionPath = "repos/" + repo + "/branches/" + Uri.EscapeDataString(branch) + "/protection"
-                let protection = GitHub.Api(protectionPath, missing: true)
+                protection = GitHub.Api(protectionPath, missing: true)
                 let statusChecks = J.Get(protection, "required_status_checks")
                 let required = HashSet[string](StringComparer.Ordinal)
-
                 for check in J.Items(J.Get(statusChecks, "checks")) {
                     required.Add(J.Text(check, "context"))
                 }
-
                 for context in J.Items(J.Get(statusChecks, "contexts")) {
                     required.Add(context.GetString() ?? "")
                 }
-
-                let missing = List[string]()
-
                 for check in J.Items(J.Get(policy.Value, "required_checks")) {
                     let name = check.GetString() ?? ""
                     if required.Add(name) {
                         missing.Add(name)
                     }
                 }
-
                 if missing.Count > 0 {
-                    let names = String.Join(", ", missing)
-
-                    if args.Get("yes") != "true" ||
-                        (
-                        protection.ValueKind != JsonValueKind.Undefined &&
-                            statusChecks.ValueKind != JsonValueKind.Object
-                    ) {
-                        protectionNote = "Add " +
-                            names +
-                            " as required checks with --yes in GitHub Settings > Branches > " +
-                            branch +
-                            "."
-                    } else {
-                        if protection.ValueKind == JsonValueKind.Undefined {
-                            GitHub.Api(
-                                protectionPath,
-                                map[string, Object?]{
-                                    "required_status_checks": map[string, Object?]{
-                                        "strict": false,
-                                        "contexts": missing
-                                    },
-                                    "enforce_admins": false,
-                                    "required_pull_request_reviews": nil,
-                                    "restrictions": nil
-                                },
-                                method: "PUT"
-                            )
-                        } else {
-                            GitHub.Api(
-                                protectionPath + "/required_status_checks/contexts",
-                                map[string, Object?]{"contexts": missing},
-                                method: "POST"
-                            )
-                        }
+                    protectionNote = "Require checks on " + branch + ": " + String.Join(", ", missing) +
+                        ". No other protection changes."
+                    if protection.ValueKind != JsonValueKind.Undefined &&
+                        statusChecks.ValueKind != JsonValueKind
+                        .Object {
+                        protectionNote = "Add required checks manually in GitHub Settings > Branches > " + branch + "."
+                        missing.Clear()
                     }
                 }
-            } catch (error OperationCanceledException) {
-                throw error
             } catch (error Exception) {
                 protectionNote = "GitHub branch protection: " + Terminal.Clean(error.Message)
             }
 
+            if !events {
+                Terminal.Message(
+                    "Create the Actions event policy \"Tokate coordinator events\" allowing issues, issue_comment, pull_request_target and workflow_call for " +
+                        Path.GetRelativePath(root, workflow),
+                    error: true
+                )
+            }
+            if !pullRequests {
+                if J.Text(permissions, "default_workflow_permissions") != "read" && J.Text(
+                    permissions,
+                    "default_workflow_permissions"
+                ) != "write" {
+                    throw Exception("Cannot preserve default_workflow_permissions from the GitHub Actions settings")
+                }
+                Terminal.Message(
+                    "Allow GitHub Actions to create and approve pull requests (default workflow permissions stay " +
+                        J.Text(permissions, "default_workflow_permissions") + ")",
+                    error: true
+                )
+            }
             if protectionNote != "" {
                 Terminal.Message(protectionNote, error: true)
             }
-
+            if before != text {
+                Preview(path, before, text)
+            }
+            if oldWorkflow == "" {
+                Preview(workflow, oldWorkflow, yaml)
+            }
             let affected = ApprovalImpact(repo, upstream, policy)
+            let taskChanged = existing != nil && existing.Digest != policy.Digest
+            let result = map[string, Object?]{
+                "applied": false,
+                "file_count": File.Exists(template) ? 3: 2,
+                "policy_changed": before != text,
+                "workflow_changed": oldWorkflow == "",
+                "task_fields_changed": taskChanged,
+                "approvals_to_renew": affected
+            }
+            PublicOutput.ResultData = result
+            if (!events || !pullRequests || missing.Count > 0 || before != text || oldWorkflow == "") &&
+                !Confirm(args, "Apply this project setup?") {
+                if events &&
+                    pullRequests &&
+                    (
+                    PublicOutput.Enabled || args.Get("non-interactive") == "true" ||
+                        Console.IsInputRedirected ||
+                        Console.IsOutputRedirected ||
+                        Console.IsErrorRedirected
+                ) {
+                    return
+                }
+                throw CliFailure(
+                    "confirmation_required",
+                    (!events || !pullRequests ? "Missing GitHub settings. ": "") +
+                        "Pass --yes to apply the previewed project setup. Nothing changed."
+                )
+            }
+
+            if !events {
+                GitHub.Api(
+                    "repos/" + repo + "/actions/policies",
+                    map[string, Object?]{
+                        "name": "Tokate coordinator events",
+                        "enforcement": "active",
+                        "conditions": map[string, Object?]{
+                            "workflow_path": map[string, Object?]{
+                                "include": []string{Path.GetRelativePath(root, workflow)},
+                                "exclude": []string{}
+                            }
+                        },
+                        "rules": []Object{
+                            map[string, Object?]{
+                                "type": "restrict_action_events",
+                                "parameters": map[string, Object?]{
+                                    "allowed_events": []string{
+                                        "issues",
+                                        "issue_comment",
+                                        "pull_request_target",
+                                        "workflow_call"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    method: "POST"
+                )
+            }
+            if !pullRequests {
+                GitHub.Api(
+                    permissionsPath,
+                    map[string, Object?]{
+                        "default_workflow_permissions": J.Text(permissions, "default_workflow_permissions"),
+                        "can_approve_pull_request_reviews": true
+                    },
+                    method: "PUT"
+                )
+            }
+            if missing.Count > 0 {
+                try {
+                    if protection.ValueKind == JsonValueKind.Undefined {
+                        GitHub.Api(
+                            protectionPath,
+                            map[string, Object?]{
+                                "required_status_checks": map[string, Object?]{"strict": false, "contexts": missing},
+                                "enforce_admins": false,
+                                "required_pull_request_reviews": nil,
+                                "restrictions": nil
+                            },
+                            method: "PUT"
+                        )
+                    } else {
+                        GitHub.Api(
+                            protectionPath + "/required_status_checks/contexts",
+                            map[string, Object?]{"contexts": missing},
+                            method: "POST"
+                        )
+                    }
+                } catch (error Exception) {
+                    Terminal.Message("GitHub branch protection: " + Terminal.Clean(error.Message), error: true)
+                }
+            }
+
             SetupPath(root, ".github/tokate.json")
             SetupPath(root, Path.GetRelativePath(root, workflow))
 
@@ -670,7 +687,6 @@ internal class OwnerSetup {
             )
 
             let changed = before != text || oldWorkflow == ""
-            let taskChanged = existing != nil && existing.Digest != policy.Digest
             if taskChanged {
                 Terminal.Message("Task fields changed.", "yellow", true)
             }
@@ -692,14 +708,7 @@ internal class OwnerSetup {
             Terminal.Message(
                 changed ? "Owner setup written. Commit and push the policy and workflow before approving work; every PR still needs owner review.": "Owner setup already matches; nothing to commit."
             )
-            PublicOutput.ResultData = map[string, Object?]{
-                "applied": changed,
-                "file_count": File.Exists(template) ? 3: 2,
-                "policy_changed": before != text,
-                "workflow_changed": oldWorkflow == "",
-                "task_fields_changed": taskChanged,
-                "approvals_to_renew": affected
-            }
+            result["applied"] = changed
         }
 
         private func ApprovalImpact(repo string, upstream string, policy Policy) List[int32] {

@@ -228,7 +228,43 @@ internal class DonorSelection {
             }
         }
 
-        internal func Confirm(args Args, selection JsonElement) {
+        internal func Confirm(args Args, selection JsonElement, run Data? = nil) {
+            if args.Get("yes") != "true" && !PublicOutput.Enabled && args.Get("json") != "true" && args.Get(
+                "non-interactive"
+            ) != "true" &&
+                !Console.IsInputRedirected &&
+                !Console.IsOutputRedirected &&
+                !Console
+                .IsErrorRedirected {
+                Terminal.Message(
+                    "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
+                        "issue",
+                        (run?.Number("issue") ?? 0).ToString()
+                    ) +
+                        "\nTool: " +
+                        J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
+                        selection,
+                        "model"
+                    ) +
+                        "\nEffort: " +
+                        J.Text(selection, "effort") +
+                        "\nBudget: " +
+                        (
+                        args.Get("unlimited") == "true" || run?.Flag("unlimited") == true ? "Unlimited coding":
+                        args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
+                    ) +
+                        "; " +
+                        args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString()) +
+                        " seconds reserved for verification",
+                    error: true
+                )
+                if !OwnerSetup.Confirm(args, args.Command == "claim" ? "Post this claim?": "Start this donation?") {
+                    throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
+                }
+                args.Values["--yes"] = "true"
+                return
+            }
+
             let source = J.Text(selection, "source")
 
             if args.Get("yes") == "true" ||
@@ -241,7 +277,7 @@ internal class DonorSelection {
             let pair = J.Text(selection, "model") + " / " + J.Text(selection, "effort")
 
             throw CliFailure(
-                "invalid_arguments",
+                "confirmation_required",
                 "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
             )
         }

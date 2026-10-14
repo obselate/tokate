@@ -29,6 +29,10 @@ internal class Donate {
         internal func Stop(options Args) int32 {
             let repo = options.Need("repo")
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            Terminal.Message("Stop donating to " + repo + " after the current task.", error: true)
+            if !OwnerSetup.Confirm(options, "Stop donating?") {
+                throw CliFailure("confirmation_required", "Donation stop requires --yes. Nothing changed.")
+            }
             Directory.CreateDirectory(directory)
             if Running(directory) {
                 File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
@@ -132,10 +136,7 @@ internal class Donate {
         internal func Run(options Args) int32 {
             let repo = options.Need("repo")
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
-            Directory.CreateDirectory(directory)
-            using let lease = RunStorage.Lease(directory)
             let marker = Path.Combine(directory, "stop")
-            File.Delete(marker)
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
             let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
@@ -182,7 +183,16 @@ internal class Donate {
                     prompt
             }
             Terminal.Message(consent, error: true)
+            if !OwnerSetup.Confirm(options, "Start donating?") {
+                throw CliFailure(
+                    "confirmation_required",
+                    "Repository work requires --yes. No claim or inference started."
+                )
+            }
             options.Values["--yes"] = "true"
+            Directory.CreateDirectory(directory)
+            using let lease = RunStorage.Lease(directory)
+            File.Delete(marker)
             for key in[]string{"harness", "provider", "model", "effort"} {
                 options.Values["--" + key] = J.Text(selection, key)
             }

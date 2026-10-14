@@ -16,7 +16,7 @@ Use [installation](README.md), the [owner guide](docs/owners.md) or the
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
 In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or a GitHub URL.
 Do not infer support for another platform, forge or harness.
-Use CLI flags or the GUI. Bare `tokate` prints help. Commands never prompt.
+Use CLI flags or the GUI. Bare `tokate` prints help. Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful.
 A missing choice fails with `invalid_arguments` and names the required flag.
 
 ## Install Tokate and its dependencies
@@ -64,8 +64,8 @@ Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
 Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
 repository with `--model-policy` or per-tool `--allowed-tools JSON`,
 `--verification JSON` and `--required-checks JSON` for new policy choices.
-Missing GitHub Actions settings are previewed without changes and require `--yes`.
-Branch protection changes are previewed without `--yes` and applied with it. Preserve existing checks and customization. Review the generated policy
+Init previews local files, GitHub Actions settings and branch protection, then asks once in a terminal.
+Use `--yes` to apply without a question. Non-terminal preview changes nothing and returns `applied=false`, or rejects missing Actions settings. Preserve existing checks and customization. Review the generated policy
 and pinned workflow, verify configuration, and commit it before approving tasks.
 Setup writes version 3 with models and efforts inside each allowed tool. A tool
 without models allows any model. Version 2 remains readable with its original
@@ -103,7 +103,7 @@ Use the donor's account and selected harness. Check project tools and access fir
 Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
 Save choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
 Use `defaults` and `select` to reuse a permitted model choice without inference.
-Machine doctor previews installations with `--fix` and applies them with `--fix --yes`.
+Machine doctor explains installations with `--fix`, asks once in a terminal, and applies with `--fix --yes`.
 Use `--harness-path FILE` for an existing harness and `--harness HARNESS --set-default` to save it.
 Never inspect credential files or mixed harness settings to discover defaults.
 
@@ -119,7 +119,7 @@ must not be asked to write claim JSON or manage coordination revisions.
 Use `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL]` with
 `--harness`, `--model`, `--effort` or the default donor profile to donate successive tasks.
 `--yes` consents to every task claimed in that repository with the selected tool,
-model, effort and time limits. Repository work always requires `--yes`. Without `--total`, it runs until stopped.
+model, effort and time limits. Without `--yes`, repository work asks once in a terminal. Non-terminal work previews and requires `--yes`. Without `--total`, it runs until stopped.
 `tokate work OWNER/REPO stop --yes` waits for the current task and prints the report.
 The loop submits drafts, rechecks idle repositories every ten minutes, releases failed tasks and stops after three consecutive failures.
 

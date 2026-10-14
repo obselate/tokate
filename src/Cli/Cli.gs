@@ -1156,8 +1156,8 @@ internal class Cli {
 
                 if name == "work" || name == "claim" {
                     text.AppendLine(
-                        name == "work" ? "Bare work uses the local GitHub remote. Repository work uses tool flags or a default profile and requires --yes. Named issues require explicit tool and budget choices or a saved profile.":
-                        "Name an issue and supply tool and budget flags or a saved profile. Commands never prompt."
+                        name == "work" ? "Bare work uses the local GitHub remote. Supply tool and budget flags or a saved profile. Donation consent asks once in a terminal unless --yes is set. Repository work and stop preview without changes and require --yes in non-terminal use.":
+                        "Name an issue and supply tool and budget flags or a saved profile. Claim consent asks once in a terminal unless --yes is set."
                     )
                 }
 
@@ -1214,9 +1214,6 @@ internal class Cli {
                     throw Exception(
                         "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
                     )
-                }
-                if args.Get("yes") != "true" {
-                    throw CliFailure("invalid_arguments", "Repository work requires --yes")
                 }
             }
             if args.Command == "claim" && args.Get("issue") == "" && !args.Help {

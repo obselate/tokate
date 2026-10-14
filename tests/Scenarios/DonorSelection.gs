@@ -389,6 +389,49 @@ internal class DonorSelectionChecks {
             Check.Contains(refused.Output, "--effort")
             flow.NoInference()
             flow.NoPr()
+            flow.Approve()
+            let work = []string{
+                "work",
+                "owner/project#1",
+                "--runs",
+                Path.Combine(flow.Temp.Root, "runs"),
+                "--harness",
+                "codex",
+                "--model",
+                "gpt-6.1-sol",
+                "--effort",
+                "high",
+                "--time",
+                "30s",
+                "--plain"
+            }
+            let declined = TestTerminal.Pty(binary, work, flow.Temp, 80, "\n")
+            Check.That(declined.Code == 1, "Declined confirmation launched work")
+            Check.Contains(declined.Output, "Start this donation? [y/N]")
+            Check.Contains(declined.Output, "Task: owner/project #1")
+            Check.Contains(declined.Output, "Model: gpt-6.1-sol")
+            Check.Contains(declined.Output, "Effort: high")
+            Check.Contains(declined.Output, "30 seconds total")
+            flow.NoInference()
+            flow.NoPr()
+            flow.Mode("model_failure")
+            let confirmed = TestTerminal.Pty(binary, work, flow.Temp, 80, "y\n")
+            Check.That(confirmed.Code == 8, confirmed.Output + confirmed.Error)
+            flow.NoInference()
+            flow.CoordinatePosted()
+            let run = Directory.GetDirectories(Path.Combine(flow.Temp.Root, "runs"))[0]
+            Check.Contains(flow.Call([]string{"work", "--run", run, "--yes"}, 1).Error, "Codex failed")
+            flow.Reload()
+            Check.That(
+                Check.Text(flow.State["exec_count"]) == "1",
+                "Confirmed terminal work retried or did not execute"
+            )
+            Check.That(
+                Check.Text(flow.State["requested_model"]) == "gpt-6.1-sol" && Check.Text(
+                    flow.State["requested_effort"]
+                ) == "model_reasoning_effort=\"high\"",
+                "Confirmation forwarded the wrong tuple"
+            )
         }
 
         private func VersionTwo(binary string, unrestricted bool = false) {

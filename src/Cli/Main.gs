@@ -50,6 +50,7 @@ func Main(args[]string) int32 {
             )
         }
     } catch (error Exception) {
+        DonationView.Close()
         exitCode = 1
         code = !validated ? "invalid_arguments": PublicOutput.FailureCode
 
@@ -105,6 +106,7 @@ func Main(args[]string) int32 {
             }
         }
     } finally {
+        DonationView.Close()
         if traffic {
             ApiTransport.Report()
         }

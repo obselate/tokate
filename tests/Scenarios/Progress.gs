@@ -17,7 +17,7 @@ internal class ProgressChecks {
                 return
             }
             if filter == "Tty" {
-                for mode in[]string{"tty", "no_color", "plain", "dumb"} {
+                for mode in[]string{"tty", "no_color", "plain", "dumb", "cancel"} {
                     Tty(binary, mode)
                 }
                 return
@@ -40,7 +40,7 @@ internal class ProgressChecks {
             } {
                 Failure(binary, scenario)
             }
-            for mode in[]string{"tty", "plain", "no_color", "dumb"} {
+            for mode in[]string{"tty", "plain", "no_color", "dumb", "cancel"} {
                 Tty(binary, mode)
             }
             Console.WriteLine(
@@ -373,10 +373,19 @@ internal class ProgressChecks {
             if mode == "no_color" {
                 flow.Temp.Env["NO_COLOR"] = ""
             }
+            if mode == "tty" || mode == "no_color" || mode == "cancel" {
+                let script = Path.Combine(flow.Temp.Root, "donation-view.py")
+                File.WriteAllText(script, TestResources.Template("donation-view.py"))
+                let result = TestProcess.Run("python3", []string{script, binary, run, mode}, flow.Temp.Env)
+                Check.Success(result)
+                Console.Write(result.Output)
+                return
+            }
             let command = "stty cols 80 rows 24; " +
                 Quote(binary) +
                 " work --run " +
                 Quote(run) +
+                " --yes" +
                 (mode == "plain" ? " --plain --ascii": "")
             let result = TestProcess.Run(
                 "/usr/bin/script",
@@ -390,6 +399,16 @@ internal class ProgressChecks {
             let visible = Regex.Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
             Check.Contains(visible, "Run completed. Run: " + run)
             Check.Contains(visible, "Next: tokate status --run " + run + " --json")
+            Check.That(
+                !result.Output.Contains("INJECTED_TITLE") && !result.Output.Contains("\x1b]"),
+                "Tool output injected terminal controls"
+            )
+            if mode == "no_color" {
+                Check.That(
+                    !Regex.IsMatch(result.Output, "\\x1b\\[(?:[1-9][0-9]*;)*[1-9][0-9]*m"),
+                    "NO_COLOR emitted colors"
+                )
+            }
             if mode == "plain" || mode == "dumb" {
                 Check.That(!result.Output.Contains('\x1b'), "Plain progress contains escape codes")
             }

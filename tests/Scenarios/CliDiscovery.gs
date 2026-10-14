@@ -134,7 +134,8 @@ internal class CliDiscovery {
                 "[[\"bash\",\"scripts/verify.sh\"]]",
                 "--required-checks",
                 "[\"verify\"]",
-                "--non-interactive"
+                "--non-interactive",
+                "--yes"
             }
             Check.Contains(flow.Call(args, 1, true).Error, "does not exist")
             Directory.CreateDirectory(root)
@@ -163,6 +164,10 @@ internal class CliDiscovery {
             flow.Save()
             flow.Call([]string{"approve", "owner/project#2"}, owner: true)
             let sharedWorkflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
+            flow.State["branch_protection"] = Check.Json(
+                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\"]}}"
+            )
+            flow.Save()
             for setting in[]string{"disabled", "local_only", "stale", "empty", "excluded"} {
                 flow.Reload()
                 flow.State["actions_permissions"] = Check.Map(
@@ -229,7 +234,7 @@ internal class CliDiscovery {
                             "/dev/null"
                         },
                         env,
-                        "\n1\n2\n"
+                        "y\n"
                     )
                     Check.Success(screen)
                     Check.Contains(screen.Output, sharedWorkflow + String('a', 40))
@@ -247,6 +252,7 @@ internal class CliDiscovery {
                 }
                 Directory.Delete(github, true)
             }
+            flow.State["branch_protection"] = nil
             flow.State["selected_actions"] = Check.Map(
                 "patterns_allowed",
                 Check.Json("[\"" + sharedWorkflow + String('a', 40) + "\"]")
@@ -286,7 +292,7 @@ internal class CliDiscovery {
             )
             Publish(flow, original)
             flow.Approve()
-            let staleApproval = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            let staleApproval = flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.Contains(staleApproval.Error, "tokate approve owner/project#2")
             Check.That(!staleApproval.Error.Contains("Task fields changed."), "Unchanged init reported task changes")
             Check.That(!staleApproval.Error.Contains("Approvals stay valid."), "Unchanged init hid stale approval")
@@ -300,7 +306,8 @@ internal class CliDiscovery {
                     "open",
                     "--pr-text",
                     "Owner notes",
-                    "--non-interactive"
+                    "--non-interactive",
+                    "--yes"
                 },
                 owner: true
             )
@@ -314,7 +321,7 @@ internal class CliDiscovery {
             )
             File.WriteAllText(policyPath, original)
             Publish(flow, original)
-            let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.Contains(repeated.Output, "nothing to commit")
             Check.That(
                 File.ReadAllText(policyPath) == original && File.ReadAllText(workflowPath) == yaml,
@@ -322,7 +329,7 @@ internal class CliDiscovery {
             )
             File.WriteAllText(workflowPath, yaml.Replace(String('a', 40), String('c', 40)))
             Check.Contains(
-                flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true).Error,
+                flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true).Error,
                 sharedWorkflow + String('c', 40)
             )
             Check.That(
@@ -336,7 +343,7 @@ internal class CliDiscovery {
                 Check.Json("[\"Obselate/Tokate/.github/workflows/tokate-shared.yml@*\"]")
             )
             flow.Save()
-            flow.Call([]string{"init", "--path", root, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.That(File.ReadAllText(workflowPath) == yaml, "Wildcard allowlist changed the pinned workflow")
             flow.Reload()
             flow.State["actions_permissions"] = nil
@@ -344,7 +351,7 @@ internal class CliDiscovery {
             flow.Save()
             let fresh = Path.Combine(flow.Temp.Root, "fresh")
             Checkout(flow, fresh)
-            flow.Call([]string{"init", "owner/project", "--path", fresh, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "owner/project", "--path", fresh, "--non-interactive", "--yes"}, owner: true)
             let freshPolicy = Path.Combine(fresh, ".github/tokate.json")
             Check.That(
                 File.ReadAllText(freshPolicy) == original,
@@ -360,7 +367,7 @@ internal class CliDiscovery {
             Check.That(File.ReadAllText(freshPolicy) == unpushed, "Setup overwrote an unpushed local policy")
             let renamed = Path.Combine(root, ".github/workflows/owner.yaml")
             File.Move(workflowPath, renamed)
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.That(
                 !File.Exists(workflowPath) && File.ReadAllText(renamed) == yaml && Directory.GetFiles(
                     github,
@@ -374,7 +381,7 @@ internal class CliDiscovery {
             let escaped = "custom owner workflow\n# synthetic-preview-\x1b[31m\n"
             File.WriteAllText(workflowPath, escaped)
             let safePreview = flow.Call(
-                []string{"init", "owner/project", "--path", root, "--non-interactive", "--plain"},
+                []string{"init", "owner/project", "--path", root, "--non-interactive", "--yes", "--plain"},
                 owner: true
             )
             Check.That(!safePreview.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
@@ -408,7 +415,8 @@ internal class CliDiscovery {
                     "Literal {{issue}} owner text",
                     "--close-message",
                     "Ask the owner for access.",
-                    "--non-interactive"
+                    "--non-interactive",
+                    "--yes"
                 },
                 owner: true
             )
@@ -420,7 +428,7 @@ internal class CliDiscovery {
                     policy["allow_network"] == nil,
                 "Noninteractive settings were not applied"
             )
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.That(
                 File.ReadAllText(policyPath) == restricted && File.ReadAllText(
                     workflowPath
@@ -444,7 +452,8 @@ internal class CliDiscovery {
                 root,
                 "--allowed-tools",
                 "pi",
-                "--non-interactive"
+                "--non-interactive",
+                "--yes"
             }
             flow.Call(toolArgs.ToArray(), owner: true)
             Publish(flow, File.ReadAllText(policyPath))
@@ -502,7 +511,7 @@ internal class CliDiscovery {
             Check.Contains(flow.Call([]string{"policy", "owner/project"}, 1).Error, "tokate init OWNER/REPO")
             flow.NoInference()
             File.WriteAllText(policyPath, legacy.ToJsonString())
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
             let migrated = Check.Json(File.ReadAllText(policyPath))
             Check.That(
                 Check.Text(migrated["version"]) == "3" && Check.Text(migrated["eligibility"]) == "trusted" &&
@@ -515,13 +524,22 @@ internal class CliDiscovery {
             Publish(flow, File.ReadAllText(policyPath))
             let routes = "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"claude-opus-5-5\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
             flow.Call(
-                []string{"init", "owner/project", "--path", root, "--allowed-tools", routes, "--non-interactive"},
+                []string{
+                    "init",
+                    "owner/project",
+                    "--path",
+                    root,
+                    "--allowed-tools",
+                    routes,
+                    "--non-interactive",
+                    "--yes"
+                },
                 owner: true
             )
             let routed = File.ReadAllText(policyPath)
             Check.That(Check.Json(routed)["allowed_tools"]?.ToJsonString() == routes, "Init lost per-tool model maps")
             Publish(flow, routed)
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
+            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
             Check.That(File.ReadAllText(policyPath) == routed, "Repeat changed per-tool models")
             Publish(flow, nil)
             let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
@@ -560,6 +578,12 @@ internal class CliDiscovery {
                 )
                 Check.Contains(blocked.Error, "Missing GitHub settings")
                 Check.Contains(blocked.Error, "--yes")
+                if missing != "pull-requests" {
+                    Check.Contains(blocked.Error, "Actions event policy")
+                }
+                if missing != "events" {
+                    Check.Contains(blocked.Error, "Allow GitHub Actions to create and approve pull requests")
+                }
                 Check.That(
                     !Directory.Exists(Path.Combine(interactiveRoot, ".github")),
                     "Missing settings wrote setup files"
@@ -569,6 +593,40 @@ internal class CliDiscovery {
                     Check.That(Check.Text(call["method"]) == "GET", "Noninteractive setup changed GitHub settings")
                 }
             }
+            let savedOwnerToken = flow.Temp.Env["GH_TOKEN"]
+            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            let setupArgs = []string{
+                "init",
+                "owner/project",
+                "--path",
+                interactiveRoot,
+                "--model-policy",
+                "unrestricted",
+                "--verification",
+                "[[\"/usr/bin/true\"]]",
+                "--required-checks",
+                "[\"verify\"]"
+            }
+            let declinedSetup = TestTerminal.Pty(binary, setupArgs, flow.Temp, 80, "\n")
+            Check.That(declinedSetup.Code == 1, declinedSetup.Output + declinedSetup.Error)
+            Check.Contains(declinedSetup.Output, "Apply this project setup? [y/N]")
+            flow.Reload()
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(Check.Text(call["method"]) == "GET", "Declined setup changed GitHub settings")
+            }
+            Check.That(!Directory.Exists(Path.Combine(interactiveRoot, ".github")), "Declined setup wrote files")
+            let acceptedSetup = TestTerminal.Pty(binary, setupArgs, flow.Temp, 80, "y\n")
+            Check.Success(acceptedSetup)
+            Check.That(
+                acceptedSetup.Output.Split("Apply this project setup? [y/N]").Length == 2,
+                "Setup did not ask once"
+            )
+            Check.That(
+                File.Exists(Path.Combine(interactiveRoot, ".github/tokate.json")),
+                "Accepted setup wrote no policy"
+            )
+            Directory.Delete(Path.Combine(interactiveRoot, ".github"), true)
+            flow.Temp.Env["GH_TOKEN"] = savedOwnerToken
             flow.Call(
                 []string{
                     "init",
@@ -695,12 +753,32 @@ internal class CliDiscovery {
                 if flag.StartsWith("--") {
                     optionArgs.Add(flag)
                 }
-                let options = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
-                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "1\n": "")
-                Check.Success(options)
-                if flag == "" {
-                    Check.That(!options.Output.Contains('{'), "Setup result showed raw explicit configuration")
+                let preview = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
+                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "\n": "")
+                Check.That(preview.Code == (flag == "" ? 1: 0), preview.Output + preview.Error)
+                if flag == "--json" {
+                    Check.That(
+                        Check.Text(Check.Envelope(preview, "init", "ok")["data"]?["applied"]) == "false",
+                        "Preview claimed setup was applied"
+                    )
                 }
+                Check.Contains(
+                    preview.Output +
+                        preview.Error +
+                        (flag == "--json" ? File.ReadAllText(Path.Combine(flow.Temp.Root, "diagnostics")): ""),
+                    "--yes"
+                )
+                Check.That(!File.Exists(Path.Combine(optionRoot, ".github/tokate.json")), "Preview wrote policy")
+                flow.Reload()
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    Check.That(Check.Text(call["method"]) == "GET", "Preview changed GitHub settings")
+                }
+                if flag != "" {
+                    optionArgs.Add("--yes")
+                }
+                let options = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
+                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "y\n": "")
+                Check.Success(options)
                 Check.That(
                     !options.Output.Contains("Who can contribute?") && !options.Output.Contains(
                         "Choose how much control"

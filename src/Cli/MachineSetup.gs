@@ -29,13 +29,10 @@ internal class MachineSetup {
 
         private func Confirm(options Args, message string) bool {
             Terminal.Message(message, "yellow", true)
-
-            if options.Command == "doctor" && options.Get("yes") == "true" {
-                return true
+            if !OwnerSetup.Confirm(options, "Install requirements?") {
+                throw CliFailure("confirmation_required", "Installation requires --fix --yes. Nothing installed.")
             }
-
-            Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
-            return false
+            return true
         }
 
         private func PackageManager() string {
@@ -305,9 +302,15 @@ internal class MachineSetup {
                 Terminal.Message("For an SDK installation, use --pi-root DIR --node FILE.", error: true)
             }
 
-            if options.Get("yes") != "true" {
-                Terminal.Message("Supply --harness-path FILE, or confirm installation with --fix --yes.", error: true)
-                return false
+            Terminal.Message(
+                "Install " + name + " with its official installer. Existing configuration is kept.",
+                error: true
+            )
+            if !OwnerSetup.Confirm(options, "Install " + name + "?") {
+                throw CliFailure(
+                    "confirmation_required",
+                    "Supply --harness-path FILE, or confirm installation with --fix --yes."
+                )
             }
 
             if LocalPaths.Find("curl") == "" && !TryFix(options, List[ToolCheck]{ToolCheck{Name: "curl"}}) {

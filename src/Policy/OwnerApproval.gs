@@ -33,7 +33,7 @@ internal class OwnerApproval {
 
             approval["issue"] = number
             approval["issue_hash"] = GitHub.Fingerprint(issue)
-            CoordinationState.Approve(repo, number, approval, args.Get("yes") == "true")
+            CoordinationState.Approve(repo, number, approval, args.Get("yes") == "true", args)
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",

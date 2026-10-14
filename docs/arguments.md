@@ -1,7 +1,7 @@
 # Positional arguments
 
 Use this command reference for current main. Put the target after the command.
-Commands never prompt. Missing choices fail with `invalid_arguments` and name a flag.
+Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful. Missing choices fail with `invalid_arguments` and name a flag.
 Bare `tokate` prints help. The GUI is the other interface.
 
 1. Show all command metadata.
@@ -34,7 +34,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Write owner policy and a pinned workflow. Preview GitHub settings and protection, apply with `--yes`. |
+| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Preview local files, GitHub settings and protection, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`, or rejects missing Actions settings. |
 | `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
@@ -45,7 +45,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
 | `verify` | `tokate verify PR` | Check a receipt against owner approval. |
 | `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
-| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` previews installations, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
+| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
 | `update` | `tokate update` | Install the latest stable release. |
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |

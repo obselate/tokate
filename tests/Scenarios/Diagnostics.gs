@@ -672,9 +672,19 @@ internal class Diagnostics {
                     TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),
                     "doctor",
                     "error",
-                    "missing_tools"
+                    "confirmation_required"
                 )
                 Check.That(!File.Exists(calls), "Unconfirmed setup ran " + distro + " installer")
+                args.Remove("--json")
+                let declined = TestTerminal.Pty("/usr/bin/bwrap", args.ToArray(), temp, 80, "\n")
+                Check.That(declined.Code == 1, declined.Output + declined.Error)
+                Check.Contains(declined.Output, "Install requirements? [y/N]")
+                Check.That(!File.Exists(calls), "Declined setup ran an installer")
+                let accepted = TestTerminal.Pty("/usr/bin/bwrap", args.ToArray(), temp, 80, "y\n")
+                Check.Success(accepted)
+                Check.Contains(accepted.Output, "Install requirements? [y/N]")
+                Check.That(File.ReadAllText(calls) == expected, "Confirmed setup changed unrelated packages")
+                args.Add("--json")
                 args.Add("--yes")
                 Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
                 Check.That(File.ReadAllText(calls) == expected, "Setup changed unrelated packages: " + distro)

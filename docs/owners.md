@@ -51,9 +51,9 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    `--max-time TIME`, `--reservation-time TIME` and `--allowed-tools JSON` to change choices.
    Existing policy values are kept unless a flag changes them.
 
-7. Review the previewed GitHub Actions settings and branch protection changes.
-   Add `--yes` to the same init command to apply them. Missing Actions settings
-   stop setup with `invalid_arguments` and name `--yes`. Without it, protection is unchanged.
+7. Review the previewed local files, GitHub Actions settings and branch protection changes.
+   Init asks once in a terminal. Add `--yes` to apply without a question.
+   With `--json`, `--non-interactive` or no terminal and no `--yes`, it changes nothing and exits 0 with `applied=false`. Missing Actions settings remain a rejection with `confirmation_required` naming `--yes`.
 8. Review, commit and push the generated files before task approval.
 
    ```sh
@@ -147,7 +147,7 @@ current approval authority. Re-approval does not restore an old approval identit
 
    Use `--base-branch BRANCH` to change its target. The policy target or default branch
    is used when this flag is absent. Replacing an active reservation or published PR
-   requires `--yes`. No terminal confirmation is shown.
+   asks once in a terminal, or requires `--yes` in non-terminal use.
 
 You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
 that the label sender has write, maintain or admin permission, then records approval.
@@ -226,7 +226,7 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
    tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
    ```
 
-   The command prints the old and new versions and pins, a comparison URL, a release URL and the proposed file. Review them before applying. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Preview without `--yes` changes no files or settings. Commands never prompt.
+   The command prints the old and new versions and pins, a comparison URL, a release URL and the proposed file. Review them before applying. It asks once in a terminal. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. With `--json`, `--non-interactive` or no terminal and no `--yes`, it previews without changes.
 
    In Settings > Actions > General > Actions permissions, the pattern `obselate/tokate/.github/workflows/tokate-shared.yml@*` survives pin updates. The workflow itself stays pinned to an exact commit. An exact allowlist commit needs an update with each pin. Blocking exclusions, disabled Actions and organization restrictions need owner review. Setup does not remove exclusions or enable Actions.
 
@@ -248,7 +248,7 @@ The local update does not change the repository pin. See [donors](donors.md), [a
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Missing GitHub settings. Pass --yes to apply the previewed changes.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
+| `Pass --yes to apply the previewed project setup. Nothing changed.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
 | `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by a task-field or template reason and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks 10 --watch` |

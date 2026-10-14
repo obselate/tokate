@@ -14,6 +14,34 @@ internal class PiHarness {
         private func CliExecutable(path string) bool -> LocalPaths.Executable(path) ||
             (File.Exists(path) && (path.EndsWith(".js") || path.EndsWith(".mjs") || path.EndsWith(".cjs")))
 
+        private func Activity(line string) {
+            let value = J.Parse(line)
+            let event = J.Text(value, "type")
+
+            if event == "message_end" && J.Text(J.Get(value, "message"), "role") == "assistant" {
+                for part in J.Items(J.Get(J.Get(value, "message"), "content")) {
+                    if J.Text(part, "type") == "text" {
+                        DonationView.Append("Assistant: " + J.Text(part, "text"))
+                    }
+                }
+            } else if event == "tool_execution_start" {
+                let args = J.Get(value, "args")
+                let detail = J.Text(args, "command") == "" ? J.Text(args, "path"): J.Text(args, "command")
+                DonationView.Append(J.Text(value, "toolName") + ": " + detail)
+            } else if event == "tool_execution_end" {
+                for item in J.Items(J.Get(J.Get(value, "result"), "content")) {
+                    if J.Text(item, "type") == "text" {
+                        DonationView.Append(J.Text(item, "text"))
+                    }
+                }
+                if J.Bool(value, "is_error") {
+                    DonationView.Append("Tool failed: " + J.Text(value, "tool"))
+                }
+            } else if event == "compaction_end" {
+                DonationView.Append("Context compacted")
+            }
+        }
+
         private func ManagedRuntime(cli string, args Args) string {
             let store = NixRuntime.Root(cli)
             let nixRoot = Path.Combine(store, "lib/pi/node_modules")
@@ -318,6 +346,11 @@ internal class PiHarness {
                         RuntimeBudget(timer, run.Flag("unlimited") ? 0: run.Number("seconds"))
                     )
 
+                    var activity Action[string]? = nil
+                    if DonationView.Active() {
+                        activity = line -> Activity(line)
+                    }
+
                     result = Commands.Run(
                         LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
@@ -328,7 +361,8 @@ internal class PiHarness {
                         strictOutput: true,
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
-                        budget: coding
+                        budget: coding,
+                        outputLine: activity
                     )
                 }
 

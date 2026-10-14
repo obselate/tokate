@@ -57,7 +57,7 @@ internal class ContributionPreparation {
                     ContinuationImport.Metadata(sourceDirectory)
                 )
 
-                AttemptContinuation.Confirm(args, J.Get(run.Element(), "selection"))
+                AttemptContinuation.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
 
             Directory.CreateDirectory(
@@ -284,8 +284,8 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
-            if args.Command == "work" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"))
+            if (args.Command == "work" || args.Command == "claim") && run.Text("source") != "external" {
+                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
 
             let request = J.Parse(
@@ -454,7 +454,7 @@ internal class ContributionPreparation {
             }
 
             if args.Command == "work" && args.Get("run") != "" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"))
+                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
 
             Submission.Request(

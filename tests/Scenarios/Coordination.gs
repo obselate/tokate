@@ -1017,14 +1017,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Check.That(declined.Code == 1, declined.Output + declined.Error)
         Check.Contains(declined.Output, "published PR owner/project#10")
+        Check.Contains(declined.Output, "Replace approval? [y/N]")
         Check.That(State().ToJsonString() == published, "Declined approval changed published authority")
         Flow.Call([]string{"coordination", "owner/project#1"}, owner: true)
         let confirmed = TestTerminal.Pty(
             Flow.Binary,
-            []string{"approve", "owner/project#1", "--base-branch", "main", "--yes"},
+            []string{"approve", "owner/project#1", "--base-branch", "main"},
             Flow.Temp,
             80,
-            ""
+            "y\n"
         )
         Check.Success(confirmed)
         Check.Contains(confirmed.Output, "published PR owner/project#10")
@@ -1791,14 +1792,34 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Check.Text(missing["error"]?["message"]), "tokate work OWNER/REPO --harness")
         Flow.Call([]string{"defaults", "set", "donor", "--model", "gpt-6.1-sol", "--effort", "high"})
         Flow.Call([]string{"defaults", "use", "donor"})
-        Check.Envelope(Flow.Call(start, 1), "work", "error", "invalid_arguments")
+        let stateDir = Path.Combine(Flow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project")
+        let consent = Check.Envelope(Flow.Call(start, 1), "work", "error", "confirmation_required")
+        Check.Contains(Check.Text(consent["error"]?["message"]), "--yes")
+        let noninteractive = Flow.Call([]string{"work", "owner/project", "--non-interactive"}, 1)
+        Check.Contains(noninteractive.Error, "--yes")
+        let declined = TestTerminal.Pty(Flow.Binary, []string{"work", "owner/project"}, Flow.Temp, 80, "\n")
+        Check.That(declined.Code == 1, declined.Output + declined.Error)
+        Check.Contains(declined.Output, "Start donating? [y/N]")
+        Flow.NoInference()
+        Check.That(!Directory.Exists(stateDir), "Unconfirmed donation changed local state")
+        let accepted = TestTerminal.Pty(
+            Flow.Binary,
+            []string{"work", "owner/project", "--total", "1s"},
+            Flow.Temp,
+            80,
+            "y\n"
+        )
+        Check.Success(accepted)
+        Check.Contains(accepted.Output, "Start donating? [y/N]")
+        let stopped = TestTerminal.Pty(Flow.Binary, []string{"work", "owner/project", "stop"}, Flow.Temp, 80, "y\n")
+        Check.Success(stopped)
+        Check.Contains(stopped.Output, "Stop donating? [y/N]")
         Flow.Git("-C", Flow.Upstream, "remote", "add", "origin", "https://github.com/owner/project")
         let total = []string{"work", "--total", "1s", "--yes", "--json"}
         let exhaustedRun = TestProcess.Run(Flow.Binary, total, Flow.Temp.Env, cwd: Flow.Upstream)
         let exhausted = Check.Envelope(exhaustedRun, "work", "ok")
         Check.That(Check.Text(exhausted["data"]?["reason"]) == "total_exhausted", "Donation exceeded its total budget")
         Flow.NoInference()
-        let stateDir = Path.Combine(Flow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project")
         let marker = Path.Combine(stateDir, "stop")
         File.WriteAllText(marker, "stale")
         Coordinate(Event(ClaimRequest(), actor: 1, login: "owner"))

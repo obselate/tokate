@@ -627,7 +627,11 @@ internal class PiChecks {
                 flow.Flow.Temp.Env["TERM"] = "xterm-256color"
                 worked = TestTerminal.Pty(binary, work.ToArray(), flow.Flow.Temp, 100)
                 Check.Success(worked)
+                Check.Contains(worked.Output, "tokate / Donation")
+                Check.Contains(worked.Output, "bash: setsid sh")
+                Check.Contains(worked.Output, "Assistant: Changes: synthetic edits.")
                 Check.Contains(worked.Output, "Verification 1:")
+                Check.Contains(worked.Output, "\x1b[?1049l")
             } else {
                 worked = flow.Flow.Call(work.ToArray(), success ? 0: 1)
             }

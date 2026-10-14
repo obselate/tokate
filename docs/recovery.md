@@ -24,7 +24,7 @@ Find the code or message below, then use the action in its row. Keep the origina
 
 Bare `42` selects the newest attempt for commands that take a run. Use `42-1` for attempt 1, not another attempt with a better-looking state.
 
-Do not edit `run.json` or delete evidence to bypass a failure. In a picker, `h` or Esc returns home. In a text input, use Esc.
+Do not edit `run.json` or delete evidence to bypass a failure.
 
 ## Correct a rejected public summary
 
@@ -238,7 +238,7 @@ Execution keeps saved failure stages, interruption evidence and verification res
 | --- | --- |
 | `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor owner --auth --fix --yes` |
 | `Authentication is required with the appropriate account.` | `gh auth login` |
-| `Missing GitHub settings. Pass --yes to apply the previewed changes.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
+| `Pass --yes to apply the previewed project setup. Nothing changed.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
 
 ### Claim and work
 

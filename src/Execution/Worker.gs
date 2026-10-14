@@ -45,6 +45,11 @@ internal class Worker {
             command.AddRange(args)
 
             let cancellation Chan[bool]? = capture ? Chan[bool](1): nil
+            var activity Action[string]? = nil
+            if capture && DonationView.Active() {
+                activity = line -> Activity(line)
+            }
+
             return Commands.Run(
                 LocalPaths.NeedSystemTool("env", directory),
                 command.ToArray(),
@@ -55,8 +60,35 @@ internal class Worker {
                 cancellation: cancellation,
                 outputPath: capture ? Path.Combine(directory, "events.jsonl"): "",
                 errorPath: capture ? Path.Combine(directory, "stderr.log"): "",
-                budget: budget
+                budget: budget,
+                outputLine: activity
             )
+        }
+
+        private func Activity(line string) {
+            let value = J.Parse(line)
+            let type = J.Text(value, "type")
+            let item = J.Get(value, "item")
+            let kind = J.Text(item, "type")
+
+            if type == "item.completed" && kind == "agent_message" {
+                DonationView.Append("Assistant: " + J.Text(item, "text"))
+            } else if type == "item.started" && kind == "command_execution" {
+                DonationView.Append("Run: " + J.Text(item, "command"))
+            } else if type == "item.completed" && kind == "command_execution" {
+                DonationView.Append(J.Text(item, "aggregated_output"))
+                DonationView.Append(
+                    "Command " + J.Text(item, "status") + " (exit " + J.Get(item, "exit_code").ToString() + ")"
+                )
+            } else if type == "item.completed" && kind == "file_change" {
+                for change in J.Items(J.Get(item, "changes")) {
+                    DonationView.Append(J.Text(change, "kind") + ": " + J.Text(change, "path"))
+                }
+            } else if type == "error" || type == "turn.failed" {
+                DonationView.Append(
+                    "Harness error: " + J.Text(value, "message") + J.Text(J.Get(value, "error"), "message")
+                )
+            }
         }
 
         internal func Filesystem(checkout string, gitRead bool = false, harnessPath string = "") string {
@@ -241,9 +273,9 @@ internal class Worker {
                 let selected = J.Get(run.Element(), "selection")
 
                 if AttemptContinuation.Has(run) {
-                    AttemptContinuation.Confirm(options, selected)
+                    AttemptContinuation.Confirm(options, selected, run)
                 } else {
-                    DonorSelection.Confirm(options, selected)
+                    DonorSelection.Confirm(options, selected, run)
                 }
 
                 RuntimeBudget.Validate(run)

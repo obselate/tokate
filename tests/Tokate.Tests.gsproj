@@ -15,6 +15,7 @@
     <EmbeddedResource Include="../templates/tokate-pr.md" LogicalName="TokateTests.templates.tokate-pr.md" />
     <EmbeddedResource Include="Tools/PiModels.mjs" LogicalName="TokateTests.templates.PiModels.mjs" />
     <EmbeddedResource Include="Tools/PiCli.mjs" LogicalName="TokateTests.templates.PiCli.mjs" />
+    <EmbeddedResource Include="Tools/donation-view.py" LogicalName="TokateTests.templates.donation-view.py" />
     <EmbeddedResource Include="../.github/workflows/tokate-shared.yml" LogicalName="TokateTests.templates.coordinator.yml" />
   </ItemGroup>
 </Project>

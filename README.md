@@ -39,15 +39,15 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
 Use plain CLI commands with flags or the GUI. Bare `tokate` prints help.
-Commands never prompt. A missing choice fails with `invalid_arguments` and names the required flag.
+Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful. Missing choices fail with `invalid_arguments` and name the required flag.
 `tokate work OWNER/REPO --yes` runs approved issues until stopped. Add `--total` to cap the session.
 Use `tokate work OWNER/REPO stop --yes` to stop. Bare `tokate work` uses the local GitHub remote.
 For one issue, use `tokate work 42 NAME --time 1h` in a checkout or `tokate work OWNER/REPO#42 NAME --time 1h` elsewhere. Supply a saved profile as `NAME` or use tool flags. A repository link selects the loop. An issue link names one issue.
 See the [positional arguments guide](docs/arguments.md) for references and command forms.
 Use `tokate help COMMAND` for exact options and `--json` for structured results.
-Init requires policy choices as flags. Add `--yes` to apply its previewed GitHub Actions and branch protection changes.
+Init requires policy choices as flags. It previews local files, GitHub Actions and branch protection, then asks once in a terminal. Use `--yes` to apply without a question. Non-terminal preview returns `applied=false`, or rejects missing Actions settings.
 Approve existing issues with `tokate approve 42`. Create issues with `gh issue create` or the GUI.
-Doctor previews installations with `--fix`, applies them with `--fix --yes`, and accepts `--harness-path FILE` for an existing harness.
+Doctor explains installations with `--fix`, asks once in a terminal, applies with `--fix --yes`, and accepts `--harness-path FILE` for an existing harness.
 Save donor choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
 
 [Website](https://tokate.dev/) · [Releases](https://github.com/obselate/tokate/releases) · [Issues](https://github.com/obselate/tokate/issues) · [MIT license](LICENSE)

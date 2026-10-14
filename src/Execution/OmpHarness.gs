@@ -9,6 +9,25 @@ import System.Text.Json
 
 internal class OmpHarness {
     shared {
+        private func Activity(line string) {
+            let value = J.Parse(line)
+            let event = J.Text(value, "type")
+
+            if event == "message_end" && J.Text(J.Get(value, "message"), "role") == "assistant" {
+                for part in J.Items(J.Get(J.Get(value, "message"), "content")) {
+                    if J.Text(part, "type") == "text" {
+                        DonationView.Append("Assistant: " + J.Text(part, "text"))
+                    }
+                }
+            } else if event == "tool_execution_start" {
+                let args = J.Get(value, "args")
+                let detail = J.Text(args, "command") == "" ? J.Text(args, "path"): J.Text(args, "command")
+                DonationView.Append(J.Text(value, "toolName") + ": " + detail)
+            } else if event == "auto_compaction_end" {
+                DonationView.Append("Context compacted")
+            }
+        }
+
         internal func Select(args Args, policy Policy, source string) JsonElement {
             let provider = RequestData.Token(args.Need("provider"))
             let model = RequestData.ModelIdentifier(args.Need("model"))
@@ -118,6 +137,11 @@ internal class OmpHarness {
                         RuntimeBudget(timer, run.Flag("unlimited") ? 0: run.Number("seconds"))
                     )
 
+                    var activity Action[string]? = nil
+                    if DonationView.Active() {
+                        activity = line -> Activity(line)
+                    }
+
                     result = Commands.Run(
                         LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
@@ -128,7 +152,8 @@ internal class OmpHarness {
                         strictOutput: true,
                         outputPath: Path.Combine(directory, "events.jsonl"),
                         errorPath: Path.Combine(directory, "stderr.log"),
-                        budget: coding
+                        budget: coding,
+                        outputLine: activity
                     )
                 }
 
