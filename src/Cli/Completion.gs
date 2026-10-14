@@ -13,13 +13,7 @@ internal class Completion {
 
         private func Literals(command CliCommand) List[string] -> command
             .Kinds(true)
-            .Concat(
-            command.Kinds(false).Contains("HARNESS") ? Cli
-                .Options
-                .First(option -> option.Name == "harness")
-                .Choices
-                .Split(' '): []string{}
-        )
+            .Concat(command.Kinds(false).Contains("HARNESS") ? Harness.Table.Keys.ToArray(): []string{})
             .ToList()
 
         private func Words(command CliCommand) string -> String.Join(

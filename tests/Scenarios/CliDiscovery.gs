@@ -1090,6 +1090,7 @@ internal class CliDiscovery {
                 )
                     .Split('\n')
             )
+            Check.That(!listed.Contains("doctor command"), "Completion offers the command harness to doctor")
             for command in commands {
                 let name = Check.Text(command["command"])
                 Check.That(listed.Contains(name) && listed.Contains("help " + name), "Completion omits command " + name)
@@ -1098,7 +1099,13 @@ internal class CliDiscovery {
                     words.Add(Check.Text(option["name"]))
                     if Check.Text(option["name"]) == "--harness" && command["positional_arguments"]?.ToJsonString()
                         .Contains("HARNESS") == true {
-                        words.AddRange(option["choices"]?.AsArray().Select(choice -> Check.Text(choice)) ?? []string{})
+                        words.AddRange(
+                            option["choices"]
+                                ?.AsArray()
+                                .Select(choice -> Check.Text(choice))
+                                .Where(choice -> choice != "command") ??
+                                []string{}
+                        )
                     }
                 }
                 for position in command["positional_arguments"]?.AsArray() ?? JsonArray() {
