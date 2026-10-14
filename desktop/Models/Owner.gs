@@ -160,8 +160,15 @@ data struct SetupDraft {
     }
 }
 
+data struct SetupChange {
+    var Setting string
+    var Current string
+    var Proposed string
+}
+
 data struct SetupReport {
     var Applied bool
+    var Changes []SetupChange
     var Manual []string
     var PullRequest string
 }

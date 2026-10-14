@@ -58,13 +58,29 @@ class PolicyCodec {
 
         func FromPolicyResult(data JsonElement) Policy -> Policy(Json.Get(data, "policy"))
 
-        func Setup(data JsonElement) SetupReport -> SetupReport{
-            Applied: Json.Bool(data, "applied"),
-            Manual: Json.Strings(data, "manual"), PullRequest: Json.Text(data, "pull_request"),
+        func Setup(data JsonElement) SetupReport {
+            let changes = List[SetupChange]()
+            for change in Json.Items(data, "changes") {
+                changes.Add(SetupChange{
+                    Setting: Json.Text(change, "change"),
+                    Current: Json.Text(change, "old"), Proposed: Json.Text(change, "new"),
+                })
+            }
+            return SetupReport{
+                Applied: Json.Bool(data, "applied"), Changes: changes.ToArray(),
+                Manual: Json.Strings(data, "manual"), PullRequest: Json.Text(data, "pull_request"),
+            }
         }
 
         func OwnerHealth(data JsonElement) string {
             let lines = List[string]()
+            for tool in Json.Items(data, "tools") {
+                lines.Add(Json.Text(tool, "name") + ": " + Json.Text(tool, "status") + "\n" + Json.Text(tool, "detail"))
+                let hint = Json.Text(tool, "hint")
+                if Json.Text(tool, "status") != "ready" && hint != "" {
+                    lines.Add(hint)
+                }
+            }
             for check in Json.Items(data, "checks") {
                 lines.Add(Json.Text(check, "check").Replace('_', ' ') + ": " + Json.Text(check, "status") + "\n" + Json.Text(check, "message"))
                 let command = Json.Strings(check, "command")

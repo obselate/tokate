@@ -19,7 +19,7 @@ func ShellTests() {
     }
     let feedback = FeedbackService(changed)
     let pending = CommandOutcome{
-        Envelope: CliCodec.Envelope(Regression.Fixture("envelope-pending.json")),
+        Envelope: CliCodec.Envelope(Regression.Fixture("envelope-pending.json")) with{Status = CliStatus.Pending, ExitCode = 8},
         ExitCode: 8,
         Diagnostics: "",
         Failure: "",

@@ -113,7 +113,7 @@ data struct RunDetails {
         }
         for next in Item.Actions {
             let continuation = Array.IndexOf(next.Arguments, "--continue-from") >= 0
-            if next.Command == "help" || (next.Command == "status" && !next.NamesRun && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
+            if next.Command == "help" || next.Command == "sync" || (next.Command == "status" && !next.NamesRun && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
                 if continuation {
                     for command in []string{"pause", "resume"} {
                         let request = NextAction{Arguments: []string{"tokate", command, "--run", run.Path, "--json"}}
@@ -126,7 +126,7 @@ data struct RunDetails {
                 }
                 children.Add(Label{Content: String.Join(" ", next.Arguments)}.Build())
                 children.Add((Button with{
-                    Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": "Inspect authority",
+                    Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": next.Command == "sync" ? "Review synchronization": "Inspect authority",
                     Disabled = Waiting,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())

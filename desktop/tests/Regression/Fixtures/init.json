@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"init","status":"error","exit_code":1,"data":{"repo":"obselate/tokate","issue":"","donor":"","pr":""},"error":{"code":"command_failed","message":"Command failed. Inspect relevant state and private artifacts before any explicit next action."},"next_actions":[],"truncated":false}

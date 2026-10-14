@@ -141,10 +141,7 @@ class OwnerService {
             PolicyCodec.OwnerHealth,
             (reply Reply[string]) -> {
                 let outcome = reply.Outcome
-                Set(Current with{DoctorReport = String.Join("\n", Array.FindAll(
-                    []string{!String.IsNullOrEmpty(reply.Value) ? reply.Value: outcome.Report, outcome.Diagnostics},
-                    part -> part != ""
-                ))})
+                Set(Current with{DoctorReport = !String.IsNullOrEmpty(reply.Value) ? reply.Value: outcome.Report})
                 if !commands.Failed(outcome) {
                     feedback.Show(repository == "" ? "Owner prerequisites checked.": "Owner repository health checked.", Tone.Done)
                 }
@@ -466,7 +463,7 @@ class OwnerService {
                     let failed = commands.Failed(reply.Outcome)
                     Set(Current with{
                         SetupReport = reply.Value, SetupPreviewed = !failed,
-                        Written = reply.Outcome.Diagnostics,
+                        Written = failed ? reply.Outcome.Diagnostics: "",
                     })
                 }
             )
@@ -494,7 +491,7 @@ class OwnerService {
                 arguments,
                 PolicyCodec.Setup,
                 (reply Reply[SetupReport]) -> {
-                    Set(Current with{SetupReport = reply.Value, Written = reply.Outcome.Diagnostics})
+                    Set(Current with{SetupReport = reply.Value, Written = reply.Outcome.ExitCode != 0 ? reply.Outcome.Diagnostics: ""})
                     if !commands.Failed(reply.Outcome) {
                         Set(Current with{SetupPreviewed = false})
                         feedback.Show(reply.Value.Applied ? "Setup applied. Review and merge the setup PR before approving issues.": "Setup already matches. Complete any manual steps and review the setup PR.", Tone.Done)

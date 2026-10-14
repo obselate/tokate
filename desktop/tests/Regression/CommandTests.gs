@@ -99,7 +99,7 @@ func CommandTests() {
         "init arguments"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))))),
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}))),
         "init o/r --non-interactive --yes",
         "unchanged init leaves upstream tool permissions untouched"
     )
@@ -112,7 +112,7 @@ func CommandTests() {
         "confirmed approval can replace stale authority"
     )
     Regression.Equal(
-        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))), false)),
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}), false)),
         "init o/r --non-interactive",
         "setup preview does not apply"
     )

@@ -67,10 +67,18 @@ func SavedTests() {
         "a changed candidate names the files that verification changed"
     )
     Regression.Equal(PublicSummary.Problem("Set retries=3 by default."), "", "a summary line can have an equals sign, as Tokate accepts it")
-    Regression.Check(
-        RunActions.From([]NextAction{NextAction{Arguments: []string{"tokate", "work", "owner/repo#42", "--continue-from", "/runs/stopped", "--time", "2h"}}}, "failed").Length == 0,
-        "continuation cannot discard the fresh attempt arguments"
-    )
+    let continuation = NextAction{Arguments: []string{"tokate", "work", "owner/repo#42", "--continue-from", "/runs/stopped", "--time", "2h", "--yes", "--json"}}
+    Regression.Check(RunActions.From([]NextAction{continuation}, "failed").Length == 0, "continuation cannot discard the fresh attempt arguments")
+    saved.Follow(continuation)
+    Regression.Equal(dialogs.Current?.Text ?? "", Regression.Args(continuation.Arguments), "continuation confirmation preserves exact argv")
+    dialogs.Dismiss()
+    for operation in []string{"authorize", "revoke"} {
+        let sync = NextAction{Arguments: []string{"tokate", "sync", "owner/repo#2", operation, "--json"}}
+        Regression.Check(!sync.NamesRun && RunActions.From([]NextAction{sync}, "published").Length == 0, "sync is not a saved-run action")
+        saved.Follow(sync)
+        Regression.Equal(dialogs.Current?.Text ?? "", Regression.Args(sync.Arguments), "sync confirmation preserves operation argv")
+        dialogs.Dismiss()
+    }
     Regression.Check(RunGuide.For("Initial donation failed", false).Main == nil, "failed inference is not restarted in the same attempt")
 
     saved.Select(SavedRun.Pending("/runs/b") with{Run = run})

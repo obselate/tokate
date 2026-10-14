@@ -58,6 +58,12 @@ data struct SetupReview {
                 }.Build(),
             },
         }.Build()
+        for change in Report.Changes ?? []SetupChange{} {
+            review.Children.Add(DetailRow{
+                Caption: change.Setting,
+                Value: "Current: " + (change.Current == "" ? "none": change.Current) + "\nProposed: " + change.Proposed,
+            }.Build())
+        }
         for step in Report.Manual ?? []string{} {
             review.Children.Add(Label{Content: "Manual: " + step, Size: AppTheme.SmallSize}.Build())
         }

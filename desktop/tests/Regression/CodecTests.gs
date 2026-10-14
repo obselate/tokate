@@ -5,17 +5,20 @@ import System.Text.Json
 
 func CodecTests() {
     let pending = CliCodec.Envelope(Regression.Fixture("envelope-pending.json"))
-    Regression.Check(pending.Status == CliStatus.Pending && pending.ExitCode == 8, "pending envelope status")
-    Regression.Check(CliCodec.Matches(pending, 8, "claim"), "envelope matches the command")
-    Regression.Check(!CliCodec.Matches(pending, 0, "claim"), "envelope rejects a different exit code")
+    Regression.Check(pending.Status == CliStatus.Ok && pending.ExitCode == 0, "pending run status read succeeds")
+    Regression.Check(CliCodec.Matches(pending, 0, "status"), "envelope matches the command")
+    Regression.Check(!CliCodec.Matches(pending, 8, "status"), "envelope rejects a different exit code")
     Regression.Check(pending.Error == nil, "null error decodes as none")
-    Regression.Equal(pending.NextActions[1].Command, "work", "managed pending claim next action")
-    Regression.Equal(String.Join(" ", pending.NextActions[1].Arguments), "tokate work owner/repo#42-1 --json", "exact saved action arguments")
+    Regression.Equal(pending.NextActions[0].Command, "status", "pending run next action")
+    Regression.Equal(String.Join(" ", pending.NextActions[0].Arguments), "tokate status foxholt/tokate-demo#5-1 --json", "exact saved action arguments")
     Regression.Check(pending.NextActions[0].NamesRun, "saved status names an exact attempt")
     let authority = NextAction{Arguments: []string{"tokate", "status", "owner/repo#42"}}
     Regression.Check(!authority.NamesRun, "authority status is not a saved attempt")
-    Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/state/tokate/runs/abc", "run path")
+    Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/home/xaz/.local/state/tokate/runs/foxholt-tokate-demo-5-1", "run path")
     Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("Do not repost"), "pending claim preserves recovery guidance")
+    let published = CliCodec.Envelope(Regression.Fixture("run-published.json"))
+    Regression.Check(published.NextActions[1].NamesRun && published.NextActions[1].Command == "checks", "published action names the exact saved attempt")
+    Regression.Check(RunActions.From(published.NextActions, "published")[0] == RunAction.Checks, "real next action becomes the saved checks action")
 
     let failed = Regression.Fixture("envelope-error.json")
     let envelope = CliCodec.Envelope(failed)
@@ -28,32 +31,26 @@ func CodecTests() {
         "report prefers the error and notes truncation"
     )
 
-    let run = RunCodec.Run(Regression.Fixture("run-status.json"))
-    Regression.Equal(run.Path, "/state/tokate/runs/abc", "run path from data")
-    Regression.Equal(run.Harness, "pi", "first tool harness wins")
-    Regression.Check(run.Issue == 42 && run.Pr == 7 && run.CodingSeconds == 1800, "run numbers")
+    let run = RunCodec.Run(Json.Get(Regression.Fixture("run-status.json"), "data"))
+    Regression.Equal(run.Path, "/home/xaz/.local/state/tokate/runs/obselate-tokate-616-1", "run path from data")
+    Regression.Equal(run.Harness, "codex", "first tool harness wins")
+    Regression.Check(run.Issue == 616 && run.Pr == 0 && run.CodingSeconds == 7200, "run numbers")
     Regression.Check(!run.Unlimited, "run flags")
-    Regression.Equal(run.ErrorMessage, "Independent verification failed. Inspect the private verification artifact.", "run error message")
-    Regression.Equal(run.Approval, "appr-1", "run approval")
-    Regression.Equal(run.CodingTime, "30 minutes", "coding time text")
+    Regression.Equal(run.ErrorMessage, "Command failed. Inspect relevant state and private artifacts before any explicit next action.", "run error message")
+    Regression.Equal(run.Approval, "7072e65e5d839daaf191385e517d284469efd33dda16487f58ca2a36464e78e1", "run approval")
+    Regression.Equal(run.CodingTime, "120 minutes", "coding time text")
     let correction = RunCodec.Run(Json.Parse(
         "{\"correction\":{\"state\":\"verified\",\"commit\":\"corrected\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"/runs/a\",\"--commit\",\"corrected\",\"--time\",\"300s\"]}}"
     ))
     Regression.Equal(correction.Amending, "corrected", "unpublished amendment waits for publication")
     Regression.Check(correction.Finish[1] == "amend", "unpublished amendment finishes with amend")
 
-    let policy = PolicyCodec.FromPolicyResult(Regression.Fixture("policy.json"))
-    Regression.Check(policy.Loaded && policy.Version == 3 && policy.MaxSeconds == 5400, "policy basics")
-    Regression.Check(policy.AllowsUnlimited, "policy flags")
-    Regression.Equal(String.Join(",", policy.RequiredChecks), "build,test", "required checks")
-    Regression.Equal(String.Join(" ", policy.Verification[0]), "/bin/sh -c dotnet test", "verification command")
-    Regression.Check(
-        policy.ModelsFor("codex", "openai").Length == 1 &&
-            policy.ModelsFor("codex", "openai")[0].Efforts[1] == "xhigh" &&
-            policy.RestrictsTool("codex", "openai") && !policy.RestrictsTool("pi", "local-chat-completions"),
-        "per-tool model whitelist and unrestricted tool"
-    )
-    Regression.Equal(String.Join(",", policy.AllowedTools), "codex,pi", "allowed tools")
+    let policyData = Json.Get(Regression.Fixture("policy.json"), "data")
+    let policy = PolicyCodec.FromPolicyResult(policyData)
+    Regression.Check(!policy.Loaded && policy.Verification.Length == 0, "real doctor omits malformed version 2 policy")
+    Regression.Check(Json.Text(policyData, "scope") == "repo" && PolicyCodec.OwnerHealth(policyData).Contains("Policy requires version 3"), "real repository diagnostics retain policy problem")
+    let external = Json.Get(Regression.Fixture("doctor-external.json"), "data")
+    Regression.Check(PolicyCodec.OwnerHealth(external).Contains("curl: ready") && PolicyCodec.OwnerHealth(external).Contains("tar: ready"), "real owner prerequisites include curl and tar")
     Regression.Check(!PolicyCodec.Policy(JsonElement{}).Loaded, "missing policy is not loaded")
     let legacy = PolicyCodec.Policy(Json.Parse(
         "{\"version\":2,\"model_policy\":\"whitelist\",\"models\":{\"gpt\":[\"high\"]},\"eligibility\":\"manual\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}]}"
@@ -65,6 +62,12 @@ func CodecTests() {
         "{\"applied\":false,\"changes\":[{\"change\":\"Setup PR\",\"old\":\"\",\"new\":\"Set up Tokate\"}],\"manual\":[\"Review branch protection\"],\"pull_request\":\"https://github.com/o/r/pull/2\"}"
     ))
     Regression.Check(!setup.Applied && setup.Manual.Length == 1 && setup.PullRequest.EndsWith("/2"), "setup preview and PR fields")
+    Regression.Check(setup.Changes[0].Setting == "Setup PR" && setup.Changes[0].Current == "" && setup.Changes[0].Proposed == "Set up Tokate", "setup changes decode source change old new fields")
+    Regression.Check(CliCodec.Envelope(Regression.Fixture("init.json")).Error?.Code == "command_failed", "real unreleased binary cannot preview setup")
+    let merged = PullRequestCodec.Review(Json.Get(Regression.Fixture("checks-merged.json"), "data"))
+    Regression.Check(merged.Receipt == "unread" && merged.Ci == "historical", "real merged PR retains historical checks")
+    let draft = PullRequestCodec.Review(Json.Get(Regression.Fixture("checks-draft.json"), "data"))
+    Regression.Check(draft.Receipt == "failed" && draft.Ci == "unread", "real draft retains failed receipt and unread CI")
     let combined = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"pending\"}"))
     Regression.Check(combined.Receipt == "verified" && combined.Ci == "pending", "receipt can pass while CI is pending")
     let commandPolicy = PolicyCodec.Policy(Json.Parse(
@@ -102,9 +105,9 @@ func CodecTests() {
     Regression.Equal(access.Members[0].Badge, "Trusted", "trusted badge")
     Regression.Equal(access.Members[1].Badge, "Denied", "denied badge")
 
-    let profiles = DonorCodec.Profiles(Regression.Fixture("profiles.json"))
-    Regression.Check(profiles.Length == 2 && profiles[1].Name == "local", "profiles")
-    Regression.Equal(profiles[1].Endpoint, "http://127.0.0.1:8080/v1", "profile endpoint")
+    let profiles = DonorCodec.Profiles(Json.Get(Regression.Fixture("profiles.json"), "data"))
+    Regression.Check(profiles.Length == 2 && profiles[0].Name == "local", "profiles")
+    Regression.Check(profiles[0].Harness == "pi" && profiles[1].Provider == "openrouter" && profiles[1].Model == "~deepseek/deepseek-flash-latest", "real profile selection fields")
     Regression.Check(DonorCodec.Profiles(JsonElement{}).Length == 0, "missing profiles")
     let chosen = DonorCodec.Profiles(
         Json.Parse(
@@ -159,20 +162,26 @@ func CodecTests() {
             DonorCodec.HarnessReady(Json.Parse("{\"tools\":[]}"), "pi"),
         "harness readiness"
     )
+    Regression.Check(DonorCodec.HarnessReady(Json.Get(Regression.Fixture("doctor-managed.json"), "data"), "codex"), "installed managed harness is ready")
 
-    let reservation = RunCodec.Reservation(Regression.Fixture("coordination.json"))
-    let claim = RunCodec.ClaimId(Regression.Fixture("run-file.json"))
-    let owner = Run.Empty with{Approval = "appr-1", DonorId = "12345"}
-    Regression.Check(reservation.IsReadyFor(owner, claim, 1000), "decoded reservation is ready")
+    let coordination = Json.Get(Regression.Fixture("coordination.json"), "data")
+    let reservation = RunCodec.Reservation(coordination)
+    Regression.Check(reservation.ApprovalId == "8cd766e60c71f19f2a77832cac154580204ca9f58d21b89f76430c3cc1386c4e" && reservation.Revoked == false, "closed issue coordination retains approval")
+    Regression.Check(reservation.Actor == "11948473" && reservation.Lease == "0c355e6f-65f8-41c8-a5a5-ef73bcad18e2" && reservation.Attempt == "" && reservation.Status == "released" && reservation.Expires > 0, "real released reservation retains lease without an active attempt")
+    Regression.Equal(RunCodec.ContributionHead(coordination), "10464067cd3cc7230f5083da7c260929a5e9df49", "closed issue contribution head")
+    Regression.Check(RunCodec.ClaimId(Regression.Fixture("run-file.json")) != "", "saved claim identity decodes")
     Regression.Throws(
         () -> RunCodec.ClaimId(JsonElement{}),
         "Saved claim identity is missing.",
         "claim identity is required"
     )
 
-    let work = IssueCodec.Work(Regression.Fixture("issue-work.json"))
-    Regression.Check(work.Length == 1 && work[0].Issue == "42" && work[0].Drafts[1] == "9", "issue work")
-    Regression.Check(work[0].NeedsApproval && work[0].NextAction.Contains("tokate approve"), "stale label approvals retain owner guidance")
+    let work = IssueCodec.Work(Json.Get(Regression.Fixture("issue-work.json"), "data"))
+    Regression.Check(work.Length == 1 && work[0].Issue == "642" && work[0].Drafts[0] == "654", "real owner work retains issue and draft PR")
+    let closedData = Json.Get(Regression.Fixture("issue-closed.json"), "data")
+    Regression.Check(IssueCodec.Work(closedData).Length == 0, "real unavailable discovery keeps work empty")
+    let closedCoordination = Json.Get(closedData, "coordination")
+    Regression.Check(Json.Int(closedCoordination, "issue") == 646 && Json.Text(Json.Get(closedCoordination, "contribution"), "head") != "", "closed issue retains coordination and contribution head")
 
     Regression.Throws(() -> Json.Parse(String('x', Json.MaxLength + 1)), "JSON input exceeds the size limit.", "size limit")
 }
