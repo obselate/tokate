@@ -1,9 +1,7 @@
 package Tokate
 
-import Gsharp.Concurrency
 import System
 import System.Collections.Generic
-import System.Diagnostics
 import System.IO
 import System.Text.Json
 
@@ -16,23 +14,10 @@ internal class Worker {
 
         internal func CodexPath(path string = "") string -> CodexRuntime.Resolve(path)
 
-        internal func Run(
-            directory string,
-            args[]string,
-            input string? = nil,
-            seconds int32 = 60,
-            capture bool = false,
-            budget RuntimeBudget? = nil,
-            harnessPath string = ""
-        ) CommandResult {
+        internal func Command(args[]string, harnessPath string)[]string {
             let codex = CodexPath(harnessPath)
-            let checkout = Path.Combine(directory, "checkout")
-
-            Verification.Validate(checkout)
-
             let command = List[string]()
             let bubblewrap = CodexRuntime.Bubblewrap(codex)
-
             if bubblewrap != "" {
                 command.Add(
                     "PATH=" + Path.GetDirectoryName(bubblewrap) +
@@ -40,33 +25,23 @@ internal class Worker {
                         (Environment.GetEnvironmentVariable("PATH") ?? "/usr/bin:/bin")
                 )
             }
-
             command.Add(codex)
             command.AddRange(args)
+            return command.ToArray()
+        }
 
-            let cancellation Chan[bool]? = capture ? Chan[bool](1): nil
-            var activity Action[string]? = nil
-
-            if capture && DonationView.Active() {
-                activity = line -> Activity(line)
-            }
-
+        private func Run(directory string, args[]string, harnessPath string) CommandResult {
+            let checkout = Path.Combine(directory, "checkout")
+            Verification.Validate(checkout)
             return Commands.Run(
                 LocalPaths.NeedSystemTool("env", directory),
-                command.ToArray(),
+                Command(args, harnessPath),
                 checkout,
-                input,
-                seconds,
-                true,
-                cancellation: cancellation,
-                outputPath: capture ? Path.Combine(directory, "events.jsonl"): "",
-                errorPath: capture ? Path.Combine(directory, "stderr.log"): "",
-                budget: budget,
-                outputLine: activity
+                harness: true
             )
         }
 
-        private func Activity(line string) {
+        internal func Activity(line string) {
             let value = J.Parse(line)
             let type = J.Text(value, "type")
             let item = J.Get(value, "item")
@@ -106,12 +81,9 @@ internal class Worker {
                 policy += ", " + J.Write(bubblewrap) + " = \"read\""
             }
 
-            if paths.Count > 0 {
-                for path in paths {
-                    policy += ", " + J.Write(path) + " = \"read\""
-                }
+            for path in paths {
+                policy += ", " + J.Write(path) + " = \"read\""
             }
-
             return policy + " }"
         }
 
@@ -123,7 +95,6 @@ internal class Worker {
 
             try {
                 File.WriteAllText(sentinel, "private")
-
                 Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
                 Config(args, "permissions.tokate.network.enabled", "false")
                 args.AddRange(
@@ -160,9 +131,7 @@ internal class Worker {
             try {
                 File.Delete(sentinel)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                if failure == nil {
-                    failure = error
-                }
+                failure = failure ?? error
             }
 
             if let error = failure {
@@ -223,235 +192,74 @@ internal class Worker {
                 }
 
                 Probe(root, checkout, harnessPath)
-
                 return pinned
             } finally {
                 Directory.Delete(root, true)
             }
         }
 
-        internal func Execute(directory string, options Args) {
-            try {
-                using let lease = RunStorage.Lease(directory)
-                let run = Data.Load(directory)
-
-                if run.Number("version") != 2 || run.Text("source") != "tokate" {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "External work uses external --run; inference is never launched"
-                    )
-                }
-
-                if run.Text("state") != "claimed" {
-                    throw CliFailure(
-                        "invalid_state",
-                        "This claim has already run. Use submit for publication, or request a new coding attempt."
-                    )
-                }
-
-                if (
-                    run.Fields.ContainsKey("codex_version") || run.Fields.ContainsKey("pi_version") ||
-                        run
-                        .Fields
-                        .ContainsKey("claude_version") || run.Fields.ContainsKey("omp_version") || File.Exists(
-                        Path.Combine(directory, "events.jsonl")
-                    ) ||
-                        File.Exists(Path.Combine(directory, "report.md"))
-                ) {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "This destination attempt already started execution; no second inference is allowed"
-                    )
-                }
-
-                Terminal.Step("Checking owner approval and donor login...")
-
-                let record = ContributionAuthority.Recheck(run)
-                let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
-                policy.Digest = run.Text("policy_hash")
-                DonorSelection.Revalidate(run, policy)
-
-                let selected = J.Get(run.Element(), "selection")
-
-                if AttemptContinuation.Has(run) {
-                    AttemptContinuation.Confirm(options, selected)
-                } else {
-                    DonorSelection.Confirm(options, selected)
-                }
-
-                RuntimeBudget.Validate(run)
-
-                if run.Text("harness") == "claude" {
-                    ClaudeHarness.Execute(directory, run, record)
-                    return
-                }
-
-                if run.Text("harness") == "pi" {
-                    PiHarness.Execute(directory, run, record)
-                    return
-                }
-
-                if run.Text("harness") == "omp" {
-                    OmpHarness.Execute(directory, run, record)
-                    return
-                }
-
-                let harnessPath = run.Text("harness_path")
-                if options.Get("harness-path") != "" && options.Get("harness-path") != harnessPath {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "The saved run fixes its harness path; use that path or start a fresh claim"
-                    )
-                }
-
-                let login = Commands.Run(CodexPath(harnessPath), []string{"login", "status"}, harness: true)
-                if login.Code != 0 || !(login.Output + login.Error).Contains("Logged in using ChatGPT") {
-                    throw CliFailure(
-                        "authentication_required",
-                        "Run codex login with your ChatGPT subscription first",
-                        []string{"codex", "login"}
-                    )
-                }
-
-                let version = Commands.Checked(CodexPath(harnessPath), []string{"--version"}, harness: true)
-                if !version.StartsWith("codex-cli ") {
-                    throw ExecutionFailure.Create("missing_tools", "A supported Codex CLI is required")
-                }
-
-                let checkout = Path.Combine(directory, "checkout")
-                WorkspacePreparation.Ready(directory, run)
-                Probe(directory, checkout, harnessPath)
-
-                let args = List[string]{
-                    "exec",
-                    "--json",
-                    "--color",
-                    "never",
-                    "--cd",
-                    checkout,
-                    "--model",
-                    run.Text("model")
-                }
-
-                Config(args, "model_reasoning_effort", J.Write(run.Text("effort")))
-                Config(args, "model_provider", J.Write(J.Text(selected, "provider")))
-                Config(args, "approval_policy", "\"never\"")
-                Config(args, "default_permissions", "\"tokate\"")
-                Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
-                Config(args, "permissions.tokate.network.enabled", "true")
-                args.Add("-")
-
-                ContributionAuthority.Recheck(run)
-                WorkspacePreparation.Ready(directory, run)
-
-                run.Fields["state"] = "running"
-                run.Fields["failure_stage"] = "inference"
-                run.Fields["failure_reason"] = "inference_failed"
-                run.Fields["codex_version"] = version
-
-                run.Save(directory)
-
-                Terminal.Step(
-                    "Running " + run.Text("model") + " / " + run.Text("effort") + ": " + RuntimeBudget.Description(
-                        run
-                    ) +
-                        "..."
+        internal func Authenticate(run Data) {
+            let harnessPath = run.Text("harness_path")
+            let login = Commands.Run(CodexPath(harnessPath), []string{"login", "status"}, harness: true)
+            if login.Code != 0 || !(login.Output + login.Error).Contains("Logged in using ChatGPT") {
+                throw CliFailure(
+                    "authentication_required",
+                    "Run codex login with your ChatGPT subscription first",
+                    []string{"codex", "login"}
                 )
-
-                let timer = Stopwatch.StartNew()
-
-                try {
-                    PublicOutput.FailureCode = "inference_failed"
-                    let coding = RuntimeBudget(timer, run.Number("seconds") - run.Number("verification_reserve"))
-                    var result CommandResult
-
-                    {
-                        using let progress = TerminalProgress(
-                            "Inference",
-                            coding,
-                            RuntimeBudget(timer, run.Flag("unlimited") ? 0: run.Number("seconds"))
-                        )
-                        result = Run(
-                            directory,
-                            args.ToArray(),
-                            TaskContext.Build(checkout, run, record, coding),
-                            run.Flag("unlimited") ? 0: run.Number("seconds"),
-                            true,
-                            coding,
-                            harnessPath
-                        )
-                    }
-
-                    run.Fields["output_truncated"] = result.OutputTruncated
-                    run.Fields["error_truncated"] = result.ErrorTruncated
-                    run.Fields["inference_exit_code"] = result.Code
-
-                    if result.Code != 0 {
-                        run.Fields["failure_reason"] = "inference_failed"
-                        run.Fields["failure_stage"] = "inference"
-                        throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")
-                    }
-
-                    run.Fields["failure_reason"] = "incomplete_turn"
-                    run.Fields["failure_stage"] = "inference"
-
-                    if result.Truncated {
-                        throw ExecutionFailure.Create(
-                            "inference_failed",
-                            "Codex output was truncated; no complete turn evidence"
-                        )
-                    }
-
-                    let usage = CodexEvidence.CompletedUsage(directory, result.Output)
-
-                    run.Fields["turn_completed"] = true
-                    run.Fields["reported_model"] = nil
-                    run.Fields["usage"] = usage
-                    run.Fields["execution_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
-
-                    run.Save(directory)
-
-                    PublicOutput.FailureCode = "invalid_state"
-
-                    Contribution.Finish(
-                        directory,
-                        run,
-                        record,
-                        usage,
-                        timer,
-                        run.Number("seconds"),
-                        run.Number("verification_reserve")
-                    )
-                } catch (error Exception) when error is CliFailure ||
-                    error is CommandInterrupted ||
-                    error.GetType() == typeof(Exception) ||
-                    error is IOException ||
-                    error is UnauthorizedAccessException ||
-                    error is JsonException {
-                    if run.Text("failure_stage") == "inference" {
-                        if let result = Commands.InterruptedResult(error) {
-                            run.Fields["failure_reason"] = "inference_interrupted"
-                            run.Fields["output_truncated"] = result.OutputTruncated
-                            run.Fields["error_truncated"] = result.ErrorTruncated
-                        }
-                    }
-
-                    run.Fields["state"] = "failed"
-                    run.Fields["error"] = error.Message
-
-                    if !run.Fields.ContainsKey("failure_reason") {
-                        run.Fields["failure_reason"] = PublicOutput.FailureCode
-                    }
-
-                    run.Save(directory)
-
-                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
-                }
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is JsonException {
-                throw ExecutionFailure.From(error, "command_failed")
             }
+
+            let version = Commands.Checked(CodexPath(harnessPath), []string{"--version"}, harness: true)
+            if !version.StartsWith("codex-cli ") {
+                throw ExecutionFailure.Create("missing_tools", "A supported Codex CLI is required")
+            }
+            run.Fields["codex_version"] = version
+        }
+
+        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget)[]string {
+            let harnessPath = run.Text("harness_path")
+            let selected = J.Get(run.Element(), "selection")
+            let checkout = Path.Combine(directory, "checkout")
+            Probe(directory, checkout, harnessPath)
+
+            let args = List[string]{
+                "exec",
+                "--json",
+                "--color",
+                "never",
+                "--cd",
+                checkout,
+                "--model",
+                run.Text("model")
+            }
+            Config(args, "model_reasoning_effort", J.Write(run.Text("effort")))
+            Config(args, "model_provider", J.Write(J.Text(selected, "provider")))
+            Config(args, "approval_policy", "\"never\"")
+            Config(args, "default_permissions", "\"tokate\"")
+            Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
+            Config(args, "permissions.tokate.network.enabled", "true")
+            args.Add("-")
+            return Command(args.ToArray(), harnessPath)
+        }
+
+        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[
+            string,
+            Object?
+        ] {
+            if result.Code != 0 {
+                throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")
+            }
+            run.Fields["failure_reason"] = "incomplete_turn"
+
+            if result.Truncated {
+                throw ExecutionFailure.Create(
+                    "inference_failed",
+                    "Codex output was truncated; no complete turn evidence"
+                )
+            }
+            let usage = CodexEvidence.CompletedUsage(directory, result.Output)
+            run.Fields["reported_model"] = nil
+            return usage
         }
     }
 }

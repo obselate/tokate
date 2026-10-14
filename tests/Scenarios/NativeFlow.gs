@@ -318,6 +318,18 @@ internal partial class NativeFlow : NativeFixture {
             ),
             "Verified patch differs from candidate"
         )
+        File.SetUnixFileMode(
+            Path.Combine(Bin, "codex-impl"),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+        )
+        let completedRun = File.ReadAllText(Path.Combine(run, "run.json"))
+        Check.Envelope(Call([]string{"work", "--run", run, "--json"}, 1), "work", "error", "invalid_state")
+        Check.That(
+            File.ReadAllText(Path.Combine(run, "run.json")) == completedRun,
+            "Repeated execution changed the completed run"
+        )
+        Reload()
+        Check.That(Check.Text(State["exec_count"]) == "1", "Repeated execution launched another harness")
         Publish(run)
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
