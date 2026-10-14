@@ -1014,7 +1014,7 @@ internal class SynchronizationChecks {
                         "Recovery changed old amendment evidence"
                     )
                     Check.That(
-                        Check.Text(reconciled["next_actions"]?[0]?[8]) == pending,
+                        Check.Text(reconciled["next_actions"]?[0]?[9]) == pending,
                         "Missing old grant in owner action"
                     )
                 }
@@ -1092,7 +1092,7 @@ internal class SynchronizationChecks {
                     Check.Text(Saved(run)["reconciliation"]?["pending"]) == "",
                     "Retained published pending grant"
                 )
-                Check.That(reconciled["next_actions"]?[0]?.AsArray().Count == 7, "Owner action retained pending grant")
+                Check.That(reconciled["next_actions"]?[0]?.AsArray().Count == 8, "Owner action retained pending grant")
             }
         }
 
