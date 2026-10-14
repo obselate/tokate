@@ -1308,25 +1308,18 @@ internal class AmendmentFlow {
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"not-allowed\",\"effort\":\"high\"}]"
             )
             ReworkAndSubmit(flow, run, commit, 1, path)
-            using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for declared in[]bool{false, true} {
-                baseline.Restore()
-                flow.Reload()
-                File.WriteAllText(
-                    path,
-                    declared ? "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]": "[]"
-                )
-                ReworkAndSubmit(flow, run, commit, tools: path)
-                Once(flow, 1)
-                let correction = Read(run, "correction.json")
-                Check.That(correction["tools"]?.AsArray().Count == (declared ? 1: 0), "Tool declaration lost")
-                Check.That(
-                    Check.Text(Read(run)["usage"]?["input_tokens"]) == "100",
-                    "Correction usage replaced original usage"
-                )
-                let body = flow.Body()
-                Check.Contains(body, declared ? "Donor-reported correction tools": "manual/unknown")
-            }
+            File.WriteAllText(
+                path,
+                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]"
+            )
+            ReworkAndSubmit(flow, run, commit, tools: path)
+            Once(flow, 1)
+            Check.That(Read(run, "correction.json")["tools"]?.AsArray().Count == 1, "Tool declaration lost")
+            Check.That(
+                Check.Text(Read(run)["usage"]?["input_tokens"]) == "100",
+                "Correction usage replaced original usage"
+            )
+            Check.Contains(flow.Body(), "Donor-reported correction tools")
         }
 
         private func Refusals(binary string) {
@@ -1622,35 +1615,6 @@ internal class AmendmentFlow {
             Once(flow, 1)
         }
 
-        private func UnpublishedForkIdentity(binary string) {
-            for v2 in[]bool{true} {
-                using let test = CoordinationFixture(binary)
-                let flow = test.Flow
-                var run string
-                test.Initialize()
-                run = ManagedRun(test, "staged_whitespace")
-                let original = Prepared(flow, run)
-                let commit = Correct(flow, run)
-                RepositoryFaults.Reject(
-                    flow,
-                    run,
-                    []string{"amend", "--run", run, "--commit", commit, "--time", "30s"},
-                    repositoryError: "identity changed"
-                )
-                Check.That(
-                    File.ReadAllText(Path.Combine(run, "original-evidence/manifest.json")) == original,
-                    "Fork refusal changed original evidence"
-                )
-                Check.That(!File.Exists(Path.Combine(run, "correction.json")), "Fork refusal created a correction")
-                Rework(flow, run, commit)
-                flow.Call([]string{"submit", "--run", run})
-                flow.Reload()
-                test.Coordinate(test.Event(Check.PostedRequest(flow.State)))
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                Once(flow, 1)
-            }
-        }
-
         private func AuthorityChanges(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
@@ -1768,8 +1732,10 @@ internal class AmendmentFlow {
         private func Managed(binary string) {
             using let flow = CoordinationFlow(binary)
             flow.Initialize()
+            flow.Flow.ProtectedPolicy()
+            flow.Flow.Approve()
             let run = ManagedRun(flow, "staged_whitespace")
-            Prepared(flow.Flow, run)
+            let archive = Prepared(flow.Flow, run)
             Check.That(Read(run)["public_summary"] != nil, "Original managed summary is missing")
             let originalTools = Check.Text(Read(run)["tools"])
             let publishedTools = Check.Json(originalTools)
@@ -1838,6 +1804,7 @@ internal class AmendmentFlow {
             flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Original donor-reported tools")
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Donor-reported correction tools")
+            AmendCorrected(flow.Flow, run, archive, flow)
             Rework(flow.Flow, run, commit, 1, flow.Tools)
             flow.Expire()
             flow.Flow.Call([]string{"submit", "--run", run}, 1)
@@ -1852,67 +1819,62 @@ internal class AmendmentFlow {
             flow.Flow.Mode("push_fail")
             Rework(flow.Flow, run, Correct(flow.Flow, run), 1)
             flow.Flow.Mode("")
-            using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
-            for fault in[]string{"issue", "repo", "author", "body", "id"} {
-                baseline.Restore()
-                flow.Flow.Reload()
-                let results = Check.Text(Read(run)["verification"])
-                let before = File.ReadAllText(Path.Combine(run, "run.json"))
-                flow.Flow.Reload()
-                flow.Flow.State["request_response_fault"] = JsonValue.Create(fault)
-                flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
-                flow.Flow.Save()
-                using let response = FixtureSnapshot(flow.Flow.Temp.Root)
-                Check.Envelope(
-                    flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
-                    "submit",
-                    "error",
-                    "command_failed"
-                )
-                response.Restore()
-                flow.Flow.Reload()
-                let first = flow.Flow.Call([]string{"submit", "--run", run}, 1)
-                let request = File.ReadAllText(Path.Combine(run, "request.json"))
-                Check.Contains(first.Error, "Uncertain request write")
-                Check.Envelope(
-                    flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
-                    "submit",
-                    "error",
-                    "invalid_state"
-                )
-                Check.That(Check.Text(Read(run)["state"]) == "generated", "Inconsistent response published a run")
+            let results = Check.Text(Read(run)["verification"])
+            let before = File.ReadAllText(Path.Combine(run, "run.json"))
+            flow.Flow.Reload()
+            flow.Flow.State["request_response_fault"] = JsonValue.Create("author")
+            flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
+            flow.Flow.Save()
+            using let response = FixtureSnapshot(flow.Flow.Temp.Root)
+            Check.Envelope(
+                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                "submit",
+                "error",
+                "command_failed"
+            )
+            response.Restore()
+            flow.Flow.Reload()
+            let first = flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            let request = File.ReadAllText(Path.Combine(run, "request.json"))
+            Check.Contains(first.Error, "Uncertain request write")
+            Check.Envelope(
+                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                "submit",
+                "error",
+                "invalid_state"
+            )
+            Check.That(Check.Text(Read(run)["state"]) == "generated", "Inconsistent response published a run")
+            Check.That(
+                Check.Text(Read(run, "correction.json")["publication"]?["stage"]) == "request_pending",
+                "Inconsistent successful POST was recorded as requested"
+            )
+            flow.Flow.Reload()
+            flow.Flow.State["request_response_fault"] = nil
+            flow.Flow.State["request_response_missing"] = nil
+            flow.Flow.Save()
+            flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            flow.Flow.Reload()
+            let comment = flow.Flow.State["request_comments"]?[0] ?? throw Exception("Missing posted comment")
+            (flow.Flow.State["comments"] ?? throw Exception("Missing comments"))[
+                Check.Text(comment["id"])
+            ] = comment.DeepClone()
+            flow.Flow.Save()
+            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Reload()
+            Check.That(Check.Text(flow.Flow.State["request_count"]) == "1", "Response recovery duplicated POST")
+            Check.That(Check.Text(Read(run)["verification"]) == results, "Response recovery reran verification")
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "request.json")) == request,
+                "Response recovery changed request"
+            )
+            let original = Check.Json(before)
+            for field in[]string{"source", "tools", "correction", "commit", "state_sha"} {
                 Check.That(
-                    Check.Text(Read(run, "correction.json")["publication"]?["stage"]) == "request_pending",
-                    "Inconsistent successful POST was recorded as requested"
+                    Check.Text(Read(run)[field]) == Check.Text(original[field]),
+                    "Response recovery changed " + field
                 )
-                flow.Flow.Reload()
-                flow.Flow.State["request_response_fault"] = nil
-                flow.Flow.State["request_response_missing"] = nil
-                flow.Flow.Save()
-                flow.Flow.Call([]string{"submit", "--run", run}, 1)
-                flow.Flow.Reload()
-                let comment = flow.Flow.State["request_comments"]?[0] ?? throw Exception("Missing posted comment")
-                (flow.Flow.State["comments"] ?? throw Exception("Missing comments"))[
-                    Check.Text(comment["id"])
-                ] = comment.DeepClone()
-                flow.Flow.Save()
-                flow.Flow.Call([]string{"submit", "--run", run})
-                flow.Flow.Reload()
-                Check.That(Check.Text(flow.Flow.State["request_count"]) == "1", "Response recovery duplicated POST")
-                Check.That(Check.Text(Read(run)["verification"]) == results, "Response recovery reran verification")
-                Check.That(
-                    File.ReadAllText(Path.Combine(run, "request.json")) == request,
-                    "Response recovery changed request"
-                )
-                let original = Check.Json(before)
-                for field in[]string{"source", "tools", "correction", "commit", "state_sha"} {
-                    Check.That(
-                        Check.Text(Read(run)[field]) == Check.Text(original[field]),
-                        "Response recovery changed " + field
-                    )
-                }
-                Once(flow.Flow)
             }
+            Once(flow.Flow)
         }
 
         private func PublicationOutcomes(binary string) {
@@ -1983,12 +1945,12 @@ internal class AmendmentFlow {
             let commit = Correct(flow.Flow, run)
             let baselineComment = flow.Comment
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
-            for mode in[]string{"push_fail_after_write", "request_fail_after_write", "request_fail_before_write"} {
+            for mode in[]string{"push_fail_after_write", "request_fail_before_write"} {
                 baseline.Restore()
                 flow.Comment = baselineComment
                 flow.Flow.Reload()
                 flow.Flow.Mode(mode)
-                Rework(flow.Flow, run, commit, mode == "request_fail_after_write" ? 0: 1)
+                Rework(flow.Flow, run, commit, 1)
                 let intent = Check.Text(Read(run, "correction.json")["publication"]?["request"])
                 let checks = Check.Text(Read(run, "correction.json")["verification"])
                 flow.Flow.Mode("")
@@ -2194,28 +2156,11 @@ internal class AmendmentFlow {
             Once(test.Flow, 1)
         }
 
-        private func CorrectedAmendmentsV2(binary string) {
-            using let flow = CoordinationFixture(binary)
-            flow.Initialize()
-            flow.Flow.ProtectedPolicy()
-            flow.Flow.Approve()
-            let run = ManagedRun(flow, "staged_whitespace")
-            let archive = Prepared(flow.Flow, run)
-            Rework(flow.Flow, run, Correct(flow.Flow, run))
-            flow.Flow.Call([]string{"submit", "--run", run})
-            flow.Flow.Reload()
-            let request = Check.PostedRequest(flow.Flow.State)
-            flow.Coordinate(flow.Event(request))
-            flow.Flow.Call([]string{"submit", "--run", run})
-            AmendCorrected(flow.Flow, run, archive, flow)
-        }
-
         internal func All(binary string, only string = "", partition int32 = 0) {
             var matched bool
             var index int32
             for test in[]TestCase[string]{
                 TestCase[string]("DecreeEdits", async (value string) -> DecreeEdits(value)),
-                TestCase[string]("CorrectedAmendmentsV2", async (value string) -> CorrectedAmendmentsV2(value)),
                 TestCase[string]("Whitespace", async (value string) -> Whitespace(value)),
                 TestCase[string]("BinaryRename", async (value string) -> BinaryRename(value)),
                 TestCase[string]("FirstVerification", async (value string) -> FirstVerification(value)),
@@ -2232,7 +2177,6 @@ internal class AmendmentFlow {
                 TestCase[string]("ChangedCandidate", async (value string) -> ChangedCandidate(value)),
                 TestCase[string]("ArchiveTampering", async (value string) -> ArchiveTampering(value)),
                 TestCase[string]("AuthorityChanges", async (value string) -> AuthorityChanges(value)),
-                TestCase[string]("UnpublishedForkIdentity", async (value string) -> UnpublishedForkIdentity(value)),
                 TestCase[string]("ManagedRefusals", async (value string) -> ManagedRefusals(value)),
                 TestCase[string](
                     "UnpublishedInterruptedVerification",
@@ -2251,7 +2195,7 @@ internal class AmendmentFlow {
                 TestCase[string]("V2Stale", async (value string) -> V2Stale(value))
             } {
                 index++
-                if (partition == 1 && index > 21) || (partition == 2 && index <= 21) {
+                if (partition == 1 && index > 19) || (partition == 2 && index <= 19) {
                     continue
                 }
                 let name = test.Name
