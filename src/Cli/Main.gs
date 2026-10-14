@@ -362,6 +362,11 @@ func Dispatch(options Args) int32 {
             if !PublicOutput.Enabled || Donate.Active {
                 let directory = Path.GetFullPath(options.Need("run"))
                 var run = Data.Load(directory)
+                let request = run.Number("pr") == 0 ? RequestData.FileData(
+                    Path.Combine(directory, "request.json"),
+                    8192
+                ):
+                JsonElement{}
                 ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
                 try {
                     while run.Number("pr") == 0 {
@@ -374,7 +379,11 @@ func Dispatch(options Args) int32 {
                                 return 0
                             }
                         }
-                        ApiTransport.PollWait()
+                        let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+                        if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+                            .ValueKind == JsonValueKind.Undefined {
+                            ApiTransport.PollWait()
+                        }
                         Submission.ResetWorkflow()
                         Submission.Submit(options)
                         run = Data.Load(directory)

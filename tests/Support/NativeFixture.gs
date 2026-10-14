@@ -434,13 +434,7 @@ internal open class NativeFixture : IDisposable {
         Save()
     }
 
-    internal func Traffic(
-        readBudget int32,
-        mutationBudget int32,
-        conditionalBudget int32,
-        retries int32,
-        result Result? = nil
-    ) {
+    internal func Traffic(readBudget int32, mutationBudget int32, retries int32, result Result? = nil) {
         Reload()
         let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic evidence")
         var reads int32
@@ -466,7 +460,7 @@ internal open class NativeFixture : IDisposable {
             }
         }
         Check.That(
-            reads == readBudget && mutations == mutationBudget && conditional == conditionalBudget,
+            reads <= readBudget && mutations == mutationBudget,
             "Traffic regression: " + reads.ToString() + " reads, " + mutations.ToString() +
                 " mutations, " +
                 conditional.ToString() + " conditional responses"

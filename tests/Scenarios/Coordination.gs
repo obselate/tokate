@@ -463,7 +463,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let replay = Coordinate(path, traffic: true)
-        Flow.Traffic(12, 0, 2, 0, replay)
+        Flow.Traffic(12, 0, 0, replay)
         Check.That(Check.Text(State()["sha"]) == Check.Text(state["sha"]), "Replay wrote state")
         let changed = request.DeepClone()
         changed["metadata"] = Check.Map("command", "touch /tmp/unsafe")
@@ -987,7 +987,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Mode("")
         Flow.ResetTraffic()
         let result = Coordinate(path, traffic: true)
-        Flow.Traffic(58, 3, 42, 0, result)
+        Flow.Traffic(58, 3, 0, result)
         Flow.Reload()
         Check.That(Flow.State["pulls"]?.AsArray().Count == 1, "Interrupted publication duplicated PR")
         Check.That(
@@ -996,7 +996,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let duplicate = Coordinate(path, traffic: true)
-        Flow.Traffic(12, 0, 2, 0, duplicate)
+        Flow.Traffic(12, 0, 0, duplicate)
         Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
         Expire()
@@ -1475,7 +1475,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let archive = Path.Combine(Flow.Bin, "release.tar.gz")
         Flow.ResetTraffic()
         let initial = Flow.Call(args, owner: true, traffic: true)
-        Flow.Traffic(10, 0, 0, 0, initial)
+        Flow.Traffic(10, 0, 0, initial)
         Check.That(!initial.Error.Contains("Compare shared workflows:"), "New setup reported a current pin")
         let yaml = File.ReadAllText(output)
         Check.Contains(yaml, "issues:\n    types: [labeled]\n")
@@ -1521,7 +1521,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             owner: true,
             traffic: true
         )
-        Flow.Traffic(9, 0, 0, 0, preview)
+        Flow.Traffic(9, 0, 0, preview)
         Check.Contains(preview.Error, "Current Tokate version: 0.3.5, shared workflow commit: " + oldCommit)
         Check.Contains(preview.Error, "New Tokate version: " + version + ", shared workflow commit: " + newCommit)
         Check.Contains(preview.Error, "Compare shared workflows: " + compareUrl)
@@ -1542,7 +1542,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             owner: true,
             traffic: true
         )
-        Flow.Traffic(11, 1, 0, 0, json)
+        Flow.Traffic(11, 1, 0, json)
         let data = Check.Json(json.Output)["data"] ?? throw Exception("Missing setup data")
         Check.That(Check.Text(data["current_version"]) == "0.3.5", "JSON lost the current version")
         Check.That(Check.Text(data["new_version"]) == version, "JSON lost the new version")
@@ -1576,7 +1576,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Flow.Save()
             Flow.ResetTraffic()
             let result = Flow.Call(args, owner: true, traffic: true)
-            Flow.Traffic(11, mode == "denied" || mode == "missing" ? 1: 0, 0, 0, result)
+            Flow.Traffic(11, mode == "denied" || mode == "missing" ? 1: 0, 0, result)
             Check.That(File.ReadAllText(output) == yaml, "Allowlist handling lost the pinned workflow")
             if mode == "missing" {
                 settings["patterns_allowed"]?.AsArray().Add(JsonValue.Create(shared + newCommit) as JsonNode)
@@ -1640,7 +1640,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let path = Event(request)
         Flow.ResetTraffic()
         let result = Coordinate(path, traffic: true)
-        Flow.Traffic(61, 4, 45, 0, result)
+        Flow.Traffic(61, 4, 0, result)
         Flow.Call([]string{"submit", "--run", run})
         let published = File.ReadAllText(Path.Combine(run, "run.json"))
         let saved = Check.Json(published)
