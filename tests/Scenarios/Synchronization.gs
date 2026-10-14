@@ -214,6 +214,72 @@ internal class SynchronizationChecks {
             return Commit(flow, checkout, "Exact candidate with " + mode)
         }
 
+        private func Fault(
+            flow NativeFixture,
+            fault string,
+            run string,
+            grant string,
+            candidate string,
+            upstream string
+        ) string {
+            if fault.StartsWith("grant-", StringComparison.Ordinal) {
+                let value = Check.Json(flow.Git("-C", flow.Upstream, "show", grant + ":synchronization.json"))
+                let receipt = value["receipt"] ?? throw Exception("Missing historical receipt")
+                switch fault {
+                    case "grant-donor" {
+                        receipt["donor"] = JsonValue.Create("other")
+                    }
+                    case "grant-receipt" {
+                        receipt["approval"] = JsonValue.Create(String('a', 64))
+                    }
+                    case "grant-history" {
+                        receipt["synchronizations"] = Check.Json(
+                            "[{\"grant\":\"" +
+                                grant +
+                                "\",\"candidate\":\"" +
+                                candidate +
+                                "\",\"upstream\":\"" +
+                                upstream +
+                                "\"}]"
+                        )
+                    }
+                    case "grant-fork" {
+                        value["fork"] = JsonValue.Create("donor/other")
+                    }
+                    case "grant-branch" {
+                        value["branch"] = JsonValue.Create("tokate/substituted")
+                    }
+                    case "grant-previous" {
+                        value["previous"] = JsonValue.Create(Check.Text(Saved(run)["base"]))
+                    }
+                    case "grant-state" {
+                        value["expected"] = JsonValue.Create(String('a', 40))
+                    }
+                }
+                flow.State["synchronization_override"] = JsonValue.Create(value.ToJsonString())
+                return fault == "grant-state" ?
+                "Synchronization candidate, previous head or expected state differs from exact owner grant":
+                "Synchronization differs from original approval, PR or historical receipt"
+            }
+            if fault.StartsWith("tree-", StringComparison.Ordinal) {
+                flow.State["tree_fault"] = JsonValue.Create(fault.Substring("tree-".Length))
+                return ""
+            }
+            if fault == "local-final-ancestry" {
+                flow.State["local_final_ancestry_fault"] = JsonValue.Create("true")
+                return "Missing local synchronization ancestry evidence"
+            }
+            if fault.StartsWith("local-tree-", StringComparison.Ordinal) {
+                flow.State["local_tree_fault"] = JsonValue.Create(fault.Substring("local-tree-".Length))
+                return fault == "local-tree-truncated" ?
+                "Truncated protected tree evidence": "Invalid protected tree evidence"
+            }
+            flow.State[
+                fault == "wrong-donor" ? "viewer_login": fault == "wrong-actor" ? "viewer_id": "fork_owner_id"
+            ] = fault == "wrong-donor" ? JsonValue.Create("other"): JsonValue.Create(124)
+            return ""
+        }
+
         private func Run(preparation PublishedContribution, mode string) {
             preparation.Restore()
             let flow = preparation.Coordination.Flow
@@ -322,51 +388,7 @@ internal class SynchronizationChecks {
                 )
                 return
             }
-            if mode.StartsWith("grant-", StringComparison.Ordinal) {
-                let value = Check.Json(flow.Git("-C", flow.Upstream, "show", grant + ":synchronization.json"))
-                let receipt = value["receipt"] ?? throw Exception("Missing historical receipt")
-                switch mode {
-                    case "grant-donor" {
-                        receipt["donor"] = JsonValue.Create("other")
-                    }
-                    case "grant-receipt" {
-                        receipt["approval"] = JsonValue.Create(String('a', 64))
-                    }
-                    case "grant-history" {
-                        receipt["synchronizations"] = Check.Json(
-                            "[{\"grant\":\"" +
-                                grant +
-                                "\",\"candidate\":\"" +
-                                candidate +
-                                "\",\"upstream\":\"" +
-                                upstream +
-                                "\"}]"
-                        )
-                    }
-                    case "grant-fork" {
-                        value["fork"] = JsonValue.Create("donor/other")
-                    }
-                    case "grant-branch" {
-                        value["branch"] = JsonValue.Create("tokate/substituted")
-                    }
-                    case "grant-previous" {
-                        value["previous"] = JsonValue.Create(Check.Text(Saved(run)["base"]))
-                    }
-                    case "grant-state" {
-                        value["expected"] = JsonValue.Create(String('a', 40))
-                    }
-                }
-                flow.Reload()
-                flow.State["synchronization_override"] = JsonValue.Create(value.ToJsonString())
-                flow.Save()
-            } else if mode == "wrong-donor" || mode == "wrong-actor" || mode == "fork-owner" {
-                flow.Reload()
-                flow.State[
-                    mode == "wrong-donor" ? "viewer_login": mode == "wrong-actor" ? "viewer_id":
-                    "fork_owner_id"
-                ] = mode == "wrong-donor" ? JsonValue.Create("other"): JsonValue.Create(124)
-                flow.Save()
-            } else if mode == "access-denied" {
+            if mode == "access-denied" {
                 flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
             } else if mode == "approval" {
                 flow.Reload()
@@ -397,18 +419,6 @@ internal class SynchronizationChecks {
             } else if mode == "substitution" {
                 PublishedContribution.Write(Path.Combine(run, "checkout"), "another.txt", "different candidate\n")
                 candidate = Commit(flow, Path.Combine(run, "checkout"), "Candidate substitution")
-            } else if mode.StartsWith("local-tree-") || mode == "local-final-ancestry" {
-                flow.Reload()
-                if mode == "local-final-ancestry" {
-                    flow.State["local_final_ancestry_fault"] = JsonValue.Create("true")
-                } else {
-                    flow.State["local_tree_fault"] = JsonValue.Create(mode.Substring("local-tree-".Length))
-                }
-                flow.Save()
-            } else if mode.StartsWith("tree-") {
-                flow.Reload()
-                flow.State["tree_fault"] = JsonValue.Create(mode.Substring(5))
-                flow.Save()
             } else if mode == "after-push" {
                 flow.Mode("revoke_sync_after_push")
             }
@@ -427,25 +437,38 @@ internal class SynchronizationChecks {
                 jobs = Int32.Parse(Check.Text(flow.State["workflow_jobs"] ?? JsonValue.Create(0)))
                 flow.Mode("lost_request_response")
             }
-            let result = Amend(flow, run, candidate, grant, success ? 0: 1)
+            let faults = mode == "grant-tampering" ?
+            []string{
+                "grant-donor",
+                "grant-receipt",
+                "grant-history",
+                "grant-fork",
+                "grant-branch",
+                "grant-previous",
+                "grant-state"
+            }: mode == "tree-evidence" ?
+            []string{
+                "tree-truncated",
+                "tree-missing",
+                "tree-identity",
+                "tree-ancestor",
+                "local-tree-truncated",
+                "local-tree-malformed",
+                "local-final-ancestry"
+            }: mode == "identity" ? []string{"wrong-donor", "wrong-actor", "fork-owner"}: []string{}
+            flow.Reload()
+            let baseline = flow.State.ToJsonString()
+            var refusal Result? = nil
+            for fault in faults {
+                flow.State = Check.Json(baseline)
+                let expected = Fault(flow, fault, run, grant, candidate, upstream)
+                flow.Save()
+                let refused = Amend(flow, run, candidate, grant, 1)
+                Check.Contains(refused.Output + refused.Error, expected)
+                refusal = refused
+            }
+            let result = refusal ?? Amend(flow, run, candidate, grant, success ? 0: 1)
             if !success {
-                if mode.StartsWith("grant-", StringComparison.Ordinal) {
-                    Check.Contains(
-                        result.Output + result.Error,
-                        mode == "grant-state" ?
-                        "Synchronization candidate, previous head or expected state differs from exact owner grant":
-                        "Synchronization differs from original approval, PR or historical receipt"
-                    )
-                }
-                if mode.StartsWith("local-tree-") {
-                    Check.Contains(
-                        result.Output + result.Error,
-                        mode.EndsWith("truncated") ?
-                        "Truncated protected tree evidence": "Invalid protected tree evidence"
-                    )
-                } else if mode == "local-final-ancestry" {
-                    Check.Contains(result.Output + result.Error, "Missing local synchronization ancestry evidence")
-                }
                 Check.That(
                     Check.Text(Saved(run)["commit"]) == h,
                     "Rejected synchronization rewrote original saved head"
@@ -628,14 +651,6 @@ internal class SynchronizationChecks {
             flow.Save()
             PublishedContribution.Write(flow.Upstream, "later-target.txt", "acceptance must recheck target\n")
             flow.Commit("Target moved before final acceptance")
-            let checked = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
-            Check.That(
-                Check.Text(checked["data"]?["verified_target_revision"]) == upstream && Check.Text(
-                    checked["data"]?["target_moved"]
-                ) == "true" &&
-                    Check.Text(checked["data"]?["gates"]?["freshness"]?["status"]) == "passed",
-                "Later target movement rejected verified synchronization history"
-            )
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
@@ -657,9 +672,10 @@ internal class SynchronizationChecks {
             Check.That(Check.Text(Saved(run)["commit"]) == newCandidate, "Moved target blocked recording")
             let recorded = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
             Check.That(
-                Check.Text(recorded["data"]?["target_moved"]) == "true" && Check.Text(
-                    recorded["data"]?["gates"]?["freshness"]?["status"]
-                ) == "passed",
+                Check.Text(recorded["data"]?["verified_target_revision"]) == newUpstream && Check.Text(
+                    recorded["data"]?["target_moved"]
+                ) == "true" &&
+                    Check.Text(recorded["data"]?["gates"]?["freshness"]?["status"]) == "passed",
                 "Moved target rejected recorded synchronization"
             )
             Check.That(Saved(run)["synchronizations"]?.AsArray().Count == 2, "New grant discarded history")
@@ -1103,39 +1119,27 @@ internal class SynchronizationChecks {
                         "decree-coordinator",
                         "reversion",
                         "semantic",
-                        "revoked",
-                        "deleted",
-                        "donor-ref",
-                        "moved-ref",
                         "stale-target",
                         "policy",
                         "template",
                         "substitution",
                         "unresolved",
-                        "after-push",
                         "approval",
                         "access-denied",
+                        "reconcile-moving-target",
+                        "reconcile-moving-target-coordinated",
                         "selected-target",
+                        "revoked",
+                        "deleted",
+                        "donor-ref",
+                        "moved-ref",
+                        "after-push",
                         "authority-policy",
                         "after-coordinate",
                         "state-mismatch",
-                        "tree-truncated",
-                        "tree-missing",
-                        "tree-identity",
-                        "tree-ancestor",
-                        "local-tree-truncated",
-                        "local-tree-malformed",
-                        "local-final-ancestry",
-                        "wrong-donor",
-                        "wrong-actor",
-                        "fork-owner",
-                        "grant-donor",
-                        "grant-receipt",
-                        "grant-history",
-                        "grant-fork",
-                        "grant-branch",
-                        "grant-previous",
-                        "grant-state",
+                        "tree-evidence",
+                        "identity",
+                        "grant-tampering",
                         "reconcile-edits",
                         "reconcile-dirty",
                         "reconcile-fork-divergence",
@@ -1151,9 +1155,7 @@ internal class SynchronizationChecks {
                         "reconcile-closed",
                         "reconcile-merged",
                         "reconcile-donor",
-                        "reconcile-moving-target",
                         "reconcile-moving-target-pushed",
-                        "reconcile-moving-target-coordinated",
                         "reconcile-moving-head",
                         "reconcile-moving-approval",
                         "reconcile-conflict",
@@ -1165,7 +1167,7 @@ internal class SynchronizationChecks {
                             !selectors.Contains(version + "/" + mode) {
                             continue
                         }
-                        let selected = index > 31
+                        let selected = index > 28
                         if (partition == 1 && selected) || (partition == 2 && !selected) {
                             continue
                         }
