@@ -549,7 +549,7 @@ internal partial class NativeFlow : NativeFixture {
                 "-q",
                 "-e",
                 "-c",
-                "echo $$$$ > runner.pid; exec ./tokate-runner work --run '" + run + "'",
+                "echo $$$$ > runner.pid; exec ./tokate-runner work --run '" + run + "' --yes",
                 "/dev/null"
             },
             Temp.Env,
