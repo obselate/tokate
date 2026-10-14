@@ -89,7 +89,7 @@ internal class Startup {
         internal func Requirements(options Args)[]string {
             let command = options.Command
 
-            if command == "doctor" {
+            if command == "doctor" && options.Subject != "repo" {
                 let doctorScope = DoctorScope(options)
                 let selected = Args([]string{doctorScope == "external" ? "external": "work"})
 

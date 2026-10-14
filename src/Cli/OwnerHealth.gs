@@ -368,7 +368,7 @@ internal class OwnerHealth {
         }
 
         internal func Run(args Args) int32 {
-            let repo = RepositoryIdentity.Repo(args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local())
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let health = OwnerHealth()
             let data = map[string, Object?]{"scope": "repo", "repo": repo, "checks": health.Checks}
             PublicOutput.ResultData = data
