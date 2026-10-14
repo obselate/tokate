@@ -309,7 +309,9 @@ internal class OverlapChecks {
                 Check.That(
                     Check.Text(item?["binding_status"]) == "validated" && Check.Text(
                         item?["binding"]?["version"]
-                    ) == test.Version.ToString() && Check.Text(item?["head"]) == test.Heads[i] && Check.Text(
+                    ) == test
+                        .Version
+                        .ToString() && Check.Text(item?["head"]) == test.Heads[i] && Check.Text(
                         item?["binding"]?["base"]
                     ) == test.Bases[i] &&
                         Check.Text(item?["checks_head"]) == test.Heads[i],
@@ -343,11 +345,11 @@ internal class OverlapChecks {
         }
 
         private func Renamed(pair JsonNode?) -> Check.That(
-            Check.Text(pair?["status"]) == "overlap" && Check.Text(pair?["overlap_count"]) == "2" && pair?[
-                "paths"
-            ]?.ToJsonString().Contains("old.txt") == true &&
+            Check.Text(pair?["status"]) == "overlap" && Check.Text(pair?["overlap_count"]) == "2" &&
                 pair?["paths"]
-                ?.ToJsonString().Contains("new.txt") == true,
+                ?.ToJsonString().Contains("old.txt") == true && pair?["paths"]?.ToJsonString().Contains(
+                "new.txt"
+            ) == true,
             "Rename endpoints lost"
         )
 
@@ -361,15 +363,11 @@ internal class OverlapChecks {
             for i in 0 ... 2 {
                 let item = synchronized["contributions"]?[i]
                 Check.That(
-                    Check.Text(item?["binding_status"]) == "validated" && Check.Text(
-                        item?["head"]
-                    ) == test.Heads[i] &&
+                    Check.Text(item?["binding_status"]) == "validated" && Check.Text(item?["head"]) == test.Heads[i] &&
                         Check.Text(item?["checks_head"]) == test.Heads[i] && Check.Text(
                         item?["binding"]?["base"]
                     ) == test.Bases[i] &&
-                        Check.Text(item?["diff_base"]) == upstream && Check.Text(
-                        item?["target_revision"]
-                    ) == target &&
+                        Check.Text(item?["diff_base"]) == upstream && Check.Text(item?["target_revision"]) == target &&
                         upstream != test.Bases[i] &&
                         upstream != target,
                     "Synchronization confused approved, authorized and current target revisions"
