@@ -97,7 +97,7 @@ internal class Gratis {
             if record.ContainsKey("issue") {
                 let issue = J.Select(J.Parse(J.Write(record["issue"])), "number,title,body")
                 record["issue"] = issue
-                var body = issue["body"]?.ToString() ?? ""
+                var body = issue.GetValueOrDefault("body")?.ToString() ?? ""
                 while Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 && body != "" {
                     body = body.Substring(0, body.Length / 2)
                     issue["body"] = body
