@@ -223,11 +223,11 @@ internal partial class Fixture {
             Console.Error.WriteLine("Synthetic model unavailable")
             return 1
         }
-        if mode == "timeout" || mode == "completed_timeout" || mode == "background" {
+        if mode == "timeout" || mode == "background" {
             let sleep = TestProcess.SystemPath("/usr/bin/sleep")
             using let child = Process.Start(sleep, "120") ?? throw Exception("Cannot start timeout fixture")
             File.WriteAllText(Path.Combine(Root, "child.pid"), TestProcess.ChildIdentity(child))
-            if mode == "timeout" || mode == "completed_timeout" {
+            if mode == "timeout" {
                 let partialCheckout = args[Array.IndexOf(args, "--cd") + 1]
                 File.WriteAllText(Path.Combine(partialCheckout, "partial.txt"), "partial-edit")
                 if Check.Text(State["continuation_timeout"]) == "true" {
