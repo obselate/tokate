@@ -499,8 +499,9 @@ internal class Diagnostics {
             )
             Check.Envelope(external, "doctor", "ok")
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")
+            let installer = "printf called > '" + installMarker + "'\nexit 17\n"
             let curl = Path.Combine(flow.Bin, "curl")
-            File.WriteAllText(curl, "#!/bin/sh\nprintf called > '" + installMarker + "'\nexit 17\n")
+            File.WriteAllText(curl, "#!/bin/sh\ntest \"$1\" = --version && exit 0\n" + installer)
             File.SetUnixFileMode(curl, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let common = Check.Envelope(flow.Call([]string{"doctor", "--fix", "--yes", "--json"}), "doctor", "ok")
             Check.That(Check.Text(common["data"]?["scope"]) == "external", "Default doctor selected a harness")
@@ -534,7 +535,7 @@ internal class Diagnostics {
             Check.That(File.Exists(installMarker), "Explicit Codex choice did not reach installation")
             File.Delete(installMarker)
             for name in[]string{"codex", "pi", "claude", "omp"} {
-                File.Copy(curl, Path.Combine(flow.Bin, name))
+                File.WriteAllText(Path.Combine(flow.Bin, name), "#!/bin/sh\n" + installer)
                 File.SetUnixFileMode(
                     Path.Combine(flow.Bin, name),
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
