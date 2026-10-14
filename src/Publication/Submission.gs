@@ -531,13 +531,34 @@ internal class Submission {
         }
 
         internal func PublicationRequest(run Data, correction Data? = nil) JsonElement {
+            let value = run.Element()
+            var tools Object = J.Get(value, "tools")
+
+            if run.Text("source") == "tokate" && run.Flag("turn_completed") {
+                let tool = J.Select(J.Items(J.Get(value, "tools"))[0], "harness,provider,model,effort")
+                let usage = map[string, Object?]{}
+
+                for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
+                    let item = J.Get(J.Get(value, "usage"), key)
+                    var count int64
+
+                    if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
+                        usage[key] = count
+                    }
+                }
+
+                tool["usage"] = usage
+                tool["coding_seconds"] = run.Number("execution_seconds")
+                tools = []Object{tool}
+            }
+
             let metadata = map[string, Object?]{
                 "fork": run.Text("head_repo"),
                 "branch": run.Text("branch"),
                 "head": correction?.Text("commit") ?? run.Text("commit"),
                 "attempt": run.Text("attempt"),
                 "source": run.Text("source"),
-                "tools": J.Get(run.Element(), "tools"),
+                "tools": tools,
                 "verification": RequestData.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
             }
 
