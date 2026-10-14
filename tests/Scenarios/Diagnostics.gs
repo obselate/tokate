@@ -349,8 +349,14 @@ internal class Diagnostics {
             File.Copy("/usr/bin/setsid", runner)
             File.SetUnixFileMode(runner, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             File.WriteAllText(Path.Combine(flow.Temp.Root, "broken-helper"), "")
-            for helper in[]string{"/usr/bin/env", "/usr/bin/setsid", "/usr/bin/cp"} {
-                let cleanup = helper == "/usr/bin/env"
+            for helper in[]string{
+                "/usr/bin/env",
+                "/usr/bin/setpriv",
+                "/usr/bin/unshare",
+                "/usr/bin/setsid",
+                "/usr/bin/cp"
+            } {
+                let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/setpriv" || helper == "/usr/bin/unshare"
                 let owner = Check.Envelope(
                     FixedCall(binary, flow, helper, []string{"doctor", "owner"}),
                     "doctor",
@@ -672,7 +678,7 @@ internal class Diagnostics {
                 args.Add("--yes")
                 Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
                 Check.That(File.ReadAllText(calls) == expected, "Setup changed unrelated packages: " + distro)
-                if distro != "debian" {
+                if distro != "debian" && distro != "alpine" {
                     continue
                 }
                 Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
