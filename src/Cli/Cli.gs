@@ -138,7 +138,7 @@ internal class Cli {
                 "BRANCH",
                 "Owner-selected target; default: upstream default branch (prompt on a terminal)"
             ),
-            CliOption("total", "TIME", "Total wall-time limit; default: until stopped"),
+            CliOption("total", "TIME", "Start tasks only while --time fits in this total, default: until stopped"),
             CliOption("model", "MODEL", "Owner-approved model"),
             CliOption(
                 "effort",
@@ -226,7 +226,7 @@ internal class Cli {
                 "work",
                 "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,unlimited,fork,runs,run,continue-from",
                 "repo",
-                "Code an approved issue with your harness and verify it. With a repository, work approved issues oldest first until stopped. Uses donor inference. Stop waits for the task and prints wall time, task results, PR URLs and token totals.",
+                "Code an approved issue with your harness and verify it. With a repository, work approved issues oldest first until stopped. Uses donor inference.",
                 "[ISSUE [NAME] | RUN | OWNER/REPO] [--time PER_TASK] [--total TOTAL] [options]\n       tokate work OWNER/REPO stop [--yes]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
@@ -1075,9 +1075,7 @@ internal class Cli {
                 text.AppendLine(Usage(name))
                 text.AppendLine(command.Summary + "\n")
 
-                let issue = name == "work" ?
-                "Issue 42 of the local GitHub remote or OWNER/REPO#42; OWNER/REPO or any github.com URL runs the repository loop":
-                "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL"
+                let issue = "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL"
                 if command.Target == "issue" {
                     OptionHelp(
                         text,
@@ -1223,16 +1221,9 @@ internal class Cli {
                 if args.Get("repo") == "" {
                     args.Values["--repo"] = RepositoryInput.Local()
                 }
-                let explicit = args.Get("harness") + args.Get("model") + args.Get("effort")
-                if args.Subject == "stop" {
-                    for key in args.Values.Keys {
-                        if !Global(key) && key != "--repo" && key != "--yes" && key != "--non-interactive" {
-                            throw Exception("work OWNER/REPO stop accepts only --yes and global options")
-                        }
-                    }
-                } else if explicit == "" && DonorDefaults.Read(allowMissing: true)
-                    .ValueKind == JsonValueKind
-                    .Undefined {
+                if args.Subject != "stop" && args.Get("harness") + args.Get("model") + args.Get("effort") == "" &&
+                    DonorDefaults
+                    .Read(allowMissing: true).ValueKind == JsonValueKind.Undefined {
                     throw Exception(
                         "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
                     )

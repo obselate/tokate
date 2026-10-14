@@ -75,8 +75,8 @@ Use this command reference for current main. Put the target after the command.
 | --- | --- |
 | `42` | Issue 42 in the checkout's GitHub remote. `verify` and `checks` use PR 42. |
 | `OWNER/REPO#42` | Issue 42 in that repository. `verify` and `checks` use PR 42. |
-| `https://github.com/OWNER/REPO/issues/42` | Issue reference for issue commands. For `work`, it selects the repository loop. |
-| `https://github.com/OWNER/REPO/pull/10` | PR reference for PR commands. For `work`, it selects the repository loop. |
+| `https://github.com/OWNER/REPO/issues/42` | Exact issue reference. |
+| `https://github.com/OWNER/REPO/pull/10` | Exact PR reference for a PR command. |
 | `OWNER/REPO` or repository URL | Repository target. `work` loops until stopped. `claim` requires a named issue. |
 | `42-1` | Attempt 1 for issue 42. |
 | `OWNER/REPO#42-1` | Attempt 1 in an explicit repository. |

@@ -1092,7 +1092,7 @@ internal class PreparationChecks {
 
         private func AcquisitionArgs(flow NativeFixture, command string)[]string -> []string{
             command,
-            command == "work" ? "owner/project#1": "https://github.com/owner/project/issues/1",
+            "https://github.com/owner/project/issues/1",
             "--model",
             "gpt-6.1-sol",
             "--effort",
@@ -1229,7 +1229,7 @@ internal class PreparationChecks {
             let result = flow.Call(
                 []string{
                     "work",
-                    "owner/project#1",
+                    "https://github.com/owner/project/issues/1",
                     "ready",
                     "--time",
                     "60s",

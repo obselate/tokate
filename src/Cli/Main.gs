@@ -362,9 +362,7 @@ func Dispatch(options Args) int32 {
             if !PublicOutput.Enabled || Donate.Active {
                 let directory = Path.GetFullPath(options.Need("run"))
                 var run = Data.Load(directory)
-                if !Donate.Active {
-                    ApiTransport.BeginDeadline(30)
-                }
+                ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
                 try {
                     while run.Number("pr") == 0 {
                         if let guidance = Submission.PendingWorkflow(directory, run) {

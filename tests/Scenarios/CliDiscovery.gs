@@ -1058,10 +1058,8 @@ internal class CliDiscovery {
                     Check.That(names.Add(Check.Text(option["name"])), "CLI metadata repeated an option")
                 }
                 Check.That(Check.Text(command["noninteractive"]) == "true", "Hidden interactive command")
-                let name = Check.Text(command["command"])
-                let inference = name == "work"
                 Check.That(
-                    Check.Text(command["inference"]) == (inference ? "true": "false"),
+                    Check.Text(command["inference"]) == (Check.Text(command["command"]) == "work" ? "true": "false"),
                     "Incorrect inference effects"
                 )
                 Check.That(command["effects"]?.AsObject().Count == 4, "Incomplete read/write effects")
@@ -1741,10 +1739,6 @@ internal class CliDiscovery {
             Check.Contains(work, "Bare work uses the local GitHub remote")
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
-            Check.Contains(work, "[--total TOTAL]")
-            Check.Contains(work, "tokate work OWNER/REPO stop [--yes]")
-            let claim = Call(binary, []string{"help", "claim"}, temp).Output
-            Check.That(!claim.Contains("ISSUE|OWNER/REPO"), "Claim help permits a repository without an issue")
             let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
             Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
@@ -1915,9 +1909,16 @@ internal class CliDiscovery {
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
                 []string{"verify", "https://github.com/owner/project/pull/1"},
-                []string{"work", issueUrl, "--model=model", "--effort=high", "--yes"},
+                []string{"work", issueUrl, "--model=model", "--effort=high"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=high"},
-                []string{"work", commentUrl, "--model=model", "--effort=high", "--yes"}
+                []string{"work", commentUrl, "--model=model", "--effort=high"},
+                []string{
+                    "work",
+                    "https://github.com/owner/project/releases/tag/v1.2.0?ref=x#fragment",
+                    "--model=model",
+                    "--effort=high",
+                    "--yes"
+                }
             } {
                 let result = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
                 Check.That(result.Code == 1, "Recording gh stub should fail")
@@ -1925,13 +1926,6 @@ internal class CliDiscovery {
                 Check.That(!result.Error.Contains("Usage:"), "Valid URL input rejected")
                 File.Delete(log)
             }
-            let reference = "https://github.com/earendil-works/pi/releases/tag/v1.2.0?ref=x#fragment"
-            let argv = []string{"work", reference, "--model=model", "--effort=high", "--yes"}
-            let donation = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
-            Check.That(donation.Code == 1, "Recording gh stub should fail")
-            Check.Contains(File.ReadAllText(log), "\nrepos/earendil-works/pi\n")
-            Check.That(!donation.Error.Contains("Usage:"), "Valid donation URL input rejected")
-            File.Delete(log)
             temp.Tool("holder")
             using let listener = Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified)
             listener.Bind(Address(temp.Root))

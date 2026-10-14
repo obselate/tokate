@@ -45,7 +45,7 @@ internal class Donate {
                 Terminal.Message("No donation is running for " + repo + ".")
             }
             let path = Path.Combine(directory, "session.json")
-            PublicOutput.ResultData = map[string, Object?]{"repo": repo, "running": false}
+            PublicOutput.ResultData = map[string, Object?]{"repo": repo}
             if File.Exists(path) {
                 Report(Data.Read(path).Element())
             }
@@ -74,11 +74,10 @@ internal class Donate {
         private func Task(options Args, issue int32) Dictionary[string, Object?] {
             options.Values["--issue"] = issue.ToString()
             var directory string = ""
-            let task = map[string, Object?]{"issue": issue, "result": "completed"}
+            let task = map[string, Object?]{"issue": issue, "result": "submitted"}
             try {
                 directory = ContributionPreparation.Acquire(options)
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
-                ApiTransport.BeginDeadline(options.Number("seconds"))
                 Dispatch(Args([]string{"submit", "--run", directory}))
             } catch (error Exception) when !(error is CommandInterrupted) {
                 directory = PublicOutput.RunDirectory
@@ -120,17 +119,19 @@ internal class Donate {
             policy.ValidateBudget(seconds, false)
             let selection = DonorSelection.Resolve(options, policy)
             let limit = Double.IsPositiveInfinity(total) ? "until stopped": total.ToString() + " seconds"
-            let consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(selection, "model")
-            let budgets = "\nEffort: " + J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() +
-                " seconds\nTotal: " +
-                limit
+            let consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(
+                selection,
+                "model"
+            ) +
+                "\nEffort: " +
+                J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() + " seconds\nTotal: " + limit
             if options.Get("yes") != "true" {
-                if WizardScreen.Choose(repo, consent + budgets, []string{"Start", "Cancel"}, selected: 2) != 1 {
+                if WizardScreen.Choose(repo, consent, []string{"Start", "Cancel"}, selected: 2) != 1 {
                     throw CliFailure("confirmation_required", "Donation start was not confirmed")
                 }
             }
             WizardScreen.Close()
-            Terminal.Message(consent + budgets, error: true)
+            Terminal.Message(consent, error: true)
             options.Values["--yes"] = "true"
             for key in[]string{"harness", "provider", "model", "effort"} {
                 options.Values["--" + key] = J.Text(selection, key)
@@ -140,11 +141,17 @@ internal class Donate {
             let attempted = HashSet[int32]()
             var consecutive int32
             let usage = map[string, Object?]{"input_tokens": 0L, "cached_input_tokens": 0L, "output_tokens": 0L}
-            let session = Data(map[string, Object?]{"repo": repo, "tasks": tasks, "usage": usage, "reason": "stopped"})
-            session.Fields["started_at"] = DateTimeOffset.UtcNow.ToString("O")
-            for key in[]string{"completed", "skipped", "failed"} {
-                session.Fields[key] = 0
-            }
+            let session = Data(
+                map[string, Object?]{
+                    "repo": repo,
+                    "tasks": tasks,
+                    "usage": usage,
+                    "reason": "stopped",
+                    "submitted": 0,
+                    "skipped": 0,
+                    "failed": 0
+                }
+            )
             let sessionPath = Path.Combine(directory, "session.json")
             session.Write(sessionPath)
             Active = true
@@ -188,7 +195,6 @@ internal class Donate {
                 File.Delete(marker)
                 PublicOutput.RunDirectory = ""
                 PublicOutput.Actions.Clear()
-                session.Fields["ended_at"] = DateTimeOffset.UtcNow.ToString("O")
                 session.Fields["wall_seconds"] = timer.Elapsed.TotalSeconds
                 session.Write(sessionPath)
                 Report(session.Element())

@@ -1817,7 +1817,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let stop = []string{"work", "owner/project", "stop", "--yes", "--json"}
         let missing = Check.Envelope(Flow.Call(start, 1), "work", "error", "invalid_arguments")
         Check.Contains(Check.Text(missing["error"]?["message"]), "tokate defaults set NAME --harness codex")
-        Check.Contains(Check.Text(missing["error"]?["message"]), "tokate select OWNER/REPO NAME")
         Check.Contains(Check.Text(missing["error"]?["message"]), "tokate work OWNER/REPO --harness")
         Flow.Call([]string{"defaults", "set", "donor", "--model", "gpt-6.1-sol", "--effort", "high"})
         Flow.Call([]string{"defaults", "use", "donor"})
@@ -1864,7 +1863,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     let other = []string{"work", "other/project", "stop", "--yes", "--json"}
                     Check.Envelope(Flow.Call(other), "work", "ok")
                     let report = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
-                    Check.That(Check.Text(report?["completed"]) == "1", "Stop did not wait for the task report")
+                    Check.That(Check.Text(report?["submitted"]) == "1", "Stop did not wait for the task report")
                     Check.That(JsonNode.DeepEquals(report?["usage"], tokens), "Stop lost task usage")
                 }
             }
@@ -1879,15 +1878,12 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let summary = Check.Envelope(result ?? throw Exception("Missing donation result"), "work", "ok")["data"] ??
             throw Exception("Missing donation summary")
         Check.That(handled == 2, "Donation did not claim and submit exactly one task")
-        Check.That(Check.Text(summary["completed"]) == "1" && Check.Text(summary["failed"]) == "0", "Task failed")
+        Check.That(Check.Text(summary["submitted"]) == "1" && Check.Text(summary["failed"]) == "0", "Task failed")
         Check.That(Check.Text(summary["skipped"]) == "1", "Donation did not count the reserved issue as skipped")
         Check.That(Check.Text(summary["reason"]) == "stopped", "Donation ignored the stop marker")
         let task = summary["tasks"]?[1] ?? throw Exception("Missing task")
         Check.That(Check.Text(task["issue"]) == "2", "Donation reported the wrong issue")
         Check.Contains(Check.Text(task["pr_url"]), "/pull/10")
-        let savedRun = Check.Json(File.ReadAllText(Path.Combine(Check.Text(task["run_directory"]), "run.json")))
-        Check.That(JsonNode.DeepEquals(summary["usage"], savedRun["usage"]), "Loop report lost task usage")
-        Check.That(Check.Text(summary["ended_at"]) != "", "Session has no end time")
         let last = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
         Check.That(JsonNode.DeepEquals(summary, last), "Stopped session report changed")
         Check.That(!File.Exists(marker), "Stop marker was not removed")

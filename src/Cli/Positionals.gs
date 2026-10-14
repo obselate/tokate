@@ -74,7 +74,7 @@ internal class Positionals {
             }
 
             let segment = key == "pr" ? "pull": "issues"
-            if key != "repo" && word.Contains("://") && word.Contains("/" + segment + "/") {
+            if key != "repo" && word.Contains("://") && (word.Contains("/issues/") || word.Contains("/pull/")) {
                 Url(args, word, key, segment)
 
                 return
@@ -231,9 +231,7 @@ internal class Positionals {
                 Limit(args, profileOperand ? 2: (target == "" ? 0: 1))
 
                 if words.Count > 0 {
-                    let reference = args.Command == "work" && words[0].Contains("://") ? "repo":
-                    target == "run" ? "issue": target
-                    Reference(args, words[0], reference)
+                    Reference(args, words[0], target == "run" ? "issue": target)
 
                     if args.Command == "work" && args.Get("issue") == "" && words.Count > 1 && words[1] == "stop" {
                         args.Subject = "stop"

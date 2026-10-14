@@ -14,8 +14,7 @@ PRs. Donors use their own accounts and tools. Owners review and merge.
 Use [installation](README.md), the [owner guide](docs/owners.md) or the
 [donor guide](docs/donors.md). Main supports Linux x86_64 with glibc 2.34+ or Alpine 3.24
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
-In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
-GitHub URLs select a repository loop for `work`, or an issue or PR for the other matching commands.
+In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or a GitHub URL.
 Do not infer support for another platform, forge or harness.
 
 ## Install Tokate and its dependencies

@@ -104,20 +104,16 @@ tokate work OWNER/REPO stop
 Use the default donor profile or override it with `--harness`, `--model` and `--effort`.
 Save one with `tokate defaults set NAME --harness codex --model MODEL --effort high`,
 then `tokate defaults use NAME`. Check it with `tokate select OWNER/REPO NAME --non-interactive`.
-Any github.com URL, including release, tree, issue or PR links, selects the repository loop.
+Repository links, such as release or tree links, select the loop.
 `--time` covers coding and verification per task, defaulting to the lower of one hour
 and the owner limit. Without `--total`, it runs until stopped. A task starts only
-when its full budget fits the remaining total.
+while `--time` fits in the remaining total. Claim and submission waits can run past it.
 One confirmation names the repository, harness, model, effort and both budgets.
 It covers every task claimed with those tools and limits. Noninteractive and JSON use require `--yes`.
 Approved issues are selected oldest first across pages. Reserved, stale, inaccessible,
 dependency-blocked and already attempted issues are skipped. Each task uses claim, work and submit.
-Claim and submission waits are bounded by the per-task budget. Only owner-role workflow guidance fails the wait.
 Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.
-Stop uses a per-repository marker, waits for the current task and prints the report.
-If no loop runs, it says so and prints the last report when available. Start clears stale stop markers.
-The saved session and exit report include start/end times, wall time, submitted/skipped/failed tasks,
-PR URLs and summed input, cached input and output tokens from each run's usage. `--json` emits one report object.
+Stop waits for the current task and prints wall time, submitted, skipped and failed tasks, PR URLs and token totals.
 
 ## Use a script
 

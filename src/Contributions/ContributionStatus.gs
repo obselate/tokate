@@ -732,13 +732,21 @@ internal class ContributionStatus {
                 stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
                 next = Next(
                     "donor",
-                    stage == "paused" ? "This claim is paused. The donor checks their saved work on their own machine.": "This claim has been accepted. The donor can start work with tokate work on their own machine."
+                    stage == "paused" ? "This claim is paused. The donor checks their saved work on their own machine.": "This claim has been accepted. The donor can start work with tokate work " +
+                        repo +
+                        "#" +
+                        Text(row, "issue") +
+                        " on their own machine."
                 )
             } else if reservation.ValueKind == JsonValueKind.Object {
                 stage = "lease_expired_or_released"
                 next = Next(
                     "donor",
-                    "Use tokate claim for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation."
+                    "Use tokate claim " +
+                        repo +
+                        "#" +
+                        Text(row, "issue") +
+                        " for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation."
                 )
             }
 
