@@ -126,9 +126,15 @@ internal class PublicDescriptions {
                     "Browser behavior was not checked.",
                     "Private log at https://internal.example.test"
                 ),
+                "{\"head\":\"" + head + "\",\"changes\":[],\"verification\":[],\"limitations\":[]}",
                 "{\"head\":\"" +
                     head +
-                    "\",\"changes\":[\"Fix the result using credential material.\"],\"verification\":[],\"limitations\":[]}"
+                    "\",\"changes\":[\"Fix the result using credential material.\"],\"verification\":[],\"limitations\":[]}",
+                "{\"head\":\"" +
+                    head +
+                    "\",\"changes\":[\"" +
+                    String('x', 201) +
+                    "\"],\"verification\":[],\"limitations\":[]}"
             } {
                 File.WriteAllText(path, invalid)
                 flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
@@ -382,6 +388,9 @@ internal class PublicDescriptions {
                 )
                 flow.NoInference()
             }
+            flow.Reload()
+            flow.State.AsObject().Remove("checks")
+            flow.Save()
         }
 
         private func BoundedArtifact() JsonNode {
@@ -479,9 +488,7 @@ internal class PublicDescriptions {
         }
 
         internal func All(binary string, selected string = "") {
-            if selected == "Managed" ||
-                selected == "Readiness" ||
-                (selected == "" && CiShard.Include("PublicDescriptions/Managed")) {
+            if selected == "Managed" || (selected == "" && CiShard.Include("PublicDescriptions/Managed")) {
                 Managed(binary)
                 Console.WriteLine(
                     "PASS managed publication and amendment summaries, report readiness, receipt and maintainer preservation"
