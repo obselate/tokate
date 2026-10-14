@@ -847,8 +847,22 @@ internal partial class Fixture {
                     return 1
                 }
                 let response = comment.DeepClone()
-                if Check.Text(State["request_response_fault"]) == "author" {
-                    (response["user"] ?? throw Exception("Missing response author"))["id"] = JsonValue.Create(999)
+                switch Check.Text(State["request_response_fault"]) {
+                    case "issue" {
+                        response["issue_url"] = JsonValue.Create("https://api.github.com/repos/owner/project/issues/2")
+                    }
+                    case "repo" {
+                        response["issue_url"] = JsonValue.Create("https://api.github.com/repos/other/project/issues/1")
+                    }
+                    case "author" {
+                        (response["user"] ?? throw Exception("Missing response author"))["id"] = JsonValue.Create(999)
+                    }
+                    case "body" {
+                        response["body"] = JsonValue.Create("/tokate {}")
+                    }
+                    case "id" {
+                        response["id"] = JsonValue.Create(0)
+                    }
                 }
                 if Check.Text(State["request_response_missing"]) == "true" {
                     comments.AsObject().Remove((100 + count).ToString())

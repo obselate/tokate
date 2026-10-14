@@ -577,10 +577,9 @@ internal class AmendmentFlow {
                     "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-4-6\",\"effort\":\"absent\"}]"
                 )
             }
-            let tools = flow.Tools
             if mode == "recovery" {
                 flow.Flow.Mode("lost_push_response")
-                let rejected = Amend(flow.Flow, run, commit, 1, tools, summary: true)
+                let rejected = Amend(flow.Flow, run, commit, 1, flow.Tools, summary: true)
                 Check.That(
                     Check.Text(
                         Saved(Path.Combine(run, "amendments", commit))["failure_reason"]
@@ -592,7 +591,15 @@ internal class AmendmentFlow {
                 flow.Flow.Mode("")
             }
             let amended = Check.Envelope(
-                Amend(flow.Flow, run, commit, tools: tools, summary: true, json: true, head: mode == "" && !native),
+                Amend(
+                    flow.Flow,
+                    run,
+                    commit,
+                    tools: flow.Tools,
+                    summary: true,
+                    json: true,
+                    head: mode == "" && !native
+                ),
                 "amend",
                 "ok"
             )
@@ -617,7 +624,7 @@ internal class AmendmentFlow {
                 let saved = File.ReadAllText(Path.Combine(location, "run.json"))
                 let summary = Check.Text(Saved(location)["summary_argument"])
                 let summaryInput = File.ReadAllText(summary)
-                let toolsInput = File.ReadAllText(tools)
+                let toolsInput = File.ReadAllText(flow.Tools)
                 for key in[]string{"summary", "tools", "time", "sync"} {
                     let arguments = List[string]{
                         "amend",
@@ -628,12 +635,12 @@ internal class AmendmentFlow {
                         "--time",
                         key == "time" ? "31s": "30s",
                         "--tools",
-                        tools,
+                        flow.Tools,
                         "--summary",
                         summary,
                         "--json"
                     }
-                    let file = key == "summary" ? summary: tools
+                    let file = key == "summary" ? summary: flow.Tools
                     let originalInput = File.ReadAllText(file)
                     if key == "summary" || key == "tools" {
                         File.AppendAllText(file, "\n")
@@ -668,7 +675,7 @@ internal class AmendmentFlow {
                             "--time",
                             "30s",
                             "--tools",
-                            tools,
+                            flow.Tools,
                             "--summary",
                             summary,
                             "--json"
@@ -681,7 +688,7 @@ internal class AmendmentFlow {
                 )
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--summary")
                 File.Delete(summary)
-                File.Delete(tools)
+                File.Delete(flow.Tools)
                 flow.Flow.Call([]string{"amend", "--run", run, "--json"})
                 Check.That(
                     File.ReadAllText(Path.Combine(location, "run.json")) == saved,
@@ -693,7 +700,7 @@ internal class AmendmentFlow {
                     "Saved continuation repeated the request"
                 )
                 File.WriteAllText(summary, summaryInput)
-                File.WriteAllText(tools, toolsInput)
+                File.WriteAllText(flow.Tools, toolsInput)
             }
             let path = flow.Event(request)
             if mode == "recovery" {
@@ -755,12 +762,12 @@ internal class AmendmentFlow {
             if mode == "" && !native {
                 let summary = Check.Text(Saved(Path.Combine(run, "amendments", commit))["summary_argument"])
                 let summaryInput = File.ReadAllText(summary)
-                let toolsInput = File.ReadAllText(tools)
+                let toolsInput = File.ReadAllText(flow.Tools)
                 File.Delete(summary)
-                File.Delete(tools)
+                File.Delete(flow.Tools)
                 flow.Flow.Call([]string{"amend", "--run", run, "--json"})
                 File.WriteAllText(summary, summaryInput)
-                File.WriteAllText(tools, toolsInput)
+                File.WriteAllText(flow.Tools, toolsInput)
             }
             flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).ToArray())
             let completed = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
@@ -1448,7 +1455,7 @@ internal class AmendmentFlow {
                 } else {
                     Check.Contains(
                         ReworkAndSubmit(protectedFlow, protectedRun, commit, 1).Error,
-                        change.StartsWith("verifier") ? "protected owner path": "protected"
+                        change.StartsWith("verifier") ? "protected owner path": "protected owner configuration"
                     )
                 }
                 Check.That(
@@ -1729,7 +1736,7 @@ internal class AmendmentFlow {
             let commit = Correct(flow.Flow, run)
             File.WriteAllText(
                 flow.Tools,
-                "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-4-6\",\"effort\":\"unknown\"}]"
+                "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-4-6\",\"effort\":\"unknown\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]"
             )
             Rework(flow.Flow, run, commit, tools: flow.Tools)
             Once(flow.Flow)
@@ -1789,8 +1796,11 @@ internal class AmendmentFlow {
                 Check.Text(Read(run)["usage"]?["input_tokens"]) == "100",
                 "Correction usage replaced original usage"
             )
+            Check.Contains(
+                Rework(flow.Flow, run, commit, 1, flow.Tools).Error,
+                "no file changes compared with the published commit"
+            )
             AmendCorrected(flow.Flow, run, archive, flow)
-            Rework(flow.Flow, run, commit, 1, flow.Tools)
             flow.Expire()
             flow.Flow.Call([]string{"submit", "--run", run}, 1)
             Once(flow.Flow, 1)
@@ -1799,22 +1809,16 @@ internal class AmendmentFlow {
         private func PublicationResponses(flow CoordinationFixture, run string) {
             let results = Check.Text(Read(run)["verification"])
             let before = File.ReadAllText(Path.Combine(run, "run.json"))
-            flow.Flow.Reload()
-            flow.Flow.State["request_response_fault"] = JsonValue.Create("author")
-            flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
-            flow.Flow.Save()
             using let response = FixtureSnapshot(flow.Flow.Temp.Root)
-            Check.Envelope(
-                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
-                "submit",
-                "error",
-                "command_failed"
-            )
-            response.Restore()
-            flow.Flow.Reload()
-            let first = flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            for fault in[]string{"issue", "repo", "author", "body", "id"} {
+                response.Restore()
+                flow.Flow.Reload()
+                flow.Flow.State["request_response_fault"] = JsonValue.Create(fault)
+                flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
+                flow.Flow.Save()
+                Check.Contains(flow.Flow.Call([]string{"submit", "--run", run}, 1).Error, "Uncertain request write")
+            }
             let request = File.ReadAllText(Path.Combine(run, "request.json"))
-            Check.Contains(first.Error, "Uncertain request write")
             Check.Envelope(
                 flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
                 "submit",
