@@ -316,11 +316,11 @@ internal class AmendmentFlow {
                 flow.Save()
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 flow.ResetTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, 1)
+                flow.Receipt("owner/project#10", false)
                 if field == "amendment" {
                     Check.Envelope(
-                        flow.Call([]string{"verify", "owner/project#10", "--json"}, 1),
-                        "verify",
+                        flow.Call([]string{"checks", "owner/project#10", "--json"}, 1),
+                        "checks",
                         "error",
                         "stale_approval"
                     )
@@ -363,7 +363,7 @@ internal class AmendmentFlow {
             Check.Contains(body, "cover original work only")
             Check.Contains(body, commit)
             Check.That(!body.Contains("synthetic-raw-"), "Detailed evidence was published")
-            Check.Envelope(flow.Call([]string{"verify", "owner/project#10", "--json"}, owner: owner), "verify", "ok")
+            flow.Receipt("owner/project#10", owner: owner)
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\",\"state\":\"SUCCESS\"}]")
             flow.Save()
             let checks = flow.Call([]string{"checks", "--run", run}, summary ? 0: 1, owner: owner)
@@ -706,7 +706,7 @@ internal class AmendmentFlow {
             if mode == "recovery" {
                 flow.Flow.Mode("lost_body_response")
                 flow.Coordinate(path, 1)
-                flow.Flow.Call([]string{"verify", "owner/project#10"}, 1)
+                flow.Flow.Receipt("owner/project#10", false)
                 flow.Flow.Mode("")
             }
             flow.Flow.ResetTraffic()
@@ -1057,7 +1057,7 @@ internal class AmendmentFlow {
             Check.Contains(flow.Body(), "manual/unknown")
             Check.Contains(flow.Body(), "cover only the original completed turn")
             Check.That(!flow.Body().Contains("Fresh attempt seeded"), "Ordinary correction invented interrupted origin")
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             flow.Call([]string{"amend", "--run", run}, 1)
             ReworkAndSubmit(flow, run, commit, 1)
             Once(flow, 1)
@@ -1125,7 +1125,7 @@ internal class AmendmentFlow {
                     "\n" == File.ReadAllText(patch),
                 "Corrected binary evidence depends on rename configuration"
             )
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             Once(flow, 1)
         }
 
@@ -1789,7 +1789,7 @@ internal class AmendmentFlow {
                 Check.Text(Read(run, "correction.json")["verification"]) == results,
                 "v2 publication replay reran checks"
             )
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Flow.Receipt("owner/project#10", owner: true)
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Original donor-reported tools")
             Check.Contains(Check.Text(flow.Flow.State["pulls"]?[0]?["body"]), "Donor-reported correction tools")
             Check.That(
@@ -1986,7 +1986,7 @@ internal class AmendmentFlow {
                     managed.Coordinate(managed.Event(request))
                     flow.Call(args)
                 }
-                flow.Call([]string{"verify", "owner/project#10"})
+                flow.Receipt("owner/project#10")
                 flow.Reload()
                 let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing corrected PR")
                 let body = Check.Text(pull["body"])
@@ -2008,7 +2008,7 @@ internal class AmendmentFlow {
                 provenance["head"] = JsonValue.Create(commit)
                 pull["body"] = JsonValue.Create(body.Replace(receiptText, receipt.ToJsonString()))
                 flow.Save()
-                flow.Call([]string{"verify", "owner/project#10"}, 1)
+                flow.Receipt("owner/project#10", false)
                 pull["body"] = JsonValue.Create(body)
                 flow.Save()
             }

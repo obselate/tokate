@@ -370,7 +370,7 @@ internal class ClaudeCode {
                     )
                 }
 
-                let found = LocalPaths.Harness("claude", args.Get("harness-path", args.Get("claude")))
+                let found = LocalPaths.Harness("claude", args.Get("harness-path"))
                 if found == "" {
                     throw ExecutionFailure.Create(
                         "missing_tools",
@@ -481,69 +481,62 @@ internal class ClaudeCode {
                 (effort == "xhigh" && !Regex.IsMatch(model, "^claude-(?:opus|sonnet)-4-6(?:-|$)"))
         )
 
-        internal func Gate(args Args) JsonElement {
-            try {
-                let model = args.Need("model")
-                let effort = args.Need("effort")
-                let policy = Policy(
-                    File.ReadAllText(
-                        args.Get(
-                            "policy",
-                            Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
-                        )
+        internal func Gate(args Args, runtime JsonElement) Object {
+            let model = args.Need("model")
+            let effort = args.Need("effort")
+            let policy = Policy(
+                File.ReadAllText(
+                    args.Get(
+                        "policy",
+                        Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
                     )
                 )
+            )
 
-                policy.Validate("claude", "anthropic", model, effort, 1)
+            policy.Validate("claude", "anthropic", model, effort, 1)
 
-                let runtime = Runtime(args)
-                let environment = List[string]()
+            let environment = List[string]()
 
-                for entry in EnvironmentControls() {
-                    environment.Add(entry.Key + "=" + entry.Value)
-                }
-
-                let result = map[string, Object?]{
-                    "version": J.Text(runtime, "version"),
-                    "auth_status": J.Get(runtime, "auth_status"),
-                    "policy_hash": policy.Digest,
-                    "requested": map[string, Object?]{"model": model, "effort": effort},
-                    "invocation": Invocation(
-                        model,
-                        effort,
-                        args.Need("claude-profile"),
-                        policy.AllowedModels("claude", "anthropic", ModelPattern)
-                    ),
-                    "environment_controls": environment,
-                    "managed_execution_enabled": true,
-                    "limitations": []string{
-                        "Local authentication schema and required interfaces checked; remote entitlement and model availability are not proven.",
-                        "File restrictions and Bash sandboxing are Claude Code's own. Native reports are not remote identity attestations."
-                    }
-                }
-
-                if args.Get("path") != "" {
-                    result["configured_command"] = Command(
-                        args.Need("harness-path"),
-                        args.Need("claude-profile"),
-                        args.Need("path")
-                    )
-                }
-
-                if args.Get("file") != "" {
-                    result["native_reports"] = Reports(
-                        Report(args.Need("file"), args.Need("claude-profile")),
-                        model,
-                        effort
-                    )
-                }
-
-                return J.Parse(J.Write(result))
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is JsonException {
-                throw ExecutionFailure.From(error, "command_failed")
+            for entry in EnvironmentControls() {
+                environment.Add(entry.Key + "=" + entry.Value)
             }
+
+            let result = map[string, Object?]{
+                "version": J.Text(runtime, "version"),
+                "auth_status": J.Get(runtime, "auth_status"),
+                "policy_hash": policy.Digest,
+                "requested": map[string, Object?]{"model": model, "effort": effort},
+                "invocation": Invocation(
+                    model,
+                    effort,
+                    args.Need("claude-profile"),
+                    policy.AllowedModels("claude", "anthropic", ModelPattern)
+                ),
+                "environment_controls": environment,
+                "managed_execution_enabled": true,
+                "limitations": []string{
+                    "Local authentication schema and required interfaces checked; remote entitlement and model availability are not proven.",
+                    "File restrictions and Bash sandboxing are Claude Code's own. Native reports are not remote identity attestations."
+                }
+            }
+
+            if args.Get("path") != "" {
+                result["configured_command"] = Command(
+                    args.Need("harness-path"),
+                    args.Need("claude-profile"),
+                    args.Need("path")
+                )
+            }
+
+            if args.Get("file") != "" {
+                result["native_reports"] = Reports(
+                    Report(args.Need("file"), args.Need("claude-profile")),
+                    model,
+                    effort
+                )
+            }
+
+            return result
         }
     }
 }

@@ -497,7 +497,7 @@ internal class CliDiscovery {
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
-            let expected = "work claim submit status checks pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile sync completion help --version request admit coordinate claude-capabilities"
+            let expected = "work claim submit status checks pause resume renew release init approve revoke access doctor defaults update uninstall overlaps recover-request amend external reconcile sync completion help --version request admit coordinate"
             Check.That(
                 String.Join(
                     " ",
@@ -644,7 +644,7 @@ internal class CliDiscovery {
                     Check.That(read != writes, subject + " operation effects differ: " + Check.Text(operation["name"]))
                 }
             }
-            for name in[]string{"select", "amend", "request"} {
+            for name in[]string{"defaults", "amend", "request"} {
                 let command = Check.Envelope(Call(binary, []string{"help", name, "--json"}, temp), "help", "ok")[
                     "data"
                 ]?["commands"]?[0]
@@ -1200,7 +1200,6 @@ internal class CliDiscovery {
                 []string{"work", "--run=x", "https://github.com/owner/project/issues/1"},
                 []string{"amend", "--run=x", "--time=0s"},
                 []string{"checks", "--run=x", "--timeout=86401s"},
-                []string{"verify", "--repo=owner/project", "no"},
                 []string{"approve", "--base-branch=bad..branch", "--help"},
                 []string{"approve", "--base-branch=release//next", "--help"},
                 []string{"approve", "--base-branch=release.lock", "--help"},
@@ -1345,7 +1344,6 @@ internal class CliDiscovery {
                 []string{"doctor", "repo", "owner/project"},
                 []string{"doctor", "repo", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
-                []string{"verify", "https://github.com/owner/project/pull/1"},
                 []string{"work", issueUrl, "--model=model", "--effort=high"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=high"},
                 []string{"work", commentUrl, "--model=model", "--effort=high"},

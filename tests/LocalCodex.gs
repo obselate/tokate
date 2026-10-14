@@ -48,7 +48,7 @@ internal class LocalCodex {
             Check.That(!File.Exists(Path.Combine(checkout, ".git/private-marker")), "Private Git metadata escaped")
             Check.That(File.ReadAllText(outside) == "synthetic-private-value", "Codex changed outside data")
             flow.Publish(run)
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             Console.WriteLine("PASS native Codex configured MCP, sandbox, verification and draft submission")
         }
 
@@ -107,17 +107,17 @@ internal class LocalCodex {
                 let choice = Check.Envelope(
                     flow.Call(
                         []string{
-                            "select",
+                            "defaults",
+                            "check",
                             "owner/project",
                             "--model",
                             "gpt-6.1-sol",
                             "--effort",
                             "high",
-                            "--non-interactive",
                             "--json"
                         }
                     ),
-                    "select",
+                    "defaults",
                     "ok"
                 )
                 Check.That(

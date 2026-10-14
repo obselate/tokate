@@ -24,6 +24,7 @@ internal class CliOption(spec string) {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
+        case "file" when command == "doctor": "Native Claude report to check against the selected model and effort"
         case "non-interactive" when command == "init": "Never prompt; preview unless --yes is given"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
@@ -111,7 +112,6 @@ internal class CliCommand(header string, usage string, options string, summary s
 internal class Cli {
     shared {
         internal let Options[]CliOption = []string{
-            "claude FILE: Installed unmodified native Claude Code executable; never installed implicitly",
             "claude-profile DIR: Existing Claude configuration directory; defaults to your normal Claude profile",
             "policy FILE: Repository policy; default: .github/tokate.json in the selected checkout",
             "set-default: Save the installed harness named with --harness as the default",
@@ -192,6 +192,9 @@ internal class Cli {
             "defaults show": "local_read",
             "defaults list": "local_read",
             "defaults set": "local_read,local_write harness model,effort",
+            "defaults use": "local_read,local_write",
+            "defaults remove": "local_read,local_write",
+            "defaults check": "local_read,github_read",
         }
 
         internal let Commands[]CliCommand = []CliCommand{
@@ -287,24 +290,17 @@ internal class Cli {
                 "access trust donor"
             ),
             CliCommand(
-                "verify own local_read,github_read repo,pr",
-                "PR",
-                "",
-                "Check a PR receipt against owner approval; no inference or publication.",
-                "verify 10"
-            ),
-            CliCommand(
                 "doctor setup local_read,local_write,github_read",
-                "[HARNESS] [--auth] [--fix [--yes]] [--set-default]\nrepo [OWNER/REPO]\nmanaged [HARNESS]\nexternal",
-                "auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "[HARNESS] [--auth] [--fix [--yes]] [--set-default]\nHARNESS --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]\nrepo [OWNER/REPO]\nmanaged [HARNESS]\nexternal",
+                "auth,harness,harness-path,pi-root,node,claude-profile,fix,yes,set-default,model,effort,policy,path,file",
                 "Check prerequisites, or repository policy and coordinator health; repository checks are read-only; no inference.",
                 "doctor"
             ),
             CliCommand(
-                "defaults setup local_read,local_write",
-                "set [NAME] --harness HARNESS [options]\nuse NAME\nshow|remove [NAME]\n[list]",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile",
-                "Save or choose harness and model profiles; no inference.",
+                "defaults setup local_read,local_write,github_read",
+                "set [NAME] --harness HARNESS [options]\nuse NAME\nshow|remove [NAME]\ncheck [OWNER/REPO] [NAME] [--model MODEL --effort EFFORT] [options]\n[list]",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability",
+                "Save or choose harness and model profiles, or check one against owner policy and offline harness capabilities; no inference.",
                 "defaults set --model gpt-6.1-sol --effort high"
             ),
             CliCommand(
@@ -320,13 +316,6 @@ internal class Cli {
                 "",
                 "Remove managed installation offline; keep saved runs.",
                 "uninstall"
-            ),
-            CliCommand(
-                "select more local_read,local_write,github_read repo",
-                "[OWNER/REPO] [NAME] [--model MODEL --effort EFFORT] [options]",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive",
-                "Select under current owner policy and offline harness capabilities; no inference or reservation.",
-                "select owner/project NAME --non-interactive"
             ),
             CliCommand(
                 "overlaps more local_read,github_read repo,prs",
@@ -405,13 +394,6 @@ internal class Cli {
                 "event",
                 "Trusted owner workflow: update v2 state and publish approved requests; no inference.",
                 "coordinate owner/project --event event.json"
-            ),
-            CliCommand(
-                "claude-capabilities internal local_read,local_write claude,model,effort",
-                "--claude FILE --model MODEL --effort EFFORT [--claude-profile DIR] [--policy FILE] [--file REPORT]",
-                "claude,claude-profile,model,effort,file,path,policy",
-                "Check installed native Claude interfaces and personal login status without inference.",
-                "claude-capabilities --claude /usr/local/bin/claude --model MODEL --effort high"
             ),
         }
 
@@ -796,7 +778,7 @@ internal class Cli {
                     DonorDefaults
                     .Read(allowMissing: true).ValueKind == JsonValueKind.Undefined {
                     throw Exception(
-                        "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
+                        "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate defaults check OWNER/REPO NAME."
                     )
                 }
             }
@@ -870,6 +852,17 @@ internal class Cli {
 
                 if args.Subject == "repo" && args.Get("repo") == "" && !args.Help {
                     args.Values["--repo"] = RepositoryInput.Local()
+                }
+
+                if args.Get("model") + args.Get("effort") + args.Get("policy") + args.Get("path") + args.Get(
+                    "file"
+                ) != "" {
+                    if args.Get("harness") != "claude" {
+                        throw Exception("Model checks require doctor claude")
+                    }
+
+                    args.Need("model")
+                    args.Need("effort")
                 }
             }
 
@@ -987,6 +980,10 @@ internal class Cli {
                     throw Exception("Required: NAME")
                 }
 
+                if args.Subject == "check" && args.Get("repo") == "" {
+                    args.Values["--repo"] = RepositoryInput.Local()
+                }
+
                 let partial = args.Subject == "set" && args.Get("harness") != "" && args.Get("model") == "" && args.Get(
                     "effort"
                 ) == ""
@@ -1009,15 +1006,16 @@ internal class Cli {
                     "node",
                     "harness-path",
                     "claude-profile",
+                    "availability",
                 } {
-                    if args.Subject == "set" {
+                    if args.Subject == "set" && key != "availability" {
                         if !partial && (key == "harness" || key == "provider" || key == "model" || key == "effort") {
                             args.Need(key)
                         } else if (key == "endpoint" || key == "pi-root" || key == "node") && args.Get(key) != "" &&
                             !Harness.Owns(args.Get("harness"), key) {
                             throw Exception("Pi runtime options require the pi harness")
                         }
-                    } else if args.Get(key) != "" {
+                    } else if args.Subject != "check" && args.Get(key) != "" {
                         throw Exception("defaults " + args.Subject + " does not take --" + key)
                     }
                 }

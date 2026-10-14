@@ -188,26 +188,20 @@ Do not delete these branches, open PRs from them or merge them. Exclude them fro
    ```
 
 2. Approve first-time fork workflows in the PR's linked GitHub Actions runs after diff review.
-3. Verify the receipt against owner approval.
-
-   ```sh
-   tokate verify 10
-   ```
-
-4. Wait for required checks on the current PR head.
+3. Verify the receipt against owner approval and wait for required checks on the current PR head.
 
    ```sh
    tokate checks 10 --watch
    ```
 
-5. Review scope, acceptance criteria, limitations and conflicts.
-6. Mark the accepted draft ready.
+4. Review scope, acceptance criteria, limitations and conflicts.
+5. Mark the accepted draft ready.
 
    ```sh
    gh pr ready 10
    ```
 
-7. Merge with your repository's required merge method.
+6. Merge with your repository's required merge method.
 
    ```sh
    gh pr merge 10

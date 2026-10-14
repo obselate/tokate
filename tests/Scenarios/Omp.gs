@@ -208,13 +208,13 @@ internal class OmpChecks {
         }
 
         private func Pick(extra[]string)[]string {
-            let words = List[string]{"select", "owner/project", "--harness", "omp", "--json"}
+            let words = List[string]{"defaults", "check", "owner/project", "--harness", "omp", "--json"}
             words.AddRange(extra)
             return words.ToArray()
         }
 
         private func Refused(flow NativeFixture, extra[]string, reason string) {
-            let words = List[string]{"select", "owner/project", "--harness", "omp"}
+            let words = List[string]{"defaults", "check", "owner/project", "--harness", "omp"}
             words.AddRange(extra)
             Check.Contains(flow.Call(words.ToArray(), 1).Error, reason)
         }
@@ -240,7 +240,7 @@ internal class OmpChecks {
             Directory.CreateDirectory(settings)
             let chosen = Check.Envelope(
                 flow.Call(Pick([]string{"--provider", "openrouter", "--model", OmpTool.Model, "--effort", "low"})),
-                "select",
+                "defaults",
                 "ok"
             )
             Check.That(
@@ -251,7 +251,7 @@ internal class OmpChecks {
             )
             let plain = Check.Envelope(
                 flow.Call(Pick([]string{"--provider", "llama.cpp", "--model", "plain", "--effort", "absent"})),
-                "select",
+                "defaults",
                 "ok"
             )
             Check.That(Check.Text(plain["data"]?["effort"]) == "absent", "Non-reasoning OMP model was refused")

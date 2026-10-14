@@ -3,6 +3,7 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.IO
+import System.Linq
 import System.Text.Json
 
 internal class ToolCheck {
@@ -12,6 +13,7 @@ internal class ToolCheck {
     internal var Status string = "missing"
     internal var Detail string = ""
     internal var Code string = ""
+    internal var Report Object? = nil
 }
 
 internal class Startup {
@@ -69,7 +71,9 @@ internal class Startup {
             return tools
         }
 
-        internal func NeedsCatalog(command string, options Args?) bool -> command == "select" ||
+        internal func NeedsCatalog(command string, options Args?) bool -> (
+            command == "defaults" && options?.Subject == "check"
+        ) ||
             (command == "claim" && options?.Get("source") != "external") ||
             command == "work"
 
@@ -102,7 +106,8 @@ internal class Startup {
                 return names.ToArray()
             }
 
-            if (command == "status" && options.Get("run") != "") || command == "defaults" {
+            if (command == "status" && options.Get("run") != "") ||
+                (command == "defaults" && options.Subject != "check") {
                 return []string{}
             }
 
@@ -539,6 +544,9 @@ internal class Startup {
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
                 fields["authentication_requested"] = options.Get("auth") == "true"
+                if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is Object report {
+                    fields["claude"] = report
+                }
             }
 
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")

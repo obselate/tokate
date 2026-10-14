@@ -160,7 +160,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.Contains(submit.Error, update)
         CoordinatePosted()
         Call([]string{"submit", "--run", run})
-        Check.Envelope(Call([]string{"verify", "owner/project#10", "--json"}, owner: true), "verify", "ok")
+        Receipt("owner/project#10", owner: true)
         Check.Envelope(Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
         Check.Envelope(
             Call([]string{"checks", "--run", run, "--watch", "--timeout", "1s", "--json"}, 8),
@@ -194,8 +194,8 @@ internal partial class NativeFlow : NativeFixture {
         Reload()
         let originalPulls = State["pulls"]?.ToJsonString() ?? ""
         Check.Envelope(
-            Call([]string{"verify", "owner/project#10", "--json"}, 1, owner: true),
-            "verify",
+            Call([]string{"checks", "owner/project#10", "--json"}, 1, owner: true),
+            "checks",
             "error",
             "stale_approval"
         )
@@ -367,7 +367,7 @@ internal partial class NativeFlow : NativeFixture {
             "donor",
             "tokate@users.noreply.github.com"
         )
-        Call([]string{"verify", "owner/project#10"}, owner: true)
+        Receipt("owner/project#10", owner: true)
         Git("-C", Upstream, "config", "remote.origin.url", "https://github.com/owner/project")
         for state in[]string{"closed", "merged"} {
             Reload()
@@ -377,15 +377,17 @@ internal partial class NativeFlow : NativeFixture {
             (State["issue"] ?? throw Exception("Missing issue"))["state"] = JsonValue.Create("closed")
             Save()
             let target = state == "closed" ? "10": "https://github.com/owner/project/pull/10"
-            let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
-            Check.That(result.Code == 1, "Verify accepted a closed PR")
-            Check.Contains(result.Error, "PR #10 is " + state + "; verify checks open contribution PRs.")
+            let result = TestProcess.Run(Binary, []string{"checks", target}, Temp.Env, cwd: Upstream)
+            Check.That(result.Code == 0, "Checks refused a historical PR")
+            Check.Contains(
+                result.Output + result.Error,
+                "PR #10 " + (state == "merged" ? "was merged.": "was closed without merge.")
+            )
         }
         Faults("repos/owner/project/pulls/1", Check.Json("[{\"status\":404}]"))
         for target in[]string{"1", "https://github.com/owner/project/issues/1"} {
-            let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
-            Check.That(result.Code == 1, "Verify accepted an issue")
-            Check.Contains(result.Error, "verify takes an open contribution PR, for example tokate verify 42.")
+            let result = TestProcess.Run(Binary, []string{"checks", target}, Temp.Env, cwd: Upstream)
+            Check.That(result.Code == 1, "Checks accepted an issue")
         }
     }
 
@@ -461,9 +463,15 @@ internal partial class NativeFlow : NativeFixture {
                 policy["allowed_tools"]?[2]?["models"] == nil,
             "Policy output lost per-tool permissions"
         )
-        Call([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"})
-        Reject([]string{"select", "owner/project", "--model", "gpt-6-sol", "--effort", "high"}, "Model/effort pair")
-        Reject([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "low"}, "Model/effort pair")
+        Call([]string{"defaults", "check", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"})
+        Reject(
+            []string{"defaults", "check", "owner/project", "--model", "gpt-6-sol", "--effort", "high"},
+            "Model/effort pair"
+        )
+        Reject(
+            []string{"defaults", "check", "owner/project", "--model", "gpt-6.1-sol", "--effort", "low"},
+            "Model/effort pair"
+        )
     }
 
     internal func MissingFork() {
@@ -674,7 +682,7 @@ internal partial class NativeFlow : NativeFixture {
         let verification = File.ReadAllText(Path.Combine(run, "verification.json"))
         Check.Contains(verification, "synthetic-raw-verification-secret")
         Check.Contains(verification, "synthetic-raw-verification-error")
-        Call([]string{"verify", "owner/project#10"}, owner: true)
+        Receipt("owner/project#10", owner: true)
     }
 
     internal func CanonicalVerification() {

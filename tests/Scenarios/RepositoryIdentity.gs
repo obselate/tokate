@@ -50,7 +50,7 @@ internal class RepositoryIdentityChecks {
                 ),
                 "Wrong claim repository"
             )
-            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
+            flow.Receipt("OWNER/PROJECT#10", owner: true)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Mixed-case work repeated inference")
             flow.AutomationAttribution()
@@ -118,7 +118,7 @@ internal class RepositoryIdentityChecks {
             saved["head_repo"] = JsonValue.Create("donor/project")
             File.WriteAllText(path, saved.ToJsonString())
             flow.Publish(run)
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
             flow.Reload()
             let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             let body = Check.Text(pull["body"])
@@ -128,7 +128,7 @@ internal class RepositoryIdentityChecks {
             Check.That(Check.Text(pull["body"]) != body, "Cross-repository receipt was not changed")
             flow.Save()
             Check.Contains(
-                flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true).Error,
+                flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true).Error,
                 "current exact-commit coordination authority"
             )
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Saved-run validation repeated inference")
@@ -182,7 +182,7 @@ internal class RepositoryIdentityChecks {
             let request = Check.PostedRequest(flow.State)
             eventPath = test.Event(request)
             flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
-            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
+            flow.Receipt("OWNER/PROJECT#10", owner: true)
             flow.NoInference()
             flow.AutomationAttribution()
             Console.WriteLine("PASS version-2 repository case variants through saved-run validation and publication")

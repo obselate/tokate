@@ -93,7 +93,7 @@ Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
 open PRs from them. Deleting `tokate/access` removes all trust and grants.
 
-Before acceptance, inspect the diff and run `tokate verify PR` and `tokate checks PR`.
+Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
 workflow execution. The owner decides acceptance and merge.
 
@@ -102,7 +102,7 @@ workflow execution. The owner decides acceptance and merge.
 Use the donor's account and selected harness. Check project tools and access first.
 Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
 Save choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
-Use `defaults` and `select` to reuse a permitted model choice without inference.
+Use `defaults` and `defaults check` to reuse a permitted model choice without inference.
 Machine doctor explains installations with `--fix`, asks once in a terminal, and applies with `--fix --yes`.
 Use `--harness-path FILE` for an existing harness and `--harness HARNESS --set-default` to save it.
 Never inspect credential files or mixed harness settings to discover defaults.

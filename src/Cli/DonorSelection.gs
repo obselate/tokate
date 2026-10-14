@@ -16,7 +16,7 @@ internal class DonorSelection {
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
-                (args.Command != "select" && args.Command != "claim" && args.Command != "work") {
+                (args.Command != "defaults" && args.Command != "claim" && args.Command != "work") {
                 return
             }
 
@@ -59,19 +59,7 @@ internal class DonorSelection {
                 return
             }
 
-            for key in[]string{
-                "harness",
-                "provider",
-                "endpoint",
-                "pi-root",
-                "node",
-                "harness-path",
-                "claude-profile",
-            } {
-                if args.Get(key) == "" && J.Text(saved, key) != "" {
-                    args.Values["--" + key] = J.Text(saved, key)
-                }
-            }
+            DonorDefaults.Fill(args, saved)
         }
 
         internal func Resolve(args Args, policy Policy) JsonElement {

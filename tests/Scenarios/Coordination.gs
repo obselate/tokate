@@ -38,7 +38,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 let publication = test.PublishRequest(claim, commit)
                 if change == "permitted" {
                     test.Coordinate(test.Event(publication))
-                    test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    test.Flow.Receipt("owner/project#10", owner: true)
                 } else {
                     Check.Contains(test.Coordinate(test.Event(publication), 1).Error, "protected owner path")
                     test.Flow.NoPr()
@@ -244,7 +244,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.WriteAllText(policyPath, policy.ToJsonString())
             test.Flow.Commit("Owner sets managed per-tool model permissions")
             test.Flow.Reject(
-                []string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
+                []string{"defaults", "check", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
                 "Model/effort pair"
             )
             test.Flow.Approve()
@@ -280,7 +280,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.NoPr()
             requestedTool["effort"] = JsonValue.Create("high")
             test.Coordinate(test.Event(request))
-            test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            test.Flow.Receipt("owner/project#10", owner: true)
             test.ReceiptRefusal(0, "effort", "absent")
             test.Flow.Reload()
             Check.That(
@@ -596,10 +596,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "missing-commits"
         } {
             Flow.DiffFault("diff_fault", fault)
-            Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            Flow.Receipt("owner/project#10", false, true)
         }
         Flow.DiffFault("diff_fault", "")
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         let checkout = Path.Combine(Flow.Temp.Root, "donor-work")
         let marker = Path.Combine(checkout, "receipt-code-ran")
         File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "touch '" + marker + "'\nexit 0\n")
@@ -644,7 +644,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 .Replace(expected, Check.Text(state["sha"]), StringComparison.Ordinal)
         )
         Flow.Save()
-        Check.Contains(Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true).Error, "protected owner path")
+        Check.Contains(Flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true).Error, "protected owner path")
         Flow.NoInference()
         Check.That(!File.Exists(marker), "Read-only validation executed PR code")
     }
@@ -867,7 +867,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "External correction changed publication protocol"
         )
         Coordinate(Event(request))
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         Flow.NoInference()
     }
 
@@ -918,10 +918,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.ResetTraffic()
         let duplicate = Coordinate(path, traffic: true)
         Flow.Traffic(12, 0, 0, duplicate)
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
         Expire()
-        Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+        Flow.Receipt("owner/project#10", false, true)
         Flow.Call([]string{"submit", "--run", run}, 1)
         Flow.NoInference()
         let published = State().ToJsonString()
@@ -1273,7 +1273,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Reload()
         Check.That(Flow.State["pulls"]?.AsArray().Count == 1, "Race should retain physical PR for owner inspection")
         Check.That(State()["state"]?["contribution"] == nil, "Revoked PR received authority")
-        Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+        Flow.Receipt("owner/project#10", false, true)
         Flow.NoInference()
     }
 
@@ -1391,7 +1391,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.ReadAllText(Path.Combine(run, "run.json")) == published,
             "Repeated submit rewrote published metadata"
         )
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         Flow.Reload()
         Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Tokate path did not execute exactly once")
     }
@@ -1453,7 +1453,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.NoPr()
         metadata["source"] = JsonValue.Create(source)
         Coordinate(Event(request))
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         ReceiptRefusal(0, unrestricted ? "effort": "model", unrestricted ? "invalid": "disallowed-model")
         if !unrestricted {
             ReceiptRefusal(0, "model", Check.Text(declared[1]?["model"]))
@@ -1478,7 +1478,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Repository policy or template changed. The owner must approve again."
         )
         Check.Contains(
-            Flow.Call([]string{"verify", "owner/project#10"}, 1, true).Error,
+            Flow.Call([]string{"checks", "owner/project#10"}, 1, true).Error,
             "Repository policy or template changed. The owner must approve again."
         )
         Check.That(
@@ -1513,7 +1513,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         receipt["expected"] = JsonValue.Create(previous)
         pull["body"] = JsonValue.Create(body.Substring(0, start) + receipt.ToJsonString() + body.Substring(end))
         Flow.Save()
-        let failure = Flow.Call([]string{"verify", "owner/project#10"}, 1, true)
+        let failure = Flow.Call([]string{"checks", "owner/project#10"}, 1, true)
         Check.That(
             failure.Error.Contains("Model/effort pair") || failure.Error.Contains("reasoning effort") ||
                 failure

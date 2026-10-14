@@ -80,7 +80,8 @@ internal class PiChecks {
             File.WriteAllText(pathNode, "#!/bin/sh\nexit 88\n")
             File.SetUnixFileMode(pathNode, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let args = List[string]{
-                "select",
+                "defaults",
+                "check",
                 "owner/project",
                 "--harness",
                 "pi",
@@ -91,8 +92,7 @@ internal class PiChecks {
                 "--effort",
                 "absent",
                 "--endpoint",
-                catalog.Endpoint,
-                "--non-interactive"
+                catalog.Endpoint
             }
             if mode != "" {
                 flow.Approve()
@@ -212,7 +212,7 @@ internal class PiChecks {
                 let rejected = List[string](args)
                 rejected.Add("--json")
                 let result = flow.Call(rejected.ToArray(), 1)
-                Check.Envelope(result, "select", "error", "endpoint_unavailable")
+                Check.Envelope(result, "defaults", "error", "endpoint_unavailable")
                 PrivateCatalog(result.Output + result.Error, catalog.Endpoint)
             }
             catalog.Metadata = ""
@@ -270,9 +270,7 @@ internal class PiChecks {
                     catalog.Endpoint
                 }
             )
-            let profiled = Check.Json(
-                flow.Call([]string{"select", "owner/project", "local", "--non-interactive"}).Output
-            )
+            let profiled = Check.Json(flow.Call([]string{"defaults", "check", "owner/project", "local"}).Output)
             let expectedProfile = explicitSelection.DeepClone()
             expectedProfile["source"] = JsonValue.Create("saved donor profile local")
             Check.That(JsonNode.DeepEquals(expectedProfile, profiled), "Saved Pi profile lost selection precedence")
@@ -552,8 +550,10 @@ internal class PiChecks {
                 let defaultPath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
                 File.Copy(profilePath, defaultPath)
                 let unnamed = Check.Envelope(
-                    flow.Flow.Call([]string{"select", "owner/project", "--model", "synthetic/model:exact", "--json"}),
-                    "select",
+                    flow.Flow.Call(
+                        []string{"defaults", "check", "owner/project", "--model", "synthetic/model:exact", "--json"}
+                    ),
+                    "defaults",
                     "ok"
                 )
                 Check.That(
@@ -713,7 +713,7 @@ internal class PiChecks {
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
-                    flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Flow.Receipt("owner/project#10", owner: true)
                     flow.Flow.Reload()
                     Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
                 }

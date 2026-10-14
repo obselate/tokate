@@ -39,7 +39,7 @@ def run(command, seconds=30):
 
 
 def gate(root, extra=(), success=True, profile=None, default_profile=False):
-    command = ['/tokate-control/tokate', 'claude-capabilities', '--claude', '/tokate-control/claude',
+    command = ['/tokate-control/tokate', 'doctor', 'claude', '--harness-path', '/tokate-control/claude',
                '--model', MODEL, '--effort', EFFORT,
                '--policy', str(POLICY), '--json', *extra]
     if not default_profile:
@@ -48,7 +48,7 @@ def gate(root, extra=(), success=True, profile=None, default_profile=False):
     require((result.returncode == 0) == success, 'Native capability gate gave an unexpected result: ' + result.stderr[:1000])
     envelope = json.loads(result.stdout)
     require('synthetic-organization' not in result.stdout, 'Native organization fields were retained')
-    return envelope.get('data') if success else envelope
+    return envelope['data']['claude'] if success else envelope
 
 
 class Fixture(http.server.ThreadingHTTPServer):

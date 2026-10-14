@@ -277,9 +277,11 @@ internal class Diagnostics {
             )
             Check.That(Check.Text(Row(external, "git")["status"]) == "missing", "External preparation omitted Git")
             Check.That(!File.ReadAllText(calls).Contains("codex"), "External preparation needed Codex")
-            for command in[]string{"claim", "select"} {
-                let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
-                let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")
+            for words in[][]string{
+                []string{"claim", "owner/project#1"},
+                []string{"defaults", "check", "owner/project"}
+            } {
+                let selection = Call(binary, temp, words, "error", "missing_tools")
                 Check.That(
                     Check.Text(Row(selection, "codex")["status"]) == "missing",
                     "Offline catalog route omitted Codex"
@@ -362,8 +364,8 @@ internal class Diagnostics {
                 }
                 if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"select", "owner/project", "--non-interactive"}),
-                        "select",
+                        FixedCall(binary, flow, helper, []string{"defaults", "check", "owner/project"}),
+                        "defaults",
                         "error",
                         "missing_tools"
                     )

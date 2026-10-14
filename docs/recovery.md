@@ -252,8 +252,8 @@ If the version check is unavailable, commands continue with a warning.
 | `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by `Approval no longer matches current task fields.` or `PR template changed.` and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
-| `Selected model is donor-reported unavailable. No retry or fallback.` | `tokate select OWNER/REPO` |
-| `Model is donor-reported unavailable.` | `tokate select OWNER/REPO` |
+| `Selected model is donor-reported unavailable. No retry or fallback.` | `tokate defaults check OWNER/REPO` |
+| `Model is donor-reported unavailable.` | `tokate defaults check OWNER/REPO` |
 | `No saved runs.` | `tokate status OWNER/REPO#42` |
 | `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status 42-1 --json` |
 
@@ -277,7 +277,7 @@ Refusals name changed task fields when the approved policy can be read and its
 task digest matches. Otherwise they state that previous task fields are unavailable
 or use a legacy digest. Issue text and PR-template changes are named separately.
 
-Model and effort permissions apply to the exact harness/provider pair. Use `tokate doctor repo OWNER/REPO` to inspect that tool's models before `tokate select OWNER/REPO`. A tool with no models map allows any model.
+Model and effort permissions apply to the exact harness/provider pair. Use `tokate doctor repo OWNER/REPO` to inspect that tool's models before `tokate defaults check OWNER/REPO`. A tool with no models map allows any model.
 
 For a provider capacity error, inspect the saved run before selecting a different model. Tokate has no automatic retry or fallback.
 
