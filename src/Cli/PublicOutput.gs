@@ -636,7 +636,7 @@ internal class PublicOutput {
                 "exit_code": exitCode,
                 "data": ResultData ?? map[string, Object?]{},
                 "error": failure,
-                "next_actions": Actions.ConvertAll(RunReference.Short),
+                "next_actions": RunReference.Short(Actions, true),
                 "truncated": Truncated
             }
 

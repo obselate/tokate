@@ -1140,20 +1140,18 @@ internal class ContributionStatus {
 
         internal func Run(args Args) {
             let status = Snapshot(args)
+            let saved = SavedRuns(RunStorage.Roots())
             let attempts List[SavedRun]? = args.Get("issue") == "" ? nil:
-            RunReference.Recent(SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue")))
+            RunReference.Recent(saved.For(args.Get("repo"), args.Number("issue")))
 
             if attempts != nil {
                 status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
 
-                if attempts.Count > 0 && status.Failure == nil {
-                    let latest = attempts[attempts.Count - 1]
-
+                if let latest = RunReference.Pick(attempts) {
                     var next Object?
 
-                    if J.Get(latest.Value, "donor_id").ToString() == J.Get(status.Viewer, "id").ToString() &&
-                        PublicOutput
-                        .RunSummary(latest.Location).TryGetValue("next", out next) {
+                    if status.Failure == nil && J.Get(latest.Value, "donor_id").ToString() == J.Get(status.Viewer, "id")
+                        .ToString() && PublicOutput.RunSummary(latest.Location).TryGetValue("next", out next) {
                         for item in status.Work {
                             let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
                             if status.Text(row, "state") == "claim_accepted" &&
@@ -1182,7 +1180,7 @@ internal class ContributionStatus {
                 Terminal.ContributionStatus(J.Parse(J.Write(status.Result)))
                 if attempts != nil && attempts.Count > 0 {
                     Terminal.Message("Saved runs on this computer:", "default")
-                    Terminal.Runs(attempts)
+                    Terminal.Runs(attempts, saved)
                 }
             }
 

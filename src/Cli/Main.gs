@@ -105,10 +105,6 @@ func Main(args[]string) int32 {
         }
     }
 
-    if Array.IndexOf(RunStorage.Roots(), Path.GetDirectoryName(PublicOutput.RunDirectory) ?? "") >= 0 {
-        RunReference.Locate()
-    }
-
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
         PublicOutput.Next(options, code)
 

@@ -84,7 +84,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `OWNER/REPO#42-1` | Attempt 1 in an explicit repository. |
 | `--run DIR` | Exact saved run directory. |
 
-For a `RUN` command, bare `42` names the active saved attempt. If two attempts are active, commands that change state refuse it. Use `42-1` to select attempt 1.
+For a `RUN` command, bare `42` names the active saved attempt. If two attempts are active, commands that take a run refuse it. Use `42-1` to select attempt 1.
 
 `status 42` reads issue state. `status 42-1` reads the saved attempt.
 For supported time-limit failures, saved status also reads GitHub authority to

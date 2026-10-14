@@ -541,7 +541,9 @@ internal partial class NativeFlow : NativeFixture {
             Check.Text(Check.Json(File.ReadAllText(Path.Combine(first, "run.json")))["state"]) == "generated",
             "Bare issue did not continue its active attempt"
         )
-        Check.Contains(worked["next_actions"]?.ToJsonString() ?? "", "[\"tokate\",\"submit\",\"project#1\",\"--json\"]")
+        let actions = worked["next_actions"]?.ToJsonString() ?? ""
+        Check.Contains(actions, "[\"tokate\",\"submit\",\"owner/project#1-1\",\"--json\"]")
+        Check.Contains(actions, "[\"tokate\",\"status\",\"owner/project#1-1\",\"--json\"]")
         flow.NoPr()
     }
 

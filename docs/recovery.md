@@ -22,7 +22,7 @@ Find the code or message below, then use the action in its row. Keep the origina
 
 `DIR` is the run directory shown by Tokate. `PR` is the pull request number, `DONOR` is the GitHub login, and `SHA` is an exact commit.
 
-Bare `42` names the active attempt for commands that take a run. If two attempts are active, commands that change state refuse `42`. Use `42-1` for attempt 1, not another attempt with a better-looking state.
+Bare `42` names the active attempt for commands that take a run. If two attempts are active, commands that take a run refuse `42`. Use `42-1` for attempt 1, not another attempt with a better-looking state.
 
 Do not edit `run.json` or delete evidence to bypass a failure.
 

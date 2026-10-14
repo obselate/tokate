@@ -227,29 +227,19 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(rows List[SavedRun]) {
-            let saved = SavedRuns(RunStorage.Roots())
+        internal func Runs(rows List[SavedRun], saved SavedRuns) {
             var width int32 = 3
 
             for row in rows {
-                width = Math.Max(width, RunReference.Label(row, saved).Length)
+                width = Math.Max(width, RunReference.Label(row, saved, row.Next == "checks").Length)
             }
 
             Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", false)
 
             for row in rows {
-                let name = RunReference.Label(row, saved)
-                Line(
-                    Clean(
-                        "  " + name.PadRight(width) + "  " + row.Text("state").PadRight(20) + "  " + row.Age().PadRight(
-                            4
-                        ) +
-                            "  " +
-                            row.Text("model")
-                    ),
-                    "default",
-                    false
-                )
+                let name = RunReference.Label(row, saved, row.Next == "checks")
+                let text = "  " + name.PadRight(width) + "  " + row.Text("state").PadRight(20) + "  "
+                Line(Clean(text + row.Age().PadRight(4) + "  " + row.Text("model")), "default", false)
 
                 if row.Next != "" {
                     Line(Clean("    Next: tokate " + row.Next + " " + name), "default", false)
@@ -274,7 +264,7 @@ internal class Terminal {
         internal func Command(command[]string, flatten bool = true) string {
             let words = StringBuilder()
 
-            for word in RunReference.Short(command) {
+            for word in RunReference.Short(List[[]string]{command}, false)[0] {
                 AppendWord(words, word)
             }
 
@@ -359,6 +349,8 @@ internal class Terminal {
                 return
             }
 
+            RunReference.Locate()
+
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
                 var stage = "Run"
@@ -386,7 +378,7 @@ internal class Terminal {
 
                 Message("Saved artifacts: " + summary, "default", true)
 
-                for action in PublicOutput.Actions {
+                for action in RunReference.Short(PublicOutput.Actions, false) {
                     Message("Next: " + Hint(action), "default", true)
                 }
             } catch (error Exception) { }
@@ -440,7 +432,7 @@ internal class Terminal {
             Heading("Donor run")
 
             var details = ""
-            for action in PublicOutput.Actions {
+            for action in RunReference.Short(PublicOutput.Actions, false) {
                 if action.Length > 1 {
                     if action[1] == "status" {
                         details = Command(action)

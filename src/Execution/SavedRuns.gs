@@ -18,7 +18,7 @@ internal class SavedRun(location string, value JsonElement, current bool) {
 
     internal prop Issue int32 -> J.Number(Value, "issue")
 
-    internal prop Name string -> Issue.ToString() + "-" + Number.ToString()
+    internal prop Name string -> Text("repo") + "#" + Issue.ToString() + "-" + Number.ToString()
 
     internal prop Next string -> (Text("state") == "claim_pending" || Text("state") == "claimed") &&
         Text("source") == "tokate" ? "work":
@@ -47,7 +47,7 @@ internal class SavedRun(location string, value JsonElement, current bool) {
 
     internal func Summary() Dictionary[string, Object?] -> map[string, Object?]{
         "run": Location,
-        "name": Text("repo") + "#" + Name,
+        "name": Name,
         "storage": Current ? "current": "previous",
         "id": Text("id"),
         "repo": Text("repo"),
