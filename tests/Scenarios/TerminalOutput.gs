@@ -82,14 +82,9 @@ internal class TerminalOutput {
             flow.Approve()
             flow.Git("init", "-b", "main", flow.Temp.Root)
             flow.Git("-C", flow.Temp.Root, "remote", "add", "origin", "https://github.com/inferred/project.git")
-            flow.Reload()
-            let issue = flow.State["issue"] ?? throw Exception("Missing fixture issue")
-            issue["title"] = JsonValue.Create(
-                String('x', 6) + Char.ConvertFromUtf32(0x1f331) +
-                    "[red]literal[/]\u001b[31mcontrol\u001b[0m" +
-                    String('x', 100)
-            )
-            flow.Save()
+            let title = String('x', 6) + Char.ConvertFromUtf32(0x1f331) +
+                "[red]literal[/]\u001b[31mcontrol\u001b[0m" +
+                String('x', 100)
             flow.Temp.Env["TERM"] = "dumb"
             flow.ResetTraffic()
             let result = TestTerminal.Pty(
@@ -106,21 +101,12 @@ internal class TerminalOutput {
             Check.Contains(result.Output, "Continue existing work")
             Check.Contains(result.Output, "[inferred/project]")
             Check.Contains(result.Output, "positive number")
-            Check.Contains(result.Output, "[red]literal[/]control")
-            Check.That(!result.Output.Contains('\ufffd'), "Terminal summary split a Unicode surrogate pair")
+            Check.Contains(result.Output, "Choose a tool with tokate work OWNER/REPO")
             flow.Reload()
-            var reads int32
-            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                Check.That(Check.Text(call["method"]) == "GET", "Interactive menu wrote to GitHub")
-                let path = Check.Text(call["path"])
-                Check.That(!path.Contains("inferred/project"), "Inferred repository was used before confirmation")
-                Check.That(
-                    !path.Contains("/pulls") && !path.Contains("/check-runs"),
-                    "Issue selection fetched unrelated PR or check histories"
-                )
-                reads++
-            }
-            Check.That(reads == 1, "Issue selection should read only the approved issue index")
+            Check.That(
+                (flow.State["api_calls"]?.AsArray().Count ?? 0) == 0,
+                "Repository donation read GitHub before tool selection"
+            )
             flow.NoInference()
             TestTerminal.Save("20-interactive", result.Output)
             flow.Git("-C", flow.Temp.Root, "remote", "add", "upstream", "https://github.com/other/project.git")
@@ -137,11 +123,16 @@ internal class TerminalOutput {
                 []string{"approve", "owner/project"},
                 flow.Temp,
                 80,
-                "?\nCanceled title\n?\nCanceled description\n\n?\n2\n"
+                "?\n" + title + "\n?\nCanceled description\n\n?\n2\n"
             )
             Check.Success(canceledIssue)
             Check.Contains(canceledIssue.Output, "Create and approve")
             Check.Contains(canceledIssue.Output, "Cancel")
+            Check.Contains(
+                canceledIssue.Output.Substring(canceledIssue.Output.IndexOf("tokate / Review issue")),
+                "[red]literal[/]control"
+            )
+            Check.That(!canceledIssue.Output.Contains('\ufffd'), "Terminal summary split a Unicode surrogate pair")
             Check.Contains(
                 canceledIssue.Output.Substring(0, canceledIssue.Output.IndexOf("tokate / Describe the issue")),
                 "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."

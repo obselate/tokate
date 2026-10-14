@@ -249,7 +249,16 @@ internal class ProgressChecks {
             flow.NoInference()
             Check.Contains(
                 flow.Call(
-                    []string{"work", "--unlimited", "--time", "30s", "--verify-time", "8s", "--non-interactive"},
+                    []string{
+                        "work",
+                        "owner/project#1",
+                        "--unlimited",
+                        "--time",
+                        "30s",
+                        "--verify-time",
+                        "8s",
+                        "--non-interactive"
+                    },
                     1
                 )
                     .Error,
