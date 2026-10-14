@@ -709,8 +709,9 @@ internal class Amendment {
             )
             let correcting = change.Text("uuid") != ""
             let patch = File.ReadAllText(Path.Combine(Location(directory, change), "candidate.patch"))
-            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) ||
-                Data.Hash(snapshot) != change.Text(correcting ? "patch_sha256": "snapshot") || snapshot != patch {
+            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) || Data.Hash(
+                snapshot
+            ) != change.Text(correcting ? "patch_sha256": "snapshot") || snapshot != patch {
                 throw CliFailure("invalid_state", "Verified amendment candidate changed")
             }
             return snapshot
