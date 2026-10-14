@@ -239,7 +239,6 @@ Execution keeps saved failure stages, interruption evidence and verification res
 | `Required tools are missing or failed diagnostics. Run doctor.` | Owner: `tokate doctor owner --auth --fix --yes` |
 | `Authentication is required with the appropriate account.` | `gh auth login` |
 | `Pass --yes to apply the previewed setup. Nothing changed.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
-| `Branch tokate-setup exists.` | Merge or close the setup PR, then `gh api -X DELETE repos/OWNER/REPO/git/refs/heads/tokate-setup` |
 
 ### Claim and work
 

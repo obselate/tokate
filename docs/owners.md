@@ -42,10 +42,11 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    | Actions allowlist | Add the pinned `obselate/tokate` shared workflow. Other entries stay. |
    | Branch protection | Require the policy checks on the target branch. |
    | `tokate/access` | Create the empty donor access record. |
-   | `tokate-setup` | Create a branch with `.github/tokate.json` and `.github/workflows/tokate-coordinator.yml`. |
-   | Setup PR | Open a PR from `tokate-setup` into the default branch. |
+   | `tokate-setup` | Create or advance a branch with `.github/tokate.json` and `.github/workflows/tokate-coordinator.yml`. |
+   | Setup PR | Open a PR from `tokate-setup` into the default branch, or reuse the open one. |
 
-   Each setting shows its current and proposed value. Init asks once in a terminal.
+   Each setting shows its current and proposed value. Steps that init cannot apply
+   are printed as `Manual:` and listed in `data.manual`. Init asks once in a terminal.
    Add `--yes` to apply without a question. With `--json`, `--non-interactive` or no
    terminal and no `--yes`, it changes nothing and exits 0 with `applied=false`.
 
