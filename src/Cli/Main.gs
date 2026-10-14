@@ -361,7 +361,11 @@ func Dispatch(options Args) int32 {
                         run = Data.Load(directory)
                     }
                 } catch (error ApiDeadlineException) when !Donate.Active {
-                    Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
+                    Terminal.Message(
+                        "Submit pending. Run the same command again: " + Terminal.Command(
+                            []string{"tokate", "submit", "--run", directory}
+                        )
+                    )
                     return 0
                 } finally {
                     ApiTransport.EndDeadline()

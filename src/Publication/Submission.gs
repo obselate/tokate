@@ -98,7 +98,9 @@ internal class Submission {
             run.Save(directory)
 
             Terminal.Message(
-                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use submit --run " + directory
+                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Terminal.Command(
+                    []string{"tokate", "submit", "--run", directory}
+                )
             )
         }
 

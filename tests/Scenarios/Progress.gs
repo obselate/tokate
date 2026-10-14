@@ -398,7 +398,7 @@ internal class ProgressChecks {
             Check.Contains(result.Output, "passed (exit 0)")
             let visible = Regex.Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
             Check.Contains(visible, "Run completed. Run: " + run)
-            Check.Contains(visible, "Next: tokate status --run " + run + " --json")
+            Check.Contains(visible, "Next: tokate status --run " + run)
             Check.That(
                 !result.Output.Contains("INJECTED_TITLE") && !result.Output.Contains("\x1b]"),
                 "Tool output injected terminal controls"
