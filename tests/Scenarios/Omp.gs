@@ -179,6 +179,71 @@ internal class OmpChecks {
                 }
                 flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, 1)
             }
+            {
+                using let test = CoordinationFixture(binary)
+                test.Initialize(approve: false)
+                let flow = test.Flow
+                flow.Temp.Tool("omp")
+                let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
+                let policy = Check.Json(File.ReadAllText(policyPath))
+                let selector = "\"openrouter/{model}\""
+                policy["allowed_tools"] = Check.Json(
+                    "[{\"harness\":\"command\",\"provider\":\"openrouter\",\"output\":\"session\",\"command\":[\"omp\",\"--mode\",\"json\",\"--no-session\",\"--approval-mode\",\"yolo\",\"--model\"," +
+                        selector +
+                        ",\"--smol\"," +
+                        selector +
+                        ",\"--slow\"," +
+                        selector +
+                        ",\"--plan\"," +
+                        selector +
+                        ",\"--thinking\",\"{effort}\",\"--prompt-file\",\"{prompt_file}\",\"--cwd\",\"{checkout}\"]}]"
+                )
+                Check.SetModels(policy, Check.Json("{\"" + OmpTool.Model + "\":[\"low\"]}"))
+                Check.SaveJson(policyPath, policy)
+                flow.Commit("Command harness fixture")
+                flow.Approve()
+                Directory.CreateDirectory(Path.Combine(flow.Temp.Env["HOME"], ".omp"))
+                File.Delete(Path.Combine(flow.Bin, "codex"))
+                File.Delete(Path.Combine(flow.Bin, "codex-impl"))
+                let prepared = flow.Acquire(
+                    []string{
+                        "claim",
+                        "owner/project#1",
+                        "--harness",
+                        "command",
+                        "--model",
+                        OmpTool.Model,
+                        "--effort",
+                        "low",
+                        "--time",
+                        "60s",
+                        "--verify-time",
+                        "20s",
+                        "--runs",
+                        Path.Combine(flow.Temp.Root, "runs")
+                    }
+                )
+                let run = prepared.Output.Substring(prepared.Output.LastIndexOf("Run: ") + 5).Trim()
+                flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"})
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(
+                    Check.Text(saved["state"]) == "generated" && Check.Text(
+                        saved["verification"]?[0]?["exit_code"]
+                    ) == "0" &&
+                        Check.Text(saved["usage"]?["output_tokens"]) == "7",
+                    "Command harness did not reach a verified candidate: " + Check.Text(saved["error"])
+                )
+                Check.Contains(
+                    saved["observed_invocation"]?["arguments"]?.ToJsonString() ?? "",
+                    "\"openrouter/" +
+                        OmpTool.Model +
+                        "\",\"--thinking\",\"low\",\"--prompt-file\"," +
+                        Check
+                        .Map("path", Path.Combine(run, "prompt.md"))["path"]
+                        ?.ToJsonString()
+                )
+                Check.Contains(File.ReadAllText(Path.Combine(run, "prompt.md")), "Acceptance criteria")
+            }
             Console.WriteLine("PASS OMP managed wizard, profile, claim, work, verification, publication and refusals")
         }
 
