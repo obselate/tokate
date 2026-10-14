@@ -84,14 +84,17 @@ internal class DonorSelection {
 
             let harness = args.Get("harness", "codex")
 
-            if Harness.Find(harness)?.Provider == "" && args.Get("provider") == "" {
+            if (Harness.Find(harness)?.Provider == "" || harness == "command") && args.Get("provider") == "" {
                 let allowed = policy.Providers(harness)
+                let name = Harness.Find(harness)?.Title ?? "the command harness"
 
                 if allowed.Count != 1 {
                     throw CliFailure(
                         "invalid_arguments",
-                        "Choose --provider for OMP: the owner policy allows " +
-                            (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
+                        "Choose --provider for " +
+                            name +
+                            ": the owner policy allows " +
+                            (allowed.Count == 0 ? "no " + name + " provider": String.Join(", ", allowed)) +
                             ". No inference started."
                     )
                 }
@@ -127,7 +130,8 @@ internal class DonorSelection {
                 explicitPair ? "explicit invocation": "saved donor default"
             )
 
-            let adapter = Harness.Find(harness) ?? throw Exception("Unsupported managed harness/provider")
+            let adapter = policy.Adapter(harness, args.Get("provider")) ??
+                throw Exception("Unsupported managed harness/provider")
             if let choose = adapter.Select {
                 if model != "" {
                     args.Values["--model"] = model
@@ -251,7 +255,10 @@ internal class DonorSelection {
                     ) +
                         "; " +
                         args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString()) +
-                        " seconds reserved for verification",
+                        " seconds reserved for verification" +
+                        (
+                        J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""
+                    ),
                     error: true
                 )
                 if !OwnerSetup.Confirm(args, args.Command == "claim" ? "Post this claim?": "Start this donation?") {
@@ -299,8 +306,11 @@ internal class DonorSelection {
             }
 
             policy.Validate(harness, provider, run.Text("model"), run.Text("effort"), run.Number("seconds"))
-            if let validate = Harness.Find(harness)?.ValidateSaved {
+            let adapter = policy.Adapter(harness, provider)
+            if let validate = adapter?.ValidateSaved {
                 validate(run)
+            }
+            if adapter?.Select != nil {
                 return
             }
 

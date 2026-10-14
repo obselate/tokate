@@ -116,9 +116,9 @@ internal class ClaudeHarness {
                 for used in models.EnumerateObject() {
                     let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
 
-                    if !policy.AllowsModel("claude", "anthropic", name) && !policy.AllowsModel(
-                        "claude",
-                        "anthropic",
+                    if !policy.AllowsModel(run.Text("harness"), run.Text("provider"), name) && !policy.AllowsModel(
+                        run.Text("harness"),
+                        run.Text("provider"),
                         used.Name
                     ) {
                         throw ExecutionFailure.Create(

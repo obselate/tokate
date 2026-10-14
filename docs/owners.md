@@ -103,6 +103,21 @@ that harness/provider pair. Version 3 has no top-level `models` or `model_policy
 
 Pass the complete tool array with `--allowed-tools JSON` to edit per-tool models. The `--model-policy whitelist --models JSON` shortcut copies the same map to each selected tool.
 
+To allow a harness that Tokate does not ship, declare a `command` tool. Tokate runs
+the argv without a shell or a sandbox. It sends the prompt on standard input.
+
+```json
+{"harness": "command", "provider": "openrouter", "output": "session",
+ "command": ["mytool", "--model", "{model}", "--effort", "{effort}", "--prompt", "{prompt_file}", "--cwd", "{checkout}"],
+ "models": {"vendor/model": ["low"]}}
+```
+
+| Field | Rule |
+| --- | --- |
+| `command` | Text words. The first word is the executable. It cannot start with `-` or contain `=`. One word must contain `{model}`. Other words can contain only `{prompt_file}`, `{model}`, `{effort}` and `{checkout}` placeholders. |
+| `output` | `codex`, `claude` or `session` JSONL. Tokate reads it with the parser of that format. |
+| `models` | Required. Session output must report this provider and model. |
+
 Version 2 remains readable. Its whitelist applies to every tool. Unrestricted
 version 2 allows any model for each tool. Existing receipts and saved runs keep
 these rules.

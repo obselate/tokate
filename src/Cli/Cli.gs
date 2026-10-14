@@ -143,7 +143,7 @@ internal class Cli {
                 "Owner-approved effort",
                 "off minimal low medium high xhigh max ultra absent"
             ),
-            CliOption("harness", "HARNESS", "Managed harness: codex, claude, pi or omp"),
+            CliOption("harness", "HARNESS", "Managed harness: codex, claude, pi, omp or command"),
             CliOption("harness-path", "FILE", "Existing harness executable at an absolute custom path"),
             CliOption("endpoint", "URL", "Private pi no-auth loopback Chat Completions base URL"),
             CliOption("pi-root", "DIR", "Donor-installed pi node_modules directory; no installation"),

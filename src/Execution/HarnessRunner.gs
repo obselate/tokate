@@ -202,7 +202,8 @@ internal class HarnessRunner {
                 RuntimeBudget.Validate(run)
 
                 let harness = run.Text("harness")
-                let adapter = Harness.Table[harness]
+                let adapter = policy.Adapter(harness, run.Text("provider")) ??
+                    throw Exception("Unsupported managed harness/provider")
                 let codex = harness == "codex"
                 if codex {
                     let harnessPath = run.Text("harness_path")
@@ -261,8 +262,14 @@ internal class HarnessRunner {
                             activity = adapter.Activity
                         }
                         let prompt = TaskContext.Build(checkout, run, record, coding)
+                        if harness == "command" {
+                            File.WriteAllText(Path.Combine(directory, "prompt.md"), prompt)
+                        }
                         if codex {
                             Verification.Validate(checkout)
+                        }
+                        if harness == "command" {
+                            Terminal.Step("Running " + String.Join(" ", prepared.Item1) + "...")
                         }
                         result = Commands.Run(
                             LocalPaths.NeedSystemTool("env", codex ? directory: checkout),

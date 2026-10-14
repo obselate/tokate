@@ -110,12 +110,11 @@ internal class Startup {
 
             let names = List[string]{"setsid", "/usr/bin/env", "/usr/bin/setpriv", "/usr/bin/unshare", "gh"}
             let catalog = NeedsCatalog(command, options)
-            let adapter = Harness.Find(
-                options.Get("run") != "" && command == "work" ?
-                Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness"): options.Get("harness")
-            )
+            let harness = options.Get("run") != "" && command == "work" ?
+            Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness"): options.Get("harness")
+            let adapter = Harness.Find(harness)
 
-            if catalog && adapter?.Doctor == nil {
+            if catalog && adapter?.Doctor == nil && harness != "command" {
                 names.Add("codex")
             }
 

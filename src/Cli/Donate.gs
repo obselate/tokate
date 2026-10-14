@@ -177,6 +177,10 @@ internal class Donate {
             ) +
                 "\nEffort: " +
                 J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() + " seconds\nTotal: " + limit
+            if J.Text(selection, "harness") == "command" {
+                consent += "\nCommand: " + CommandHarness.Text(selection)
+                options.Values["--consented-command"] = J.Write(J.Get(selection, "command"))
+            }
             if gratis {
                 consent += "\nGratis mode. No owner approved the task.\nGuidance: " + String.Join(", ", guidance.Keys) +
                     "\nTask instruction:\n" +
