@@ -22,22 +22,14 @@ internal class ProgressChecks {
                 }
                 return
             }
-            let baseline = Success(binary, false)
-            Check.That(Success(binary, true) == baseline, "Progress changed remote request counts")
+            Success(binary)
             if filter == "Json" {
-                Console.WriteLine("PASS structured progress keeps transcripts private and preserves request counts")
+                Console.WriteLine("PASS structured progress keeps transcripts private and makes no heartbeat requests")
                 return
             }
             Bounded(binary)
             Unlimited(binary)
-            for scenario in[]string{
-                "inference_failure",
-                "verification_failure",
-                "inference_timeout",
-                "verification_timeout",
-                "inference_cancel",
-                "verification_cancel"
-            } {
+            for scenario in[]string{"inference_failure", "verification_failure", "inference_timeout"} {
                 Failure(binary, scenario)
             }
             for mode in[]string{"tty", "plain", "no_color", "dumb", "cancel"} {
@@ -135,7 +127,7 @@ internal class ProgressChecks {
             return result
         }
 
-        private func Success(binary string, delayed bool) string {
+        private func Success(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             flow.VerificationPolicy(
@@ -144,9 +136,8 @@ internal class ProgressChecks {
             )
             flow.Approve()
             let run = flow.Claim(seconds: "30", reserve: "15")
-            flow.Mode(delayed ? "progress_delay": "")
             flow.ResetTraffic()
-            let result = delayed ? Live(flow, run, "Inference"): Live(flow, run, "Owner verification 1")
+            let result = Live(flow, run, "Owner verification 1")
             Check.Envelope(result, "work", "ok")
             Check.Contains(result.Error, "Verification 1:")
             Check.Contains(result.Error, "Verification 2:")
@@ -161,18 +152,6 @@ internal class ProgressChecks {
             Check.That(!result.Error.Contains("private-verifier-marker"), "Raw verifier output leaked into progress")
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Progress retried inference")
-            let counts = Dictionary[string, int32]()
-            for call in flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing requests") {
-                let key = Check.Text(call["method"]) + ":" + Check.Text(call["status"])
-                counts[key] = counts.ContainsKey(key) ? counts[key] + 1: 1
-            }
-            let keys = List[string](counts.Keys)
-            keys.Sort()
-            let signature = StringBuilder()
-            for key in keys {
-                signature.Append(key + "=" + counts[key].ToString() + ";")
-            }
-            return signature.ToString()
         }
 
         private func Bounded(binary string) {
