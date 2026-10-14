@@ -105,7 +105,7 @@ func Main(args[]string) int32 {
         }
     }
 
-    if PublicOutput.RunDirectory != "" {
+    if Array.IndexOf(RunStorage.Roots(), Path.GetDirectoryName(PublicOutput.RunDirectory) ?? "") >= 0 {
         RunReference.Locate()
     }
 
