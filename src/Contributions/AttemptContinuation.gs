@@ -151,27 +151,13 @@ internal class AttemptContinuation {
         }
 
         internal func Provenance(source Data) JsonElement {
-            let prior = map[string, Object?]{
-                "version": 2,
-                "repo_id": J.Get(source.Element(), "preparation_repo_id"),
-                "donor_id": J.Get(source.Element(), "donor_id")
-            }
-
-            for key in[]string{
-                "id",
-                "attempt",
-                "state_sha",
-                "approval",
-                "base",
-                "state",
-                "failure_reason",
-                "harness",
-                "provider",
-                "model",
-                "effort"
-            } {
-                prior[key] = source.Text(key)
-            }
+            let prior = J.Select(
+                source.Element(),
+                "id,attempt,state_sha,approval,base,state,failure_reason,harness,provider,model,effort"
+            )
+            prior["version"] = 2
+            prior["repo_id"] = J.Get(source.Element(), "preparation_repo_id")
+            prior["donor_id"] = J.Get(source.Element(), "donor_id")
 
             return J.Parse(J.Write(prior))
         }

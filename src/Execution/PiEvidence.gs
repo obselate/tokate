@@ -12,6 +12,7 @@ internal class PiEvidence {
             Object?
         ] {
             try {
+                var reported = ""
                 var started bool
                 var settled bool
                 var lastStop = ""
@@ -55,6 +56,7 @@ internal class PiEvidence {
                             throw ExecutionFailure.Create("inference_failed", "Pi reported a different response model")
                         }
 
+                        reported = J.Text(message, "model")
                         lastStop = J.Text(message, "stopReason")
                         report = ""
 
@@ -105,6 +107,7 @@ internal class PiEvidence {
                 File.WriteAllText(Path.Combine(directory, "report.md"), report)
 
                 return map[string, Object?]{
+                    "reported_model": reported,
                     "input_tokens": input,
                     "cached_input_tokens": cached,
                     "output_tokens": generated

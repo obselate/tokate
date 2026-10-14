@@ -499,6 +499,8 @@ internal class CliDiscovery {
                 "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
             )
             Publish(flow, legacy.ToJsonString())
+            Check.Contains(flow.Call([]string{"policy", "owner/project"}, 1).Error, "tokate init OWNER/REPO")
+            flow.NoInference()
             File.WriteAllText(policyPath, legacy.ToJsonString())
             flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive"}, owner: true)
             let migrated = Check.Json(File.ReadAllText(policyPath))

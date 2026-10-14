@@ -25,7 +25,7 @@ internal class OmpChecks {
                 let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(policyPath))
                 policy["allowed_tools"] = Check.Json("[{\"harness\":\"omp\",\"provider\":\"openrouter\"}]")
-                policy["models"] = Check.Json("{\"" + OmpTool.Model + "\":[\"low\"]}")
+                Check.SetModels(policy, Check.Json("{\"" + OmpTool.Model + "\":[\"low\"]}"))
                 Check.SaveJson(policyPath, policy)
                 flow.Commit("OMP managed fixture")
                 flow.Approve()
@@ -54,8 +54,7 @@ internal class OmpChecks {
                     )
                     Check.That(!cancelled.Output.Contains("/ high"), "Wizard offered an effort the policy forbids")
                     let unrestricted = Check.Json(policy.ToJsonString())
-                    unrestricted["model_policy"] = JsonValue.Create("unrestricted")
-                    unrestricted.AsObject().Remove("models")
+                    Check.SetModels(unrestricted, nil)
                     Check.SaveJson(policyPath, unrestricted)
                     flow.Commit("Unrestricted OMP picker fixture")
                     flow.Approve()
@@ -137,6 +136,14 @@ internal class OmpChecks {
                 )
                 if mode == "normal" {
                     Check.That(
+                        Check.Text(saved["requested_model"]) == OmpTool.Model && Check.Text(
+                            saved["reported_model"]
+                        ) == OmpTool.Model,
+                        "Harness model evidence was not saved separately from its request"
+                    )
+                }
+                if mode == "normal" {
+                    Check.That(
                         File.ReadAllText(Path.Combine(run, "report.md")) == "OMP fixture completed.",
                         "OMP advisor tail changed the assistant report"
                     )
@@ -197,8 +204,11 @@ internal class OmpChecks {
             policy["allowed_tools"] = Check.Json(
                 "[{\"harness\":\"omp\",\"provider\":\"openrouter\"},{\"harness\":\"omp\",\"provider\":\"llama.cpp\"}]"
             )
-            policy["models"] = Check.Json("{\"" + OmpTool.Model + "\":[\"low\",\"medium\"],\"plain\":[\"absent\"]}")
-            policy["model_policy"] = JsonValue.Create("whitelist")
+            Check.SetModels(
+                policy,
+                Check.Json("{\"" + OmpTool.Model + "\":[\"low\",\"medium\"],\"plain\":[\"absent\"]}")
+            )
+
             Check.SaveJson(policyPath, policy)
             flow.Commit("OMP selection fixture")
             let settings = Path.Combine(flow.Temp.Env["HOME"], ".omp")
@@ -229,7 +239,7 @@ internal class OmpChecks {
             Refused(
                 flow,
                 []string{"--provider", "openrouter", "--model", OmpTool.Model, "--effort", "high"},
-                "exact omp/openrouter permission"
+                "Model/effort pair is not allowed"
             )
             Refused(
                 flow,
@@ -239,7 +249,7 @@ internal class OmpChecks {
             Refused(
                 flow,
                 []string{"--provider", "gufo", "--model", OmpTool.Model, "--effort", "low"},
-                "omp/gufo is rejected by current exact owner tool restrictions"
+                "Declared harness/provider is not allowed"
             )
             flow.Call([]string{"defaults", "set", "--harness", "omp"})
             Refused(flow, []string{"--model", "plain", "--effort", "absent"}, "Choose --provider for OMP")
@@ -269,8 +279,8 @@ internal class OmpChecks {
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"omp\",\"provider\":\"tokate-proof\"}]")
-            policy["model_policy"] = JsonValue.Create("whitelist")
-            policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"absent\"]}")
+
+            Check.SetModels(policy, Check.Json("{\"synthetic/model:exact\":[\"absent\"]}"))
             policy["verification"] = Check.Json("[[\"/bin/sh\",\"-c\",\"test \\\"$$(cat result.txt)\\\" = final\"]]")
             Check.SaveJson(policyPath, policy)
             flow.Commit("OMP proof policy")

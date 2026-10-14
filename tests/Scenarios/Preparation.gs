@@ -601,11 +601,18 @@ internal class PreparationChecks {
                 PiCatalog.Configure(flow, endpoint)
                 let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(policyPath))
-                policy["model_policy"] = JsonValue.Create("whitelist")
                 (policy["allowed_tools"] ?? throw Exception("Missing tools"))
                     .AsArray()
-                    .Add(Check.Map("harness", "pi", "provider", "local-chat-completions"))
-                (policy["models"] ?? throw Exception("Missing models"))["fixture-model"] = Check.Json("[\"absent\"]")
+                    .Add(
+                    Check.Map(
+                        "harness",
+                        "pi",
+                        "provider",
+                        "local-chat-completions",
+                        "models",
+                        Check.Json("{\"fixture-model\":[\"absent\"]}")
+                    )
+                )
                 File.WriteAllText(policyPath, policy.ToJsonString())
                 flow.Commit("Allow the fixture Pi model")
             }

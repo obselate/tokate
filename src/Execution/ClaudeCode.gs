@@ -294,7 +294,7 @@ internal class ClaudeCode {
                     )
                 }
 
-                reports[key] = expected
+                reports[key] = field
             }
         }
 
@@ -496,21 +496,7 @@ internal class ClaudeCode {
                     )
                 )
 
-                if !policy.AllowsTool("claude", "anthropic") {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "Claude/anthropic is not allowed by the repository policy; no inference started."
-                    )
-                }
-
                 policy.Validate("claude", "anthropic", model, effort, 1)
-
-                if !Pair(model, effort) {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "Unsupported native Claude model/effort pair; no inference started."
-                    )
-                }
 
                 let runtime = Runtime(args)
                 let environment = List[string]()

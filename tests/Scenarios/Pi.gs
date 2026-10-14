@@ -20,9 +20,8 @@ internal class PiChecks {
             let flow = test.Flow
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
-            policy["model_policy"] = JsonValue.Create("whitelist")
-            policy["models"] = Check.Json("{\"fixture-model\":[\"absent\"]}")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            Check.SetModels(policy, Check.Json("{\"fixture-model\":[\"absent\"]}"))
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Pi runtime selection fixture")
             let agent = Path.Combine(flow.Temp.Root, "agent")
@@ -121,6 +120,12 @@ internal class PiChecks {
                 )
                 if mode == "normal" {
                     let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                    Check.That(
+                        Check.Text(saved["requested_model"]) == "fixture-model" && Check.Text(
+                            saved["reported_model"]
+                        ) == "fixture-model",
+                        "Pi model evidence was not saved separately from its request"
+                    )
                     Check.That(
                         Check.Text(saved["state"]) == "generated" && Check.Text(
                             saved["verification"]?[0]?["exit_code"]
@@ -260,7 +265,7 @@ internal class PiChecks {
                 "Omitted Pi provider changed the explicit selection"
             )
             args.AddRange([]string{"--provider", "openai"})
-            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Unsupported pi provider")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Declared harness/provider is not allowed")
             args.RemoveRange(args.Count - 2, 2)
             flow.Call([]string{"defaults", "set", "--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high"})
             let defaultPath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
@@ -322,8 +327,9 @@ internal class PiChecks {
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Owner rejects Pi selection")
-            Check.Contains(flow.Call(args.ToArray(), 1).Error, "exact pi/local-chat-completions permission")
+            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Declared harness/provider is not allowed")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            Check.SetModels(policy, Check.Json("{\"fixture-model\":[\"absent\"]}"))
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Restore Pi selection policy")
             args.AddRange([]string{"--node", pathNode})
@@ -390,12 +396,14 @@ internal class PiChecks {
             flow.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
             let policyPath = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
-            policy["model_policy"] = JsonValue.Create("whitelist")
-            policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"absent\",\"minimal\",\"high\",\"xhigh\"]}")
-            if mode == "reasoning-off" {
-                policy["models"] = Check.Json("{\"synthetic/model:exact\":[\"off\"]}")
-            }
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]")
+            Check.SetModels(
+                policy,
+                Check.Json("{\"synthetic/model:exact\":[\"absent\",\"minimal\",\"high\",\"xhigh\"]}")
+            )
+            if mode == "reasoning-off" {
+                Check.SetModels(policy, Check.Json("{\"synthetic/model:exact\":[\"off\"]}"))
+            }
             if unlimited {
                 policy["allow_unlimited"] = JsonValue.Create(true)
             }

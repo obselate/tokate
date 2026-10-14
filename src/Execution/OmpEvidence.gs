@@ -14,6 +14,7 @@ internal class OmpEvidence {
             Object?
         ] {
             try {
+                var reported = ""
                 var started bool
                 var settled bool
                 var lastStop = ""
@@ -56,6 +57,7 @@ internal class OmpEvidence {
                             )
                         }
 
+                        reported = J.Text(message, "model")
                         lastStop = J.Text(message, "stopReason")
                         report = ""
 
@@ -95,6 +97,7 @@ internal class OmpEvidence {
                 File.WriteAllText(Path.Combine(directory, "report.md"), report)
 
                 return map[string, Object?]{
+                    "reported_model": reported,
                     "input_tokens": input,
                     "cached_input_tokens": cached,
                     "output_tokens": generated

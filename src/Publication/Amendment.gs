@@ -1119,6 +1119,7 @@ internal class Amendment {
                 correction.Text("commit")
             )
 
+            ContributionReceipt.Models(receipt, run.Element())
             receipt["correction"] = Provenance(correction)
 
             if AttemptContinuation.Has(run) {

@@ -85,7 +85,9 @@ internal class PublicDescriptions {
             let model = "~deepseek/deepseek-flash-latest"
             let policyPath = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
-            (policy["models"] ?? throw Exception("Missing models"))[model] = Check.Json("[\"low\"]")
+            (policy["allowed_tools"]?[0]?["models"] ?? throw Exception("Missing models"))[model] = Check.Json(
+                "[\"low\"]"
+            )
             policy["allowed_tools"]?.AsArray().Add(Check.Map("harness", "omp", "provider", "openrouter"))
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Flow.Commit("Owner OpenRouter alias policy")

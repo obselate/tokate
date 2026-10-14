@@ -24,6 +24,15 @@ internal class ContributionReceipt {
             "head": head
         }
 
+        internal func Models(fields Dictionary[string, Object?], value JsonElement) {
+            for key in[]string{"requested_model", "reported_model"} {
+                let model = J.Get(value, key)
+                if model.ValueKind != JsonValueKind.Undefined {
+                    fields[key] = model
+                }
+            }
+        }
+
         internal func FromState(state JsonElement) JsonElement {
             let current = CoordinationState.Current(state)
             let original = J.Get(state, "contribution")
@@ -36,6 +45,7 @@ internal class ContributionReceipt {
                 J.Text(original, "donor"),
                 J.Text(J.Get(current, "outcome"), "head")
             )
+            Models(fields, J.Get(original, "metadata"))
             let correction = J.Get(J.Get(original, "metadata"), "correction")
             let handoff = J.Get(J.Get(original, "metadata"), "handoff")
 

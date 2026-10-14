@@ -318,8 +318,7 @@ internal class TargetBranches {
             policy["protected_paths"] = Check.Json("[\"scripts/check.sh\",\" literal name\"]")
             for mode in[]string{"whitelist", "unrestricted"} {
                 if mode == "unrestricted" {
-                    policy["model_policy"] = JsonValue.Create(mode)
-                    policy.AsObject().Remove("models")
+                    Check.SetModels(policy, nil)
                 }
                 File.WriteAllText(path, policy.ToJsonString())
                 policyFlow.Commit("Projected owner model and path policy")
@@ -329,7 +328,7 @@ internal class TargetBranches {
                     "ok"
                 )
                 Check.That(
-                    Check.Text(projected["data"]?["policy"]?["model_policy"]) == mode,
+                    (projected["data"]?["policy"]?["allowed_tools"]?[0]?["models"] == nil) == (mode == "unrestricted"),
                     "JSON lost effective model mode"
                 )
                 Check.That(

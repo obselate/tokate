@@ -53,10 +53,13 @@ internal class DonorSelectionChecks {
         private func ExpandPolicy(flow NativeFixture, alternative bool = false) {
             let path = Path.Combine(flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
-            policy["models"] = Check.Json(
-                alternative ?
-                "{\"gpt-6.1-sol\":[\"high\",\"xhigh\",\"minimal\"],\"gpt-6-sol\":[\"high\"]}":
-                "{\"gpt-6.1-sol\":[\"high\",\"xhigh\",\"minimal\"]}"
+            Check.SetModels(
+                policy,
+                Check.Json(
+                    alternative ?
+                    "{\"gpt-6.1-sol\":[\"high\",\"xhigh\",\"minimal\"],\"gpt-6-sol\":[\"high\"]}":
+                    "{\"gpt-6.1-sol\":[\"high\",\"xhigh\",\"minimal\"]}"
+                )
             )
             File.WriteAllText(path, policy.ToJsonString())
             flow.Commit("Selection fixture policy")
@@ -270,7 +273,7 @@ internal class DonorSelectionChecks {
             flow.Mode("")
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
-            policy["models"] = Check.Json("{\"gpt-6.1-sol\":[\"minimal\"]}")
+            Check.SetModels(policy, Check.Json("{\"gpt-6.1-sol\":[\"minimal\"]}"))
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("No compatible effort")
             Select(flow, []string{}, 1)
@@ -473,8 +476,7 @@ internal class DonorSelectionChecks {
             if unrestricted {
                 let path = Path.Combine(coordination.Flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(path))
-                policy["model_policy"] = JsonValue.Create("unrestricted")
-                policy.AsObject().Remove("models")
+                Check.SetModels(policy, nil)
                 File.WriteAllText(path, policy.ToJsonString())
                 coordination.Flow.Commit("Unrestricted managed selection")
                 coordination.Flow.Approve()
@@ -524,66 +526,60 @@ internal class DonorSelectionChecks {
             flow.Commit("Owner rejects managed provider")
             Check.Contains(
                 flow.Call([]string{"select", "owner/project", "--non-interactive"}, 1).Error,
-                "exact owner tool restrictions"
+                "No eligible pair"
             )
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Rejected tool policy spent extra inference")
         }
 
         private func ModelPolicy(binary string) {
-            for omitted in[]bool{true, false} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                let path = Path.Combine(flow.Upstream, ".github/tokate.json")
-                let policy = Check.Json(File.ReadAllText(path))
-                policy["model_policy"] = JsonValue.Create("unrestricted")
-                if omitted {
-                    policy.AsObject().Remove("models")
-                } else {
-                    policy["models"] = Check.Map()
-                }
-                File.WriteAllText(path, policy.ToJsonString())
-                flow.Commit("Unrestricted model policy")
-                Select(flow, []string{}, 1)
-                let explicitChoice = Select(flow, []string{"--model", "gpt-6.1-sol", "--effort", "xhigh"})
-                Check.That(Check.Text(explicitChoice["effort"]) == "xhigh", "Unrestricted explicit effort changed")
-                Set(flow)
-                let saved = Select(flow, []string{})
-                Check.That(Check.Text(saved["source"]) == "saved donor default", "Unrestricted default rejected")
-                Select(flow, []string{"--effort", "xhigh"})
-                let unavailable = Select(flow, []string{"--availability", "unavailable"}, 1)
-                Check.Contains(Check.Text(unavailable["error"]), "donor-reported unavailable")
-                let unsupported = Select(flow, []string{"--model", "outside-catalog", "--effort", "high"}, 1)
-                Check.Contains(Check.Text(unsupported["error"]), "offline native Codex catalog")
-                for effort in[]string{"absent", "unknown"} {
-                    let settings = Check.Json(File.ReadAllText(Settings(flow)))
-                    settings["effort"] = JsonValue.Create(effort)
-                    File.WriteAllText(Settings(flow), settings.ToJsonString())
-                    let rejected = Select(flow, []string{}, 1)
-                    Check.Contains(Check.Text(rejected["error"]), "known model")
-                }
-                flow.Call([]string{"defaults", "remove"})
-                let command = "'" + binary + "' select owner/project --plain"
-                let chosen = TestProcess.Run(
-                    "/usr/bin/script",
-                    []string{"-q", "-e", "-c", command, "/dev/null"},
-                    flow.Temp.Env,
-                    "1\n"
-                )
-                Check.Success(chosen)
-                Check.Contains(chosen.Output, "Model: gpt-6-sol\r\n")
-                Check.Contains(chosen.Output, "Effort: high\r\n")
-                Check.Contains(chosen.Output, "Source: interactive donor choice\r\n")
-                let cancelled = TestProcess.Run(
-                    "/usr/bin/script",
-                    []string{"-q", "-e", "-c", command, "/dev/null"},
-                    flow.Temp.Env,
-                    "\nq\n"
-                )
-                Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
-                flow.NoInference()
-                flow.NoPr()
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            let path = Path.Combine(flow.Upstream, ".github/tokate.json")
+            let policy = Check.Json(File.ReadAllText(path))
+            Check.SetModels(policy, nil)
+            File.WriteAllText(path, policy.ToJsonString())
+            flow.Commit("Unrestricted model policy")
+            Select(flow, []string{}, 1)
+            let explicitChoice = Select(flow, []string{"--model", "gpt-6.1-sol", "--effort", "xhigh"})
+            Check.That(Check.Text(explicitChoice["effort"]) == "xhigh", "Unrestricted explicit effort changed")
+            Set(flow)
+            let saved = Select(flow, []string{})
+            Check.That(Check.Text(saved["source"]) == "saved donor default", "Unrestricted default rejected")
+            Select(flow, []string{"--effort", "xhigh"})
+            let unavailable = Select(flow, []string{"--availability", "unavailable"}, 1)
+            Check.Contains(Check.Text(unavailable["error"]), "donor-reported unavailable")
+            let unsupported = Select(flow, []string{"--model", "outside-catalog", "--effort", "high"}, 1)
+            Check.Contains(Check.Text(unsupported["error"]), "offline native Codex catalog")
+            for effort in[]string{"absent", "unknown"} {
+                let settings = Check.Json(File.ReadAllText(Settings(flow)))
+                settings["effort"] = JsonValue.Create(effort)
+                File.WriteAllText(Settings(flow), settings.ToJsonString())
+                let rejected = Select(flow, []string{}, 1)
+                Check.Contains(Check.Text(rejected["error"]), "known model")
             }
+            flow.Call([]string{"defaults", "remove"})
+            let command = "'" + binary + "' select owner/project --plain"
+            let chosen = TestProcess.Run(
+                "/usr/bin/script",
+                []string{"-q", "-e", "-c", command, "/dev/null"},
+                flow.Temp.Env,
+                "1\n"
+            )
+            Check.Success(chosen)
+            Check.Contains(chosen.Output, "Model: gpt-6-sol\r\n")
+            Check.Contains(chosen.Output, "Effort: high\r\n")
+            Check.Contains(chosen.Output, "Source: interactive donor choice\r\n")
+            let cancelled = TestProcess.Run(
+                "/usr/bin/script",
+                []string{"-q", "-e", "-c", command, "/dev/null"},
+                flow.Temp.Env,
+                "\nq\n"
+            )
+            Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
+            flow.NoInference()
+            flow.NoPr()
+
             VersionTwo(binary, unrestricted: true)
         }
 

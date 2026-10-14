@@ -125,18 +125,7 @@ internal class ContributionPreparation {
                 selection = DonorSelection.Resolve(args, policy)
 
                 if tools.ValueKind == JsonValueKind.Undefined {
-                    tools = J.Parse(
-                        J.Write(
-                            []Object{
-                                map[string, Object?]{
-                                    "harness": J.Text(selection, "harness"),
-                                    "provider": J.Text(selection, "provider"),
-                                    "model": J.Text(selection, "model"),
-                                    "effort": J.Text(selection, "effort")
-                                }
-                            }
-                        )
-                    )
+                    tools = J.Parse(J.Write([]Object{J.Select(selection, "harness,provider,model,effort")}))
                 }
             }
 
@@ -195,6 +184,8 @@ internal class ContributionPreparation {
             if source == "tokate" {
                 let declared = J.Items(tools)[0]
                 run.Fields["model"] = J.Text(declared, "model")
+                run.Fields["requested_model"] = J.Text(declared, "model")
+                run.Fields["reported_model"] = nil
                 run.Fields["effort"] = J.Text(declared, "effort")
                 run.Fields["harness"] = J.Text(selection, "harness")
                 run.Fields["provider"] = J.Text(selection, "provider")

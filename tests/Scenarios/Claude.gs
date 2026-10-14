@@ -18,8 +18,11 @@ internal class ClaudeChecks {
                 let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
                 let policy = Check.Json(File.ReadAllText(policyPath))
                 policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
-                policy["models"] = Check.Json(
-                    mode == "subagent" ? "{\"claude-sonnet-5-5\":[\"high\"]}": "{\"claude-sonnet-5-5\":[\"high\"],\"claude-haiku-5-5\":[\"low\"]}"
+                Check.SetModels(
+                    policy,
+                    Check.Json(
+                        mode == "subagent" ? "{\"claude-sonnet-5-5\":[\"high\"]}": "{\"claude-sonnet-5-5\":[\"high\"],\"claude-haiku-5-5\":[\"low\"]}"
+                    )
                 )
                 Check.SaveJson(policyPath, policy)
                 Directory.CreateDirectory(Path.Combine(flow.Upstream, ".codex"))
@@ -136,6 +139,14 @@ internal class ClaudeChecks {
                 )
                 if mode == "normal" {
                     Check.That(
+                        Check.Text(saved["requested_model"]) == "claude-sonnet-5-5" && Check.Text(
+                            saved["reported_model"]
+                        ) == "claude-sonnet-5-5",
+                        "Harness model evidence was not saved separately from its request"
+                    )
+                }
+                if mode == "normal" {
+                    Check.That(
                         Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
                         "Claude skipped independent verification"
                     )
@@ -182,9 +193,8 @@ internal class ClaudeChecks {
             data.Tool("claude")
             let policyPath = Path.Combine(data.Root, "tokate.json")
             let policy = Check.Json(TestResources.Template("tokate.json"))
-            policy["version"] = JsonValue.Create(2)
-            policy["models"] = Check.Json("{\"claude-opus-5-5\":[\"high\"]}")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
+            Check.SetModels(policy, Check.Json("{\"claude-opus-5-5\":[\"high\"]}"))
             Check.SaveJson(policyPath, policy)
             let profile = Path.Combine(data.Root, "profile")
             Directory.CreateDirectory(
@@ -253,7 +263,7 @@ internal class ClaudeChecks {
             local.RemoveRange(local.Count - 2, 2)
             local.AddRange([]string{"--path", checkout})
             Check.Envelope(TestProcess.Run(binary, local.ToArray(), data.Env), "claude-capabilities", "ok")
-            policy["models"] = Check.Json("{\"claude-sonnet-5-5\":[\"medium\"]}")
+            Check.SetModels(policy, Check.Json("{\"claude-sonnet-5-5\":[\"medium\"]}"))
             Check.SaveJson(policyPath, policy)
             words[6] = "claude-sonnet-5-5"
             words[8] = "medium"
@@ -291,12 +301,9 @@ internal class ClaudeChecks {
             )
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"codex\",\"provider\":\"openai\"}]")
             Check.SaveJson(policyPath, policy)
-            Check.Contains(
-                TestProcess.Run(binary, words, data.Env).Output,
-                "Claude/anthropic is not allowed by the repository policy"
-            )
-            policy["models"] = Check.Json("{\"claude-opus-5-5\":[\"high\"]}")
+            Check.Contains(TestProcess.Run(binary, words, data.Env).Output, "Declared harness/provider is not allowed")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
+            Check.SetModels(policy, Check.Json("{\"claude-opus-5-5\":[\"high\"]}"))
             Check.SaveJson(policyPath, policy)
             words[6] = "claude-opus-5-5"
             words[8] = "high"
@@ -332,11 +339,9 @@ internal class ClaudeChecks {
             }
             let alias = List[string](words)
             alias[6] = "opus"
+            let aliasResult = TestProcess.Run(binary, alias.ToArray(), data.Env)
             Check.That(
-                TestProcess
-                    .Run(binary, alias.ToArray(), data.Env)
-                    .Output
-                    .Contains("not allowed by the repository policy"),
+                aliasResult.Code == 1 && aliasResult.Output.Contains("Unsupported native Claude model/effort pair"),
                 "Model alias was not refused before native launch"
             )
             let executable = Path.Combine(data.Root, "bin/claude")
