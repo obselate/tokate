@@ -2,30 +2,11 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.Linq
 import System.Text.RegularExpressions
 
 internal class Positionals {
     shared {
-        internal let AccessOperations[]string = []string{
-            "list",
-            "history",
-            "init",
-            "trust",
-            "untrust",
-            "grant",
-            "remove",
-            "deny",
-            "restore",
-            "check",
-            "request"
-        }
-
-        private func Limit(args Args, count int32) {
-            if args.Words.Count > count {
-                throw Exception("Unexpected argument: " + args.Words[count])
-            }
-        }
-
         private func Repo(args Args, value string) {
             let repo = RepositoryInput.Repo(value)
 
@@ -106,147 +87,104 @@ internal class Positionals {
             Repo(args, word)
         }
 
-        private func Access(args Args) {
-            let words = args.Words
-            let operation = words.Count == 0 ? "list": words[0]
+        private func Fits(slot string, word string) bool {
+            let kind = slot.Trim('[', ']')
 
-            if Array.IndexOf(AccessOperations, operation) < 0 {
-                throw Exception(
-                    "Unknown access operation: " + operation + ". Use " + String.Join(", ", AccessOperations)
-                )
+            if Cli.Literal(kind) {
+                return kind.Split('|').Contains(word)
             }
 
-            args.Values["--operation"] = operation
-
-            if args.Get("trust") == "true" {
-                args.Values["--scope"] = "trust"
+            if kind == "OWNER/REPO" || kind == "NAME" || kind == "LOGIN" || kind == "HARNESS" {
+                return word.Contains("/") == (kind == "OWNER/REPO")
             }
 
-            let donor = operation == "trust" ||
-                operation == "untrust" ||
-                operation == "deny" ||
-                operation == "restore" ||
-                operation == "grant" ||
-                operation == "remove"
-            let filter = operation == "list" || operation == "history"
-            let issue = operation == "grant" || operation == "remove" || operation == "check" || operation == "request"
-            Limit(args, donor || filter ? 3: 2)
-
-            var i int32 = 1
-
-            if words.Count > i && (donor || (filter && !words[i].Contains("/"))) {
-                args.Values["--donor"] = words[i]
-                i++
-            }
-
-            if words.Count > i {
-                Reference(args, words[i], issue ? "issue": "repo")
-
-                if issue && args.Get("issue") == "" {
-                    throw Exception("Expected ISSUE for access " + operation)
-                }
-
-                i++
-            }
-
-            if words.Count > i {
-                throw Exception("Unexpected argument: " + words[i])
-            }
+            return true
         }
 
-        private func Doctor(args Args) {
-            Limit(args, 2)
+        private func Match(form List[string], words List[string]) bool {
+            var i int32 = 0
 
-            for word in args.Words {
-                if word == "owner" || word == "managed" || word == "external" {
-                    if args.Get("owner") + args.Get("managed") + args.Get("external") != "" {
-                        throw Exception("Choose one doctor scope: owner, managed or external")
-                    }
-
-                    args.Values["--" + word] = "true"
-                } else if args.Get("owner") == "true" {
-                    Repo(args, word)
-                } else if args.Get("harness") != "" {
-                    throw Exception("Unexpected argument: " + word)
-                } else {
-                    args.Values["--harness"] = word
+            for slot in form {
+                if i < words.Count && Fits(slot, words[i]) {
+                    i = slot == "PR..." ? words.Count: i + 1
+                } else if Cli.Literal(slot) && (i < words.Count || !slot.StartsWith("[")) {
+                    return false
                 }
             }
+
+            return i == words.Count
         }
 
         internal func Bind(args Args) {
             let words = args.Words
-            let target = Cli.Find(args.Command).Target
+            let forms = Cli.Find(args.Command).Forms
+            let form = forms
+                .Where(item -> item.Any(Cli.Literal))
+                .Concat(forms.Where(item -> !item.Any(Cli.Literal)))
+                .FirstOrDefault(item -> Match(item, words))
 
-            if target == "subject" {
-                Limit(args, 1)
-                args.Subject = words.Count == 0 ? "": words[0]
-
-                if args.Command == "help" && args.Subject != "" {
-                    Cli.Find(args.Subject)
-                }
-            } else if target == "defaults" {
-                Limit(args, 2)
-                args.Subject = words.Count == 0 ? "list": words[0]
-
-                if words.Count > 1 {
-                    args.Values["--profile"] = words[1]
-                }
-            } else if target == "doctor" {
-                Doctor(args)
-            } else if target == "access" {
-                Access(args)
-            } else if target == "prs" {
-                let prs = List[string]()
-                var i int32 = 0
-
-                while i < words.Count {
-                    Reference(args, words[i], "pr")
-                    prs.Add(args.Get("pr"))
-                    args.Values.Remove("--pr")
-                    i++
-                }
-
-                args.Values["--prs"] = String.Join(",", prs)
-            } else if target == "repo" && args.Command == "select" {
-                Limit(args, 2)
-
-                if words.Count == 1 && !words[0].Contains("/") {
-                    args.Values["--profile"] = words[0]
-                } else if words.Count > 0 {
-                    Reference(args, words[0], "repo")
-
-                    if words.Count > 1 {
-                        args.Values["--profile"] = words[1]
-                    }
-                }
-            } else if target == "repo" {
-                Limit(args, 1)
-
-                if words.Count == 1 {
-                    Reference(args, words[0], target)
-                }
-            } else {
-                let profileOperand = args.Command == "work" || args.Command == "claim" || args.Command == "prepare"
-                Limit(args, profileOperand ? 2: (target == "" ? 0: 1))
-
+            if form == nil {
                 if words.Count > 0 {
-                    Reference(args, words[0], target == "run" ? "issue": target)
+                    throw Exception("Unexpected arguments: " + String.Join(" ", words))
+                }
 
-                    if args.Command == "work" && args.Get("issue") == "" && words.Count > 1 && words[1] == "stop" {
-                        args.Subject = "stop"
-                    } else if words.Count > 1 {
-                        if args.Get("issue") == "" || args.Get("attempt") != "" || args.Get("run") != "" {
-                            throw Exception("A profile name must follow an issue number")
-                        }
+                return
+            }
 
-                        args.Values["--profile"] = words[1]
+            var i int32 = 0
+
+            for slot in form {
+                let kind = slot.Trim('[', ']')
+
+                if i >= words.Count || !Fits(slot, words[i]) {
+                    if Cli.Literal(slot) && args.Subject == "" {
+                        args.Subject = kind.Split('|')[0]
                     }
+
+                    continue
+                }
+
+                let word = words[i]
+                i++
+
+                if Cli.Literal(slot) || kind == "COMMAND" {
+                    args.Subject = kind == "COMMAND" ? Cli.Find(word).Name: word
+                } else if kind == "NAME" {
+                    args.Values["--profile"] = word
+                } else if kind == "LOGIN" {
+                    args.Values["--donor"] = word
+                } else if kind == "HARNESS" {
+                    if args.Get("harness") != "" {
+                        throw Exception("Duplicate option: --harness")
+                    }
+
+                    args.Values["--harness"] = word
+                } else if kind == "PR..." {
+                    let prs = List[string]()
+
+                    for item in words.Skip(i - 1) {
+                        Reference(args, item, "pr")
+                        prs.Add(args.Get("pr"))
+                        args.Values.Remove("--pr")
+                    }
+
+                    args.Values["--prs"] = String.Join(",", prs)
+                } else {
+                    Reference(
+                        args,
+                        word,
+                        kind.Contains("PR") ? "pr": kind.Contains("ISSUE") || kind == "RUN" ? "issue": "repo"
+                    )
                 }
             }
 
-            if LeaseLifecycle.Transition(args.Command) {
-                args.Values["--operation"] = args.Command
+            if args.Get("profile") != "" && form[0].Contains("ISSUE") &&
+                (args.Get("issue") == "" || args.Get("attempt") != "") {
+                throw Exception("A profile name must follow an issue number")
+            }
+
+            if args.Command == "doctor" && args.Subject != "" {
+                args.Values["--" + args.Subject] = "true"
             }
         }
     }
