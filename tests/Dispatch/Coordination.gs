@@ -42,6 +42,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 "InterruptedVerification",
                 "CanonicalExternal",
                 "CanonicalSubmit",
+                "RepositoryDonation",
                 "ExpiryAndRevocation",
                 "InvalidEvents",
                 "CoordinatorPermissions",
@@ -171,6 +172,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     case "ProtectedManaged": async (value CoordinationFlow) -> value.ProtectedManaged()
                     case "ReceiptEvidence": async (value CoordinationFlow) -> value.ReceiptEvidence()
                     case "CanonicalExternal": async (value CoordinationFlow) -> value.CanonicalExternal()
+                    case "RepositoryDonation": async (value CoordinationFlow) -> value.RepositoryDonation()
                     case "CanonicalSubmit": async (value CoordinationFlow) -> value.CanonicalSubmit()
                     case "ExpiryAndRevocation": async (value CoordinationFlow) -> value.ExpiryAndRevocation()
                     case "InvalidEvents": async (value CoordinationFlow) -> value.InvalidEvents()

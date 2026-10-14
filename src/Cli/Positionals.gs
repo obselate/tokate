@@ -74,7 +74,7 @@ internal class Positionals {
             }
 
             let segment = key == "pr" ? "pull": "issues"
-            if key != "repo" && word.Contains("://") && word.Contains("/" + segment + "/") {
+            if key != "repo" && word.Contains("://") && (word.Contains("/issues/") || word.Contains("/pull/")) {
                 Url(args, word, key, segment)
 
                 return
@@ -233,7 +233,9 @@ internal class Positionals {
                 if words.Count > 0 {
                     Reference(args, words[0], target == "run" ? "issue": target)
 
-                    if words.Count > 1 {
+                    if args.Command == "work" && args.Get("issue") == "" && words.Count > 1 && words[1] == "stop" {
+                        args.Subject = "stop"
+                    } else if words.Count > 1 {
                         if args.Get("issue") == "" || args.Get("attempt") != "" || args.Get("run") != "" {
                             throw Exception("A profile name must follow an issue number")
                         }

@@ -219,6 +219,10 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
+    if Cli.RepositoryWork(options) && options.Subject == "stop" {
+        return Donate.Stop(options)
+    }
+
     if options.Command != "doctor" && options.Command != "defaults" {
         DonorSelection.ApplyDefaults(options)
         Startup.Check(options)
@@ -355,40 +359,31 @@ func Dispatch(options Args) int32 {
         case "submit" {
             Submission.Submit(options)
 
-            if !PublicOutput.Enabled {
+            if !PublicOutput.Enabled || Donate.Active {
                 let directory = Path.GetFullPath(options.Need("run"))
-                let run = Data.Load(directory)
-
-                if run.Number("pr") == 0 {
-                    if let guidance = Submission.PendingWorkflow(directory, run) {
-                        Terminal.Message(guidance["action"]?.ToString() ?? "")
-                        return 0
-                    }
-                    let request = RequestData.FileData(Path.Combine(directory, "request.json"), 8192)
-
-                    ApiTransport.BeginDeadline(30)
-
-                    try {
-                        while true {
-                            ApiTransport.CheckDeadline()
-
-                            let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-
-                            if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
-                                .ValueKind != JsonValueKind.Undefined {
-                                break
+                var run = Data.Load(directory)
+                ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
+                try {
+                    while run.Number("pr") == 0 {
+                        if let guidance = Submission.PendingWorkflow(directory, run) {
+                            if Donate.Active && guidance["role"]?.ToString() == "owner" {
+                                throw CliFailure("command_failed", "Owner workflow failed")
                             }
-
-                            ApiTransport.PollWait()
+                            if !Donate.Active {
+                                Terminal.Message(guidance["action"]?.ToString() ?? "")
+                                return 0
+                            }
                         }
-                    } catch (error ApiDeadlineException) {
-                        Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
-                        return 0
-                    } finally {
-                        ApiTransport.EndDeadline()
+                        ApiTransport.PollWait()
+                        Submission.ResetWorkflow()
+                        Submission.Submit(options)
+                        run = Data.Load(directory)
                     }
-
-                    Submission.Submit(options)
+                } catch (error ApiDeadlineException) when !Donate.Active {
+                    Terminal.Message("Submit pending. Run the same command again: tokate submit --run " + directory)
+                    return 0
+                } finally {
+                    ApiTransport.EndDeadline()
                 }
             }
         }
@@ -410,6 +405,9 @@ func Dispatch(options Args) int32 {
         }
 
         case "work" {
+            if Cli.RepositoryWork(options) {
+                return Donate.Run(options)
+            }
             let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options): Path.GetFullPath(
                 options.Need("run")
             )

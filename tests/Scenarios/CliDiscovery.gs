@@ -1736,9 +1736,11 @@ internal class CliDiscovery {
             Check.Contains(work, "inference")
             Check.Contains(work, "verify it")
             Check.Contains(work, "Total budget for coding and verification")
-            Check.Contains(work, "(required)")
+            Check.Contains(work, "Bare work uses the local GitHub remote")
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
+            let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
+            Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
             Check.Contains(
                 Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
@@ -1894,24 +1896,28 @@ internal class CliDiscovery {
             Call(binary, []string{"help", "work"}, temp)
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
-            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: ISSUE")
+            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Local Git is unavailable; name OWNER/REPO")
             Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "name OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
             File.Delete(Path.Combine(bin, "setsid"))
             File.CreateSymbolicLink(Path.Combine(bin, "setsid"), "/usr/bin/setsid")
+            let issueUrl = "https://github.com/owner/project/issues/1"
+            let commentUrl = "https://github.com/owner/project/issues/1#issuecomment-2"
             for argv in[][]string{
                 []string{"policy", "owner/project"},
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
                 []string{"verify", "https://github.com/owner/project/pull/1"},
-                []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", issueUrl, "--model=model", "--effort=high"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=high"},
+                []string{"work", commentUrl, "--model=model", "--effort=high"},
                 []string{
                     "work",
-                    "https://github.com/owner/project/issues/1#issuecomment-2",
+                    "https://github.com/owner/project/releases/tag/v1.2.0?ref=x#fragment",
                     "--model=model",
-                    "--effort=high"
+                    "--effort=high",
+                    "--yes"
                 }
             } {
                 let result = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
@@ -2042,7 +2048,7 @@ internal class CliDiscovery {
             Check.That(!File.Exists(log), "Ambiguous remotes invoked GitHub")
             let urlOverride = TestProcess.Run(
                 binary,
-                []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", issueUrl, "--model=model", "--effort=high", "--yes"},
                 temp.Env,
                 cwd: temp.Root
             )

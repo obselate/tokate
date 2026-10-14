@@ -770,7 +770,7 @@ internal partial class Fixture {
                     "user",
                     Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId),
                     "issue_url",
-                    "https://api.github.com/repos/owner/project/issues/1"
+                    "https://api.github.com/repos/owner/project/issues/" + issueNumber
                 )
                 if Check.Text(body["body"]).Contains("<!-- tokate-admission:v1 -->") {
                     comment["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")

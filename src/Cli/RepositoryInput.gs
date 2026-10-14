@@ -12,14 +12,13 @@ internal class RepositoryInput {
         internal func Repo(value string) string {
             var normalized = value
 
-            if value.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) {
+            if value.Contains("://") {
                 let uri = Uri(value)
-
-                if uri.Query != "" || uri.Fragment != "" {
-                    throw Exception("Use a GitHub repository URL without query or fragment")
+                if !String.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) {
+                    throw Exception("Use a github.com repository URL")
                 }
 
-                normalized = uri.AbsolutePath.Trim('/')
+                normalized = Regex.Match(uri.AbsolutePath, "^/([^/]+/[^/]+)(?:/|$)").Groups[1].Value
 
                 if normalized.EndsWith(".git") {
                     normalized = normalized.Substring(0, normalized.Length - 4)

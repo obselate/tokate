@@ -46,49 +46,6 @@ internal class GuidedWork {
             }
         }
 
-        private func Task(args Args) {
-            Terminal.Step("Reading approved issues...")
-
-            let repo = args.Need("repo")
-            let issues = GitHub.Api(
-                "repos/" +
-                    repo +
-                    "/issues?state=open&labels=tokate%3Aapproved&sort=updated&direction=desc&per_page=20&page=1"
-            )
-
-            if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 20 {
-                throw Exception("Cannot read approved issues")
-            }
-
-            let numbers = List[string]()
-            let choices = List[string]()
-
-            for task in J.Items(issues) {
-                if J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined || J.Text(
-                    task,
-                    "state"
-                ) != "open" ||
-                    !GitHub.HasLabel(task) {
-                    continue
-                }
-
-                numbers.Add(J.Number(task, "number").ToString())
-                choices.Add("#" + numbers[numbers.Count - 1] + "  " + J.Text(task, "title"))
-            }
-
-            if choices.Count == 0 {
-                throw Exception("No approved issues were found. The owner must approve a task before donation.")
-            }
-
-            let choice = WizardScreen.Choose(
-                "Choose an issue",
-                repo + "\nApproved tasks. Current access and availability are checked before a claim.",
-                choices.ToArray(),
-                "Choose an approved task to work on. The list only shows approved tasks. Use an issue link for another task."
-            )
-            args.Values["--issue"] = numbers[choice - 1]
-        }
-
         private func Eligible(value JsonElement, policy Policy) bool ->
         DonorSelection.Supported(value) &&
             (
@@ -525,10 +482,11 @@ internal class GuidedWork {
         }
 
         internal func Fill(args Args) {
-            if args.Help || args.Get("source") == "external" || !DonorSelection.Interactive(args) || args.Get(
-                "run"
-            ) != "" ||
-                args.Get("continue-from") != "" || (args.Command != "work" && args.Command != "claim") {
+            if args.Help || Cli.RepositoryWork(args) || args.Get("source") == "external" || !DonorSelection.Interactive(
+                args
+            ) ||
+                args.Get("run") != "" || args.Get("continue-from") != "" ||
+                (args.Command != "work" && args.Command != "claim") {
                 return
             }
 
@@ -547,10 +505,6 @@ internal class GuidedWork {
             }
 
             Startup.Check(Args([]string{"status", args.Need("repo")}))
-
-            if args.Get("issue") == "" {
-                Task(args)
-            }
 
             let repo = args.Need("repo")
             let viewer = GitHub.Api("user")

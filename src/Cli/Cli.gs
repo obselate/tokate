@@ -5,6 +5,7 @@ import System.Collections.Generic
 import System.ComponentModel
 import System.IO
 import System.Text
+import System.Text.Json
 import System.Text.RegularExpressions
 
 internal class CliOption(name string, value string, description string, choices string = "") {
@@ -16,6 +17,7 @@ internal class CliOption(name string, value string, description string, choices 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
+        case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
         case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
@@ -25,9 +27,8 @@ internal class CliOption(name string, value string, description string, choices 
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
         case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
-        case "time" when(
-            command == "work" || command == "claim"
-        ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
+        case "time" when command == "work": "Total budget for coding and verification per task; default: the lower of 1h and the owner limit"
+        case "time" when command == "claim": "Total budget for coding and verification such as 30m or 2h, at most 24h"
         case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
         default: Description.Replace("{{time}}", command == "recover" ? "5m": "the lower of 1h and the owner limit")
@@ -137,6 +138,7 @@ internal class Cli {
                 "BRANCH",
                 "Owner-selected target; default: upstream default branch (prompt on a terminal)"
             ),
+            CliOption("total", "TIME", "Start tasks only while --time fits in this total, default: until stopped"),
             CliOption("model", "MODEL", "Owner-approved model"),
             CliOption(
                 "effort",
@@ -222,10 +224,10 @@ internal class Cli {
         internal let Commands[]CliCommand = []CliCommand{
             CliCommand(
                 "work",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from",
-                "repo,issue",
-                "Code an approved issue with your harness and verify it. Uses donor inference.",
-                "[ISSUE [NAME] | OWNER/REPO | RUN] [--model MODEL --effort EFFORT] [--time TIME] [options]",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,unlimited,fork,runs,run,continue-from",
+                "repo",
+                "Code an approved issue with your harness and verify it. With a repository, work approved issues oldest first until stopped. Uses donor inference.",
+                "[ISSUE [NAME] | RUN | OWNER/REPO] [--time PER_TASK] [--total TOTAL] [options]\n       tokate work OWNER/REPO stop [--yes]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
                 target: "issue",
@@ -235,8 +237,8 @@ internal class Cli {
                 "claim",
                 "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,time,verify-time,unlimited,fork,runs,continue-from,from-pr",
                 "repo,issue",
-                "Reserve an approved issue and save a claim; no inference or PR publication.",
-                "[ISSUE [NAME] | OWNER/REPO] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]",
+                "Reserve an approved issue and save a claim; name an issue, not only a repository. No inference or PR publication.",
+                "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\n       [--source external --tools FILE --time TIME]",
                 "claim 42 --model gpt-6.1-sol --effort high",
                 effects: "local_read local_write github_read github_write",
                 target: "issue",
@@ -711,10 +713,15 @@ internal class Cli {
             return row[b.Length]
         }
 
-        internal func Words(command string) string -> command == "defaults" ? "set show remove list use":
+        internal func Words(command string) string -> command == "work" ? "stop":
+        command == "defaults" ? "set show remove list use":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
         command == "doctor" ? "owner managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
+
+        internal func RepositoryWork(args Args) bool -> args.Command == "work" && args.Get("issue") == "" && args.Get(
+            "run"
+        ) == ""
 
         internal func OptionFor(command string, name string) CliOption {
             for option in Options {
@@ -764,9 +771,9 @@ internal class Cli {
         }
 
         internal func Positional(command CliCommand)[]string -> switch command.Name {
-            case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME"}
+            case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME|stop"}
 
-            case "claim": []string{"ISSUE|OWNER/REPO", "NAME"}
+            case "claim": []string{"ISSUE", "NAME"}
 
             case "prepare": []string{"ISSUE", "NAME"}
 
@@ -1073,10 +1080,7 @@ internal class Cli {
                     OptionHelp(
                         text,
                         (
-                            name == "status" ||
-                                name == "runs" ||
-                                name == "work" ||
-                                name == "claim" ? "ISSUE|OWNER/REPO":
+                            name == "status" || name == "runs" || name == "work" ? "ISSUE|OWNER/REPO":
                             "ISSUE"
                         ) +
                             (command.Needs("issue") ? " (required)": ""),
@@ -1165,7 +1169,8 @@ internal class Cli {
 
                 if name == "work" || name == "claim" {
                     text.AppendLine(
-                        "In a terminal, OWNER/REPO chooses a project; missing task, tool and budget choices are guided. Redirected input and --json never prompt."
+                        name == "work" ? "Bare work uses the local GitHub remote. Repository work uses tool flags or a default profile and one confirmation. Named issues guide missing tool and budget choices. Redirected repository work and --json require --yes.":
+                        "Name an issue. Missing tool and budget choices are guided in a terminal. Redirected input and --json never prompt."
                     )
                 }
 
@@ -1211,6 +1216,33 @@ internal class Cli {
 
         internal func Validate(args Args, guided bool = false) {
             let command = Find(args.Command)
+
+            if RepositoryWork(args) && !args.Help {
+                if args.Get("repo") == "" {
+                    args.Values["--repo"] = RepositoryInput.Local()
+                }
+                if args.Subject != "stop" && args.Get("harness") + args.Get("model") + args.Get("effort") == "" &&
+                    DonorDefaults
+                    .Read(allowMissing: true).ValueKind == JsonValueKind.Undefined {
+                    throw Exception(
+                        "Choose a tool with tokate work OWNER/REPO --harness codex --model MODEL --effort high, or save a default with tokate defaults set NAME --harness codex --model MODEL --effort high, tokate defaults use NAME, then tokate select OWNER/REPO NAME --non-interactive."
+                    )
+                }
+                if !DonorSelection.Interactive(args) && args.Get("yes") != "true" {
+                    throw CliFailure("confirmation_required", "Noninteractive repository work requires --yes")
+                }
+            }
+            if args.Command == "claim" && args.Get("issue") == "" && !args.Help {
+                throw Exception(
+                    "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
+                )
+            }
+            if args.Get("total") != "" && !RepositoryWork(args) && !args.Help {
+                throw Exception("--total requires repository work")
+            }
+            if RepositoryWork(args) && args.Get("unlimited") == "true" && !args.Help {
+                throw Exception("Repository work uses --time and --total, not --unlimited")
+            }
 
             if args.Command == "approve" {
                 if args.Get("issue") != "" && args.Get("title") + args.Get("body") + args.Get("body-file") != "" {
