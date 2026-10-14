@@ -94,7 +94,9 @@ internal class HarnessRunner {
                 RuntimeBudget.Validate(run)
 
                 let harness = run.Text("harness")
-                let adapter = Adapters[harness]
+                let adapter = harness == "command" ? CommandHarness.Adapter(
+                    policy.Tool(harness, run.Text("provider"))
+                ): Adapters[harness]
                 let codex = harness == "codex"
                 if codex {
                     let harnessPath = run.Text("harness_path")
@@ -153,6 +155,9 @@ internal class HarnessRunner {
                             activity = adapter.Activity
                         }
                         let prompt = TaskContext.Build(checkout, run, record, coding)
+                        if harness == "command" {
+                            File.WriteAllText(Path.Combine(directory, "prompt.md"), prompt)
+                        }
                         if codex {
                             Verification.Validate(checkout)
                         }

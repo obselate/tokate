@@ -154,6 +154,10 @@ internal class Policy {
             if models.ValueKind != JsonValueKind.Undefined {
                 ValidateModels(models)
             }
+
+            if J.Text(tool, "harness") == "command" {
+                CommandHarness.Validate(tool)
+            }
         }
 
         Tools = J.Get(Value, "allowed_tools")
@@ -203,7 +207,7 @@ internal class Policy {
         }
     }
 
-    private func Tool(harness string, provider string) JsonElement -> J.Items(Tools).Find(
+    internal func Tool(harness string, provider string) JsonElement -> J.Items(Tools).Find(
         tool -> J.Text(tool, "harness") == harness && J.Text(tool, "provider") == provider
     )
 
@@ -272,7 +276,7 @@ internal class Policy {
         }
 
         if !external {
-            let catalog = harness == "pi" || harness == "omp"
+            let catalog = harness == "pi" || harness == "omp" || harness == "command"
             if model == "unknown" ||
                 effort == "unknown" ||
                 (
@@ -289,7 +293,9 @@ internal class Policy {
 
             if (harness == "codex" && provider != "openai") ||
                 (harness == "pi" && provider != "local-chat-completions") ||
-                (harness != "codex" && harness != "claude" && harness != "pi" && harness != "omp") {
+                (
+                harness != "codex" && harness != "claude" && harness != "pi" && harness != "omp" && harness != "command"
+            ) {
                 throw Exception("Unsupported managed harness/provider pair. No inference started.")
             }
         }

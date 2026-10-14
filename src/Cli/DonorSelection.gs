@@ -90,13 +90,16 @@ internal class DonorSelection {
 
             let harness = args.Get("harness", "codex")
 
-            if harness == "omp" && args.Get("provider") == "" {
-                let allowed = policy.Providers("omp")
+            if (harness == "omp" || harness == "command") && args.Get("provider") == "" {
+                let allowed = policy.Providers(harness)
+                let name = harness == "omp" ? "OMP": "the command harness"
 
                 if allowed.Count != 1 {
                     throw Exception(
-                        "Choose --provider for OMP: the owner policy allows " +
-                            (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
+                        "Choose --provider for " +
+                            name +
+                            ": the owner policy allows " +
+                            (allowed.Count == 0 ? "no " + name + " provider": String.Join(", ", allowed)) +
                             ". No inference started."
                     )
                 }
@@ -142,6 +145,7 @@ internal class DonorSelection {
                     case "claude": ClaudeHarness.Select(args, policy, source)
                     case "pi": PiHarness.Select(args, policy, source)
                     case "omp": OmpHarness.Select(args, policy, source)
+                    case "command": CommandHarness.Select(args, policy, source)
                     default: throw Exception("Unsupported managed harness/provider")
                 }
             }
