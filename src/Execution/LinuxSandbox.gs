@@ -9,6 +9,7 @@ internal class LinuxSandbox {
             try {
                 return File.ReadAllText(path).Trim() == value
             } catch (error IOException) { } catch (error UnauthorizedAccessException) { }
+
             return false
         }
 
@@ -20,6 +21,7 @@ internal class LinuxSandbox {
                     "User namespaces are disabled on this host or in this container. Ask an administrator to provide a host policy that permits Tokate's namespace isolation. Tokate does not change security policy."
                 )
             }
+
             if Setting("/proc/sys/kernel/apparmor_restrict_unprivileged_userns", "1") &&
                 (
                 error.Contains("Operation not permitted", StringComparison.Ordinal) || error.Contains(
@@ -32,6 +34,7 @@ internal class LinuxSandbox {
                     "Namespace startup was denied and AppArmor user-namespace restrictions are enabled. Ask an administrator to inspect AppArmor denials for unshare and bubblewrap and permit the required namespace operations. Tokate does not change security policy."
                 )
             }
+
             return CliFailure(
                 "namespace_unavailable",
                 "Namespace startup failed. Ask an administrator to check kernel namespace support, namespace limits, container restrictions and security policy. Tokate does not change security policy."
@@ -49,6 +52,7 @@ internal class LinuxSandbox {
                     return NamespaceFailure(result.Error)
                 }
             }
+
             return CliFailure("verification_failed", message)
         }
     }

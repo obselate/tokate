@@ -2,30 +2,83 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Text.Json
 
 internal class OwnerApproval {
     shared {
         internal func Approve(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let number = args.Number("issue")
+            var number = args.Get("issue") == "" ? 0: args.Number("issue")
+            var title = args.Get("title")
+            var body = args.Get("body-file") == "" ? args.Get("body"): File.ReadAllText(args.Need("body-file"))
+
+            if number == 0 && title == "" {
+                while title == "" {
+                    title = WizardScreen.Read(
+                        "Write an issue",
+                        repo,
+                        "Title",
+                        help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+                    )
+                }
+
+                if args.Get("body") == "" && args.Get("body-file") == "" {
+                    let lines = List[string]()
+
+                    while true {
+                        let line = WizardScreen.Read(
+                            "Describe the issue",
+                            "Title: " + title + "\n\n" + String.Join("\n", lines),
+                            "Description (Enter on an empty line finishes)",
+                            help: "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+                        )
+
+                        if line == "" {
+                            break
+                        }
+
+                        lines.Add(line)
+                    }
+
+                    body = String.Join("\n", lines)
+                }
+
+                if WizardScreen.Choose(
+                    "Review issue",
+                    repo + "\n\nTitle: " + title + "\n\nDescription:\n" + body,
+                    []string{"Create and approve", "Cancel"},
+                    "Create and approve opens the issue and approves it for donors. Cancel creates nothing."
+                ) == 2 {
+                    return
+                }
+            }
+
+            WizardScreen.Close()
+
             let info = RepositoryAccess.RequireOwner(repo)
-            let issue = GitHub.Issue(repo, number)
-            let authority = J.Text(info, "default_branch")
-            let authorityBase = GitHub.Branch(repo, authority)
-            let policy = Policy.Load(repo, authorityBase)
-            let configuredTarget = J.Text(policy.Value, "target_branch")
-            let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
-            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
-            AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
-            let template = PrBody.Template(repo, authorityBase, policy)
-            PrBody.ValidateTemplate(template)
-            let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
-            let decree = Decree.CaptureTree(repo, RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha")))
-            Terminal.Step(
-                "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
+            var issue = number == 0 ? default(JsonElement): GitHub.Issue(repo, number)
+            let approval = Capture(args, info, issue)
+            let firstApproval = !PublicOutput.Enabled && GitHub.Api(
+                "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
             )
+                .GetArrayLength() == 0
+
+            if number == 0 {
+                issue = GitHub.Api("repos/" + repo + "/issues", map[string, Object?]{"title": title, "body": body})
+                args.Values["--issue"] = J.Number(issue, "number").ToString()
+                number = args.Number("issue")
+                PublicOutput.ResultData = map[string, Object?]{
+                    "repo": repo,
+                    "issue": number,
+                    "issue_url": J.Text(issue, "html_url")
+                }
+
+                Terminal.Message(J.Text(issue, "html_url"))
+            }
+
             let label = GitHub.Api("repos/" + repo + "/labels/tokate%3Aapproved", missing: true)
+
             if label.ValueKind == JsonValueKind.Undefined {
                 GitHub.Api(
                     "repos/" + repo + "/labels",
@@ -36,46 +89,89 @@ internal class OwnerApproval {
                     }
                 )
             }
-            CoordinationState.Approve(
-                repo,
-                number,
-                map[string, Object?]{
-                    "version": 2,
-                    "repo": repo,
-                    "repo_id": RepositoryIdentity.PositiveId(J.Get(info, "id")),
-                    "issue": number,
-                    "approval_scope": "task",
-                    "eligibility": policy.Eligibility,
-                    "issue_hash": GitHub.Fingerprint(issue),
-                    "policy_hash": policy.Digest,
-                    "template_hash": Data.Hash(template),
-                    "base": revision,
-                    "base_branch": branch,
-                    "decree": decree,
-                    "authority_branch": authority,
-                    "nonce": Guid.NewGuid().ToString("N")
-                }
-            )
+
+            approval["issue"] = number
+            approval["issue_hash"] = GitHub.Fingerprint(issue)
+            CoordinationState.Approve(repo, number, approval, args.Get("yes") == "true")
+
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
                 map[string, Object?]{"labels": []string{"tokate:approved"}}
             )
-            Terminal.Message("Approval recorded. Request a contribution reservation to begin work.")
+
+            Terminal.Message(
+                "Approved https://github.com/" + repo + "/issues/" + number.ToString() +
+                    ". Donors start with: tokate work " +
+                    repo +
+                    "#" +
+                    number.ToString()
+            )
+
+            if firstApproval {
+                Terminal.Message(
+                    "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+                )
+            }
+        }
+
+        internal func Capture(args Args, info JsonElement, issue JsonElement) Dictionary[string, Object?] {
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let authority = J.Text(info, "default_branch")
+            let authorityBase = GitHub.Branch(repo, authority)
+            let policy = Policy.Load(repo, authorityBase)
+            let configuredTarget = J.Text(policy.Value, "target_branch")
+            let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
+            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+
+            AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
+
+            let template = PrBody.Template(repo, authorityBase)
+            PrBody.ValidateTemplate(template)
+
+            let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
+            let decree = Decree.CaptureTree(repo, RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha")))
+
+            Terminal.Step(
+                "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
+            )
+
+            return map[string, Object?]{
+                "version": 2,
+                "repo": repo,
+                "repo_id": RepositoryIdentity.PositiveId(J.Get(info, "id")),
+                "issue": J.Number(issue, "number"),
+                "approval_scope": "task",
+                "eligibility": policy.Eligibility,
+                "issue_hash": GitHub.Fingerprint(issue),
+                "policy_hash": policy.Digest,
+                "template_hash": Data.Hash(template),
+                "base": revision,
+                "base_branch": branch,
+                "decree": decree,
+                "authority_branch": authority,
+                "nonce": Guid.NewGuid().ToString("N")
+            }
         }
 
         internal func Revoke(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
+
             RepositoryAccess.RequireOwner(repo)
+
             let state = CoordinationState.Load(repo, args.Number("issue"), true)
+
             if state.Sha != "" {
                 let expected = state.Sha
                 state.Fields["revoked"] = true
+
                 state.Write(repo, args.Number("issue"), expected)
             }
+
             GitHub.Api(
                 "repos/" + repo + "/issues/" + args.Number("issue").ToString() + "/labels/tokate%3Aapproved",
                 method: "DELETE"
             )
+
             Terminal.Message(
                 "Approval revoked. Active local computation may continue, but Tokate will refuse publication."
             )

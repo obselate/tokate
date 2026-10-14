@@ -191,7 +191,7 @@ internal partial class Fixture {
                     }
                     return Response(
                         status,
-                        Check.Map("message", Check.Text(fault["message"])),
+                        fault["body"] ?? Check.Map("message", Check.Text(fault["message"])),
                         Check.Text(fault["headers"])
                     )
                 }
@@ -232,6 +232,9 @@ internal partial class Fixture {
             let id = Int32.Parse(path.Substring(5))
             return Answer(Check.Map("id", id, "login", id == 1 ? "owner": id == 123 ? "donor": "other"))
         }
+        if path == "repos/obselate/tokate/releases/latest" {
+            return State["latest_release"] is JsonNode release ? Answer(release): Response(404)
+        }
         if path.StartsWith("repos/obselate/tokate/releases/tags/") {
             if let release = State["release"] {
                 return Answer(release)
@@ -265,6 +268,37 @@ internal partial class Fixture {
         let folder = State["repository_folders"]?[repo] is JsonNode selected ? Check.Text(selected):
         repo == "owner/project" ? "upstream": "fork"
         let tail = String.Join("/", parts, 3, parts.Length - 3)
+        if tail.StartsWith("branches/") && tail.Contains("/protection") {
+            if method == "PUT" {
+                State["branch_protection"] = body.DeepClone()
+                return Answer(body)
+            }
+            if method == "POST" {
+                let contexts = State["branch_protection"]?["required_status_checks"]?["contexts"]?.AsArray() ??
+                    throw Exception("Missing required status checks")
+                for context in body["contexts"]?.AsArray() ?? JsonArray() {
+                    contexts.Add(context?.DeepClone())
+                }
+                return Answer(contexts)
+            }
+            return State["branch_protection"] is JsonNode protection ? Answer(protection): Response(404)
+        }
+        if tail == "actions/permissions" {
+            Check.That(method == "GET", "Health check changed Actions settings")
+            return Answer(State["actions_permissions"] ?? Check.Map("enabled", true, "allowed_actions", "all"))
+        }
+        if tail == "actions/permissions/selected-actions" {
+            if method == "PUT" {
+                Check.That(Check.Text(State["allowlist_setup"]) == "true", "Health check changed the allowlist")
+                if Check.Text(State["allowlist_write_denied"]) == "true" {
+                    return Response(403)
+                }
+                State["selected_actions"] = body.DeepClone()
+                return Response(204)
+            }
+            Check.That(method == "GET", "Health check changed the allowlist")
+            return Answer(State["selected_actions"] ?? Check.Map("patterns_allowed", JsonArray()))
+        }
         if tail == "actions/permissions/workflow" {
             if method == "PUT" {
                 State["workflow_permissions"] = body.DeepClone()
@@ -296,7 +330,7 @@ internal partial class Fixture {
                     "active",
                     "rules",
                     Check.Json(
-                        "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
+                        "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
                     )
                 )
             )
@@ -304,7 +338,7 @@ internal partial class Fixture {
         if tail.StartsWith("collaborators/") && tail.EndsWith("/permission") {
             let login = tail.Split('/')[1]
             return Answer(
-                Check.Map(
+                State["collaborator_permissions"]?[login] ?? Check.Map(
                     "permission",
                     login == "owner" ? "admin": "read",
                     "user",
@@ -596,9 +630,15 @@ internal partial class Fixture {
             }
             return Answer(State["check_runs"] ?? Check.Map("total_count", runs.Count, "check_runs", runs))
         }
-        if tail.StartsWith("actions/runs?") {
+        if tail.StartsWith("actions/runs?") || tail.StartsWith("actions/workflows/tokate-coordinator.yml/runs?") {
             let runs = State["workflow_runs"]?.AsArray() ?? JsonArray()
             return Answer(Check.Map("total_count", runs.Count, "workflow_runs", CommentPage(runs)))
+        }
+        if tail.StartsWith("check-suites/") && tail.Contains("/check-runs?") {
+            return Answer(Check.Map("check_runs", State["coordinator_checks"] ?? JsonArray()))
+        }
+        if tail.StartsWith("check-runs/") && tail.Contains("/annotations?") {
+            return Answer(State["coordinator_annotations"] ?? JsonArray())
         }
         if tail.StartsWith("commits/") && tail.Contains("/status?") {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))
@@ -608,7 +648,7 @@ internal partial class Fixture {
         }
         if tail.StartsWith("contents/") {
             let split = tail.IndexOf("?ref=")
-            let file = tail.Substring(9, split - 9)
+            let file = split < 0 ? tail.Substring(9): tail.Substring(9, split - 9)
             let journal = Check.Text(State["journal_race_path"])
             if file == ".github/tokate-pr.md" && journal != "" {
                 if Check.Text(State["journal_race_link"]) == "true" {
@@ -619,7 +659,7 @@ internal partial class Fixture {
                 State["journal_race_path"] = nil
                 Save()
             }
-            let reference = Uri.UnescapeDataString(tail.Substring(split + 5))
+            let reference = split < 0 ? "HEAD": Uri.UnescapeDataString(tail.Substring(split + 5))
             var content string
             try {
                 content = Git(folder, []string{"show", reference + ":" + file})
@@ -638,6 +678,31 @@ internal partial class Fixture {
             return Answer(
                 Check.Map("encoding", "base64", "content", Convert.ToBase64String(Encoding.UTF8.GetBytes(content)))
             )
+        }
+        if tail == "issues" && method == "POST" {
+            let issues = State["issues"]?.AsObject() ?? Check.Map("1", State["issue"]?.DeepClone()).AsObject()
+            let number = issues.Count + 1
+            let issue = Check.Map(
+                "number",
+                number,
+                "state",
+                "open",
+                "title",
+                Check.Text(body["title"]),
+                "body",
+                Check.Text(body["body"]),
+                "html_url",
+                "https://github.com/owner/project/issues/" + number.ToString(),
+                "labels",
+                JsonArray(),
+                "assignees",
+                JsonArray()
+            )
+            issues[number.ToString()] = issue
+            if State["issues"] == nil {
+                State["issues"] = issues
+            }
+            return Answer(issue)
         }
         if tail.StartsWith("issues?") {
             let query = tail.Substring(tail.IndexOf('?') + 1).Split('&')
@@ -698,6 +763,8 @@ internal partial class Fixture {
                 let comment = Check.Map(
                     "id",
                     100 + count,
+                    "created_at",
+                    "2026-10-12T00:00:00Z",
                     "body",
                     Check.Text(body["body"]),
                     "user",
@@ -789,8 +856,16 @@ internal partial class Fixture {
                         labels.Add(Check.Map("name", Check.Text(label)))
                     }
                     issue["labels"] = labels
-                } else if method == "DELETE" {
-                    issue["labels"] = JsonArray()
+                } else if method == "DELETE" && tail.Contains("/labels/") {
+                    let labels = issue["labels"]?.AsArray() ?? JsonArray()
+                    let name = Uri.UnescapeDataString(tail.Substring(tail.LastIndexOf('/') + 1))
+                    var i = labels.Count - 1
+                    while i >= 0 {
+                        if Check.Text(labels[i]?["name"]) == name {
+                            labels.RemoveAt(i)
+                        }
+                        i--
+                    }
                 }
             }
             return Answer(issue)
@@ -1092,6 +1167,20 @@ internal partial class Fixture {
             let branch = headParts[1]
             let headRepo = headLogin + "/project"
             let headFolder = State["repository_folders"]?[headRepo]
+            let headPush = State["repository_info"]?[headRepo]?["permissions"]?["push"] ??
+                (headLogin == "owner" ? State["repo_permissions"]?["push"]: State["fork_push"]) ??
+                JsonValue.Create(String.Equals(actor, headLogin, StringComparison.OrdinalIgnoreCase))
+            if Check.Text(body["maintainer_can_modify"]) != "false" && Check.Text(headPush) != "true" {
+                return Response(
+                    422,
+                    Check.Map(
+                        "message",
+                        "Validation Failed",
+                        "errors",
+                        JsonArray(Check.Map("resource", "PullRequest", "field", "fork_collab", "code", "custom"))
+                    )
+                )
+            }
             let number = Check.Text(State["multiple_pulls"]) == "true" ? 9 + count: 10
             body["number"] = JsonValue.Create(number)
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())

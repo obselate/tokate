@@ -42,7 +42,12 @@ internal class TerminalOutput {
                         flow.Temp.Env["TERM"] = "xterm-256color"
                         flow.Temp.Env["COLORTERM"] = "truecolor"
                         flow.Temp.Env["COLORFGBG"] = background == "light" ? "0;15": "15;0"
-                        let result = TestTerminal.Pty(binary, []string{"checks", "--run", run}, flow.Temp, width)
+                        let result = TestTerminal.Pty(
+                            binary,
+                            []string{"checks", "--run", run, "--verbose"},
+                            flow.Temp,
+                            width
+                        )
                         Check.That(
                             result.Code == (state == "pass" ? 0: (state == "pending" ? 8: 1)),
                             result.Output + result.Error
@@ -60,7 +65,12 @@ internal class TerminalOutput {
                     }
                 }
             }
-            let plain = TestTerminal.Pty(binary, []string{"checks", "--run", run, "--plain"}, flow.Temp, 40)
+            let plain = TestTerminal.Pty(
+                binary,
+                []string{"checks", "--run", run, "--plain", "--verbose"},
+                flow.Temp,
+                40
+            )
             Check.That(plain.Code == 1, plain.Output + plain.Error)
             Plain(plain.Output)
             Check.Contains(plain.Output, "Checks failed")
@@ -120,6 +130,150 @@ internal class TerminalOutput {
             Check.That(!canceled.Output.Contains("Ambiguous"), "Optional inference displayed a command-line error")
             flow.Reload()
             Check.That((flow.State["api_calls"]?.AsArray().Count ?? 0) == 0, "Canceled selection read GitHub")
+            flow.NoInference()
+            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            let canceledIssue = TestTerminal.Pty(
+                binary,
+                []string{"approve", "owner/project"},
+                flow.Temp,
+                80,
+                "?\nCanceled title\n?\nCanceled description\n\n?\n2\n"
+            )
+            Check.Success(canceledIssue)
+            Check.Contains(canceledIssue.Output, "Create and approve")
+            Check.Contains(canceledIssue.Output, "Cancel")
+            Check.Contains(
+                canceledIssue.Output.Substring(0, canceledIssue.Output.IndexOf("tokate / Describe the issue")),
+                "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+            )
+            Check.Contains(
+                canceledIssue.Output.Substring(canceledIssue.Output.IndexOf("tokate / Describe the issue")),
+                "Tokate creates this GitHub issue and approves it for donors in one step. Enter a short title, then describe the task."
+            )
+            Check.Contains(
+                canceledIssue.Output,
+                "Create and approve opens the issue and approves it for donors. Cancel creates nothing."
+            )
+            flow.Reload()
+            Check.That((flow.State["api_calls"]?.AsArray().Count ?? 0) == 0, "Canceled issue creation called GitHub")
+            for args in[]([]string){
+                []string{"approve", "owner/project", "--json"},
+                []string{"approve", "owner/project", "--non-interactive"},
+                []string{"approve", "owner/project#1", "--title", "Conflicting title"},
+                []string{
+                    "approve",
+                    "owner/project",
+                    "--title",
+                    "Conflicting body",
+                    "--body",
+                    "Text",
+                    "--body-file",
+                    "missing"
+                }
+            } {
+                let invalid = TestTerminal.Pty(binary, args, flow.Temp, 80)
+                Check.That(invalid.Code == 1, invalid.Output + invalid.Error)
+            }
+            flow.Reload()
+            Check.That((flow.State["api_calls"]?.AsArray().Count ?? 0) == 0, "Invalid creation called GitHub")
+            let description = "Literal description: $(touch injected) [red]text[/]\nSecond line.\n"
+            let bodyFile = Path.Combine(flow.Temp.Root, "issue-body.txt")
+            File.WriteAllText(bodyFile, description)
+            for mode in[]string{"body", "body-file", "interactive", "interactive-rich", "wizard"} {
+                flow.Temp.Env["TERM"] = mode == "interactive-rich" ? "xterm-256color": "dumb"
+                let title = "New issue from " + mode
+                var result Result
+                if mode == "body" || mode == "body-file" {
+                    result = TestTerminal.Pty(
+                        binary,
+                        []string{
+                            "approve",
+                            "owner/project",
+                            "--title",
+                            title,
+                            "--" + mode,
+                            mode == "body" ? description: bodyFile,
+                            mode == "body" ? "--non-interactive": "--json"
+                        },
+                        flow.Temp,
+                        80
+                    )
+                } else {
+                    result = TestTerminal.Pty(
+                        binary,
+                        mode == "wizard" ? []string{}: []string{"approve", "owner/project"},
+                        flow.Temp,
+                        80,
+                        (mode == "wizard" ? "4\nowner/project\n": "") +
+                            title +
+                            "\nFirst line.\nSecond line.\n\n" +
+                            (mode == "interactive-rich" ? "\n": "1\n") +
+                            "?\nbad..branch\n\n" +
+                            (mode == "wizard" ? "\nq\n": "")
+                    )
+                    Check.Contains(result.Output, "Title: " + title)
+                    Check.Contains(result.Output, "Description:")
+                    Check.Contains(result.Output, "Create and approve")
+                    Check.Contains(result.Output, "tokate / Target branch")
+                    Check.Contains(result.Output, "Enter a Git branch name, or press Enter to keep the default.")
+                    Check.Contains(result.Output, "Expected a Git branch name")
+                }
+                Check.Success(result)
+                flow.Reload()
+                let issues = flow.State["issues"]?.AsObject() ?? throw Exception("Missing created issues")
+                let number = issues.Count.ToString()
+                let created = issues[number] ?? throw Exception("Missing created issue")
+                Check.That(Check.Text(created["title"]) == title, "Created title changed")
+                Check.That(
+                    Check.Text(created["body"]) == (
+                        mode == "body" || mode == "body-file" ? description: "First line.\nSecond line."
+                    ),
+                    "Created description changed"
+                )
+                Check.That(
+                    Check.Text(created["labels"]?[0]?["name"]) == "tokate:approved",
+                    "Created issue lacks approval label"
+                )
+                let state = Check.Json(flow.Call([]string{"coordination", "owner/project#" + number}).Output)
+                Check.That(Check.Text(state["state"]?["issue"]) == number, "Creation did not record approval")
+                let url = "https://github.com/owner/project/issues/" + number
+                Check.Contains(result.Output, url)
+                if mode != "body-file" {
+                    let output = Regex
+                        .Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
+                        .Replace("\r\n", " ")
+                        .Replace('\n', ' ')
+                    Check.Contains(
+                        output,
+                        "Approved " + url + ". Donors start with: tokate work owner/project#" + number
+                    )
+                    Check.That(
+                        Check.Text(state["state"]?["approval"]?["base_branch"]) == "main",
+                        "Approval did not keep the default target branch"
+                    )
+                }
+                if mode == "interactive-rich" {
+                    Check.Contains(
+                        Regex.Replace(
+                            result.Output.Substring(result.Output.IndexOf("Review issue")),
+                            "\\x1b\\[[0-9;]*m",
+                            ""
+                        ),
+                        "\x1b[H\x1b[2JLoading next step...\x1b[K\r\n"
+                    )
+                    let closed = result.Output.IndexOf("\x1b[?1049l")
+                    Check.That(
+                        closed >= 0 && closed < result.Output.IndexOf(url),
+                        "Issue URL was hidden in the wizard screen"
+                    )
+                }
+                if mode == "body-file" {
+                    let data = Check.Json(result.Output)["data"]
+                    Check.That(Check.Text(data?["issue"]) == number, "JSON lacks the created issue number")
+                    Check.That(Check.Text(data?["issue_url"]) == url, "JSON lacks the created issue URL")
+                }
+            }
+            Check.That(!File.Exists(Path.Combine(flow.Temp.Root, "injected")), "Issue description executed shell text")
             flow.NoInference()
         }
 

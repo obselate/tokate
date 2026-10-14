@@ -36,6 +36,7 @@ internal class J {
 
         internal func Select(value JsonElement, keys string) Dictionary[string, Object?] {
             let result = map[string, Object?]{}
+
             for key in keys.Split(',') {
                 let item = J.Get(value, key)
                 if item.ValueKind == JsonValueKind.String ||
@@ -45,6 +46,7 @@ internal class J {
                     result[key] = item
                 }
             }
+
             return result
         }
 
@@ -54,19 +56,23 @@ internal class J {
 
         internal func Items(value JsonElement) List[JsonElement] {
             let items = List[JsonElement]()
+
             if value.ValueKind == JsonValueKind.Array {
                 for item in value.EnumerateArray() {
                     items.Add(item)
                 }
             }
+
             return items
         }
 
         internal func Write(value Object) string {
             using let bytes = MemoryStream()
             using let writer = Utf8JsonWriter(bytes)
+
             J.Value(writer, value)
             writer.Flush()
+
             return Encoding.UTF8.GetString(bytes.ToArray())
         }
 
@@ -95,17 +101,21 @@ internal class J {
                 }
                 case fields is Dictionary[string, Object?] {
                     writer.WriteStartObject()
+
                     for field in fields {
                         writer.WritePropertyName(field.Key)
                         J.Value(writer, field.Value)
                     }
+
                     writer.WriteEndObject()
                 }
                 case items is IEnumerable {
                     writer.WriteStartArray()
+
                     for item in items {
                         J.Value(writer, item)
                     }
+
                     writer.WriteEndArray()
                 }
                 default {

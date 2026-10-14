@@ -177,6 +177,7 @@ internal class ClaudeChecks {
             data.Tool("claude")
             let policyPath = Path.Combine(data.Root, "tokate.json")
             let policy = Check.Json(TestResources.Template("tokate.json"))
+            policy["version"] = JsonValue.Create(2)
             policy["models"] = Check.Json("{\"claude-opus-5-5\":[\"high\"]}")
             policy["allowed_tools"] = Check.Json("[{\"harness\":\"claude\",\"provider\":\"anthropic\"}]")
             Check.SaveJson(policyPath, policy)

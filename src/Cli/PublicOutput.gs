@@ -18,6 +18,7 @@ internal class PublicOutput {
         internal let Actions List[[]string] = List[[]string]()
 
         internal func Reset(command string = "help") {
+            Submission.ResetWorkflow()
             Command = command
             RunDirectory = ""
             RunName = ""
@@ -33,7 +34,9 @@ internal class PublicOutput {
             if value.Length <= 2048 {
                 return value
             }
+
             truncated = true
+
             return value.Substring(0, Char.IsHighSurrogate(value[2047]) ? 2047: 2048)
         }
 
@@ -55,6 +58,7 @@ internal class PublicOutput {
 
         internal func Tools(tools List[ToolCheck]) {
             let rows = List[Object]()
+
             for tool in tools {
                 rows.Add(
                     map[string, Object?]{
@@ -67,37 +71,48 @@ internal class PublicOutput {
                     }
                 )
             }
+
             ResultData = map[string, Object?]{"tools": rows, "tool_count": tools.Count, "inference": false}
         }
 
         private func Rows(value JsonElement, keys string, arguments bool = false) List[Object] {
             let rows = List[Object]()
+
             if value.ValueKind != JsonValueKind.Array {
                 return rows
             }
+
             let count = value.GetArrayLength()
+
             if count > 64 {
                 Truncated = true
             }
+
             for i in 0 ... Math.Min(64, count) {
                 let item = value[i]
                 let row = J.Select(item, keys)
+
                 if arguments {
                     let command = J.Get(item, "command")
+
                     if command.ValueKind == JsonValueKind.Array {
                         var valid = true
+
                         for word in command.EnumerateArray() {
                             if word.ValueKind != JsonValueKind.String {
                                 valid = false
                             }
                         }
+
                         if valid {
                             row["command"] = command
                         }
                     }
                 }
+
                 rows.Add(row)
             }
+
             return rows
         }
 
@@ -124,115 +139,190 @@ internal class PublicOutput {
                 "version,max_seconds,allow_unlimited,reservation_seconds,approval_scope,eligibility,target_branch,pr_text,close_message"
             )
             result["close_message"] = Policy.CloseMessage(value)
-            let mode = J.Text(value, "model_policy")
-            result["model_policy"] = mode == "" ? "whitelist": mode
+
+            if J.Number(value, "version") == 2 {
+                let mode = J.Text(value, "model_policy")
+                result["model_policy"] = mode == "" ? "whitelist": mode
+                for field in PolicyModels(J.Get(value, "models")) {
+                    result[field.Key] = field.Value
+                }
+            }
+
+            for key in[]string{"verification", "required_checks", "protected_paths"} {
+                let items = J.Items(J.Get(value, key))
+                let rows = List[Object]()
+
+                for i in 0 ... Math.Min(64, items.Count) {
+                    rows.Add(items[i])
+                }
+
+                result[key] = rows
+                result[key + "_count"] = items.Count
+                Truncated = Truncated || items.Count > 64
+            }
+
+            let tools = J.Get(value, "allowed_tools")
+
+            if tools.ValueKind == JsonValueKind.Array {
+                let retained = List[Object]()
+                let entries = J.Items(tools)
+                for i in 0 ... Math.Min(64, entries.Count) {
+                    let tool = J.Select(entries[i], "harness,provider")
+                    if J.Number(value, "version") == 3 && J.Get(entries[i], "models")
+                        .ValueKind == JsonValueKind.Object {
+                        for field in PolicyModels(J.Get(entries[i], "models")) {
+                            tool[field.Key] = field.Value
+                        }
+                    }
+
+                    retained.Add(tool)
+                }
+
+                result["allowed_tools"] = retained
+                result["allowed_tools_count"] = entries.Count
+                Truncated = Truncated || entries.Count > 64
+            }
+
+            return result
+        }
+
+        private func PolicyModels(source JsonElement) Dictionary[string, Object?] {
             let models = map[string, Object?]{}
             let effortCounts = map[string, Object?]{}
-            let source = J.Get(value, "models")
             var count int32
+
             if source.ValueKind == JsonValueKind.Object {
                 for model in source.EnumerateObject() {
                     count++
+
                     if count <= 64 {
                         let efforts = J.Items(model.Value)
                         let retained = List[Object]()
+
                         for i in 0 ... Math.Min(64, efforts.Count) {
                             retained.Add(efforts[i])
                         }
+
                         models[model.Name] = retained
                         effortCounts[model.Name] = efforts.Count
                         Truncated = Truncated || efforts.Count > 64
                     }
                 }
             }
+
             Truncated = Truncated || count > 64
-            result["models"] = models
+            let result = map[string, Object?]{"models": models}
             result["model_count"] = count
             result["model_effort_counts"] = effortCounts
-            for key in[]string{"verification", "required_checks", "protected_paths"} {
-                let items = J.Items(J.Get(value, key))
-                let rows = List[Object]()
-                for i in 0 ... Math.Min(64, items.Count) {
-                    rows.Add(items[i])
-                }
-                result[key] = rows
-                result[key + "_count"] = items.Count
-                Truncated = Truncated || items.Count > 64
-            }
-            let tools = J.Get(value, "allowed_tools")
-            if tools.ValueKind == JsonValueKind.Array {
-                result["allowed_tools"] = Rows(tools, "harness,provider")
-                result["allowed_tools_count"] = J.Count(tools)
-            }
+
             return result
         }
 
         internal func RunSummary(directory string) Dictionary[string, Object?] {
             let run = Data.Load(directory)
+
             if run.Number("version") != 2 {
                 throw CliFailure("invalid_state", "Unsupported saved run protocol")
             }
+
             let value = run.Element()
             let result = J.Select(
                 value,
                 "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,effort,seconds,verification_reserve,unlimited,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,omp_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
             )
+
             if run.Text("source") == "tokate" {
                 result["coding_seconds"] = run.Flag("unlimited") ? nil: run.Number("seconds") - run.Number(
                     "verification_reserve"
                 )
                 result["verification_reserve"] = run.Number("verification_reserve")
             }
+
             result["run"] = directory
+
+            if run.Text("state") == "claim_pending" {
+                result["next"] = map[string, Object?]{
+                    "role": "donor",
+                    "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
+                    "command": []string{
+                        "tokate",
+                        run.Text("source") == "tokate" ? "work": "prepare",
+                        "--run",
+                        directory,
+                        "--json"
+                    }
+                }
+            }
+
             if ContributionHandoff.Has(run) {
                 result["handoff"] = J.Get(value, "handoff")
             }
+
             result["storage"] = RunStorage.Summary(directory, run)
+
             let verification = J.Get(value, "verification")
+
             result["verification"] = Rows(verification, "state,exit_code,output_truncated,error_truncated", true)
             result["verification_count"] = J.Count(verification)
+
             if J.Get(value, "reconciliation").ValueKind == JsonValueKind.Object {
                 let local = J.Select(J.Get(value, "reconciliation"), "phase,previous,upstream,start,target,candidate")
+
                 local["local"] = true
                 local["verified"] = false
                 result["reconciliation"] = local
             }
+
             if AttemptContinuation.Has(run) {
                 result["predecessor"] = J.Get(value, "continuation")
                 result["continuation_phase"] = run.Text("continuation_phase")
             }
+
             let usage = map[string, Object?]{}
+
             for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
                 let item = J.Get(J.Get(value, "usage"), key)
                 var count int64
+
                 if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
                     usage[key] = count
                 }
             }
+
             if usage.Count > 0 {
                 result["usage"] = usage
             }
+
             let tools = J.Get(value, "tools")
+
             if tools.ValueKind == JsonValueKind.Array {
                 result["tools"] = Rows(tools, "harness,provider,model,effort,version")
                 result["tool_count"] = J.Count(tools)
             }
+
             let amendments = J.Get(value, "amendments")
+
             if amendments.ValueKind == JsonValueKind.Array {
                 result["amendments"] = Rows(amendments, "id,previous,head")
                 result["amendment_count"] = J.Count(amendments)
             }
+
             let amendmentDirectory = Path.Combine(directory, "amendments")
+
             if Directory.Exists(amendmentDirectory) {
                 for location in Directory.EnumerateDirectories(amendmentDirectory) {
                     if !File.Exists(Path.Combine(location, "run.json")) {
                         continue
                     }
+
                     let amendment = Data.Load(location)
+
                     if amendment.Text("state") != "requested" || amendment.Text("previous") != run.Text("commit") {
                         continue
                     }
+
                     result["amendment"] = ChangeSummary(amendment, location)
+
                     let command = List[string]{
                         "tokate",
                         "amend",
@@ -243,22 +333,28 @@ internal class PublicOutput {
                         "--time",
                         amendment.Number("seconds").ToString() + "s"
                     }
+
                     for key in[]string{"tools", "summary", "sync"} {
                         let argument = amendment.Text(key == "sync" ? key: key + "_argument")
+
                         if argument != "" {
                             command.AddRange([]string{"--" + key, argument})
                         }
                     }
+
                     command.Add("--json")
                     result["next"] = map[string, Object?]{
                         "role": "donor",
                         "action": "Await coordinator outcome, then re-run the same amend command with the original tools and summary options to record publication.",
                         "command": command.ToArray()
                     }
+
                     break
                 }
             }
+
             let correctionPath = Path.Combine(directory, "correction.json")
+
             if File.Exists(correctionPath) {
                 let correction = Data.Read(correctionPath)
                 var uuid Guid
@@ -266,12 +362,14 @@ internal class PublicOutput {
                 Path.Combine(directory, "correction-" + correction.Text("uuid")): directory
                 result["correction"] = ChangeSummary(correction, location)
             }
+
             if run.Text("state") == "failed" {
                 let reason = (
                     run.Text("failure_reason") == "incomplete_turn" || run.Text(
                         "failure_reason"
                     ) == "inference_interrupted"
                 ) ? "inference_failed": run.Text("failure_reason")
+
                 let code = KnownReason(reason) ? reason: "command_failed"
                 result["failure_reason"] = code
                 result["error"] = map[string, Object?]{
@@ -280,12 +378,20 @@ internal class PublicOutput {
                         code
                     )
                 }
+
                 if run.Text("source") == "tokate" && run.Number("pr") == 0 &&
                     (code == "stale_approval" || code == "inference_failed") {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
                         "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
                         "command": []string{"tokate", "help", "prepare", "--json"}
+                    }
+                    if AttemptContinuation.TimeLimited(run) {
+                        result["error"] = map[string, Object?]{
+                            "code": code,
+                            "message": "Runtime limit reached. Preserve partial work and prepare a fresh attempt under unchanged approval with a new time budget."
+                        }
+                        result["next"] = AttemptContinuation.Next(directory, run)
                     }
                 } else if run.Text("source") == "tokate" && run.Number("pr") == 0 && run.Text("commit") == "" &&
                     run.Flag("turn_completed") && run.Text("failure_reason") == "public_summary_invalid" {
@@ -296,15 +402,24 @@ internal class PublicOutput {
                     }
                 }
             }
+
             result["artifacts"] = Artifacts(directory)
+
+            if let guidance = Submission.PendingWorkflow(directory, run) {
+                result["coordinator"] = guidance["action"]
+                result["next"] = guidance
+            }
+
             if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
                 throw CliFailure("output_too_large", Message("output_too_large"))
             }
+
             return result
         }
 
         internal func Artifacts(directory string) Dictionary[string, Object?] {
             let artifacts = map[string, Object?]{}
+
             for name in[]string{
                 "run.json",
                 "events.jsonl",
@@ -320,10 +435,12 @@ internal class PublicOutput {
                 "correction.json"
             } {
                 let path = Path.Combine(directory, name)
+
                 if File.Exists(path) {
                     artifacts[name] = path
                 }
             }
+
             for name in[]string{
                 "original-evidence",
                 "amendments",
@@ -333,10 +450,12 @@ internal class PublicOutput {
                 "checkout.staging"
             } {
                 let path = Path.Combine(directory, name)
+
                 if Directory.Exists(path) {
                     artifacts[name.Replace('-', '_')] = path
                 }
             }
+
             return artifacts
         }
 
@@ -346,12 +465,17 @@ internal class PublicOutput {
                 value,
                 "id,uuid,previous,commit,tree,patch_sha256,seconds,state,pr,elapsed_seconds,verification_seconds"
             )
+
             let tools = J.Get(value, "tools")
+
             result["tools"] = Rows(tools, "harness,provider,model,effort,version")
             result["tool_count"] = J.Count(tools)
+
             let checks = J.Get(value, "verification")
+
             result["verification"] = Rows(checks, "state,exit_code,output_truncated,error_truncated", true)
             result["verification_count"] = J.Count(checks)
+
             let reason = change.Text("failure_reason")
             let failed = change.Text("state") == "failed" || reason != ""
             if failed || change.Fields.ContainsKey("error") || change.Fields.ContainsKey("publication_error") {
@@ -361,22 +485,28 @@ internal class PublicOutput {
                 result["failure_reason"] = code
                 result["error"] = map[string, Object?]{"code": code, "message": Message(code)}
             }
+
             result["artifacts"] = Artifacts(directory)
+
             return result
         }
 
         internal func Coordination(value JsonElement, sha string) Object {
             let result = J.Select(value, "version,repo,issue,approval_id,revoked")
+
             result["identity"] = J.Get(value, "identity")
             result["sha"] = sha
+
             let approval = J.Get(value, "approval")
             let summary = J.Select(
                 approval,
                 "repo,repo_id,issue,donor,approval_scope,eligibility,base,base_branch,authority_branch,policy_hash,template_hash"
             )
+
             if Decree.HasSnapshot(approval) {
                 summary["decree"] = J.Select(J.Get(approval, "decree"), "present,sha256")
             }
+
             result["approval"] = summary
             result["reservation"] = J.Select(
                 J.Get(value, "reservation"),
@@ -387,14 +517,17 @@ internal class PublicOutput {
                 "pr,url,head,reservation"
             )
             result["outcome_count"] = J.Count(J.Get(value, "outcomes"))
+
             return result
         }
 
         internal func Checks(run Data, rows JsonElement, status string, facts Dictionary[string, Object?]) {
             let result = J.Select(run.Element(), "repo,pr,pr_url,commit")
+
             for fact in facts {
                 result[fact.Key] = fact.Value
             }
+
             result["checks_status"] = status
             result["checks"] = Rows(rows, "name,state,bucket,link,workflow")
             result["check_count"] = J.Count(rows)
@@ -406,18 +539,28 @@ internal class PublicOutput {
                 try {
                     let run = Data.Load(RunDirectory)
                     let summary = RunSummary(RunDirectory)
+
                     if code != "" && ResultData is Dictionary[string, Object?]fields {
                         fields["run_state"] = summary
                     } else if ResultData == nil {
                         ResultData = summary
                     }
+
+                    if options != nil && (Command == "amend" || Command == "external") && options.Get("commit") != "" &&
+                        ResultData is Dictionary[string, Object?]fields {
+                        fields["commit"] = options.Get("commit")
+                    }
+
                     if options != nil && Command == "amend" && ResultData is Dictionary[string, Object?]fields {
                         let location = Path.Combine(RunDirectory, "amendments", options.Get("commit"))
+
                         if File.Exists(Path.Combine(location, "run.json")) {
                             fields["amendment"] = ChangeSummary(Data.Load(location), location)
                         }
                     }
+
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
+
                     if code == "invalid_state" &&
                         options != nil &&
                         options
@@ -431,42 +574,54 @@ internal class PublicOutput {
                             }
                         }
                     }
+
                     if Command == "reconcile" {
                         let intent = J.Get(run.Element(), "reconciliation")
+
                         if code != "" &&
                             code != "stale_approval" &&
                             (J.Text(intent, "phase") == "fetching" || J.Text(intent, "phase") == "merging") {
                             Actions.Add([]string{"tokate", "reconcile", "--run", RunDirectory, "--resume", "--json"})
                         }
+
                         return
                     }
+
                     if run.Text("state") == "preparing" && run.Number("preparation_version") == 1 &&
                         code != "stale_approval" {
                         Actions.Add([]string{"tokate", "prepare", "--run", RunDirectory, "--json"})
                     }
+
                     if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
+
                     var next Object?
                     if summary.TryGetValue("next", out next) &&
                         next is Dictionary[string, Object?]guidance &&
-                        guidance["command"] is []string command {
+                        guidance["command"] is []string command &&
+                        command.Length > 0 {
                         Actions.Add(command)
                     }
+
                     if code != "stale_approval" && code != "invalid_state" {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
-                        } else if run.Text("state") == "generated" || run.Text("state") == "incomplete_generated" {
+                        } else if !summary.ContainsKey("coordinator") &&
+                            (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") {
                             Actions.Add([]string{"tokate", "submit", "--run", RunDirectory, "--json"})
                         }
                     }
                 } catch (error Exception) { }
             }
+
             if code == "invalid_arguments" {
                 var known bool
+
                 for command in Cli.Commands {
                     known = known || command.Name == Command
                 }
+
                 Actions.Add(known ? []string{"tokate", "help", Command, "--json"}: []string{"tokate", "help", "--json"})
             } else if code == "missing_tools" {
                 if Command != "doctor" {
@@ -479,6 +634,7 @@ internal class PublicOutput {
                     Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
                 }
             }
+
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
                 Actions.Add([]string{"tokate", "checks", options.Get("repo") + "#" + options.Get("pr"), "--json"})
             }
@@ -491,6 +647,7 @@ internal class PublicOutput {
                 "code": code == "" ? "command_failed": code,
                 "message": Prose(message == "" ? Message(code): message)
             }
+
             let envelope = map[string, Object?]{
                 "schema_version": 1,
                 "command": Command,
@@ -501,7 +658,9 @@ internal class PublicOutput {
                 "next_actions": Actions,
                 "truncated": Truncated
             }
+
             var text = J.Write(envelope)
+
             if Encoding.UTF8.GetByteCount(text) + 1 > 65536 {
                 envelope["command"] = Command.Length > 2048 ? "unknown": Command
                 envelope["status"] = "error"
@@ -511,12 +670,15 @@ internal class PublicOutput {
                     "code": "output_too_large",
                     "message": Message("output_too_large")
                 }
+
                 envelope["next_actions"] = []Object{}
                 envelope["truncated"] = true
                 text = J.Write(envelope)
                 resultCode = 1
             }
+
             Console.WriteLine(text)
+
             return resultCode
         }
     }

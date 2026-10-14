@@ -1,73 +1,110 @@
 # Positional arguments
 
-Put command targets after the command. Run `tokate help COMMAND` for full syntax.
+Use this command reference for current main. Put the target after the command.
 
-## References
+1. Show all command metadata.
+
+   ```sh
+   tokate help --json
+   ```
+
+2. Show full syntax and options for one command.
+
+   ```sh
+   tokate help work
+   ```
+
+## Command reference
+
+`[VALUE]` is optional. Replace uppercase values with your own values.
+
+| Command | Usage | What it does |
+| --- | --- | --- |
+| `work` | `tokate work [ISSUE [NAME] \| OWNER/REPO \| RUN] [options]` | Code an approved issue and verify it. Uses donor inference. |
+| `claim` | `tokate claim [ISSUE [NAME] \| OWNER/REPO] [options]` | Reserve an issue without inference or publication. |
+| `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
+| `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
+| `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
+| `runs` | `tokate runs [ISSUE \| OWNER/REPO]` | List saved runs offline. |
+| `pause` | `tokate pause RUN` | Pause your reservation. |
+| `resume` | `tokate resume RUN` | Resume your paused reservation. |
+| `renew` | `tokate renew RUN` | Renew before expiry. |
+| `release` | `tokate release RUN` | Release your reservation. |
+| `init` | `tokate init [OWNER/REPO] [--path DIR] [options]` | Write owner policy and a pinned workflow. |
+| `approve` | `tokate approve [ISSUE \| --title TEXT] [options]` | Create or approve an issue for donors. |
+| `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
+| `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
+| `access init` | `tokate access init [OWNER/REPO]` | Initialize access authority. |
+| `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO]` | Change persistent donor membership. |
+| `access grant`, `remove` | `tokate access OPERATION LOGIN ISSUE` | Change one issue grant. |
+| `access check` | `tokate access check ISSUE` | Check your eligibility. |
+| `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
+| `verify` | `tokate verify PR` | Check a receipt against owner approval. |
+| `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
+| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` offers prerequisite setup. |
+| `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
+| `update` | `tokate update` | Install the latest stable release. |
+| `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
+| `select` | `tokate select [OWNER/REPO] [NAME] [options]` | Select a tool and model under owner policy. |
+| `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
+| `recover` | `tokate recover RUN [--commit SHA --time TIME] [--tools FILE] [--summary FILE]` | Prepare or verify a correction to completed work. |
+| `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
+| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Resume publication or verify and publish a new correction with `--time`. |
+| `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
+| `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
+| `authorize-sync` | `tokate authorize-sync PR --commit SHA --upstream SHA` | Grant synchronization for exact commits. |
+| `revoke-sync` | `tokate revoke-sync [OWNER/REPO] --grant SHA` | Revoke a synchronization grant. |
+| `coordinator-setup` | `tokate coordinator-setup [OWNER/REPO] --output FILE [--yes]` | Preview matching pins and workflow. Apply the file and Actions allowlist with confirmation. |
+| `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
+| `help` | `tokate help [COMMAND]` | Show command help. |
+| `--version` | `tokate --version` | Print the installed version. |
+| `coordination` | `tokate coordination ISSUE` | Read authoritative issue state. |
+| `request` | `tokate request ISSUE --file FILE` | Post a strict claim or publication request. |
+| `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source tokate [options]` | Prepare a fresh reserved managed contribution. |
+| `prepare` | `tokate prepare ISSUE [NAME] --state SHA --source external --tools FILE [options]` | Prepare an external contribution. |
+| `prepare` | `tokate prepare --run DIR` | Resume recorded preparation. |
+| `admit` | `tokate admit [OWNER/REPO] --event FILE` | Owner workflow: close unauthorized PRs. |
+| `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: update state and publish accepted requests. |
+| `claude-capabilities` | `tokate claude-capabilities --claude FILE --model MODEL --effort EFFORT` | Check native Claude interfaces and personal login. |
+
+## Issue and run names
 
 | Form | Meaning |
 | --- | --- |
-| `42` | Issue 42 in the checkout's GitHub remote. For `checks` and `verify`, PR 42. |
-| `OWNER/REPO#42` | Issue 42 in that repository, or PR 42 for `checks` and `verify`. |
-| GitHub URL | An issue, PR or repository URL for a command that accepts that reference. |
-| `OWNER/REPO` | Repository target. `tokate work OWNER/REPO` opens its issue chooser. |
-| `42-3` | Attempt 3 for issue 42. Use `OWNER/REPO#42-3` to name its repository. |
+| `42` | Issue 42 in the checkout's GitHub remote. `verify` and `checks` use PR 42. |
+| `OWNER/REPO#42` | Issue 42 in that repository. `verify` and `checks` use PR 42. |
+| `https://github.com/OWNER/REPO/issues/42` | Exact issue reference. |
+| `https://github.com/OWNER/REPO/pull/10` | Exact PR reference for a PR command. |
+| `OWNER/REPO` or repository URL | Repository target. `work OWNER/REPO` opens an issue chooser. |
+| `42-1` | Attempt 1 for issue 42. |
+| `OWNER/REPO#42-1` | Attempt 1 in an explicit repository. |
+| `--run DIR` | Exact saved run directory. |
 
-Repository-scoped commands without an issue or PR operand can take a trailing
-`OWNER/REPO`; for example, `tokate access trust LOGIN OWNER/REPO`.
+For a `RUN` command, bare `42` selects the newest saved attempt. Use `42-1` to select attempt 1.
 
-For commands whose target is `RUN`, such as `submit`, `pause` and `recover`, a
-bare `42` selects the newest attempt; `42-3` selects attempt 3. If its state does
-not fit, the command fails without writing. Use `tokate runs` to inspect attempts;
-it works offline.
+`status 42` reads issue state. `status 42-1` reads the saved attempt.
+For supported time-limit failures, saved status also reads GitHub authority to
+offer continuation. Other saved status reads are offline.
 
-`status 42` targets issue 42. `checks 42` and `verify 42` target PR 42. If a PR has
-one saved run, `checks` uses it; use `42-3` for a specific attempt.
+`checks 10` uses a saved run when that PR has exactly one saved run. Use `checks 42-1` to select an attempt explicitly.
 
-`tokate work 42` continues the newest saved claim only when no new task selection
-or budget is given. With a new selection or budget, it starts a new attempt.
-
-## Command positionals
-
-| Command | Positionals |
-| --- | --- |
-| `work` | `ISSUE [NAME]`, `OWNER/REPO` to choose an issue, or `RUN` |
-| `claim` | `ISSUE [NAME]` or `OWNER/REPO` |
-| `prepare` | `ISSUE [NAME]`; use `--run DIR` to resume recorded preparation |
-| `submit`, `pause`, `resume`, `renew`, `release`, `recover`, `amend`, `external`, `reconcile` | `RUN` |
-| `status` | `ISSUE`, `OWNER/REPO` or `RUN` |
-| `checks` | `PR` or `RUN` |
-| `verify`, `authorize-sync` | `PR` |
-| `runs` | Optional `ISSUE` or `OWNER/REPO` |
-| `approve`, `revoke`, `request`, `coordination` | `ISSUE` |
-| `init`, `policy`, `coordinator-setup`, `revoke-sync`, `admit`, `coordinate` | Optional `OWNER/REPO` |
-| `select` | Optional `OWNER/REPO [NAME]` or `NAME` in a checkout |
-| `overlaps` | 2 to 16 PR references |
-| `access init` | Optional `OWNER/REPO` |
-| `access trust`, `untrust`, `deny`, `restore` | `LOGIN [OWNER/REPO]` |
-| `access grant`, `remove` | `LOGIN ISSUE` |
-| `access check`, `request` | `ISSUE` |
-| `access list`, `history` | `[LOGIN] [OWNER/REPO]` |
-| `doctor` | `owner [HARNESS]`, `managed [HARNESS]`, `external [HARNESS]` or `HARNESS` (`owner` and `codex` are valid alone) |
-| `defaults` | `list`; `set [NAME]`; `use NAME`; `show [NAME]`; `remove [NAME]`; no subcommand also lists saved profiles |
-| `help` | Optional `COMMAND` |
-| `completion` | `bash`, `zsh` or `fish` |
-| `update`, `uninstall`, `claude-capabilities`, `--version` | None |
-
-`--run DIR` names an exact saved directory. JSON `next_actions` use this form.
+`work 42` resumes saved work when no new selection or budget is given. A new selection or budget starts a new attempt.
 
 ## Flags and time units
 
-- Exact revisions and file inputs stay attached to the operation: `--commit SHA`,
-  `--state SHA`, `--upstream SHA`, `--grant SHA`, `--tools FILE`, `--summary FILE`,
-  `--file FILE`, `--event FILE` and `--output FILE`.
-- Harness and model settings remain flags because they select execution, not the
-  command target: `--harness`, `--model`, `--effort` and `--provider`.
-- `--fork LOGIN/REPO` selects a donor fork; `--from-pr N` seeds from another
-  donor's last coordinated PR.
-- Issue, PR, repository and profile targets are positionals; source modifiers
-  stay flags.
-- Switches such as `--yes`, `--watch`, `--trust`, `--resume` and `--json` control
-  behavior.
-- Time flags need a unit: `--time 30m`, `--verify-time 10m`, `--max-time 2h`,
-  `--reservation-time 1d` and `--timeout 45s`. Examples use seconds (`s`), minutes
-  (`m`), hours (`h`) or days (`d`); command limits still apply.
+| Input | Examples |
+| --- | --- |
+| Exact commit or authority | `--commit SHA`, `--state SHA`, `--upstream SHA`, `--grant SHA` |
+| File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE`, `--output FILE` |
+| Execution selection | `--harness codex`, `--model MODEL`, `--effort high`, `--provider openai` |
+| Time with a required unit | `--time 30m`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |
+| Units | `s` seconds, `m` minutes, `h` hours, `d` days |
+
+See [owners](owners.md), [donors](donors.md) and [recovery](recovery.md).
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `No saved runs.` | `tokate status OWNER/REPO#42` |
+| `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status --run DIR --json` |

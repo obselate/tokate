@@ -37,6 +37,9 @@ internal class ModelChecklist {
     private var Redraw bool = true
     private var Single bool
     private var SelectedIndex int32 = -1
+    private var Title string = ""
+    private var Body string = ""
+    private var Help string = ""
 
     private func Add(model string, effort string, label string, suggested bool = false) {
         for choice in Choices {
@@ -44,6 +47,7 @@ internal class ModelChecklist {
                 return
             }
         }
+
         if Choices.Count < 2048 {
             Choices.Add(ModelChoice(model, effort, label, suggested))
         }
@@ -53,7 +57,9 @@ internal class ModelChecklist {
         if !DonorSelection.Supported(value) {
             return
         }
+
         let harness = J.Text(value, "harness")
+
         Add(
             J.Text(value, "model"),
             J.Text(value, "effort"),
@@ -68,13 +74,16 @@ internal class ModelChecklist {
     private func Discover() {
         try {
             let saved = DonorDefaults.Run(Args([]string{"defaults", "list"}))
+
             Profile(J.Get(saved, "default"), true)
+
             for entry in J.Get(saved, "profiles").EnumerateObject() {
                 Profile(entry.Value, false)
             }
         } catch (error Exception) {
             Terminal.Message("Saved profiles unavailable; manual model entry remains available.", "yellow", true)
         }
+
         try {
             for entry in CodexRuntime.Capabilities() {
                 for effort in entry.Value {
@@ -84,6 +93,7 @@ internal class ModelChecklist {
         } catch (error Exception) {
             Terminal.Message("Offline harness catalog unavailable; model availability is unknown.", "yellow", true)
         }
+
         Sort()
     }
 
@@ -94,56 +104,73 @@ internal class ModelChecklist {
 
     private func Custom() {
         let model = WizardScreen.Read("Add model", "Model name (blank returns)", "Model name")
+
         if model == "" {
             return
         }
+
         RequestData.ModelIdentifier(model)
+
         let efforts = WizardScreen.Read(
             "Add model",
             "Allowed efforts, separated by spaces (absent for no effort control)",
             "Allowed efforts"
         )
+
         for effort in efforts.Replace(',', ' ').Split(' ', StringSplitOptions.RemoveEmptyEntries) {
             RequestData.Token(effort)
             Add(model, effort, "Owner entry [route unknown]")
+
             for choice in Choices {
                 if choice.Model == model && choice.Effort == effort {
                     choice.Selected = true
                 }
             }
         }
+
         Sort()
     }
 
     private func Result() string {
         let models = SortedDictionary[string, List[string]](StringComparer.Ordinal)
+
         for choice in Choices {
             if choice.Selected {
                 if !models.ContainsKey(choice.Model) {
                     models[choice.Model] = List[string]()
                 }
+
                 models[choice.Model].Add(choice.Effort)
             }
         }
+
         let result = map[string, Object?]{}
+
         for entry in models {
             result[entry.Key] = entry.Value
         }
+
         return J.Write(result)
     }
 
     private func Plain() string {
         if Single {
             SelectedIndex = WizardScreen.Choose(
-                "Your coding tool",
-                "Choose one profile. Availability is unknown.",
-                Choices.ConvertAll(choice -> choice.Label).ToArray()
+                Title == "" ? "Your coding tool": Title,
+                Title == "" ? "Choose one profile. Availability is unknown.": Body,
+                Choices.ConvertAll(choice -> choice.Label).ToArray(),
+                Help,
+                SelectedIndex + 1
             ) - 1
+
             return ""
         }
+
         while true {
             Terminal.Message("Allowed models (availability unknown):", error: true)
+
             var index int32
+
             for choice in Choices {
                 Terminal.Message(
                     (++ index).ToString() +
@@ -154,15 +181,22 @@ internal class ModelChecklist {
                     error: true
                 )
             }
+
             Console.Error.Write("Number toggles; add enters another model; Enter finishes; exit cancels: ")
+
             let answer = Console.ReadLine()?.Trim() ?? throw Exception("Setup cancelled")
+
             if answer == "" {
                 return Result()
             }
+
             if answer == "exit" {
                 throw Exception("Setup cancelled")
             }
-            if answer == "add" {
+
+            if answer == "?" {
+                Terminal.Message(Help, error: true)
+            } else if answer == "add" {
                 Custom()
             } else if int32.TryParse(answer, out index) && index > 0 && index <= Choices.Count {
                 Choices[index - 1].Selected = !Choices[index - 1].Selected
@@ -185,67 +219,111 @@ internal class ModelChecklist {
         let text = StringBuilder()
         let elements = StringInfo.GetTextElementEnumerator(Terminal.Clean(value).Replace('\n', ' '))
         var used int32
+
         while elements.MoveNext() {
             let item = elements.GetTextElement()
             let cells = Cells(item)
+
             if used + cells > width {
                 break
             }
+
             text.Append(item)
             used += cells
         }
+
         return text.ToString()
     }
 
     private func Screen() bool {
         let oldControl = Console.TreatControlCAsInput
+
         Console.TreatControlCAsInput = true
         WizardScreen.Open()
+
         using let resumed = PosixSignalRegistration.Create(PosixSignal.SIGCONT, context -> Invalidate())
+
         try {
             var previous = []string{}
             var previousCursor = ""
             var oldWidth int32
             var oldHeight int32
+            var note = ""
+            var scroll int32
+
             while true {
                 let width = Math.Max(1, Console.WindowWidth)
                 let height = Math.Max(1, Console.WindowHeight)
                 var full bool
+
                 lock this {
                     full = Redraw || width != oldWidth || height != oldHeight
                     Redraw = false
                 }
+
                 oldWidth = width
                 oldHeight = height
+
                 let visible = Choices.FindAll(
                     choice -> choice.Label.Contains(Search, StringComparison.OrdinalIgnoreCase)
                 )
                 Focus = Math.Clamp(Focus, 0, Math.Max(0, visible.Count - 1))
+
                 let count = Choices.FindAll(choice -> choice.Selected).Count
                 let small = width < 32 || height < 8
                 let rows = List[string]()
                 var start = Cursor
+
                 while start > 0 &&
                     Cells(
                     Search.Substring(WizardScreen.Before(Search, start), Cursor - WizardScreen.Before(Search, start))
                 ) < width - 10 {
                     start = WizardScreen.Before(Search, start)
                 }
+
                 var cursorColumn = 9 + Cells(Search.Substring(start, Cursor - start))
+                var searchRow = 3
+
                 if small {
                     rows.Add("Enlarge terminal; Esc cancels")
                     cursorColumn = 1
                 } else {
-                    rows.Add(Single ? "tokate / Your coding tool": "tokate / Allowed models")
-                    rows.Add(
-                        (Single ? "Choose one profile": count.ToString() + " selected") + " | availability unknown"
-                    )
+                    if (Single && Title != "") || note != "" {
+                        let content = WizardScreen.Lines(
+                            Title == "" ? "Your coding tool": Title,
+                            (
+                                Single ? (Title == "" ? "Choose one profile | availability unknown": Body):
+                                count.ToString() + " selected | availability unknown"
+                            ) +
+                                note,
+                            width,
+                            height
+                        )
+
+                        let page = Math.Max(1, height - 7)
+
+                        scroll = Math.Clamp(scroll, 0, Math.Max(0, content.Count - page))
+                        rows.AddRange(content.GetRange(scroll, Math.Min(page, content.Count - scroll)))
+
+                        if content.Count > page {
+                            rows.Add("PgUp/PgDn scroll")
+                        }
+                    } else {
+                        rows.Add(Single ? "tokate / Your coding tool": "tokate / Allowed models")
+                        rows.Add(
+                            (Single ? "Choose one profile": count.ToString() + " selected") + " | availability unknown"
+                        )
+                        rows.Add("h Home   q Quit   ? Explain")
+                    }
+
+                    searchRow = rows.Count + 1
                     rows.Add("Search: " + Search.Substring(start))
                     rows.Add(Single ? "Arrows move; Enter selects": "Arrows move; Space toggles; Enter accepts")
                     rows.Add(
                         Single ? "Esc Home; Ctrl+C Quit; Ctrl+L redraw": "F2 adds a model; Esc Home; Ctrl+L redraw"
                     )
-                    for index in Math.Max(0, Focus - Math.Max(0, (height - 7) / 2)) ... visible.Count {
+
+                    for index in Math.Max(0, Focus - Math.Max(0, (height - rows.Count - 2) / 2)) ... visible.Count {
                         let choice = visible[index]
                         var remaining = (index == Focus ? "> ": "  ") +
                             (Single ? "": choice.Selected ? "[x] ": "[ ] ") +
@@ -253,23 +331,29 @@ internal class ModelChecklist {
                             (choice.Suggested ? " (suggested)": "")
                         while remaining != "" && rows.Count < height - 1 {
                             let line = Crop(remaining, width - 1)
+
                             rows.Add(line)
                             remaining = remaining.Substring(line.Length)
                         }
+
                         if remaining != "" && index == Focus {
                             rows[rows.Count - 1] = "Enlarge terminal to view this entry"
                         }
+
                         if rows.Count >= height - 1 {
                             break
                         }
                     }
+
                     if visible.Count == 0 {
                         rows.Add(
                             Single ? "No matching profiles. Change your search.": "No matching models. F2 adds one."
                         )
                     }
                 }
+
                 let update = StringBuilder(full ? WizardScreen.Color("paper") + "\x1b[2J": "")
+
                 for index in 0 ... Math.Min(height, Math.Max(rows.Count, full ? 0: previous.Length)) {
                     let line = index < rows.Count ? Crop(rows[index], width - 1): ""
                     if full || index >= previous.Length || line != previous[index] {
@@ -284,49 +368,83 @@ internal class ModelChecklist {
                                 line
                         )
                     }
+
                     if index < rows.Count {
                         rows[index] = line
                     }
                 }
-                let location = "\x1b[" + (small ? "1": "3") + ";" + cursorColumn.ToString() + "H"
+
+                let location = "\x1b[" + (small ? "1": searchRow.ToString()) + ";" + cursorColumn.ToString() + "H"
                 if update.Length > 0 || location != previousCursor {
                     update.Append(location)
                     Console.Error.Write(update.ToString())
                 }
+
                 previousCursor = location
                 previous = rows.ToArray()
+
                 if !Console.KeyAvailable {
                     using let tick = after(TimeSpan.FromMilliseconds(100))
+
                     select {
                         case <- tick { }
                     }
+
                     continue
                 }
+
                 let key = Console.ReadKey(true)
                 let control = (key.Modifiers & ConsoleModifiers.Control) != 0
+
                 if key.Key == ConsoleKey.Escape {
                     throw WizardHome()
                 }
+
                 if control && (key.Key == ConsoleKey.C || key.Key == ConsoleKey.D) {
                     throw OperationCanceledException("Cancelled")
                 }
+
                 if small {
                     continue
                 }
+
+                if !control && key.KeyChar == '?' {
+                    note = "\n\n" + (Help == "" ? "Choose the next action. Nothing starts without confirmation.": Help)
+                    continue
+                }
+
+                if !control && Search == "" {
+                    if key.KeyChar == 'q' {
+                        throw OperationCanceledException("Cancelled")
+                    }
+
+                    if key.KeyChar == 'h' {
+                        throw WizardHome()
+                    }
+                }
+
                 if key.Key == ConsoleKey.Enter {
                     if Single {
                         if visible.Count == 0 {
                             continue
                         }
+
                         SelectedIndex = Choices.IndexOf(visible[Focus])
                     }
+
                     return false
                 }
+
                 if key.Key == ConsoleKey.F2 && !Single {
                     return true
                 }
+
                 if control && key.Key == ConsoleKey.L {
                     Invalidate()
+                } else if key.Key == ConsoleKey.PageUp {
+                    scroll = Math.Max(0, scroll - Math.Max(1, height - 7))
+                } else if key.Key == ConsoleKey.PageDown {
+                    scroll += Math.Max(1, height - 7)
                 } else if key.Key == ConsoleKey.UpArrow {
                     Focus = Math.Max(0, Focus - 1)
                 } else if key.Key == ConsoleKey.DownArrow {
@@ -343,6 +461,7 @@ internal class ModelChecklist {
                     Cursor = Search.Length
                 } else if key.Key == ConsoleKey.Backspace && Cursor > 0 {
                     let before = WizardScreen.Before(Search, Cursor)
+
                     Search = Search.Remove(before, Cursor - before)
                     Cursor = before
                     Focus = 0
@@ -365,30 +484,48 @@ internal class ModelChecklist {
     }
 
     shared {
-        internal func Pick(labels[]string) int32 {
-            let picker = ModelChecklist{Single: true}
+        internal func Pick(
+            labels[]string,
+            title string = "",
+            body string = "",
+            help string = "",
+            selected int32 = 0
+        ) int32 {
+            let picker = ModelChecklist{
+                Single: true,
+                Title: title,
+                Body: body,
+                Help: help,
+                Focus: Math.Max(0, selected - 1),
+                SelectedIndex: selected - 1
+            }
+
             for i in 0 ... labels.Length {
                 picker.Choices.Add(ModelChoice(i.ToString(), "", labels[i]))
             }
+
             picker.Run()
+
             return picker.SelectedIndex
         }
     }
 
     internal func Run() string {
         if !Single {
+            Title = "Allowed models"
+            Help = "Select the model and effort pairs donors may use. Select only pairs supported by tools you expect donors to have."
             Discover()
         }
-        if Terminal.Plain || Environment.GetEnvironmentVariable("TERM") == "dumb" ||
-            Console.IsInputRedirected ||
-            Console.IsErrorRedirected ||
-            Console.IsOutputRedirected {
+
+        if !WizardScreen.Available() {
             return Plain()
         }
+
         while Screen() {
             Custom()
             Invalidate()
         }
+
         return Result()
     }
 }

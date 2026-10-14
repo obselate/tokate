@@ -99,7 +99,9 @@ for cancelled in (False, True):
         assert b"\x1b[?25l" not in initial, "Picker changed cursor visibility"
         if cancelled:
             os.write(fd, b"\x1b")
-            finish(pid, fd, 1)
+            expect(fd, b"What would you like to do?")
+            os.write(fd, b"q")
+            finish(pid, fd, 0)
             assert not os.path.exists(os.path.join(path, ".github"))
             continue
         os.write(fd, b" ")
@@ -132,17 +134,36 @@ for cancelled in (False, True):
         expect(fd, b"Model name")
         os.write(fd, b"remote-model\nabsent\n")
         expect(fd, b"3 selected")
+        resize(fd, 100, 24)
+        expect(fd, b"3 selected")
+        os.write(fd, b"?")
+        explained = expect(fd, b"Select the model and effort pairs")
+        assert b"Search: ?" not in explained, explained
+        assert b"h Home   q Quit   ? Explain" in explained, explained
+        os.write(fd, b"\r")
+        expect(fd, b"Review project setup")
+        resize(fd, 80, 24)
+        expect(fd, b"Review project setup")
+        os.write(fd, b"\x1b[B\r")
+        expect(fd, b"Change project setup")
+        os.write(fd, b"\x1b[B" * 4 + b"\r")
+        reservation = expect(fd, b"Reservation time [5m]: ")
+        assert reservation.count(b"Reservation time [5m]: ") == 1, reservation
+        assert b"Value: " not in reservation, reservation
+        os.write(fd, b"10m\r")
+        expect(fd, b"Review project setup")
         os.write(fd, b"\r")
         finish(pid, fd, 0)
         with open(os.path.join(path, ".github", "tokate.json")) as file:
             policy = json.load(file)
-        models = policy["models"]
+        assert policy["reservation_seconds"] == 600, policy["reservation_seconds"]
+        models = policy["allowed_tools"][0]["models"]
         assert models == {
             "gpt-6.1-sol": ["high"], local_model: ["absent"], "remote-model": ["absent"],
         }, models
         assert policy["allowed_tools"] == [
-            {"harness": "codex", "provider": "openai"},
-            {"harness": "pi", "provider": "local-chat-completions"},
+            {"harness": "codex", "provider": "openai", "models": models},
+            {"harness": "pi", "provider": "local-chat-completions", "models": models},
         ], policy["allowed_tools"]
     finally:
         try:
@@ -158,23 +179,38 @@ pid, fd = start(root, home=True)
 try:
     welcome = expect(fd, b"Give your inference a purpose.")
     assert b"Donate AI time" in welcome and b"Continue existing work" in welcome, welcome
+    assert b"> Donate AI time" in welcome and b"Arrows move; Enter selects" in welcome, welcome
     os.write(fd, b"x")
-    changed = expect(fd, b"Choice: x")
+    changed = expect(fd, b"Search: x")
     assert b"\x1b[2J" not in changed and b"\x1b[?25" not in changed, changed
     assert read(fd, 0.4) == b"", "Welcome kept redrawing while idle"
     resize(fd, 20, 5)
     expect(fd, b"Enlarge terminal")
     resize(fd, 80, 24)
-    expect(fd, b"Choice: x")
-    os.write(fd, b"\x151\r")
+    expect(fd, b"Search: x")
+    os.write(fd, b"\x15\x1b[B")
+    expect(fd, b"> Set up my project")
+    os.write(fd, b"\x1b[A")
+    expect(fd, b"> Donate AI time")
+    resize(fd, 40, 24)
+    expect(fd, b"> Donate AI time")
+    os.write(fd, b"?")
+    explained = expect(fd, b"fills in details it can find.")
+    assert b"Choose whether to donate time, set up a" in explained, explained
+    resize(fd, 80, 24)
+    expect(fd, b"> Donate AI time")
+    os.write(fd, b"\r")
     transition = expect(fd, b"Project")
     assert b"Loading next step..." in transition, transition
+    assert b"\x1b[H\x1b[2JLoading next step...\x1b[K\r\n" in transition, "Wizard progress did not clear the menu and end its line"
     assert b"\x1b[?1049l" not in transition and b"\x1b[?1049h" not in transition, "Wizard disappeared between steps"
     os.write(fd, b"https://github.com/owner/project/issues/0\r")
     expect(fd, b"Invalid positive number")
     os.write(fd, b"h\r")
     expect(fd, b"Donate AI time")
-    os.write(fd, b"q\r")
+    os.write(fd, b"h")
+    expect(fd, b"Donate AI time")
+    os.write(fd, b"q")
     finish(pid, fd, 0)
 finally:
     try:

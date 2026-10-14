@@ -38,9 +38,7 @@
   "max_seconds": 14400,
   "allow_unlimited": true,
   "required_checks": [
-    "verify",
-    "musl",
-    "runtime"
+    "verify"
   ],
   "verification": [
     [

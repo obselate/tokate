@@ -1,66 +1,109 @@
 # Nix and NixOS
 
-Tokate builds as a NativeAOT CLI for x86_64 Linux. Install [Nix](https://nix.dev/install-nix) first.
+Use Nix to install Tokate on x86_64 Linux. Nix owns upgrades, rollback and removal.
 
-Enable the command and flake features in `~/.config/nix/nix.conf`:
+1. Install [Nix](https://nix.dev/install-nix).
+2. Enable commands and flakes in `~/.config/nix/nix.conf`.
 
-```ini
-experimental-features = nix-command flakes
-```
+   ```ini
+   experimental-features = nix-command flakes
+   ```
 
-On NixOS, set this in your system configuration instead:
+3. On NixOS, enable the same features with the `nix.settings.experimental-features` system option.
 
-```nix
-nix.settings.experimental-features = [ "nix-command" "flakes" ];
-```
+4. Install Tokate.
 
-## Install
+   ```sh
+   nix profile add github:obselate/tokate
+   ```
 
-```sh
-nix profile add github:obselate/tokate
-tokate doctor external
-```
+5. Check the base tools.
 
-In an existing NixOS flake, add `inputs.tokate.url = "github:obselate/tokate"`
-and include `inputs.tokate.packages.x86_64-linux.default` in `environment.systemPackages`.
-Use Nix to upgrade, roll back or remove this installation. Tokate does not change system configuration.
+   ```sh
+   tokate doctor external
+   ```
 
-## Choose a harness
+6. Install a harness. For Codex:
 
-For Codex:
+   ```sh
+   nix profile add nixpkgs#codex
+   ```
 
-```sh
-nix profile add nixpkgs#codex
-tokate doctor managed codex
-```
+7. Check Codex without inference.
 
-For Pi:
+   ```sh
+   tokate doctor managed codex
+   ```
 
-```sh
-nix profile add github:earendil-works/pi/stable
-tokate doctor managed pi
-```
+8. For Pi, install its stable flake.
 
-Keep custom profile `bin` directories on `PATH`, or use `--harness-path`.
-Keep runtimes outside the checkout. Pi uses Node from its package closure unless `--node` overrides it.
+   ```sh
+   nix profile add github:earendil-works/pi/stable
+   ```
+
+9. Check Pi without inference.
+
+   ```sh
+   tokate doctor managed pi
+   ```
+
+10. Follow the [donor guide](donors.md) to configure the model and start work.
+
+| Installation choice | Setting |
+| --- | --- |
+| Existing NixOS flake | Add `inputs.tokate.url = "github:obselate/tokate"`. |
+| NixOS package list | Add `inputs.tokate.packages.x86_64-linux.default` to `environment.systemPackages`. |
+| Custom profile | Put its `bin` directory on `PATH`, or use an absolute `--harness-path`. |
+| Pi Node runtime | Pi uses Node from its package closure. Use `--node` to select another runtime. |
+| Runtime location | Keep selected runtimes outside the checkout. |
+| System configuration | Tokate does not change it. |
 
 ## Build from source
 
-From the repository root:
+1. Open a terminal at the repository root.
+2. Build the package.
 
-```sh
-nix build
-./result/bin/tokate --version
-```
+   ```sh
+   nix build
+   ```
 
-After changing NuGet dependencies, regenerate their hashes and rebuild:
+3. Check the built version.
 
-```sh
-nix build .#default.fetch-deps
-./result nix/deps.json
-nix build
-```
+   ```sh
+   ./result/bin/tokate --version
+   ```
 
-Verification mounts only the selected executable's declared closure and baseline tools.
-For compound checks, declare dependencies with `writeShellApplication.runtimeInputs`.
-Unrelated store paths and home files stay unavailable. Missing store paths fail without deleting saved work.
+4. After a NuGet dependency change, build the dependency fetcher.
+
+   ```sh
+   nix build .#default.fetch-deps
+   ```
+
+5. Regenerate the dependency hashes.
+
+   ```sh
+   ./result nix/deps.json
+   ```
+
+6. Rebuild the package.
+
+   ```sh
+   nix build
+   ```
+
+| Verification requirement | Action |
+| --- | --- |
+| Compound check command | Declare its tools with `writeShellApplication.runtimeInputs`. |
+| Runtime dependencies | Verification mounts the selected executable's declared closure and baseline tools. |
+| Other files | Unrelated store paths and home files remain unavailable. |
+| Missing closure | Restore the selected profile. Saved work is kept. |
+
+## If something fails
+
+| Symptom (exact message text) | Do (exact command) |
+| --- | --- |
+| `Nix manages these prerequisites. Add git, gh, util-linux, coreutils and findutils to your Nix configuration or profile, then rerun doctor.` | `nix profile add nixpkgs#git nixpkgs#gh nixpkgs#util-linux nixpkgs#coreutils nixpkgs#findutils` |
+| `The selected Nix runtime closure is unavailable. Restore its profile before retrying.` | `nix profile rollback` |
+| `Nix runtimes must be selected outside the checkout.` | `tokate doctor codex --harness-path /absolute/profile/bin/codex` |
+
+Use [Linux security](linux-security.md) for namespace failures. Use [recovery](recovery.md) for saved-run failures.

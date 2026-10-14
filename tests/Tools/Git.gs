@@ -89,6 +89,13 @@ internal partial class Fixture {
             }
         }
         let command = List[string]()
+        let github = Array.Exists(
+            args,
+            arg -> arg.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) && arg.EndsWith(
+                ".git",
+                StringComparison.Ordinal
+            )
+        )
         for arg in args {
             let remote = arg.StartsWith("https://github.com/", StringComparison.OrdinalIgnoreCase) && arg.EndsWith(
                 ".git",
@@ -106,7 +113,7 @@ internal partial class Fixture {
             ) {
                 command.Add(Path.Combine(Root, "fork"))
             } else {
-                command.Add(arg == "protocol.file.allow=never" ? "protocol.file.allow=always": arg)
+                command.Add(github && arg == "protocol.file.allow=never" ? "protocol.file.allow=always": arg)
             }
         }
         if Check.Text(State["mode"]) == "reconcile_merge_pause" && command.Contains("merge") && command.Contains(

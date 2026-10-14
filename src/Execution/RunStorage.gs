@@ -13,9 +13,12 @@ internal class RunStorage {
         internal func ControlPaths(directory string) {
             try {
                 LocalPaths.DirectoryPath(directory)
-            } catch (error Exception) {
-                throw Exception(error.Message + "; saved run directory: " + directory, error)
+            } catch (error Exception) when error is CliFailure ||
+                error is IOException ||
+                error is UnauthorizedAccessException {
+                throw ExecutionFailure.Create("invalid_state", error.Message + "; saved run directory: " + directory)
             }
+
             for name in[]string{".lock", "run.json", "run.json.tmp", "claim.posting.json"} {
                 ControlFile(directory, name)
             }
@@ -23,9 +26,11 @@ internal class RunStorage {
 
         internal func ControlFile(directory string, name string) {
             let path = Path.Combine(directory, name)
+
             if FileInfo(path).LinkTarget != nil {
                 Reject(directory)
             }
+
             if File.Exists(path) || Directory.Exists(path) {
                 let status = [256]byte
                 if RuntimeMetadataStat(-100, path, 256, 5, status) != 0 ||
@@ -39,6 +44,7 @@ internal class RunStorage {
 
         internal func Lease(directory string) FileStream {
             ControlPaths(directory)
+
             return File.Open(
                 Path.Combine(directory, ".lock"),
                 FileMode.OpenOrCreate,
@@ -65,6 +71,7 @@ internal class RunStorage {
         internal func Number(directory string, prefix string) int32 {
             let name = Path.GetFileName(directory)
             var number int32
+
             return name.StartsWith(prefix, StringComparison.Ordinal) && Regex.IsMatch(
                 name.Substring(prefix.Length),
                 "^[1-9][0-9]{0,8}\\z"
@@ -75,62 +82,103 @@ internal class RunStorage {
         internal func Allocate(root string, repo string, issue int32, id string) string {
             let prefix = Prefix(repo, issue)
             var number int32
+
             if Directory.Exists(root) {
                 let saved = SavedRuns([]string{root})
                 for row in saved.Rows {
                     if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
                         PublicOutput.RunDirectory = row.Location
-                        throw Exception("Saved contribution already exists; inspect it instead of overwriting")
+                        if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
+                            throw ExecutionFailure.Create(
+                                "invalid_state",
+                                "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
+                                    []string{"tokate", "pause", "--run", row.Location}
+                                ) +
+                                    ", then " +
+                                    Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
+                                    ". Wait for each coordinator acceptance, then run " +
+                                    Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
+                                    " for the continuation command with the current state SHA. No files were overwritten."
+                            )
+                        }
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Saved contribution already exists; inspect it instead of overwriting"
+                        )
                     }
+
                     if row.Matches(repo, issue) {
                         number = Math.Max(number, row.Number)
                     }
                 }
+
                 for directory in Directory.EnumerateDirectories(root, prefix + "*") {
                     if Number(directory, prefix) == 0 {
                         continue
                     }
+
                     if !saved.Has(directory) {
                         Reject(directory)
                     }
+
                     number = Math.Max(number, Number(directory, prefix))
                 }
             }
+
             let directory = Path.Combine(root, prefix + (number + 1).ToString())
+
             for path in[]string{directory, Path.Combine(root, id)} {
                 if Directory.Exists(path) || File.Exists(path) || FileInfo(path).LinkTarget != nil {
                     PublicOutput.RunDirectory = path
-                    throw Exception("Saved contribution already exists; inspect it instead of overwriting")
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Saved contribution already exists; inspect it instead of overwriting"
+                    )
                 }
             }
+
             return directory
         }
 
         internal func Roots()[]string {
             let roots = List[string]()
+
             for storage in LocalPaths.StateDirectories() {
                 roots.Add(Path.Combine(storage, "runs"))
             }
+
             return roots.ToArray()
         }
 
         internal func Discover() JsonElement {
-            let saved = SavedRuns(Roots(), 128)
-            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated)))
+            var repo = ""
+
+            try {
+                repo = RepositoryInput.Local()
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) { }
+
+            let saved = SavedRuns(Roots(), 128, listingRepo: repo)
+
+            return J.Parse(J.Write(SavedRuns.Summary(saved.Rows, saved.Skipped, saved.Truncated, saved.SkippedEntries)))
         }
 
         private func Size(path string) int64 {
             let info = FileInfo(path)
+
             if info.LinkTarget != nil {
                 return 0
             }
+
             if (info.Attributes & FileAttributes.Directory) == 0 || !Directory.Exists(path) {
                 return info.Length
             }
+
             var bytes int64
+
             for entry in Directory.EnumerateFileSystemEntries(path) {
                 bytes += Size(entry)
             }
+
             return bytes
         }
 
@@ -139,13 +187,16 @@ internal class RunStorage {
             let checkout = Path.Combine(root, "checkout")
             var retainedBytes int64
             var checkoutBytes int64
+
             for entry in Directory.EnumerateFileSystemEntries(root) {
                 let bytes = Size(entry)
                 retainedBytes += bytes
+
                 if entry == checkout && Directory.Exists(entry) {
                     checkoutBytes = bytes
                 }
             }
+
             return map[string, Object?]{
                 "retained_bytes": retainedBytes,
                 "checkout_bytes": checkoutBytes,

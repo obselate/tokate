@@ -12,19 +12,79 @@ PRs. Donors use their own accounts and tools. Owners review and merge.
    results and the responsible person's next action.
 
 Use [installation](README.md), the [owner guide](docs/owners.md) or the
-[donor guide](docs/donors.md). The release supports Linux x86_64 with glibc 2.34+ or Alpine 3.24
+[donor guide](docs/donors.md). Main supports Linux x86_64 with glibc 2.34+ or Alpine 3.24
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
 In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use
 `OWNER/REPO#42` or a GitHub URL.
 Do not infer support for another platform, forge or harness.
+
+## Install Tokate and its dependencies
+
+Use Linux x86_64 with glibc 2.34+ or Alpine 3.24. Install the system packages first.
+
+| System | Administrator command |
+| --- | --- |
+| Debian or Ubuntu | `sudo apt-get update` then `sudo apt-get install git gh curl tar ca-certificates coreutils findutils util-linux bash bubblewrap socat` |
+| Alpine 3.24 | `doas apk add git github-cli curl tar ca-certificates coreutils findutils util-linux-misc setpriv bash bubblewrap socat nodejs npm` |
+
+Doctor checks `gh`, `git`, `setsid`, `env`, `setpriv`, `unshare` and `cp`.
+Owner setup also checks `curl` and `tar`. Alpine verification checks GNU `find`.
+Pi and Claude need Bash. Claude also needs `bwrap` and `socat`.
+User and PID namespaces must work. See [Linux security](docs/linux-security.md),
+[Alpine](docs/alpine.md) and [Nix](docs/nix.md) for host setup.
+
+```sh
+curl -qfsSL https://tokate.dev/install.sh | sh
+```
+
+Open a new terminal if prompted. Then sign in with the account for this task.
+
+```sh
+gh auth login
+gh api user --jq .login
+```
+
+Install only the harness you will use. Owners need no harness.
+
+| Harness | Install and login | Check |
+| --- | --- | --- |
+| Codex | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh`, then `codex login` with ChatGPT. | `tokate doctor codex --auth` |
+| Claude Code | Use the [native installer](https://code.claude.com/docs/en/setup), then `claude auth login` with personal Pro or Max. | `tokate doctor claude --auth` |
+| Pi | Install Node from your distribution, then `curl -fsSL https://pi.dev/install.sh \| sh`. Configure a model and start a no-auth HTTP loopback Chat Completions endpoint with `/v1/models`. No endpoint login is used. | `tokate doctor pi` |
+| OMP | Use the [official installer](https://github.com/can1357/oh-my-pi/blob/main/scripts/install.sh), then `omp login` or configure a provider. | `tokate doctor omp` |
+
+See [harness installation](docs/linux-harnesses.md) and
+[Pi endpoint setup](docs/donors.md#local-inference-with-pi) for paths and model selection.
+Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
+`tokate doctor owner OWNER/REPO` after repository setup.
 
 ## Guide an owner
 
 Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
 repository. Preserve existing checks and customization. Review the generated policy
 and pinned workflow, verify configuration, and commit it before approving tasks.
+Setup writes version 3 with models and efforts inside each allowed tool. A tool
+without models allows any model. Version 2 remains readable with its original
+model permissions. Update the coordinator pin before committing a version 3 policy.
+Older coordinators reject version 3. Use per-tool model choices in owner setup.
 Initialize access once, approve the issue, then trust the donor or grant that issue.
-Never grant access merely because someone requested it.
+Never grant access merely because someone requested it. In `trusted` eligibility,
+trusted donors and donors granted the issue may claim. With no trusted donors,
+grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
+may claim. Version 2 `manual` is read as `trusted`. Version 3 has no `manual` mode.
+
+A change to task fields or the PR template revokes existing approvals. Task fields
+cover verification, required checks, protected paths, tool models, runtime and
+unlimited-coding limits, and reservation duration. Eligibility, formatting and
+descriptive edits keep approvals valid. Current eligibility still controls access.
+Init lists affected issues and approval commands. Re-approve them after merge.
+Old whole-text approvals become stale once after upgrading to current main.
+Status names the owner command when task fields no longer match. After a coordinator
+pin change, confirm that Actions permits
+`obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
+Otherwise every request stays pending. Tokate keeps its records in `tokate/`
+branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
+open PRs from them. Deleting `tokate/access` removes all trust and grants.
 
 Before acceptance, inspect the diff and run `tokate verify PR` and `tokate checks PR`.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
@@ -50,6 +110,11 @@ Before inference, obtain consent for the task, harness/model and time allocation
 Profiles do not authorize budgets.
 Do not retry, switch models or start another run because output is quiet. Inspect
 `status 42-1` and use [recovery](docs/recovery.md) for failures or changes.
+If a request stays pending for more than 5 minutes, run
+`gh run list -R OWNER/REPO --workflow tokate-coordinator.yml --limit 3` and report
+the result to the owner. Never post the request again. Compare the `member` version
+in the repository's `.github/workflows/tokate-coordinator.yml` with
+`tokate --version`, and tell the owner when the repository's version is older.
 If executing an approved donor task, stay within its permissions. Do not change
 owner policy, start another run, publish or merge from inside that task.
 
@@ -82,10 +147,12 @@ work, corrections or amendments, pass `--summary FILE` with the exact candidate 
 }
 ```
 
-Managed artifacts omit `head`; Tokate binds it to the candidate. Use short plain ASCII
-sentences: 1–8 changes, up to 8 verification results and 4 limitations. Changes begin
-with an action such as Add, Update, Remove or Fix. Each item is 3–200 characters and
+Managed artifacts omit `head`. Tokate binds it to the candidate. Use short plain ASCII
+sentences: 1 to 8 changes, up to 8 verification results and 4 limitations. Changes begin
+with an action such as Add, Update, Remove or Fix. Each item is 3 to 200 characters and
 the whole artifact is at most 4096 bytes. Omit markup, paths, URLs, credentials and
 private logs. Describe the complete final diff, not the conversation or work history.
+The validator rejects slashes, IP addresses, `sk-` and the words secret, password,
+credential, bearer and API key, even in plain sentences. Name tests and checks instead.
 Declare later editing tools separately from original execution. Never claim manual
 changes were completed by a donated inference run.

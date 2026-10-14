@@ -17,9 +17,13 @@ internal class VerificationWorkspace : IDisposable {
     internal init(directory string, budget RuntimeBudget) {
         Original = Verification.Validate(directory, budget)
         Root = Path.Combine(LocalPaths.DirectoryPath("/tmp"), "tokate-workspace-" + Guid.NewGuid().ToString("N"))
+
         Directory.CreateDirectory(Root, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+
         Checkout = Path.Combine(Root, "checkout")
+
         LocalPaths.DirectoryPath(Root)
+
         OnCancel = ConsoleCancelEventHandler(
             (sender Object?, event ConsoleCancelEventArgs) -> {
                 event.Cancel = true
@@ -30,7 +34,9 @@ internal class VerificationWorkspace : IDisposable {
                 }
             }
         )
+
         Console.CancelKeyPress += OnCancel
+
         Termination = PosixSignalRegistration.Create(
             PosixSignal.SIGTERM,
             (context PosixSignalContext) -> {
@@ -48,6 +54,9 @@ internal class VerificationWorkspace : IDisposable {
     shared {
         internal func Create(directory string, budget RuntimeBudget) VerificationWorkspace {
             let workspace = VerificationWorkspace(directory, budget)
+
+            var ready bool
+
             try {
                 let result = Commands.Run(
                     LocalPaths.NeedSystemTool("cp", directory),
@@ -65,14 +74,21 @@ internal class VerificationWorkspace : IDisposable {
                     budget: budget
                 )
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
-                    throw Exception("Cannot copy the exact verification candidate: " + result.Error)
+                    throw ExecutionFailure.Create(
+                        "verification_failed",
+                        "Cannot copy the exact verification candidate: " + result.Error
+                    )
                 }
+
                 Verification.Validate(workspace.Checkout, budget)
                 workspace.CheckCancellation()
+
+                ready = true
                 return workspace
-            } catch (error Exception) {
-                workspace.Dispose()
-                throw error
+            } finally {
+                if !ready {
+                    workspace.Dispose()
+                }
             }
         }
     }
@@ -90,7 +106,9 @@ internal class VerificationWorkspace : IDisposable {
 
     private func Remove(directory string) {
         LocalPaths.DirectoryPath(directory)
+
         File.SetUnixFileMode(directory, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+
         for entry in Directory.EnumerateFileSystemEntries(directory) {
             if FileInfo(entry).LinkTarget != nil {
                 File.Delete(entry)
@@ -100,6 +118,7 @@ internal class VerificationWorkspace : IDisposable {
                 File.Delete(entry)
             }
         }
+
         Directory.Delete(directory)
     }
 

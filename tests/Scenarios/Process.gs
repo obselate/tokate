@@ -210,7 +210,10 @@ internal class ProcessChecks {
                 []string{"-c", "trap '' XFSZ; ulimit -f 64; exec \"$1\" work --run \"$2\"", "fixture", binary, run},
                 flow.Temp.Env
             )
-            Check.That(result.Code == 1, "Capture-write failure became success")
+            Check.That(
+                result.Code == 1,
+                "Capture-write failure became success: exit " + result.Code.ToString() + " " + result.Error
+            )
             Check.Contains(result.Error.ToLowerInvariant(), "too large")
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             Check.That(
