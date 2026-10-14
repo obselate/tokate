@@ -1028,23 +1028,12 @@ internal class PreparationChecks {
                         } else {
                             File.CreateSymbolicLink(path, target)
                         }
-                        for command in[]string{
-                            "prepare",
-                            "work",
-                            "external",
-                            "submit",
-                            "recover",
-                            "correction",
-                            "amend",
-                            "submit-correction",
-                        } {
+                        for command in[]string{"prepare", "work", "external", "submit", "amend", "submit-correction",} {
                             let corrected = command.EndsWith("-correction")
                             if corrected {
                                 File.WriteAllText(Path.Combine(run, "correction.json"), "{}")
                             }
-                            let name = corrected ? command.Replace("-correction", ""): (
-                                command == "correction" ? "recover": command
-                            )
+                            let name = corrected ? command.Replace("-correction", ""): command
                             let args = List[string]{name, "--run", run}
                             if command == "external" || command == "amend" {
                                 args.AddRange([]string{"--commit", String('0', 40)})

@@ -228,6 +228,146 @@ internal class OriginalEvidence {
             }
         }
 
+        private func CopyTree(source string, target string, links List[Object], relative string = "") {
+            Directory.CreateDirectory(target)
+
+            for entry in Directory.EnumerateFileSystemEntries(source) {
+                let name = Path.GetFileName(entry)
+
+                if relative == "" && name == ".git" {
+                    continue
+                }
+
+                let path = relative == "" ? name: relative + "/" + name
+                let info = FileInfo(entry)
+
+                if info.LinkTarget != nil {
+                    links.Add(map[string, Object?]{"path": path, "target": info.LinkTarget})
+                } else if Directory.Exists(entry) {
+                    CopyTree(entry, Path.Combine(target, name), links, path)
+                } else {
+                    OriginalEvidence.CopyFile(entry, Path.Combine(target, name))
+                }
+            }
+        }
+
+        internal func Capture(directory string, run Data, record JsonElement = default(JsonElement)) string {
+            LocalPaths.DirectoryPath(directory)
+
+            let final = Path.Combine(directory, "original-evidence")
+
+            if FileInfo(final).LinkTarget != nil {
+                throw CliFailure("invalid_state", "Original evidence archive must not be a link")
+            }
+
+            if Directory.Exists(final) {
+                Amended(directory, run)
+                return Data.Read(Path.Combine(final, "seal.json")).Text("manifest_sha256")
+            }
+
+            let checkout = Verification.Validate(Path.Combine(directory, "checkout"))
+            let temporary = Path.Combine(directory, "original-evidence-" + Guid.NewGuid().ToString("N") + ".tmp")
+
+            Directory.CreateDirectory(
+                temporary,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            )
+
+            try {
+                let missing = List[string]()
+                let links = List[Object]()
+                for file in Directory.EnumerateFiles(directory) {
+                    if Path.GetFileName(file) != ".lock" {
+                        CopyFile(file, Path.Combine(temporary, Path.GetFileName(file)))
+                    }
+                }
+
+                OriginalEvidence.VerificationArtifacts(directory, temporary)
+
+                if record.ValueKind != JsonValueKind.Undefined {
+                    for file in[]string{
+                        "run.json",
+                        "events.jsonl",
+                        "report.md",
+                        "stderr.log",
+                        "candidate.patch",
+                        "changes.patch",
+                        "verification.json",
+                        "checks.json",
+                        "publication.json",
+                        "request.json",
+                        "pr-body.md"
+                    } {
+                        if !File.Exists(Path.Combine(directory, file)) {
+                            missing.Add(file)
+                        }
+                    }
+                    File.WriteAllText(Path.Combine(temporary, "approval.json"), J.Write(record) + "\n")
+                    for kind in[]string{"staged", "unstaged"} {
+                        let args = List[string]{
+                            "diff",
+                            "--no-ext-diff",
+                            "--no-textconv",
+                            "--binary",
+                            "--full-index",
+                            "--find-renames=100%"
+                        }
+                        if kind == "staged" {
+                            args.AddRange([]string{"--cached", run.Text("base")})
+                        }
+                        args.Add("--")
+                        File.WriteAllText(
+                            Path.Combine(temporary, kind + ".patch"),
+                            Commands.GitRaw(checkout, args.ToArray())
+                        )
+                    }
+                    File.WriteAllText(
+                        Path.Combine(temporary, "status.txt"),
+                        Commands.GitRaw(checkout, []string{"status", "--porcelain=v1", "--untracked-files=all"})
+                    )
+                    CopyTree(checkout, Path.Combine(temporary, "checkout"), links)
+                    let capture = Data(
+                        map[string, Object?]{
+                            "captured_at": DateTimeOffset.UtcNow.ToString("O"),
+                            "head": Commands.Git(checkout, "rev-parse", "HEAD"),
+                            "missing": missing,
+                            "links": links,
+                            "failure": run.Text("error"),
+                            "candidate_provenance": "Available staged/unstaged/untracked evidence captured at preparation; original model provenance is unproven. Missing original artifacts are not reconstructed."
+                        }
+                    )
+                    capture.Write(Path.Combine(temporary, "capture.json"))
+                }
+
+                OriginalEvidence.Seal(temporary)
+
+                Directory.Move(temporary, final)
+            } finally {
+                if Directory.Exists(temporary) {
+                    Directory.Delete(temporary, true)
+                }
+            }
+            return Data.Read(Path.Combine(final, "seal.json")).Text("manifest_sha256")
+        }
+
+        internal func Pinned(directory string, run Data, record JsonElement) {
+            if !Directory.Exists(Path.Combine(directory, "original-evidence")) {
+                return
+            }
+            Load(directory, run)
+            let pinned = J.Parse(File.ReadAllText(Path.Combine(directory, "original-evidence", "approval.json")))
+            for key in[]string{"approval", "policy", "template"} {
+                let previous = J.Get(pinned, key)
+                let current = J.Get(record, key)
+                let same = key == "policy" ? Policy(J.Write(previous)).Digest == Policy(
+                    J.Write(current)
+                ).Digest: RequestData.Same(previous, current)
+                if !same {
+                    throw CliFailure("stale_approval", "Original approval, policy or template changed")
+                }
+            }
+        }
+
         internal func Amended(directory string, run Data, amendment Data? = nil) Data {
             try {
                 let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))

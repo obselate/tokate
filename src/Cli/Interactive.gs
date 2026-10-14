@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.Linq
 
 internal class Interactive {
     shared {
@@ -63,7 +64,7 @@ internal class Interactive {
                             "incomplete"
                         ) ? "Submit incomplete work for a draft PR": "Submit verified work for a draft PR"
                         case "checks": "Check PR review and CI"
-                        case "recover": "Prepare an explicit correction"
+                        case "amend": "Continue verified amendment publication"
                         default: ""
                     }
 
@@ -113,7 +114,10 @@ internal class Interactive {
                     continue
                 }
 
-                let args = Args(argv)
+                var args = Args(argv)
+                if let action = PublicOutput.Actions.Find(value -> value[1] == command) {
+                    args = Args(action.Skip(1).Where(word -> word != "--json").ToArray())
+                }
 
                 if command == "work" {
                     if WizardScreen.Choose(
@@ -129,20 +133,6 @@ internal class Interactive {
                     }
 
                     args.Values["--yes"] = "true"
-                }
-
-                if command == "recover" {
-                    args.Values["--seconds"] = (
-                        int32.Parse(
-                            WizardScreen.Read(
-                                "Verification time",
-                                "Runs owner checks without inference.",
-                                "Minutes",
-                                "30",
-                                "Choose how many minutes to run the owner's checks. Example: 30."
-                            )
-                        ) * 60
-                    ).ToString()
                 }
 
                 Execute(args)

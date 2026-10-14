@@ -293,7 +293,6 @@ internal class ReceiptVerification {
                     J.Number(amendment, "seconds"),
                     J.Get(amendment, "tools"),
                     J.Get(current, "summary"),
-                    false,
                     metadata
                 )
 

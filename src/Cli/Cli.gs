@@ -31,7 +31,7 @@ internal class CliOption(name string, value string, description string, choices 
         case "time" when command == "claim": "Total budget for coding and verification such as 30m or 2h, at most 24h"
         case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
-        default: Description.Replace("{{time}}", command == "recover" ? "5m": "the lower of 1h and the owner limit")
+        default: Description.Replace("{{time}}", "the lower of 1h and the owner limit")
     }
 }
 
@@ -465,17 +465,6 @@ internal class Cli {
                 group: "more"
             ),
             CliCommand(
-                "recover",
-                "run,time,commit,tools,summary",
-                "run",
-                "Prepare or verify an explicit correction to completed work; no inference.",
-                "RUN\n       tokate recover RUN --commit SHA --time TIME [--tools FILE] [--summary FILE]",
-                "recover 42",
-                effects: "local_read local_write github_read github_write",
-                target: "run",
-                group: "more"
-            ),
-            CliCommand(
                 "recover-request",
                 "",
                 "repo,issue",
@@ -490,7 +479,7 @@ internal class Cli {
                 "amend",
                 "run,commit,time,tools,sync,summary,resume",
                 "run",
-                "Verify and publish a same-donor review correction; no inference.",
+                "Archive completed work, or verify and publish a same-donor correction before or after publication; no inference.",
                 "RUN\n       tokate amend RUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
                 "amend 42 --time 5m",
                 effects: "local_read local_write github_read github_write",
@@ -1334,20 +1323,6 @@ internal class Cli {
 
                 if args.Get("harness") != "pi" && (args.Get("pi-root") != "" || args.Get("node") != "") {
                     throw Exception("Pi runtime options require the pi harness")
-                }
-            }
-
-            if args.Command == "recover" {
-                if args.Get("commit") == "" {
-                    for key in[]string{"seconds", "tools", "summary"} {
-                        if args.Get(key) != "" {
-                            throw Exception(Label(key) + " requires an explicit corrected --commit")
-                        }
-                    }
-
-                    args.Values["--prepare"] = "true"
-                } else if !args.Help {
-                    args.Need("seconds")
                 }
             }
 

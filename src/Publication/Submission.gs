@@ -575,7 +575,7 @@ internal class Submission {
             }
 
             if correction != nil {
-                metadata["correction"] = Correction.Provenance(correction)
+                metadata["correction"] = Amendment.Provenance(correction)
             }
 
             var summary = PublicSummary.ForHead(run, run.Text("commit"))
@@ -639,12 +639,7 @@ internal class Submission {
                         run.Number("verification_reserve"),
                         elapsed
                     )
-                } catch (error Exception) when error is CliFailure ||
-                    error is IOException ||
-                    error is UnauthorizedAccessException ||
-                    error is JsonException ||
-                    error is CommandInterrupted ||
-                    error.GetType() == typeof(Exception) {
+                } catch (error Exception) when ExecutionFailure.Handled(error) {
                     run.Fields["state"] = "failed"
                     run.Fields["error"] = error.Message
                     run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
@@ -666,7 +661,7 @@ internal class Submission {
             }
 
             if File.Exists(Path.Combine(directory, "correction.json")) {
-                CorrectionPublication.SubmitLocked(directory, run)
+                Amendment.PublishSaved(directory, run)
                 return
             }
 

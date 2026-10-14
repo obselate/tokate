@@ -20,8 +20,8 @@ internal class VerificationChecks {
             let run = flow.Claim()
             flow.Mode("verification_fail")
             Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "Owner verification failed")
-            flow.Call([]string{"recover", "--run", run})
-            let commit = CorrectionChecks.Correct(flow, run)
+            flow.Call([]string{"amend", "--run", run})
+            let commit = AmendmentFlow.Correct(flow, run)
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for mode in[]string{
                 "checkout-link",
@@ -55,7 +55,7 @@ internal class VerificationChecks {
                     PublishedContribution.Write(git, mode == "commondir" ? mode: "objects/info/" + mode, flow.Temp.Root)
                     reason = "self-contained Git metadata"
                 }
-                Check.Contains(CorrectionChecks.Recover(flow, run, commit, 1).Error, reason)
+                Check.Contains(AmendmentFlow.Rework(flow, run, commit, 1).Error, reason)
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "verification.json")) == evidence,
                     "Unsafe Git layout reran repository verification"

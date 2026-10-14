@@ -43,7 +43,7 @@ internal class ReserveChecks {
                 "Invalid reserve wrote claim refs"
             )
             flow.NoInference()
-            for command in[]string{"external", "amend", "recover"} {
+            for command in[]string{"external", "amend"} {
                 Check.Contains(
                     flow.Call([]string{command, "--run", flow.Temp.Root, "--verify-time", "1s"}, 1).Error,
                     "Unknown option for " + command + ": --verify-time"
@@ -125,7 +125,7 @@ internal class ReserveChecks {
                 Check.Contains(File.ReadAllText(Path.Combine(run, "stderr.log")), "synthetic-partial-stderr-secret")
                 let pid = File.ReadAllText(Path.Combine(flow.Bin, "child.pid"))
                 TestProcess.Collected(pid, "Timeout descendant survived")
-                flow.Call([]string{"recover", "--run", run}, 1)
+                flow.Call([]string{"amend", "--run", run}, 1)
                 flow.Call([]string{"submit", "--run", run}, 1)
             } else {
                 Check.That(

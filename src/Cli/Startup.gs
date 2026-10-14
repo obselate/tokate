@@ -141,16 +141,14 @@ internal class Startup {
                 command == "external" ||
                 command == "submit" ||
                 command == "amend" ||
-                command == "reconcile" ||
-                command == "recover" {
+                command == "reconcile" {
                 names.Add("git")
             }
 
             let independent = command == "work" ||
                 command == "claim" ||
                 command == "external" ||
-                command == "amend" ||
-                (command == "recover" && options.Get("prepare") != "true")
+                (command == "amend" && (options.Get("commit") != "" || options.Get("seconds") != ""))
             if catalog || independent {
                 names.Add("/usr/bin/setsid")
 

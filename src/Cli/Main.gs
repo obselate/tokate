@@ -440,10 +440,6 @@ func Dispatch(options Args) int32 {
             Submission.Commit(directory)
         }
 
-        case "recover" {
-            Correction.Recover(options)
-        }
-
         case "overlaps" {
             Overlaps.Run(options)
         }
