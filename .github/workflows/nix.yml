@@ -3,6 +3,27 @@ on:
   push:
     branches: [main, 'integration/**']
   pull_request:
+    paths:
+      - .github/workflows/nix.yml
+      - flake.nix
+      - flake.lock
+      - nix/**
+      - scripts/nix-*
+      - scripts/build.sh
+      - global.json
+      - Directory.Build.props
+      - Tokate.gsproj
+      - tests/Tokate.Tests.gsproj
+      - NuGet.Config
+      - packages.lock.json
+      - tests/packages.lock.json
+      - .editorconfig
+      - VERSION
+      - site/install.sh
+      - LICENSE
+      - licenses/**
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
 permissions:
   contents: read

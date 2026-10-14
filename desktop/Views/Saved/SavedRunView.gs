@@ -92,9 +92,11 @@ class SavedRunView {
                 Narrow: page.NarrowContent,
                 Form: form,
                 Note: state.Note,
+                LastMessage: notice.Message,
                 Waiting: state.Waiting,
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
+                OnFollow: action -> saved.Follow(action),
             }.Build(),
             RunFacts{Item: state.Chosen, Compact: page.CompactPanels, Stacked: page.Metrics.ContentWidth < 740}.Build(),
         }

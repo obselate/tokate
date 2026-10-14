@@ -227,8 +227,6 @@ class SavedWorkService {
         }
     }
 
-    // Selected run
-
     func Select(item SavedRun) {
         guard let run = item.Run else {
             return
@@ -291,7 +289,7 @@ class SavedWorkService {
                 }
                 let item = SavedRun.Pending(path) with{
                     Changed = RunStore.Changed(path),
-                    Run = reply.Value,
+                    Run = reply.Value with{Warning = reply.Outcome.Warning, Checkout = RunStore.Checkout(reply.Value)},
                     Actions = reply.Outcome.Envelope?.NextActions ?? []NextAction{},
                 }
                 cache[path] = item
@@ -303,6 +301,36 @@ class SavedWorkService {
                 Select(item)
                 Set(Current with{Loaded = true, Importing = false})
             }
+        )
+    }
+    func Follow(action NextAction) {
+        let arguments = action.Arguments
+        if arguments.Length < 2 || arguments[0] != "tokate" {
+            return
+        }
+        dialogs.Ask(
+            Confirmation{
+                Title: "Follow the next step?",
+                Text: Current.Run.Guidance == "" ? String.Join(" ", arguments): Current.Run.Guidance + "\n\n" + String.Join(" ", arguments),
+                ConfirmLabel: "Run command",
+                Heading: Current.Run.Identity,
+            },
+            () -> commands.Cli(
+                Array.FindAll(ArraySegment[string](arguments, 1, arguments.Length - 1).ToArray(), argument -> argument != "--json"),
+                (outcome CommandOutcome) -> {
+                    if !commands.Failed(outcome) {
+                        if action.Command == "help" || action.Command == "status" {
+                            feedback.ShowReport(outcome.Report)
+                            return
+                        }
+                        if outcome.RunPath != "" {
+                            Set(Current with{RunPath = outcome.RunPath})
+                        }
+                        LoadRun()
+                    }
+                },
+                seconds: 600
+            )
         )
     }
 
@@ -391,8 +419,6 @@ class SavedWorkService {
         }
     }
 
-    // Coordinator request
-
     /// Waits for the coordinator to record `sent`, then repeats its command, which saves the result.
     private func Await(sent CoordinatorRequest) {
         request = sent
@@ -462,8 +488,6 @@ class SavedWorkService {
             requestTimer = window.Every(5000, () -> CheckRequest())
         }
     }
-
-    // Amendment
 
     /// Opens or closes the amendment form. Opening reads the public summary of the run, so the form
     /// starts with the lines that the pull request shows, and with manual editing as the declared tool.

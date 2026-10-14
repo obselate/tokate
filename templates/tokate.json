@@ -1,10 +1,5 @@
 {
-  "version": 2,
-  "models": {
-    "gpt-6.1-sol": [
-      "high"
-    ]
-  },
+  "version": 3,
   "max_seconds": 3600,
   "required_checks": [
     "verify"
@@ -20,7 +15,12 @@
   "allowed_tools": [
     {
       "harness": "codex",
-      "provider": "openai"
+      "provider": "openai",
+      "models": {
+        "gpt-6.1-sol": [
+          "high"
+        ]
+      }
     }
   ]
 }

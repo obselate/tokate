@@ -14,6 +14,7 @@ internal class Installation {
                     "Nix manages this installation. Use nix profile upgrade/remove or update your NixOS configuration."
                 )
             }
+
             return Execute(
                 LocalPaths.NeedSystemTool("sh"),
                 []string{"-s", "--", command, Environment.ProcessPath ?? ""},
@@ -29,14 +30,18 @@ internal class Installation {
             pathVariables[]string = nil
         ) int32 {
             let info = ProcessStartInfo(executable)
+
             info.UseShellExecute = false
             info.RedirectStandardInput = input != nil
             info.RedirectStandardOutput = PublicOutput.Enabled || capture
             info.RedirectStandardError = PublicOutput.Enabled || capture
+
             for arg in args {
                 info.ArgumentList.Add(arg)
             }
+
             info.Environment.Clear()
+
             for key in[]string{
                 "HOME",
                 "PATH",
@@ -52,22 +57,28 @@ internal class Installation {
                     info.Environment[key] = value
                 }
             }
+
             for key in pathVariables ?? []string{} {
                 let path = Environment.GetEnvironmentVariable(key) ?? ""
                 if path != "" {
                     info.Environment[key] = LocalPaths.RuntimePath(path)
                 }
             }
+
             let started = Chan[Process?](1)
             let exited = Chan[Exception?](1)
             let output = Chan[CommandOutput](1)
             let error = Chan[CommandOutput](1)
             let failed = Chan[Exception](4)
+
             go Commands.Wait(info, started, exited)
+
             let launched = <-started
+
             if launched == nil {
                 throw <-exited ?? Exception("Cannot start the installer")
             }
+
             using let process = launched
             let cancel = ConsoleCancelEventHandler(
                 (sender Object?, event ConsoleCancelEventArgs) -> {
@@ -80,30 +91,36 @@ internal class Installation {
                 }
             )
             Console.CancelKeyPress += cancel
+
             var outputStarted bool
             var errorStarted bool
             var exitDone bool
             var terminal Exception? = nil
             var stdout = CommandOutput()
             var stderr = CommandOutput()
+
             try {
                 if info.RedirectStandardOutput {
                     go Commands.Read(process.StandardOutput, output, failed)
                     outputStarted = true
                 }
+
                 if info.RedirectStandardError {
                     go Commands.Read(process.StandardError, error, failed)
                     errorStarted = true
                 }
+
                 if input != nil {
                     process.StandardInput.Write(input)
                     process.StandardInput.Close()
                 }
+
                 select {
                     case let failure = <- exited {
                         terminal = failure
                         exitDone = true
                     }
+
                     case let failure = <- failed {
                         throw failure
                     }
@@ -112,20 +129,25 @@ internal class Installation {
                 terminal = failure
             } finally {
                 Console.CancelKeyPress -= cancel
+
                 try {
                     if !process.HasExited {
                         try {
                             process.Kill(true)
                         } catch (failure InvalidOperationException) { }
                     }
+
                     process.WaitForExit()
                 } catch (failure Exception) {
                     terminal = terminal ?? failure
                 }
+
                 if !exitDone {
                     let failure = <-exited
+
                     terminal = terminal ?? failure
                 }
+
                 try {
                     if info.RedirectStandardInput {
                         process.StandardInput.Close()
@@ -133,24 +155,30 @@ internal class Installation {
                 } catch (failure Exception) {
                     terminal = terminal ?? failure
                 }
+
                 if outputStarted {
                     stdout = <-output
                 }
+
                 if errorStarted {
                     stderr = <-error
                 }
             }
+
             if let failure = terminal {
                 ExceptionDispatchInfo.Capture(failure).Throw()
             }
+
             if outputStarted || errorStarted {
                 if stdout.Failure != nil || stderr.Failure != nil {
                     throw CliFailure("command_failed", "Cannot read installer diagnostics")
                 }
+
                 PublicOutput.Truncated = PublicOutput.Truncated || stdout.Truncated || stderr.Truncated
                 Console.Error.Write(PublicOutput.Prose(stdout.Text))
                 Console.Error.Write(PublicOutput.Prose(stderr.Text))
             }
+
             return process.ExitCode
         }
     }

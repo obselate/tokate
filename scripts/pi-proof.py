@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -153,7 +154,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_POST(self):
-        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        length = int(self.headers['Content-Length'])
+        data = bytearray()
+        while len(data) < length:
+            chunk = self.rfile.read(length - len(data))
+            if not chunk:
+                self.close_connection = True
+                return
+            data.extend(chunk)
+        body = json.loads(data)
         self.server.calls += 1
         assert self.path == '/v1/chat/completions'
         assert body['model'] == 'synthetic/model:exact'
@@ -257,6 +266,13 @@ with Server(('127.0.0.1', 0), Handler) as server:
             server.output_tokens = 0
             server.case = case
             server.errors = []
+            if case == 'truncated-tool':
+                with socket.create_connection(server.server_address) as connection:
+                    connection.sendall(b'POST /v1/chat/completions HTTP/1.0\r\nContent-Length: 2\r\n\r\n{')
+                    connection.shutdown(socket.SHUT_WR)
+                    assert connection.recv(1) == b'', 'Incomplete upload was not closed'
+                assert server.calls == 0, 'Incomplete upload reached inference'
+                assert not server.errors, server.errors
             fixture_root = root / 'fixtures'
             fixture_root.mkdir()
             env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'TOKATE_TEST_ROOT': str(fixture_root),
@@ -340,7 +356,7 @@ with Server(('127.0.0.1', 0), Handler) as server:
             if case == 'truncated-tool':
                 server.errors = [error for error in server.errors if 'Broken pipe' not in error]
             assert not server.errors, server.errors
-            assert server.catalog_calls == (3 if case in ['profile', 'reasoning'] else 2), 'Metadata selection/launch checks were omitted or retried'
+            assert server.catalog_calls == (4 if case == 'reasoning' else 3 if case == 'profile' else 2), 'Metadata selection/launch checks were omitted or retried'
             if case in length_cases:
                 evidence = json.loads((root / 'result.json').read_text())
                 assert evidence['state'] == 'failed', 'Incomplete inference fabricated completion'

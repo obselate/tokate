@@ -301,7 +301,7 @@ internal class CommandTrafficChecks {
                 if !accepted {
                     Check.Contains(
                         result.Error,
-                        fault == "string-actor" ? "requires an element of type 'Number'": "Request UUID has changed actor, contents, repository or issue evidence"
+                        fault == "string-actor" ? "Expected a positive numeric GitHub identity": "Request UUID has changed actor, contents, repository or issue evidence"
                     )
                 }
                 flow.Flow.NoInference()
@@ -321,23 +321,36 @@ internal class CommandTrafficChecks {
             let run = flow.Prepare()
             let commit = flow.Candidate(claim)
             flow.Flow.Call([]string{"external", "--run", run, "--commit", commit})
+            flow.Flow.Reload()
+            flow.Flow.State["poll_interval"] = JsonValue.Create("30")
+            flow.Flow.Save()
             flow.Flow.Mode("lost_request_response")
             flow.Flow.ResetTraffic()
             let first = flow.Flow.Call([]string{"submit", "--run", run}, traffic: true)
-            Budgets(flow.Flow, first, 40, 1, 1, 26)
+            Budgets(flow.Flow, first, 46, 1, 1, 30)
+            Check.Contains(first.Output, "Submit pending. Run the same command again: tokate submit --run " + run)
             flow.Flow.Mode("")
             flow.Flow.ResetTraffic()
+            let json = Check.Envelope(
+                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, traffic: true),
+                "submit",
+                "ok"
+            )
+            Check.That(Check.Text(json["data"]?["pr"]) == "", "JSON submit waited for publication")
+            flow.Flow.Traffic(34, 0, 19, 0)
+            flow.Flow.ResetTraffic()
             let duplicate = flow.Flow.Call([]string{"submit", "--run", run}, traffic: true)
-            Budgets(flow.Flow, duplicate, 30, 0, 0, 17)
+            Budgets(flow.Flow, duplicate, 36, 0, 0, 21)
+            Check.Contains(duplicate.Output, "Submit pending. Run the same command again: tokate submit --run " + run)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             flow.Coordinate(flow.Event(request))
             flow.Flow.ResetTraffic()
-            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 30, 0, 0, 15)
+            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 31, 0, 0, 15)
             flow.Expire()
             flow.Flow.Call([]string{"verify", "owner/project#10"}, 1)
             flow.Flow.ResetTraffic()
-            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, 1, traffic: true), 3, 0, 0)
+            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, 1, traffic: true), 4, 0, 0)
             flow.Flow.Reload()
             Check.That(
                 flow.Flow.State["pulls"]?.AsArray().Count == 1 && Check.Text(flow.Flow.State["request_count"]) == "1",
@@ -540,10 +553,10 @@ internal class CommandTrafficChecks {
             let run = Published(flow)
             flow.ResetTraffic()
             let pending = flow.Call([]string{"checks", "--run", run}, 8, traffic: true)
-            Budgets(flow, pending, 44, 0, 0, 27)
+            Budgets(flow, pending, 45, 0, 0, 27)
             flow.ResetTraffic()
             let direct = flow.Call([]string{"checks", "owner/project#10"}, 8, traffic: true)
-            Budgets(flow, direct, 44, 0, 0, 27)
+            Budgets(flow, direct, 45, 0, 0, 27)
             let path = Path.Combine(run, "checks.json")
             flow.Reload()
             flow.State["check_state_path"] = JsonValue.Create(path)
@@ -552,7 +565,7 @@ internal class CommandTrafficChecks {
             flow.Save()
             flow.ResetTraffic()
             let result = Watch(flow, run, "10", 0)
-            Budgets(flow, result, 133, 0, 0, 114)
+            Budgets(flow, result, 135, 0, 0, 115)
             Check.That(result.Output.Split("Checks pending").Length == 2, "Unchanged polls repeated output")
             flow.Reload()
             let observations = flow.State["check_state_times"]
@@ -566,7 +579,7 @@ internal class CommandTrafficChecks {
             flow.State["check_polls"] = JsonValue.Create(0)
             flow.Save()
             flow.ResetTraffic()
-            Budgets(flow, Watch(flow, run, "10", 0, true), 133, 0, 0, 114)
+            Budgets(flow, Watch(flow, run, "10", 0, true), 135, 0, 0, 115)
         }
 
         private func WatchChanges(binary string) {

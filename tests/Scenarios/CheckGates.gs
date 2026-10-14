@@ -13,7 +13,8 @@ internal class CheckGates {
             saved bool = false,
             human bool = false,
             timeout bool = false,
-            seconds string = "1"
+            seconds string = "1",
+            verbose bool = false
         ) Result {
             let flow = test.Coordination.Flow
             flow.Reload()
@@ -24,6 +25,9 @@ internal class CheckGates {
             List[string]{"checks", "owner/project#10"}
             if !human {
                 args.Add("--json")
+            }
+            if verbose {
+                args.Add("--verbose")
             }
             if timeout {
                 args.AddRange([]string{"--watch", "--timeout", seconds + "s"})
@@ -118,9 +122,25 @@ internal class CheckGates {
             File.WriteAllText(localRunPath, localRun.ToJsonString())
             let saved = Data(Read(test, saved: true))
             Check.That(saved.ToJsonString() == result.ToJsonString(), "Saved and direct results differ")
-            let human = Read(test, saved: true, human: true)
+            let human = Read(test, saved: true, human: true, timeout: true)
             Check.Contains(human.Output, "Checks passed")
-            Check.Contains(human.Output, "required_owner_actions")
+            Check.That(
+                human.Output.Trim() == "Machine gates passed\nChecks passed: " + Check.Text(result["pr_url"]) +
+                    "\nOwner review: read the diff, then merge.",
+                "Default checks printed detailed evidence or lost owner review"
+            )
+            let verbose = Read(test, saved: true, human: true, verbose: true)
+            for text in[]string{"required_owner_actions", "receipt_hash", "policy_hash", "approval", "gates"} {
+                Check.Contains(verbose.Output, text)
+            }
+            Check.That(
+                !verbose.Output.Contains("owner_inspection_required"),
+                "Contradictory owner inspection field printed"
+            )
+            Check.That(
+                Data(Read(test, verbose: true)).ToJsonString() == result.ToJsonString(),
+                "Verbose changed JSON check evidence"
+            )
             let local = Check.Json(File.ReadAllText(Path.Combine(test.Run, "checks.json")))
             Check.That(local["result"]?.ToJsonString() == result.ToJsonString(), "Human and JSON gates differ")
             flow.Reload()
@@ -180,6 +200,20 @@ internal class CheckGates {
                     Check.Text(result["machine_status"]) != "passed",
                     "Incomplete required check passed: " + state
                 )
+                if state == "missing" {
+                    let hint = "GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI."
+                    Check.That(Check.Text(result["ci_hint"]) == hint, "Missing CI start hint")
+                    Check.Contains(Read(test, 8, human: true, verbose: true).Output, hint)
+                    let head = Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"])
+                    var queried bool
+                    for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                        queried = queried || Check.Text(call["path"]) ==
+                        "repos/owner/project/actions/runs?head_sha=" + head + "&per_page=1"
+                    }
+                    Check.That(queried, "CI start query did not select the exact head")
+                } else {
+                    Check.That(result["ci_hint"] == nil, "CI start hint shown without a missing required check")
+                }
                 if state == "conflicting" || state == "reverse-conflict" {
                     Check.That(
                         Check.Text(result["required_checks"]?[0]?["status"]) == "conflicting",
@@ -263,13 +297,17 @@ internal class CheckGates {
             let actions = approval["required_owner_actions"]?.ToJsonString() ?? ""
             Check.Contains(actions, "Inspect the PR diff, then approve")
             Check.Contains(actions, "in GitHub")
-            Check.Contains(Read(test, 8, human: true).Output, "Workflow runs await owner approval")
+            Check.That(approval["ci_hint"] == nil, "CI start hint shown while workflow approval is pending")
+            Check.Contains(Read(test, 8, human: true, verbose: true).Output, "Workflow runs await owner approval")
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 let path = Check.Text(call["path"])
                 if path.Contains("/actions/runs?") {
                     Check.Contains(path, "head_sha=" + head + "&status=action_required")
                 }
             }
+            flow.State["workflow_runs"] = JsonArray(completed.DeepClone())
+            flow.Save()
+            Check.That(Data(Read(test, 8))["ci_hint"] == nil, "CI start hint shown with an exact-head workflow run")
             test.Restore()
             Passing(test)
             flow.State["statuses"] = Check.Json("[{\"context\":\"verify\",\"state\":\"pending\"}]")
@@ -291,7 +329,9 @@ internal class CheckGates {
             test.Restore()
             flow.State["check_runs"] = Check.Map("total_count", 1, "check_runs", JsonArray())
             flow.Save()
-            Gate(Data(Read(test, 1)), "checks", "unavailable")
+            let incomplete = Read(test, 1)
+            Check.Envelope(incomplete, "checks", "error", "command_failed")
+            Gate(Data(incomplete), "checks", "unavailable")
             test.Restore()
             flow.State["check_runs"] = Check.Map(
                 "total_count",
@@ -552,14 +592,21 @@ internal class CheckGates {
                 Passing(test)
                 let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
                 pull["state"] = JsonValue.Create("closed")
-                if kind == "merged" {
-                    pull["merged"] = JsonValue.Create(true)
-                }
+                pull["merged"] = JsonValue.Create(kind == "merged")
                 flow.Save()
-                let result = Data(Read(test, 1))
-                Gate(result, "lifecycle", "failed")
+                let result = Data(Read(test))
+                Gate(result, "lifecycle", "historical")
                 Gate(result, "receipt", "unread")
                 Check.That(Check.Text(result["owner_review"]) == "historical", "Historical lifecycle hidden")
+                Check.That(
+                    Check.Text(result["pr_observation"]?["state"]) == "closed" && Check.Text(
+                        result["pr_observation"]?["merged"]
+                    ) == (kind == "merged" ? "true": "false"),
+                    "Historical PR observation missing"
+                )
+                let human = Read(test, human: true)
+                let message = "PR #10 was " + (kind == "merged" ? "merged.": "closed without merge.")
+                Check.That(human.Output.Trim() == message, "Historical checks printed a gate summary")
             }
         }
 

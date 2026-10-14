@@ -44,7 +44,8 @@ data struct SetupReview {
                 IconHeading{
                     Icon: "folder_open",
                     Content: "Project setup",
-                    Detail: "Tokate writes the policy and the workflow into your local checkout. Review the files and commit them.",
+                    Detail: "Tokate writes version 3 policy with per-tool model permissions. Existing workflows are preserved. " +
+                        "Update an old coordinator pin before committing. Review the Actions report and any issues that need fresh approval.",
                 }.Build(),
                 InputField{
                     Label: "Local checkout",

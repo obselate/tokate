@@ -168,7 +168,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
     /// The catalogs of the allowed harnesses that have models, then the typed model ID.
     private func Sources(state OwnerState) []ComboBoxOption {
         let result = List[ComboBoxOption]()
-        let pairs = state.Setup.EffectiveTools(state.Policy)
+        let pairs = []string{state.Setup.ModelTool}
         for id in []string{"codex", "claude"} {
             if Array.IndexOf(pairs, id + "/" + HarnessOption.ProviderOf(id)) >= 0 && Catalog(state, id).Length > 0 {
                 result.Add(Option(id, HarnessOption.NameOf(id)))

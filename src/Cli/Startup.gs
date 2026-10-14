@@ -18,6 +18,7 @@ internal class Startup {
     shared {
         internal func Scan(names[]string, harnessPath string = "") List[ToolCheck] {
             let tools = List[ToolCheck]()
+
             for name in names {
                 let tool = ToolCheck{
                     Name: name,
@@ -40,8 +41,10 @@ internal class Startup {
                         default: ""
                     }
                 }
+
                 tool.Path = name == "codex" ? LocalPaths.Harness(name, harnessPath): name.StartsWith("/") ?
                 LocalPaths.SystemTool(Path.GetFileName(name)): LocalPaths.Find(name)
+
                 if tool.Path != "" {
                     tool.Status = "found"
                     tool.Detail = name.StartsWith("/") ?
@@ -50,6 +53,7 @@ internal class Startup {
                 } else {
                     tool.Detail = tool.Hint
                 }
+
                 if tool.Path != "" && name.StartsWith("/") && !LocalPaths.Executable(tool.Path) {
                     tool.Status = "failed"
                     tool.Detail = "Required helper is not executable. " + tool.Hint
@@ -59,8 +63,10 @@ internal class Startup {
                     tool.Status = "failed"
                     tool.Detail = "This operation requires the full tool, not its BusyBox applet. " + tool.Hint
                 }
+
                 tools.Add(tool)
             }
+
             return tools
         }
 
@@ -83,21 +89,26 @@ internal class Startup {
 
         internal func Requirements(options Args)[]string {
             let command = options.Command
+
             if command == "doctor" {
                 let doctorScope = DoctorScope(options)
                 let selected = Args(
                     []string{doctorScope == "owner" ? "init": doctorScope == "external" ? "external": "work"}
                 )
+
                 for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
                     if options.Get(key) != "" {
                         selected.Values["--" + key] = options.Get(key)
                     }
                 }
+
                 return Requirements(selected)
             }
+
             if (command == "status" && options.Get("run") != "") || command == "defaults" {
                 return []string{}
             }
+
             let names = List[string]{"setsid", "/usr/bin/env", "/usr/bin/setpriv", "/usr/bin/unshare", "gh"}
             let catalog = NeedsCatalog(command, options)
             var pi = options.Get("harness") == "pi"
@@ -105,19 +116,24 @@ internal class Startup {
             var omp = options.Get("harness") == "omp"
             if options.Get("run") != "" && command == "work" {
                 let harness = Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness")
+
                 pi = harness == "pi"
                 claude = harness == "claude"
                 omp = harness == "omp"
             }
+
             if catalog && !pi && !claude && !omp {
                 names.Add("codex")
             }
+
             if options.Get("run") != "" {
                 let run = Data.Load(Path.GetFullPath(options.Need("run")))
+
                 if command == "work" && (run.Number("version") != 2 || run.Text("source") != "tokate") {
                     throw CliFailure("invalid_state", "External work uses external --run; inference is never launched")
                 }
             }
+
             if command == "init" ||
                 command == "work" ||
                 command == "claim" ||
@@ -129,6 +145,7 @@ internal class Startup {
                 command == "recover" {
                 names.Add("git")
             }
+
             let independent = command == "work" ||
                 command == "claim" ||
                 command == "external" ||
@@ -136,58 +153,72 @@ internal class Startup {
                 (command == "recover" && options.Get("prepare") != "true")
             if catalog || independent {
                 names.Add("/usr/bin/setsid")
+
                 if pi || claude {
                     names.Add("/bin/bash")
                 }
+
                 if claude {
                     names.Add("bwrap")
                     names.Add("socat")
                 }
             }
+
             if independent {
                 names.Add("/usr/bin/cp")
+
                 if LocalPaths.Musl() {
                     names.Add("/usr/bin/find")
                 }
             }
+
             if command == "coordinator-setup" || command == "init" {
                 names.Add("curl")
                 names.Add("tar")
             }
+
             return names.ToArray()
         }
 
         internal func ExecuteChecks(tools List[ToolCheck]) {
             var runner bool
             var cleanup = true
+
             for tool in tools {
                 runner = runner || (tool.Name == "setsid" && tool.Path != "")
+
                 if tool.Name == "/usr/bin/env" || tool.Name == "/usr/bin/setpriv" || tool.Name == "/usr/bin/unshare" {
                     cleanup = cleanup && tool.Path != "" && tool.Status != "failed"
                 }
             }
+
             runner = runner && cleanup
+
             for tool in tools {
                 if tool.Path == "" || tool.Status == "failed" {
                     continue
                 }
+
                 if !runner {
                     tool.Status = "skipped"
                     tool.Detail = "Execution requires working command cleanup helpers. " + tool.Hint
                     continue
                 }
+
                 try {
                     let executable = tool.Name == "codex" && Path.GetFileName(
                         LocalPaths.CanonicalPath(tool.Path)
                     ) == "codex.js" ?
                     CodexRuntime.Resolve(tool.Path): tool.Path
                     tool.Path = executable
+
                     let result = Commands.Run(
                         executable,
                         []string{tool.Name == "socat" ? "-V": "--version"},
-                        seconds: 10,
+                        seconds: 30,
                         harness: tool.Name == "codex"
                     )
+
                     if result.Code != 0 || result.Truncated || result.ReadFailed {
                         tool.Status = "failed"
                         tool.Detail = (
@@ -204,6 +235,7 @@ internal class Startup {
                     tool.Status = "failed"
                     tool.Detail = error.Summary
                     tool.Code = error.Code
+
                     if error.Code.StartsWith("namespace_", StringComparison.Ordinal) {
                         tool.Hint = "Ask an administrator to review the host or container namespace policy."
                     }
@@ -211,6 +243,7 @@ internal class Startup {
                     tool.Status = "failed"
                     tool.Detail = "Tool could not start or complete --version. Repair or reinstall it. " + tool.Hint
                 }
+
                 if tool.Name == "setsid" && tool.Status != "ready" {
                     runner = false
                 }
@@ -223,6 +256,7 @@ internal class Startup {
                     return tool.Status == "ready"
                 }
             }
+
             return false
         }
 
@@ -245,23 +279,29 @@ internal class Startup {
         internal func Check(options Args) {
             let tools = Inspect(options)
             let blockers = List[ToolCheck]()
+
             for tool in tools {
                 if tool.Status != "ready" {
                     blockers.Add(tool)
                 }
             }
+
             if blockers.Count > 0 {
                 if MachineSetup.TryFix(options, blockers) {
                     Check(options)
+
                     return
                 }
+
                 PublicOutput.Tools(blockers)
                 Show(blockers, true)
+
                 for tool in blockers {
                     if tool.Code.StartsWith("namespace_", StringComparison.Ordinal) {
                         throw CliFailure(tool.Code, tool.Detail)
                     }
                 }
+
                 throw CliFailure(
                     "missing_tools",
                     "Install or repair the tools needed for this command, then run the relevant tokate doctor scope."
@@ -277,14 +317,17 @@ internal class Startup {
                 Hint: codex ? "Run codex login with your ChatGPT subscription.": "Run gh auth login --hostname github.com with the account for this role.",
                 Detail: "Authentication status requires a working " + name + " and setsid."
             }
+
             if Ready(tools, name) && Ready(tools, "setsid") {
                 try {
                     var executable = name
+
                     for tool in tools {
                         if tool.Name == name {
                             executable = tool.Path
                         }
                     }
+
                     let result = Commands.Run(
                         executable,
                         codex ? []string{"login", "status"}: []string{
@@ -299,7 +342,9 @@ internal class Startup {
                         harness: codex,
                         github: !codex
                     )
+
                     var actor int64
+
                     if result.Truncated || result.ReadFailed {
                         check.Status = "failed"
                         check.Detail = "Authentication status did not complete reliably. " + check.Hint
@@ -331,117 +376,143 @@ internal class Startup {
                     check.Detail = "Authentication status could not start or complete. " + check.Hint
                 }
             }
+
             tools.Add(check)
         }
 
         private func DoctorHarnesses(options Args) {
             let installed = List[ToolCheck]()
+
             for name in DonorDefaults.Harnesses {
                 let path = LocalPaths.Harness(name, options.Get("harness") == name ? options.Get("harness-path"): "")
+
                 if path != "" && LocalPaths.Executable(path) {
                     installed.Add(ToolCheck{Name: name, Path: path})
                     Terminal.Row(name, "Detected at " + path)
                 }
             }
+
             var saved JsonElement
+
             try {
                 saved = DonorDefaults.Read()
             } catch (error Exception) {
                 Terminal.Message(error.Message, error: true)
             }
+
             var selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
             if selected == "" && DonorSelection.Interactive(options) &&
                 installed.Count > 0 &&
                 (
                 options.Get("set-default") == "true" || (options.Get("fix") == "true" && J.Text(saved, "harness") == "")
             ) {
-                Terminal.Message("Choose your default harness (blank keeps the current choice):", error: true)
-                for i in 0 ... installed.Count {
-                    let name = installed[i].Name
-                    Terminal.Message(
-                        (i + 1).ToString() +
-                            ") " +
-                            name +
-                            (DonorDefaults.Provider(name) == "" ? " (external work)": ""),
-                        error: true
-                    )
+                let labels = List[string]()
+
+                for tool in installed {
+                    labels.Add(tool.Name + (DonorDefaults.Provider(tool.Name) == "" ? " (external work)": ""))
                 }
-                Console.Error.Write("Choice: ")
-                let choice = Console.ReadLine() ?? ""
-                var index int32
-                if choice != "" {
-                    if !Int32.TryParse(choice, out index) || index < 1 || index > installed.Count {
-                        throw Exception("Choose one of the discovered harnesses")
-                    }
+
+                labels.Add("Keep the current choice")
+
+                let index = WizardScreen.Choose(
+                    "Choose your default harness",
+                    "Choose a discovered harness or keep the current choice.",
+                    labels.ToArray(),
+                    "Choose the coding tool to use by default, or keep the current choice.",
+                    selected: labels.Count
+                )
+
+                if index <= installed.Count {
                     selected = installed[index - 1].Name
                 }
             }
+
             if selected != "" {
                 var choice ToolCheck? = nil
+
                 for tool in installed {
                     if tool.Name == selected {
                         choice = tool
                     }
                 }
+
                 if choice == nil {
                     throw CliFailure(
                         "missing_tools",
                         "The selected default harness was not found. Install it first, or supply --harness-path."
                     )
                 }
+
                 DonorDefaults.Run(
                     Args([]string{"defaults", "set", "--harness", selected, "--harness-path", choice.Path})
                 )
                 saved = DonorDefaults.Read()
                 Terminal.Row("Default harness", selected)
             }
+
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 let rows = List[Object]()
+
                 for tool in installed {
                     rows.Add(map[string, Object?]{"name": tool.Name, "path": tool.Path})
                 }
+
                 fields["harnesses"] = rows.ToArray()
                 fields["default_harness"] = J.Text(saved, "harness")
             }
         }
 
         internal func Doctor(options Args) int32 {
+            if options.Get("owner") == "true" && options.Get("repo") != "" {
+                return OwnerHealth.Run(options)
+            }
+
             if options.Get("managed") == "true" && options.Get("harness") == "" {
                 let saved = DonorDefaults.Read()
+
                 if J.Text(saved, "harness") != "" {
                     if !DonorSelection.Managed(saved) {
                         throw Exception(
                             "The default harness uses external work. Use doctor codex, doctor claude, doctor pi or doctor omp for managed diagnostics."
                         )
                     }
+
                     for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
                         if options.Get(key) == "" && J.Text(saved, key) != "" {
                             options.Values["--" + key] = J.Text(saved, key)
                         }
                     }
+
                     options.HarnessFromDefault = true
                 }
             }
+
             let doctorScope = DoctorScope(options)
             let pi = doctorScope == "managed" && options.Get("harness") == "pi"
             let claude = doctorScope == "managed" && options.Get("harness") == "claude"
             let omp = doctorScope == "managed" && options.Get("harness") == "omp"
             let tools = Inspect(options)
+
             if options.Get("fix") == "true" && MachineSetup.TryFix(options, tools) {
                 return Doctor(options)
             }
+
             if doctorScope != "owner" {
                 var probe = Ready(tools, "setsid") && Ready(tools, "/usr/bin/setsid")
+
                 if pi && probe {
                     let runtime = ToolCheck{
                         Name: "pi",
                         Hint: "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation."
                     }
+
                     let missingPi = options.Get("pi-root") == "" && options.Get("harness-path") == "" &&
                         LocalPaths.Harness("pi") == ""
                     try {
                         PiHarness.Runtime(options)
+
                         let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
+
                         runtime.Path = options.Need("pi-root")
                         runtime.Status = "ready"
                         runtime.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
@@ -450,25 +521,32 @@ internal class Startup {
                         if error is CliFailure failure {
                             runtime.Code = failure.Code
                         }
+
                         runtime.Detail = error.Message +
                             (SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
                         if options.Get("fix") == "true" {
                             Terminal.Message(error.Message, "yellow", true)
                         }
+
                         if options.Get("fix") == "true" && missingPi && MachineSetup.Harness(options) {
                             return Doctor(options)
                         }
+
                         probe = false
                     }
+
                     tools.Add(runtime)
                 }
+
                 if claude && probe {
                     let runtime = ToolCheck{
                         Name: "claude",
                         Hint: "Use an installed Claude Code with its existing login."
                     }
+
                     try {
                         let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
+
                         runtime.Path = options.Need("harness-path")
                         runtime.Status = "ready"
                         runtime.Detail = J.Text(result, "version") +
@@ -482,19 +560,24 @@ internal class Startup {
                         runtime.Detail = error.Message
                         probe = false
                     }
+
                     tools.Add(runtime)
                 }
+
                 if omp && probe {
                     let runtime = ToolCheck{
                         Name: "omp",
                         Hint: "Install OMP with its official installer and sign in, or use --harness-path FILE."
                     }
+
                     try {
                         let result = OmpRuntime.Runtime(options)
                         let models = OmpRuntime.Models(options.Need("harness-path"))
+
                         if models.Count == 0 {
                             throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
                         }
+
                         runtime.Path = options.Need("harness-path")
                         runtime.Status = "ready"
                         runtime.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
@@ -504,11 +587,14 @@ internal class Startup {
                         if error is CliFailure failure {
                             runtime.Code = failure.Code
                         }
+
                         runtime.Detail = error.Message
                         probe = false
                     }
+
                     tools.Add(runtime)
                 }
+
                 if doctorScope == "managed" && !pi && !claude && !omp {
                     let sandbox = ToolCheck{
                         Name: "sandbox",
@@ -516,9 +602,11 @@ internal class Startup {
                         Hint: "Ensure native Codex sandbox support and permission profiles. Tokate does not change security settings.",
                         Detail: "Requires working setsid, /usr/bin/setsid, /usr/bin/env and codex."
                     }
+
                     if probe && Ready(tools, "codex") && Ready(tools, "/usr/bin/env") {
                         try {
                             let pinned = Worker.Doctor(options.Get("harness-path"))
+
                             sandbox.Status = "ready"
                             sandbox.Detail = "Checkout and private /tmp writable. Control files and Git metadata unreadable."
                             if pinned {
@@ -548,31 +636,40 @@ internal class Startup {
                                 " Ensure temporary storage is writable and repository global.json is a regular file, not a symbolic link."
                         }
                     }
+
                     tools.Add(sandbox)
                 }
             }
+
             if options.Get("auth") == "true" {
                 Authentication(tools, "gh")
+
                 if doctorScope == "managed" && !pi && !claude && !omp {
                     Authentication(tools, "codex")
                 }
             }
+
             PublicOutput.Tools(tools)
+
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
                 fields["authentication_requested"] = options.Get("auth") == "true"
             }
+
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")
             Show(tools)
+
             if (doctorScope == "external" && options.Get("external") != "true") || options.Get(
                 "set-default"
             ) == "true" {
                 DoctorHarnesses(options)
             }
+
             Terminal.Message(
                 "Checked capabilities are listed above. No inference was run. PATH, startup, login and catalog data do not prove model availability or subscription allowance. Repository dependencies and builds were not checked.",
                 "grey"
             )
+
             var code = ""
             for tool in tools {
                 if tool.Status != "ready" {
@@ -580,20 +677,25 @@ internal class Startup {
                     tool.Status == "authentication_required" ? "authentication_required": (
                         tool.Name == "sandbox" ? "verification_failed": "missing_tools"
                     )
+
                     if code == "" || failure.StartsWith("namespace_", StringComparison.Ordinal) ||
                         (failure == "missing_tools" && !code.StartsWith("namespace_", StringComparison.Ordinal)) {
                         code = failure
                     }
                 }
             }
+
             if code != "" {
                 if code == "missing_tools" && options.Get("fix") != "true" {
                     let action = List[string]{"tokate", "doctor", "--" + doctorScope, "--fix"}
+
                     if options.Get("harness") != "" {
                         action.AddRange([]string{"--harness", options.Get("harness")})
                     }
+
                     PublicOutput.Actions.Add(action.ToArray())
                 }
+
                 throw CliFailure(
                     code,
                     code == "verification_failed" ? "Required sandbox diagnostics failed. Follow the sandbox repair instructions above.": PublicOutput.Message(
@@ -601,6 +703,7 @@ internal class Startup {
                     )
                 )
             }
+
             return 0
         }
     }

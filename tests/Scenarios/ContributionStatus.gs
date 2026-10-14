@@ -6,7 +6,13 @@ import System.Text.Json.Nodes
 
 internal class ContributionStatusChecks {
     shared {
-        private func Read(test CoordinationFixture, code int32 = 0, owner bool = false, index bool = false) JsonNode {
+        private func Read(
+            test CoordinationFixture,
+            code int32 = 0,
+            owner bool = false,
+            index bool = false,
+            failure string = "command_failed"
+        ) JsonNode {
             let args = index ? []string{"status", "owner/project", "--json"}: []string{
                 "status",
                 "owner/project#1",
@@ -17,7 +23,7 @@ internal class ContributionStatusChecks {
                 test.Flow.Call(args, code, owner),
                 "status",
                 code == 0 ? "ok": "error",
-                code == 0 ? "": "command_failed"
+                code == 0 ? "": failure
             )
             test.Flow.Reload()
             for call in test.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -73,6 +79,11 @@ internal class ContributionStatusChecks {
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
+            Check.Contains(
+                Check.Text(Row(eligible)["next"]?["action"]),
+                "owner must update the coordinator, then re-process the request"
+            )
+            Check.Contains(Check.Text(Row(eligible)["next"]?["action"]), "donor runs the same saved command again")
             Check.That(Row(eligible)["next"]?["command"]?.AsArray().Count == 0, "Status invented a request file")
             let owner = Row(Read(test, owner: true))
             Check.That(
@@ -623,7 +634,11 @@ internal class ContributionStatusChecks {
                     test.RewriteState(value)
                 }
                 let row = Row(
-                    Read(test, mismatch == "repository" || mismatch == "repository_id" || mismatch == "pr" ? 1: 0)
+                    Read(
+                        test,
+                        mismatch == "repository" || mismatch == "repository_id" || mismatch == "pr" ? 1: 0,
+                        failure: "invalid_state"
+                    )
                 )
                 Check.That(
                     Check.Text(row["state"]) == "binding_mismatch" || Check.Text(row["state"]) == "unavailable",
@@ -658,7 +673,14 @@ internal class ContributionStatusChecks {
                     value["contribution"] = nil
                     test.RewriteState(value)
                 }
-                let row = Row(Read(test, missing == "merged" ? 0: 1))
+                let row = Row(
+                    Read(
+                        test,
+                        missing == "merged" ? 0: 1,
+                        failure: missing == "contribution" || missing == "receipt" || missing == "ambiguous_receipt" ?
+                        "invalid_state": "command_failed"
+                    )
+                )
                 Check.That(
                     Check.Text(row["state"]) == "unknown" || Check.Text(row["state"]) == "unavailable",
                     "Missing history became a known lifecycle: " + missing

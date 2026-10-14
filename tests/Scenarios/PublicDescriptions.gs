@@ -177,7 +177,9 @@ internal class PublicDescriptions {
             let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + body + "\nMaintainer after")
             flow.Flow.Save()
-            let checkout = Path.Combine(run, "checkout")
+            let checkout = Path.Combine(run, "coding")
+            flow.Flow.Git("-C", checkout, "fetch", Path.Combine(run, "checkout"), "HEAD")
+            flow.Flow.Git("-C", checkout, "checkout", "--detach", "FETCH_HEAD")
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final external review text\n")
             flow.Flow.Git("-C", checkout, "add", "-A")
             flow.Flow.DonorGit(checkout, "commit", "-m", "Review external result")
@@ -217,48 +219,67 @@ internal class PublicDescriptions {
         }
 
         private func Recovery(binary string) {
-            using let flow = NativeFixture(binary)
-            flow.Initialize()
-            flow.Approve()
-            let run = flow.Claim()
-            flow.Mode("verification_fail")
-            flow.Call([]string{"work", "--run", run}, 1)
-            flow.Mode("")
-            flow.Call([]string{"recover", "--run", run})
-            let checkout = Path.Combine(run, "checkout")
-            File.Delete(Path.Combine(checkout, "other.txt"))
-            File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
-            flow.Git("-C", checkout, "add", "-A")
-            flow.DonorGit(checkout, "commit", "-m", "Correct result")
-            let head = flow.Git("-C", checkout, "rev-parse", "HEAD")
-            let path = Path.Combine(flow.Temp.Root, "summary.json")
-            File.WriteAllText(path, Summary("Add final corrected result text.", head).ToJsonString())
-            let tools = "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
-            let toolsPath = Path.Combine(flow.Temp.Root, "correction-tools.json")
-            File.WriteAllText(toolsPath, tools)
-            flow.Call(
-                []string{
-                    "recover",
-                    "--run",
-                    run,
-                    "--commit",
-                    head,
-                    "--time",
-                    "30s",
-                    "--summary",
-                    path,
-                    "--tools",
-                    toolsPath
+            for mode in[]string{"verification_fail", ""} {
+                using let flow = NativeFixture(binary)
+                flow.Initialize()
+                flow.Approve()
+                let run = flow.Claim()
+                flow.Mode(mode)
+                flow.Call([]string{"work", "--run", run}, mode == "" ? 0: 1)
+                flow.Mode("")
+                if mode == "" {
+                    let original = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                    Check.That(
+                        Check.Text(original["public_summary"]?["head"]) == Check.Text(original["commit"]),
+                        "Original managed summary was not bound to its commit"
+                    )
+                    Check.That(
+                        Check.Text(original["summary_patch_sha256"]) != "",
+                        "Original summary has no patch binding"
+                    )
                 }
-            )
-            flow.Publish(run)
-            let body = Body(flow)
-            Check.Contains(body, "- Add final corrected result text.")
-            Check.Contains(body, "Donor-reported: original owner checks passed locally")
-            Check.Contains(body, "Donor-reported correction tools")
-            Check.Contains(body, "cover only the original completed turn")
-            Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                flow.Call([]string{"recover", "--run", run})
+                let checkout = Path.Combine(run, "checkout")
+                File.Delete(Path.Combine(checkout, "other.txt"))
+                File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
+                flow.Git("-C", checkout, "add", "-A")
+                flow.DonorGit(checkout, "commit", "-m", "Correct result")
+                let head = flow.Git("-C", checkout, "rev-parse", "HEAD")
+                let path = Path.Combine(flow.Temp.Root, "summary.json")
+                File.WriteAllText(path, Summary("Add final corrected result text.", head).ToJsonString())
+                let tools = "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
+                let toolsPath = Path.Combine(flow.Temp.Root, "correction-tools.json")
+                File.WriteAllText(toolsPath, tools)
+                flow.Call(
+                    []string{
+                        "recover",
+                        "--run",
+                        run,
+                        "--commit",
+                        head,
+                        "--time",
+                        "30s",
+                        "--summary",
+                        path,
+                        "--tools",
+                        toolsPath
+                    }
+                )
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(
+                    JsonNode.DeepEquals(saved["public_summary"], Summary("Add final corrected result text.", head)),
+                    "Recovery did not activate the correction summary"
+                )
+                Check.That(saved["summary_patch_sha256"] == nil, "Recovery retained the original summary patch binding")
+                flow.Publish(run)
+                let body = Body(flow)
+                Check.Contains(body, "- Add final corrected result text.")
+                Check.Contains(body, "Donor-reported: original owner checks passed locally")
+                Check.Contains(body, "Donor-reported correction tools")
+                Check.Contains(body, "cover only the original completed turn")
+                Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
+                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            }
         }
 
         private func MissingAndUnsafe(binary string) {
@@ -294,12 +315,20 @@ internal class PublicDescriptions {
                     let prompt = Check.Text(flow.State["prompts"]?[0])
                     Check.Contains(prompt, "Allowed characters are A-Z, a-z, 0-9, space")
                     Check.Contains(prompt, ". , ; : ! ? ( ) ' + _ - =.")
-                    File.WriteAllText(
-                        Path.Combine(run, "checkout", "tokate-public-summary.json"),
-                        Summary("Add final result content with shout=True.").ToJsonString()
-                    )
+                    let summaryPath = Path.Combine(run, "checkout", "tokate-public-summary.json")
+                    let unsafe = Summary("Add final result content.")
+                    unsafe["verification"]?.AsArray().Add(JsonValue.Create("sk-abc123 leaked") as JsonNode)
+                    File.WriteAllText(summaryPath, unsafe.ToJsonString())
+                    let rejected = flow.Call([]string{"submit", "--run", run}, 1)
+                    Check.Contains(rejected.Error, "verification[1]")
+                    Check.Contains(rejected.Error, "matched disallowed public text pattern \"sk-\"")
+                    flow.NoPr()
+                    let corrected = Summary("Add final result content with shout=True.")
+                    corrected["verification"]?.AsArray().Add(JsonValue.Create("Task-field checks passed.") as JsonNode)
+                    File.WriteAllText(summaryPath, corrected.ToJsonString())
                     flow.Publish(run)
                     Check.Contains(Body(flow), "- Add final result content with shout=True.")
+                    Check.Contains(Body(flow), "Donor-reported: Task-field checks passed.")
                     Check.That(Check.Text(flow.State["exec_count"]) == executions, "Summary recovery started inference")
                     Check.That(
                         !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),

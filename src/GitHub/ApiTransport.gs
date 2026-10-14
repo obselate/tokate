@@ -6,6 +6,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.Globalization
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class ApiResponse {
     internal var Status int32
@@ -20,24 +21,31 @@ internal class ApiResponse {
     internal init(output string) {
         let normalized = output.Replace("\r\n", "\n")
         let end = normalized.IndexOf("\n\n", StringComparison.Ordinal)
+
         if end < 0 {
             return
         }
+
         let lines = normalized.Substring(0, end).Split('\n')
         let status = lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries)
+
         if status.Length < 2 || !status[0].StartsWith("HTTP/") || !Int32.TryParse(status[1], out Status) ||
             Status < 100 ||
             Status > 599 {
             Status = 0
             return
         }
+
         for i in 1 ... lines.Length {
             let colon = lines[i].IndexOf(':')
+
             if colon < 1 {
                 continue
             }
+
             let name = lines[i].Substring(0, colon).ToLowerInvariant()
             let value = lines[i].Substring(colon + 1).Trim()
+
             switch name {
                 case "etag" {
                     ETag = value
@@ -59,6 +67,7 @@ internal class ApiResponse {
                 }
             }
         }
+
         Body = normalized.Substring(end + 2)
     }
 
@@ -66,18 +75,49 @@ internal class ApiResponse {
         if Status == 429 {
             return true
         }
+
         if Status != 403 {
             return false
         }
+
         if RetryAfter != "" || Remaining == "0" {
             return true
         }
+
         try {
             let message = J.Text(J.Parse(Body), "message").ToLowerInvariant()
             return message.Contains("rate limit") || message.Contains("abuse detection")
         } catch {
             return false
         }
+    }
+
+    internal func FailureReason() string {
+        var reason = ""
+        try {
+            let value = J.Parse(Body)
+            let messages = List[JsonElement]{J.Get(value, "message")}
+            for error in J.Items(J.Get(value, "errors")) {
+                messages.Add(J.Get(error, "message"))
+            }
+            for message in messages {
+                if message.ValueKind != JsonValueKind.String {
+                    continue
+                }
+                let text = Regex.Replace(
+                    Terminal.Clean(message.GetString() ?? "").Replace('\n', ' ').Trim(),
+                    "(?i)(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|bearer\\s+[^\\s,;]+",
+                    "[redacted]"
+                )
+                if text != "" {
+                    reason += (reason == "" ? "": "; ") + text
+                }
+                if reason.Length > 1024 {
+                    return reason.Substring(0, Char.IsHighSurrogate(reason[1023]) ? 1023: 1024)
+                }
+            }
+        } catch { }
+        return reason
     }
 
     internal func Delay(rateLimited bool) double {
@@ -92,6 +132,7 @@ internal class ApiResponse {
         var delay double
         var seconds double
         var supplied bool
+
         if Double.TryParse(RetryAfter, NumberStyles.None, CultureInfo.InvariantCulture, out seconds) && Double.IsFinite(
             seconds
         ) &&
@@ -107,14 +148,17 @@ internal class ApiResponse {
             delay = Math.Max(0.0, (date - server).TotalSeconds)
             supplied = true
         }
+
         var reset int64
         if Remaining == "0" && Int64.TryParse(Reset, out reset) && reset >= 0 && reset <= 253402300799 {
             delay = Math.Max(delay, Math.Max(0.0, (DateTimeOffset.FromUnixTimeSeconds(reset) - server).TotalSeconds))
             supplied = true
         }
+
         if rateLimited && !supplied {
             delay = 60.0
         }
+
         return delay
     }
 }
@@ -131,18 +175,32 @@ internal class ApiDeadlineException : Exception {
 
 internal class ApiTransport {
     shared {
+        internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then re-process the request. Do not repost an identical request. After owner recovery, the donor runs the same saved command again."
+
         private let Cache Dictionary[string, ApiCache] = Dictionary[string, ApiCache]()
+
         private const CacheByteLimit int64 = 4 * 1024 * 1024
+
         private const CacheEntryLimit int32 = 64
+
         private var CacheBytes int64
+
         private let Clock Stopwatch = Stopwatch.StartNew()
+
         private var NextMutation double
+
         private var Reads int32
+
         private var Mutations int32
+
         private var ConditionalResponses int32
+
         private var Retries int32
+
         private var Deadline double = Double.PositiveInfinity
+
         private var NextPoll double
+
         private var NextRead double
 
         private func RemoveCached(key string) {
@@ -154,17 +212,22 @@ internal class ApiTransport {
 
         private func Remember(key string, response ApiResponse) {
             RemoveCached(key)
+
             if !ValidETag(response.ETag) || response.Body.Trim() == "" {
                 return
             }
+
             let bytes = 2 * (Convert.ToInt64(response.Body.Length) + key.Length + response.ETag.Length) + 256
+
             if bytes > CacheByteLimit {
                 return
             }
+
             if Cache.Count >= CacheEntryLimit || CacheBytes + bytes > CacheByteLimit {
                 Cache.Clear()
                 CacheBytes = 0
             }
+
             Cache[key] = ApiCache{ETag: response.ETag, Body: response.Body, Bytes: bytes}
             CacheBytes += bytes
         }
@@ -203,6 +266,7 @@ internal class ApiTransport {
                     }
                 )
             )
+
             Console.Error.WriteLine(
                 "Counts measure Tokate gh-api operations; exclude unseen GitHub CLI/Git requests and workflow executions."
             )
@@ -210,17 +274,26 @@ internal class ApiTransport {
 
         private func Wait(seconds double) {
             CheckDeadline()
+
             if seconds > 0 {
-                let remaining = Deadline - Clock.Elapsed.TotalSeconds
-                select {
-                    case <- after(TimeSpan.FromSeconds(Math.Min(seconds, remaining))) { }
+                let until = Math.Min(Clock.Elapsed.TotalSeconds + seconds, Deadline)
+                var remaining = until - Clock.Elapsed.TotalSeconds
+
+                while remaining > 0 {
+                    select {
+                        case <- after(TimeSpan.FromSeconds(remaining)) { }
+                    }
+
+                    remaining = until - Clock.Elapsed.TotalSeconds
                 }
             }
+
             CheckDeadline()
         }
 
         private func ValidETag(value string) bool {
             let start = value.StartsWith("W/", StringComparison.Ordinal) ? 2: 0
+
             if value.Length < start +
                 2 ||
                 value.Length > 1024 ||
@@ -228,12 +301,14 @@ internal class ApiTransport {
                 value[value.Length - 1] != '"' {
                 return false
             }
+
             for i in start + 1 ... value.Length - 1 {
                 let character = value[i]
                 if character < '!' || character > '~' || character == '"' {
                     return false
                 }
             }
+
             return true
         }
 
@@ -241,6 +316,7 @@ internal class ApiTransport {
             if !ValidETag(left) || !ValidETag(right) {
                 return false
             }
+
             return String.Equals(
                 left.StartsWith("W/", StringComparison.Ordinal) ? left.Substring(2): left,
                 right.StartsWith("W/", StringComparison.Ordinal) ? right.Substring(2): right,
@@ -248,21 +324,27 @@ internal class ApiTransport {
             )
         }
 
-        private func Failure(status int32, read bool, delay double) Exception {
+        private func Failure(status int32, read bool, delay double, body string = "") Exception {
             let reason = status == 0 ? "transport failure or missing response status": "HTTP " + status.ToString()
             var message = "GitHub " + (read ? "read": "mutation") + " failed (" + reason + "). "
+            if body != "" {
+                message += "GitHub reason: " + body + ". "
+            }
             message += read ? "At most three attempts within 60 seconds are allowed.":
-            "No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate publish --run with the saved run."
+            "No automatic retry was made. The outcome may be uncertain; inspect remote state before retrying. For publication, use tokate submit --run with the saved run."
+
             if delay > 0 {
                 let bounded = Math.Min(delay, (DateTimeOffset.MaxValue - DateTimeOffset.UtcNow).TotalSeconds - 1.0)
                 let retry = DateTimeOffset.UtcNow.AddSeconds(bounded).ToString("u", CultureInfo.InvariantCulture)
                 let seconds = Math.Ceiling(delay).ToString(CultureInfo.InvariantCulture)
                 message += " Retry at or after " + retry + " (in " + seconds + " seconds)."
             }
+
             return CliFailure(
                 status == 401 ? "authentication_required": "command_failed",
                 message,
-                status == 401 ? []string{"gh", "auth", "login"}: []string{}
+                status == 401 ? []string{"gh", "auth", "login"}: []string{},
+                httpStatus: status
             )
         }
 
@@ -278,23 +360,29 @@ internal class ApiTransport {
             let read = verb == "GET"
             let input string? = body == nil ? nil: J.Write(body)
             let key = path + "\n" + input
+
             for attempt in 0 ... (read ? 3: 1) {
                 CheckDeadline()
+
                 if Clock.Elapsed.TotalSeconds < NextRead {
                     let delay = NextRead - Clock.Elapsed.TotalSeconds
                     if delay >= Deadline - Clock.Elapsed.TotalSeconds {
                         Wait(Deadline - Clock.Elapsed.TotalSeconds)
                     }
+
                     if delay >= 60.0 - timer.Elapsed.TotalSeconds {
                         throw Failure(429, read, delay)
                     }
+
                     Wait(delay)
                 }
+
                 if !read {
                     while Clock.Elapsed.TotalSeconds < NextMutation {
                         Wait(NextMutation - Clock.Elapsed.TotalSeconds)
                     }
                 }
+
                 var remaining = Math.Min(60.0 - timer.Elapsed.TotalSeconds, Deadline - Clock.Elapsed.TotalSeconds)
                 if !read && expires > 0 {
                     remaining = Math.Min(remaining, expires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0)
@@ -302,10 +390,12 @@ internal class ApiTransport {
                         throw Exception("Reservation expired before coordination mutation")
                     }
                 }
+
                 if remaining <= 0 {
                     CheckDeadline()
                     throw Failure(0, read, 0.0)
                 }
+
                 let args = List[string]{"api", "--include", "--hostname", "github.com", "--method", verb, path}
                 var cached ApiCache
                 let conditional = read && Cache.TryGetValue(key, out cached)
@@ -313,10 +403,12 @@ internal class ApiTransport {
                     args.Add("-H")
                     args.Add("If-None-Match: " + cached.ETag)
                 }
+
                 if body != nil {
                     args.Add("--input")
                     args.Add("-")
                 }
+
                 if read {
                     Reads++
                     if attempt > 0 {
@@ -325,6 +417,7 @@ internal class ApiTransport {
                 } else {
                     Mutations++
                 }
+
                 var result CommandResult = CommandResult{Code: 1}
                 try {
                     result = Commands.Run(
@@ -335,12 +428,15 @@ internal class ApiTransport {
                         milliseconds: Math.Max(1, Convert.ToInt32(Math.Floor(remaining * 1000.0)))
                     )
                 } catch { }
+
                 CheckDeadline()
                 if !read {
                     NextMutation = Clock.Elapsed.TotalSeconds + 1.0
                 }
+
                 let response = ApiResponse(result.Output)
                 let limited = response.RateLimited()
+
                 if read {
                     var poll double
                     if Double.TryParse(
@@ -352,14 +448,18 @@ internal class ApiTransport {
                         Double.IsFinite(poll) && poll >= 0 {
                         NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + poll)
                     }
+
                     NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + response.Delay(limited))
                 }
+
                 if limited || response.Remaining == "0" || response.RetryAfter != "" {
                     NextRead = Math.Max(NextRead, Clock.Elapsed.TotalSeconds + response.Delay(limited))
                 }
+
                 if timer.Elapsed.TotalSeconds >= 60.0 {
-                    throw Failure(response.Status, read, response.Delay(limited))
+                    throw Failure(response.Status, read, response.Delay(limited), response.FailureReason())
                 }
+
                 if response.Status == 304 {
                     ConditionalResponses++
                     if !conditional || (response.ETag != "" && !WeakETagMatch(response.ETag, cached.ETag)) {
@@ -367,12 +467,15 @@ internal class ApiTransport {
                             "GitHub returned HTTP 304 without a matching in-memory body. Read failed closed."
                         )
                     }
+
                     return J.Parse(cached.Body)
                 }
+
                 if response.Status == 404 && missing {
                     RemoveCached(key)
                     return JsonElement{}
                 }
+
                 let success = response.Status >= 200 && response.Status < 300
                 if success && result.Code == 0 && !result.Truncated && !result.ReadFailed {
                     var value JsonElement
@@ -381,24 +484,31 @@ internal class ApiTransport {
                     } catch {
                         throw Failure(0, read, 0.0)
                     }
+
                     if read {
                         Remember(key, response)
                     }
+
                     return value
                 }
+
                 let retryable = response.Status == 0 ||
                     (response.Status >= 200 && response.Status < 300) ||
                     response.Status >= 500 ||
                     limited
                 let delay = Math.Max(response.Delay(limited), retryable ? Convert.ToDouble(attempt + 1): 0.0)
+
                 if read && retryable && delay >= Deadline - Clock.Elapsed.TotalSeconds {
                     Wait(Deadline - Clock.Elapsed.TotalSeconds)
                 }
+
                 if !read || !retryable || attempt == 2 || delay >= 60.0 - timer.Elapsed.TotalSeconds {
-                    throw Failure(response.Status, read, delay)
+                    throw Failure(response.Status, read, delay, response.FailureReason())
                 }
+
                 Wait(delay)
             }
+
             throw Failure(0, read, 0.0)
         }
     }

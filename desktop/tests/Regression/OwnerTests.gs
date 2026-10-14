@@ -38,10 +38,16 @@ func OwnerTests() {
         "adding a model again replaces its efforts"
     )
     Regression.Equal(Regression.Args(models[1].Efforts), "absent", "models without efforts are absent")
-    Regression.Equal(owner.Current.Setup.ModelsJson, "{\"gpt\":[\"low\"],\"other\":[\"absent\"]}", "model whitelist JSON")
     Regression.Equal(owner.Current.Setup.ModelPolicy, "whitelist", "editing models selects the whitelist")
     owner.RemoveModel("gpt")
     Regression.Check(owner.Current.Setup.Models.Length == 1, "model removed")
+    owner.ToggleTool("pi")
+    owner.SetModelTool("pi/local-chat-completions")
+    Regression.Check(owner.Current.Setup.Models.Length == 0 && owner.Current.Setup.ModelPolicy == "unrestricted", "new tools allow any model")
+    owner.AddModel("local", "")
+    owner.SetModelTool("codex/openai")
+    Regression.Check(owner.Current.Setup.Models.Length == 1 && owner.Current.Setup.Models[0].Model == "other", "tool model lists stay separate")
+    owner.ToggleTool("pi")
 
     owner.ToggleTool("codex")
     Regression.Equal(owner.Current.Setup.Tools, "codex/openai", "the last tool stays allowed")

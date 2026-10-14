@@ -38,7 +38,10 @@ internal partial class NativeFlow : NativeFixture {
         File.WriteAllText(codex, "not executable")
         let result = Call([]string{"approve", "owner/project#1"}, owner: true)
         Check.That(result.Error == "", "Owner command warned about donor tools")
-        Check.Contains(result.Output, "Approval recorded")
+        Check.Contains(
+            result.Output,
+            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1"
+        )
         Check.Contains(
             Call([]string{"work", "owner/project#1", "--model", "model", "--effort", "high"}, 1).Error,
             "Install or repair the tools needed"
@@ -78,6 +81,12 @@ internal partial class NativeFlow : NativeFixture {
     }
 
     internal func StructuredContract() {
+        let path = Path.Combine(Upstream, ".github/tokate.json")
+        let display = Check.Json(File.ReadAllText(path))
+        display["allowed_tools"]?.AsArray().Add(Check.Map("harness", "pi", "provider", "local-chat-completions"))
+        display["verification"]?.AsArray().Add(Check.Json("[\"/bin/echo\",\"literal  spaces\"]"))
+        File.WriteAllText(path, display.ToJsonString())
+        Commit("Policy display fixture")
         let approval = Call([]string{"approve", "owner/project#1", "--json"}, owner: true)
         Check.Envelope(approval, "approve", "ok")
         let policy = Call([]string{"policy", "owner/project", "--json"})
@@ -88,19 +97,73 @@ internal partial class NativeFlow : NativeFixture {
             legacy["schema_version"] == nil && Check.Text(legacy["version"]) == "2",
             "Legacy piped policy changed"
         )
-        let claim = Check.Envelope(Acquire(ClaimArgs(json: true)), "claim", "ok")
+        for flag in[]string{"--plain", "--ascii"} {
+            let human = Call([]string{"policy", "owner/project", flag}).Output
+            Check.Contains(human, "Allowed tools:\n  codex / openai\n  pi / local-chat-completions\n")
+            Check.Contains(human, "Verification:\n  test -f result.txt\n  /bin/echo 'literal  spaces'\n")
+        }
+        let workflow = Path.Combine(Upstream, ".github/workflows/tokate-coordinator.yml")
+        Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? "")
+        let version = Call([]string{"--version"}).Output.Trim().Substring(7)
+        let warning = "Warning: Repository coordinator 0.3.5 is older than CLI " + version
+        let update = "tokate coordinator-setup owner/project --output tokate-coordinator.yml"
+        for pinned in[]string{version, "99.0.0", "0.3.5"} {
+            File.WriteAllText(
+                workflow,
+                "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                    String('a', 40) +
+                    "\n    with:\n      member: 'tokate-" +
+                    pinned +
+                    "-linux-x64/tokate'\n"
+            )
+            Commit("Set coordinator version " + pinned)
+            let status = Call([]string{"status", "owner/project#1", "--json"})
+            Check.Envelope(status, "status", "ok")
+            Check.That(
+                status.Error.Contains("Warning: Repository coordinator") == (pinned == "0.3.5"),
+                "Coordinator warning did not compare versions"
+            )
+            if pinned == "0.3.5" {
+                Check.Contains(status.Error, warning)
+                Check.Contains(status.Error, update)
+            }
+        }
+        let claimed = Acquire(ClaimArgs(json: true))
+        Check.Contains(claimed.Error, warning)
+        Check.Contains(claimed.Error, update)
+        let claim = Check.Envelope(claimed, "claim", "ok")
         let run = Check.Text(claim["data"]?["run"])
         Check.That(Path.IsPathFullyQualified(run), "Claim omitted executable run path")
         NoInference()
+        for flag in[]string{"--json", "--plain"} {
+            let status = Call([]string{"status", "--run", run, flag})
+            Check.Contains(status.Error, warning)
+            Check.Contains(status.Error, update)
+        }
+        let workflowApi = "repos/owner/project/contents/.github/workflows/tokate-coordinator.yml"
+        Faults(workflowApi, Check.Json("[{\"status\":403}]"))
+        let unavailable = Call([]string{"status", "--run", run, "--json"})
+        Check.Envelope(unavailable, "status", "ok")
+        Check.Contains(unavailable.Error, "Warning: Repository coordinator version could not be checked.")
+        Reload()
+        Check.That(Check.Text(State["fault_index"]) == "1", "Coordinator warning retried a denied read")
+        Faults("", Check.Json("[]"))
         let work = Call([]string{"work", "--run", run, "--json", "--traffic"})
         Check.Envelope(work, "work", "ok")
+        Check.Contains(work.Error, warning)
+        Check.Contains(work.Error, update)
         Check.Contains(work.Error, "Running gpt-6.1-sol")
         Check.Contains(work.Error, "Tokate API traffic:")
         Check.That(
             !work.Output.Contains("synthetic-raw") && !work.Output.Contains("synthetic-usage-secret"),
             "Inference output leaked"
         )
-        Publish(run)
+        let submit = Call([]string{"submit", "--run", run, "--json"})
+        Check.Envelope(submit, "submit", "ok")
+        Check.Contains(submit.Error, warning)
+        Check.Contains(submit.Error, update)
+        CoordinatePosted()
+        Call([]string{"submit", "--run", run})
         Check.Envelope(Call([]string{"verify", "owner/project#10", "--json"}, owner: true), "verify", "ok")
         Check.Envelope(Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
         Check.Envelope(
@@ -207,10 +270,30 @@ internal partial class NativeFlow : NativeFixture {
         Approve()
         let run = Claim()
         Call([]string{"work", "--run", run})
+        let checkout = Path.Combine(run, "checkout")
+        let replay = Path.Combine(Temp.Root, "candidate-replay")
+        let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+        Git("clone", "--no-local", checkout, replay)
+        Git("-C", replay, "checkout", "--detach", Check.Text(saved["base"]))
+        Git("-C", replay, "apply", "--index", Path.Combine(run, "candidate.patch"))
+        Check.That(
+            Git("-C", replay, "write-tree") == Git("-C", checkout, "write-tree"),
+            "Candidate patch changed the tree"
+        )
+        Check.That(
+            File.ReadAllText(Path.Combine(run, "candidate.patch")) == File.ReadAllText(
+                Path.Combine(run, "changes.patch")
+            ),
+            "Verified patch differs from candidate"
+        )
         Publish(run)
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
+        Check.That(
+            Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
+            "Cross-account PR must disable maintainer modification"
+        )
         CommitIdentity(
             Path.Combine(Bin, "fork"),
             Check.Text(State["pulls"]?[0]?["head"]?["sha"]),
@@ -218,6 +301,26 @@ internal partial class NativeFlow : NativeFixture {
             "tokate@users.noreply.github.com"
         )
         Call([]string{"verify", "owner/project#10"}, owner: true)
+        Git("-C", Upstream, "config", "remote.origin.url", "https://github.com/owner/project")
+        for state in[]string{"closed", "merged"} {
+            Reload()
+            let pull = State["pulls"]?[0] ?? throw Exception("Missing PR")
+            pull["state"] = JsonValue.Create("closed")
+            pull["merged"] = JsonValue.Create(state == "merged")
+            (State["issue"] ?? throw Exception("Missing issue"))["state"] = JsonValue.Create("closed")
+            Save()
+            for target in[]string{"10", "https://github.com/owner/project/pull/10"} {
+                let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
+                Check.That(result.Code == 1, "Verify accepted a closed PR")
+                Check.Contains(result.Error, "PR #10 is " + state + "; verify checks open contribution PRs.")
+            }
+        }
+        Faults("repos/owner/project/pulls/1", Check.Json("[{\"status\":404}]"))
+        for target in[]string{"1", "https://github.com/owner/project/issues/1"} {
+            let result = TestProcess.Run(Binary, []string{"verify", target}, Temp.Env, cwd: Upstream)
+            Check.That(result.Code == 1, "Verify accepted an issue")
+            Check.Contains(result.Error, "verify takes an open contribution PR, for example tokate verify 42.")
+        }
     }
 
     internal func ModelPolicyMalformed() {
@@ -276,6 +379,66 @@ internal partial class NativeFlow : NativeFixture {
             Commit("Malformed model policy fixture")
             Reject([]string{"policy", "owner/project"}, fixture[1])
         }
+        original["version"] = JsonValue.Create(3)
+        for invalid in[]string{
+            "null",
+            "true",
+            "[]",
+            "\"model\"",
+            "{}",
+            "{\"bad model\":[\"high\"]}",
+            "{\"model\":[]}",
+            "{\"model\":[null]}",
+            "{\"model\":[\"invalid\"]}",
+            "{\"model\":[\"high\"],\"model\":[\"low\"]}"
+        } {
+            original["allowed_tools"] = Check.Json(
+                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":" + invalid + "}]"
+            )
+            File.WriteAllText(path, original.ToJsonString())
+            Commit("Malformed per-tool models")
+            Call([]string{"policy", "owner/project"}, 1)
+            NoInference()
+            NoPr()
+        }
+
+        original["allowed_tools"] = Check.Json(
+            "[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"codex\",\"provider\":\"openai\"}]"
+        )
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Duplicate tool route")
+        Reject([]string{"policy", "owner/project"}, "Duplicate allowed tool")
+        original["allowed_tools"] = Check.Json(
+            "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt-6.1-sol\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"models\":{\"gpt-6-sol\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]"
+        )
+        for field in[]string{"models", "model_policy"} {
+            original[field] = field == "models" ? Check.Json("{}"): JsonValue.Create("unrestricted")
+            File.WriteAllText(path, original.ToJsonString())
+            Commit("Removed top-level model field")
+            Reject([]string{"policy", "owner/project"}, "Version 3 uses models inside allowed_tools")
+            original.AsObject().Remove(field)
+        }
+
+        original["eligibility"] = JsonValue.Create("manual")
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Removed version 3 eligibility mode")
+        Reject([]string{"policy", "owner/project"}, "eligibility trusted or open")
+        original["eligibility"] = JsonValue.Create("trusted")
+        File.WriteAllText(path, original.ToJsonString())
+        Commit("Valid per-tool policy")
+        let projected = Check.Envelope(Call([]string{"policy", "owner/project", "--json"}), "policy", "ok")
+        let policy = projected["data"]?["policy"] ?? throw Exception("Missing projected policy")
+        Check.That(
+            Check.Text(policy["version"]) == "3" &&
+                policy["models"] == nil &&
+                policy["model_policy"] == nil &&
+                policy["allowed_tools"]?[0]?["models"]?["gpt-6.1-sol"]?.ToJsonString() == "[\"high\"]" &&
+                policy["allowed_tools"]?[2]?["models"] == nil,
+            "Policy output lost per-tool permissions"
+        )
+        Call([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"})
+        Reject([]string{"select", "owner/project", "--model", "gpt-6-sol", "--effort", "high"}, "Model/effort pair")
+        Reject([]string{"select", "owner/project", "--model", "gpt-6.1-sol", "--effort", "low"}, "Model/effort pair")
     }
 
     internal func MissingFork() {
@@ -783,6 +946,53 @@ internal partial class NativeFlow : NativeFixture {
             NoInference()
             Faults("", JsonArray())
         }
+        let token = "github_" + "pat_" + String('a', 30)
+        let permission = "fork_collab Fork collab can't be granted by someone without permission"
+        let body = Check.Map(
+            "message",
+            "Validation Failed",
+            "errors",
+            Check.Json("[]"),
+            "ignored",
+            "synthetic-response-secret"
+        )
+        body["errors"]?.AsArray().Add(Check.Map("message", permission))
+        body["errors"]?.AsArray().Add(Check.Map("message", "Second error " + token + " Bearer synthetic-token"))
+        for json in[]bool{false, true} {
+            Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", body.DeepClone())))
+            let result = Call(
+                json ? []string{"approve", "owner/project#1", "--json"}: []string{"approve", "owner/project#1"},
+                1,
+                owner: true
+            )
+            let message = json ? Check.Text(Check.Json(result.Output)["error"]?["message"]): result.Error
+            Check.Contains(message, "GitHub mutation failed (HTTP 422)")
+            Check.Contains(message, "Validation Failed")
+            Check.Contains(message, permission)
+            Check.Contains(message, "Second error [redacted] [redacted]")
+            Check.Contains(message, "tokate submit --run with the saved run")
+            Check.That(!message.Contains("tokate publish"), "Mutation failure named a missing command")
+            Check.That(!message.Contains(token) && !message.Contains("synthetic-token"), "Mutation leaked tokens")
+            Check.That(!message.Contains("synthetic-response-secret"), "Mutation leaked unselected output")
+            Reload()
+            Check.That(Check.Text(State["fault_index"]) == "1", "Mutation retried validation failure")
+        }
+        for value in[]JsonNode{
+            Check.Map("message", String('x', 2048) + "omitted-tail"),
+            Check.Map("message", 42, "errors", Check.Json("[null,{\"message\":false},{\"message\":\"Nested reason\"}]"))
+        } {
+            Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", value)))
+            let result = Call([]string{"approve", "owner/project#1", "--json"}, 1, owner: true)
+            let message = Check.Text(Check.Json(result.Output)["error"]?["message"])
+            Check.Contains(message, "tokate submit --run with the saved run")
+            if value["message"]?.ToJsonString() == "42" {
+                Check.Contains(message, "Nested reason")
+            } else {
+                Check.That(message.Length < 1500 && !message.Contains("omitted-tail"), "GitHub reason was unbounded")
+            }
+        }
+        Faults("", JsonArray())
+        NoInference()
     }
 
     internal func BackgroundCleanup() {

@@ -16,22 +16,27 @@ internal class CoordinatorSetup {
         ) bool {
             let policies = GitHub.Api("repos/" + repo + "/actions/policies?has_parents=true&per_page=100")
             let rows = J.Get(policies, "policies")
+
             if rows.ValueKind != JsonValueKind.Array || J.Number(policies, "total_count") != rows.GetArrayLength() ||
                 rows.GetArrayLength() > 100 {
                 throw Exception(
                     "Cannot inspect all applicable Actions policies; owner setup requires a complete policy read"
                 )
             }
+
             var configured bool
+
             for row in J.Items(rows) {
                 let id = RepositoryIdentity.PositiveId(J.Get(row, "id"))
                 var path = "repos/" + repo + "/actions/policies/" + id.ToString()
                 let self = J.Text(J.Get(J.Get(row, "_links"), "self"), "href")
+
                 if self != "" {
                     let prefix = "https://api.github.com/"
                     if !self.StartsWith(prefix, StringComparison.Ordinal) {
                         throw Exception("Invalid applicable Actions policy location")
                     }
+
                     let source = self.Substring(prefix.Length)
                     if source != path && !Regex.IsMatch(
                         source,
@@ -39,80 +44,102 @@ internal class CoordinatorSetup {
                     ) {
                         throw Exception("Invalid inherited Actions policy location")
                     }
+
                     path = source
                 }
+
                 let policy = GitHub.Api(path)
                 let enforcement = J.Text(policy, "enforcement")
+
                 if enforcement == "disabled" {
                     continue
                 }
+
                 if enforcement != "active" && enforcement != "evaluate" || J.Get(policy, "rules")
                     .ValueKind != JsonValueKind.Array {
                     throw Exception("Malformed Actions policy; inspect Settings > Actions > Policies before setup")
                 }
+
                 let condition = J.Get(J.Get(policy, "conditions"), "workflow_path")
                 if condition.ValueKind != JsonValueKind.Undefined && !Applies(condition, workflow) {
                     continue
                 }
+
                 for rule in J.Items(J.Get(policy, "rules")) {
                     let type = J.Text(rule, "type")
+
                     if type == "restrict_actions_actors" && enforcement == "active" {
                         throw Exception(
                             "Active Actions actor policy may prevent outsider admission; review Settings > Actions > Policies before setup"
                         )
                     }
+
                     if type != "restrict_action_events" {
                         continue
                     }
+
                     let events = J.Get(J.Get(rule, "parameters"), "allowed_events")
                     if events.ValueKind != JsonValueKind.Array {
                         throw Exception("Malformed Actions event policy")
                     }
+
                     let allowed = HashSet[string]()
+
                     for event in J.Items(events) {
                         if event.ValueKind != JsonValueKind.String {
                             throw Exception("Malformed Actions event name")
                         }
+
                         allowed.Add(event.GetString() ?? "")
                     }
-                    if !allowed.Contains("issue_comment") || !allowed.Contains("pull_request_target") ||
-                        !allowed
-                        .Contains("workflow_call") {
+
+                    if !allowed.IsSupersetOf(
+                        []string{"issues", "issue_comment", "pull_request_target", "workflow_call"}
+                    ) {
                         throw Exception(
-                            "Actions event policy blocks Tokate. The owner must allow issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
+                            "Actions event policy blocks Tokate. The owner must allow issues, issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
                         )
                     }
+
                     configured = true
                 }
             }
+
             if !configured && required {
                 throw Exception(
-                    "Explicit Actions event policy required before admission setup. Allow issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
+                    "Explicit Actions event policy required before admission setup. Allow issues, issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
                 )
             }
+
             if configured {
                 Terminal.Message(
                     "Actions event policy permits Tokate events. Review actor rules so external PR events can run admission."
                 )
             }
+
             return configured
         }
 
         private func Applies(condition JsonElement, workflow string) bool {
             let included = J.Get(condition, "include")
             let excluded = J.Get(condition, "exclude")
+
             if included.ValueKind != JsonValueKind.Array || excluded.ValueKind != JsonValueKind.Array {
                 throw Exception("Malformed Actions workflow path condition")
             }
+
             var applies = included.GetArrayLength() == 0
+
             for pattern in J.Items(included) {
                 applies = Matches(pattern, workflow) || applies
             }
+
             for pattern in J.Items(excluded) {
                 if Matches(pattern, workflow) {
                     return false
                 }
             }
+
             return applies
         }
 
@@ -120,15 +147,92 @@ internal class CoordinatorSetup {
             if pattern.ValueKind != JsonValueKind.String || pattern.GetString() == "" {
                 throw Exception("Malformed Actions workflow path pattern")
             }
+
             let value = pattern.GetString() ?? ""
             if value == "~ALL" {
                 return true
             }
+
             if value.Contains('[') || value.Contains('{') || value.Contains('\\') || value.StartsWith('!') {
                 throw Exception("Unsupported Actions workflow path pattern; inspect event policy before setup")
             }
+
             let expression = Regex.Escape(value).Replace("\\*\\*", ".*").Replace("\\*", "[^/]*").Replace("\\?", "[^/]")
+
             return Regex.IsMatch(workflow, "^" + expression + "$")
+        }
+
+        internal func WorkflowMatches(pattern string, workflow string) bool -> Regex.IsMatch(
+            workflow,
+            "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$",
+            RegexOptions.IgnoreCase
+        )
+
+        private func AllowWorkflow(repo string, pin string) string {
+            let workflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
+            let value = workflow + pin
+            let manual = "In " +
+                repo +
+                " > Settings > Actions > General > Actions permissions, select Allow select actions and reusable workflows, and add " +
+                value +
+                " to the allowed actions and reusable workflows. Preserve other entries."
+            try {
+                let path = "repos/" + repo + "/actions/permissions"
+                let permissions = GitHub.Api(path)
+                if !J.Bool(permissions, "enabled") {
+                    return "Actions is disabled. Enable Actions. " + manual
+                }
+                let allowed = J.Text(permissions, "allowed_actions")
+                let local = repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
+                if allowed == "all" || (allowed == "local_only" && local) {
+                    return "Actions permits " + value + "."
+                }
+                if allowed != "selected" {
+                    return manual
+                }
+                let selected = GitHub.Api(path + "/selected-actions")
+                let values = J.Get(selected, "patterns_allowed")
+                if values.ValueKind != JsonValueKind.Array {
+                    throw Exception("Invalid selected Actions patterns")
+                }
+                var permitted = local
+                let patterns = List[string]()
+                for pattern in J.Items(values) {
+                    if pattern.ValueKind != JsonValueKind.String {
+                        throw Exception("Invalid selected Actions pattern")
+                    }
+                    let entry = pattern.GetString() ?? ""
+                    let deny = entry.StartsWith("!")
+                    if WorkflowMatches(deny ? entry.Substring(1): entry, value) {
+                        if deny {
+                            return "Actions blocks " +
+                                value +
+                                ". Remove the blocking exclusion " +
+                                entry +
+                                ". " +
+                                manual
+                        }
+                        permitted = true
+                    }
+                    patterns.Add(entry)
+                }
+                if permitted {
+                    return "Actions permits " + value + "."
+                }
+                patterns.Add(value)
+                GitHub.Api(
+                    path + "/selected-actions",
+                    map[string, Object?]{
+                        "github_owned_allowed": J.Get(selected, "github_owned_allowed"),
+                        "verified_allowed": J.Get(selected, "verified_allowed"),
+                        "patterns_allowed": patterns
+                    },
+                    method: "PUT"
+                )
+                return "Updated the Actions allowlist to permit " + value + "."
+            } catch {
+                return "Could not update the Actions allowlist. " + manual
+            }
         }
 
         internal func Run(args Args) {
@@ -140,6 +244,7 @@ internal class CoordinatorSetup {
                 ),
                 Path.GetFileName(requested)
             )
+
             if output.Contains("/.github/") || File.Exists(output) || Directory.Exists(output) || FileInfo(
                 output
             ).LinkTarget != nil {
@@ -147,12 +252,69 @@ internal class CoordinatorSetup {
                     "Generate to a new file outside protected .github paths; installation is an owner action after release"
                 )
             }
-            RepositoryAccess.RequireOwner(repo)
+
+            let info = RepositoryAccess.RequireOwner(repo)
             EventPolicy(repo)
+
             let yaml = Resolve()
+            let pattern = "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+            let newCommit = Regex.Match(yaml, pattern).Groups[1].Value
+            let current = GitHub.FileAt(
+                repo,
+                ".github/workflows/tokate-coordinator.yml",
+                GitHub.Branch(repo, J.Text(info, "default_branch")),
+                missing: true
+            )
+
+            if current != "" {
+                let members = Regex.Matches(
+                    current,
+                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
+                )
+                let pins = Regex.Matches(current, pattern)
+
+                if members.Count != 1 || pins.Count != 1 {
+                    throw Exception("Current coordinator version or shared workflow pin is missing or malformed")
+                }
+
+                let oldVersion = members[0].Groups[1].Value
+                let newVersion = ApplicationInfo.Version()
+                let oldCommit = pins[0].Groups[1].Value
+                let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
+                let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + newVersion
+                PublicOutput.ResultData = map[string, Object?]{
+                    "repo": repo,
+                    "output": requested,
+                    "current_version": oldVersion,
+                    "new_version": newVersion,
+                    "current_commit": oldCommit,
+                    "new_commit": newCommit,
+                    "compare_url": compareUrl,
+                    "release_url": releaseUrl
+                }
+                Console.Error.WriteLine(
+                    "Current Tokate version: " + oldVersion + ", shared workflow commit: " + oldCommit
+                )
+                Console.Error.WriteLine("New Tokate version: " + newVersion + ", shared workflow commit: " + newCommit)
+                Console.Error.WriteLine("Compare shared workflows: " + compareUrl)
+                Console.Error.WriteLine("New release: " + releaseUrl)
+            }
+
             OwnerSetup.Preview(output, File.Exists(output) ? File.ReadAllText(output): "", yaml)
+            Terminal.Message(
+                "Applying this entry also checks Actions and updates its allowlist for the new commit.",
+                "cyan",
+                true
+            )
+
             if OwnerSetup.Confirm(args) {
                 File.WriteAllText(output, yaml)
+                let allowlist = AllowWorkflow(repo, newCommit)
+                let data = PublicOutput.ResultData as Dictionary[string, Object?] ??
+                    map[string, Object?]{"repo": repo, "output": requested, "new_commit": newCommit}
+                data["actions_allowlist"] = allowlist
+                PublicOutput.ResultData = data
+                Terminal.Message(allowlist)
                 Terminal.Message("Generated a pinned shared workflow entry. Owner: review and install it separately.")
             }
         }
@@ -160,6 +322,7 @@ internal class CoordinatorSetup {
         internal func Resolve() string {
             let version = ApplicationInfo.Version()
             let release = GitHub.Api("repos/obselate/tokate/releases/tags/v" + version, missing: true)
+
             if release.ValueKind == JsonValueKind.Undefined || J.Bool(release, "draft") || J.Bool(
                 release,
                 "prerelease"
@@ -167,9 +330,11 @@ internal class CoordinatorSetup {
                 J.Text(release, "tag_name") != "v" + version {
                 throw Exception("This binary version has no trusted stable release; setup is unavailable until release")
             }
+
             let bundle = "tokate-" + version + "-linux-x64"
             var archive JsonElement
             var checksum JsonElement
+
             for asset in J.Items(J.Get(release, "assets")) {
                 if J.Text(asset, "name") == bundle + ".tar.gz" {
                     archive = asset
@@ -177,6 +342,7 @@ internal class CoordinatorSetup {
                     checksum = asset
                 }
             }
+
             let archiveUrl = AssetUrl(archive)
             let checksumUrl = AssetUrl(checksum)
             let directory = Directory.CreateTempSubdirectory("tokate-release-").FullName
@@ -185,17 +351,21 @@ internal class CoordinatorSetup {
                 let checksumPath = Path.Combine(directory, "checksum")
                 Download(archiveUrl, archivePath)
                 Download(checksumUrl, checksumPath)
+
                 if FileInfo(checksumPath).Length > 256 {
                     throw Exception("Invalid release checksum sidecar")
                 }
+
                 let text = File.ReadAllText(checksumPath).Trim()
                 if !Regex.IsMatch(text, "^[0-9a-f]{64}  " + Regex.Escape(bundle + ".tar.gz") + "$") {
                     throw Exception("Invalid release checksum sidecar")
                 }
+
                 let hash = text.Substring(0, 64)
                 if HashFile(archivePath) != hash {
                     throw Exception("Release archive checksum mismatch")
                 }
+
                 let member = bundle + "/tokate"
                 Commands.Checked(
                     "tar",
@@ -210,13 +380,16 @@ internal class CoordinatorSetup {
                         member
                     }
                 )
+
                 let binary = Path.Combine(directory, member)
                 if FileInfo(binary).LinkTarget != nil || HashFile(binary) != HashFile(Environment.ProcessPath ?? "") {
                     throw Exception("Running binary does not match the released archive member")
                 }
+
                 let tag = GitHub.Api("repos/obselate/tokate/git/ref/tags/v" + version)
                 var identity = J.Get(tag, "object")
                 var depth int32
+
                 while J.Text(identity, "type") == "tag" && depth < 8 {
                     let annotated = GitHub.Api(
                         "repos/obselate/tokate/git/tags/" + RepositoryIdentity.CommitSha(J.Text(identity, "sha"))
@@ -224,9 +397,11 @@ internal class CoordinatorSetup {
                     identity = J.Get(annotated, "object")
                     depth++
                 }
+
                 if J.Text(identity, "type") != "commit" {
                     throw Exception("Stable release tag does not resolve to a commit")
                 }
+
                 let commit = RepositoryIdentity.CommitSha(J.Text(identity, "sha"))
                 let hosted = GitHub.FileAt(
                     "obselate/tokate",
@@ -234,6 +409,7 @@ internal class CoordinatorSetup {
                     commit,
                     missing: true
                 )
+
                 if hosted.Replace("\r", "").TrimEnd() != ApplicationInfo
                     .Resource("coordinator.yml")
                     .Replace("\r", "")
@@ -242,8 +418,9 @@ internal class CoordinatorSetup {
                         "Bootstrap required: the owner must install the reviewed central reusable workflow in the matching release before setup can write adopter files"
                     )
                 }
-                return "name: Tokate\non:\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
-                    "    permissions:\n      contents: write\n      issues: read\n      pull-requests: write\n" +
+
+                return "name: Tokate\non:\n  issues:\n    types: [labeled]\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
+                    "    permissions:\n      contents: write\n      issues: write\n      pull-requests: write\n" +
                     "    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
                     commit +
                     "\n" +
@@ -268,6 +445,7 @@ internal class CoordinatorSetup {
                 J.Number(asset, "size") > 128 * 1024 * 1024 {
                 throw Exception("Release is missing a bounded uploaded archive or checksum asset")
             }
+
             return "https://api.github.com/repos/obselate/tokate/releases/assets/" + id.ToString()
         }
 

@@ -64,32 +64,44 @@ internal class SavedRun(location string, value JsonElement, current bool) {
 internal class SavedRuns {
     internal let Rows List[SavedRun] = List[SavedRun]()
     internal var Skipped int32
+    internal let SkippedEntries List[Object?] = List[Object?]()
     internal var Truncated bool
 
     shared {
-        internal func Summary(rows List[SavedRun], skipped int32, truncated bool = false) Dictionary[string, Object?] {
+        internal func Summary(
+            rows List[SavedRun],
+            skipped int32,
+            truncated bool = false,
+            skippedEntries List[Object?]? = nil
+        ) Dictionary[string, Object?] {
             let items = List[Object?]()
+
             for row in rows {
                 if items.Count == 128 {
                     break
                 }
+
                 items.Add(row.Summary())
             }
+
             return map[string, Object?]{
                 "runs": items,
                 "skipped": skipped,
+                "skipped_entries": skippedEntries ?? List[Object?](),
                 "truncated": truncated || rows.Count > items.Count
             }
         }
     }
 
-    internal init(roots[]string, limit int32 = Int32.MaxValue) {
+    internal init(roots[]string, limit int32 = Int32.MaxValue, listingRepo string? = nil) {
         let legacy = List[SavedRun]()
         var scanned int32
+
         for root in roots {
             if !Directory.Exists(root) {
                 continue
             }
+
             try {
                 LocalPaths.DirectoryPath(root)
                 for directory in Directory.EnumerateDirectories(root) {
@@ -97,37 +109,73 @@ internal class SavedRuns {
                         Truncated = true
                         break
                     }
+
                     scanned++
+                    var reason = "Unsafe saved run path."
+
                     try {
                         RunStorage.ControlPaths(directory)
+                        reason = "Missing, invalid or oversized run metadata."
                         let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
+
+                        reason = "Invalid repository or excessive saved metadata."
                         RepositoryIdentity.Repo(J.Text(value, "repo"))
+
                         for key in[]string{"id", "repo", "donor", "model", "state"} {
                             if J.Text(value, key).Length > 256 {
-                                throw Exception("Saved contribution metadata is too long")
+                                throw ExecutionFailure.Create(
+                                    "invalid_state",
+                                    "Saved contribution metadata is too long"
+                                )
                             }
                         }
+
                         if J.Number(value, "version") != 2 || J.Number(value, "issue") < 1 || J.Text(
                             value,
                             "state"
                         ) == "" {
-                            throw Exception("Unsupported or incomplete saved contribution")
+                            reason = "Unsupported version or incomplete saved contribution."
+                            throw ExecutionFailure.Create(
+                                "invalid_state",
+                                "Unsupported or incomplete saved contribution"
+                            )
                         }
+
                         let row = SavedRun(directory, value, root == RunStorage.Root())
                         Rows.Add(row)
+
                         if row.Number == 0 {
                             legacy.Add(row)
                         }
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                        error is IOException ||
+                        error is UnauthorizedAccessException ||
+                        error is JsonException {
                         Skipped++
+
+                        if SkippedEntries.Count < 128 {
+                            SkippedEntries.Add(map[string, Object?]{"run": directory, "reason": reason})
+                        } else {
+                            Truncated = true
+                        }
                     }
                 }
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException {
                 Skipped++
+
+                if SkippedEntries.Count < 128 {
+                    SkippedEntries.Add(map[string, Object?]{"run": root, "reason": "Unsafe or unreadable run storage."})
+                } else {
+                    Truncated = true
+                }
             }
         }
+
         for row in legacy {
             var number int32 = 1
+
             for other in legacy {
                 if other.Matches(row.Text("repo"), row.Issue) &&
                     (
@@ -137,8 +185,10 @@ internal class SavedRuns {
                     number++
                 }
             }
+
             row.Number = number
         }
+
         Rows.Sort(
             (a, b) -> !a.Matches(b.Text("repo"), b.Issue) ?
             StringComparer.OrdinalIgnoreCase.Compare(
@@ -148,6 +198,17 @@ internal class SavedRuns {
                 .Number
                 .CompareTo(b.Number): String.CompareOrdinal(a.Location, b.Location)
         )
+
+        if listingRepo != nil {
+            Rows.Sort(
+                (a, b) -> {
+                    let current = String.Equals(b.Text("repo"), listingRepo, StringComparison.OrdinalIgnoreCase)
+                        .CompareTo(String.Equals(a.Text("repo"), listingRepo, StringComparison.OrdinalIgnoreCase))
+                    let newest = b.Modified.CompareTo(a.Modified)
+                    return current != 0 ? current: newest != 0 ? newest: String.CompareOrdinal(a.Location, b.Location)
+                }
+            )
+        }
     }
 
     internal func Has(directory string) bool {
@@ -156,16 +217,19 @@ internal class SavedRuns {
                 return true
             }
         }
+
         return false
     }
 
     internal func For(repo string, issue int32) List[SavedRun] {
         let rows = List[SavedRun]()
+
         for row in Rows {
             if row.Matches(repo, issue) {
                 rows.Add(row)
             }
         }
+
         return rows
     }
 }

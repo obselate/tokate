@@ -15,16 +15,20 @@ internal class CliOption(name string, value string, description string, choices 
 
     internal func Describe(command string) string -> switch Name {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
-        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files; no inference"
+        case "yes" when command == "coordinator-setup": "Apply the reviewed configuration files and matching Actions allowlist; no inference"
+        case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
         case "non-interactive" when command == "init": "Never prompt; settings missing from the GitHub policy must be given explicitly"
+        case "non-interactive" when command == "approve": "Never prompt; supply ISSUE or --title explicitly"
         case "non-interactive" when command == "coordinator-setup": "Never prompt; supply missing choices explicitly; preview unless --yes is given"
         case "path" when command == "init": "Checkout of the repository to write into; default: current directory"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
+        case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
+        case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
         case "time" when(
             command == "work" || command == "claim"
         ): "Total budget for coding and verification such as 30m or 2h, at most 24h"
-        case "time" when command == "amend": "Separate verification budget; required, at most the owner limit"
+        case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
         default: Description.Replace("{{time}}", command == "recover" ? "5m": "the lower of 1h and the owner limit")
     }
@@ -71,7 +75,7 @@ internal class CliCommand(
         name != "ascii" &&
         (
         (Name == "work" && name != "yes" && name != "non-interactive") ||
-            (Name == "checks" && name != "watch" && name != "timeout") ||
+            (Name == "checks" && name != "watch" && name != "timeout" && name != "verbose") ||
             Name == "prepare" ||
             Name == "status"
     )
@@ -108,23 +112,21 @@ internal class Cli {
             CliOption(
                 "models",
                 "JSON",
-                "Whitelist map of exact models to effort arrays; absent declares no effort control"
+                "Map of models to effort arrays copied to each selected tool; absent declares no effort control"
             ),
             CliOption(
                 "allowed-tools",
                 "TOOLS",
-                "Managed codex,claude,pi keeps external and OMP permissions; exact harness/provider pairs such as omp/openrouter replace the list"
+                "Tool names keep external and OMP permissions; exact harness/provider pairs or a JSON array with per-tool models replace the list"
             ),
-            CliOption(
-                "eligibility",
-                "MODE",
-                "Task eligibility; new repositories default to trusted",
-                "open trusted manual"
-            ),
+            CliOption("eligibility", "MODE", "Task eligibility; new repositories default to trusted", "trusted open"),
             CliOption("verification", "JSON", "Existing project verification commands as JSON argv arrays"),
             CliOption("required-checks", "JSON", "Required GitHub check names as a JSON array"),
             CliOption("reservation-time", "TIME", "Reservation lifetime from 5m to 7d"),
             CliOption("pr-text", "TEXT", "Optional literal owner text appended to PRs; no template expressions"),
+            CliOption("title", "TEXT", "Title of a new issue to create and approve; excludes ISSUE"),
+            CliOption("body", "TEXT", "Plain text description of the new issue; excludes --body-file"),
+            CliOption("body-file", "FILE", "Read the new issue description from a file; excludes --body"),
             CliOption(
                 "close-message",
                 "TEXT",
@@ -192,6 +194,7 @@ internal class Cli {
             ),
             CliOption("path", "DIR", "Repository directory; default: current directory"),
             CliOption("watch", "", "Wait for checks; default: off"),
+            CliOption("verbose", "", "Show check evidence and required owner actions"),
             CliOption("timeout", "TIME", "Check wait limit, at most 24h; default: 20m"),
             CliOption("state", "SHA", "Exact coordination-state commit"),
             CliOption("source", "SOURCE", "Coding source", "external tokate"),
@@ -215,6 +218,7 @@ internal class Cli {
             CliOption("plain", "", "Plain human output without color, ornament or animation; --json takes precedence"),
             CliOption("ascii", "", "Use ASCII ornaments; preserve names and URLs verbatim"),
         }
+
         internal let Commands[]CliCommand = []CliCommand{
             CliCommand(
                 "work",
@@ -262,10 +266,10 @@ internal class Cli {
             ),
             CliCommand(
                 "checks",
-                "run,watch,timeout",
+                "run,watch,timeout,verbose",
                 "repo,pr",
                 "Read PR receipt, report, CI and freshness gates; a saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge.",
-                "PR | RUN [--watch] [--timeout TIME]",
+                "PR | RUN [--watch] [--timeout TIME] [--verbose]",
                 "checks 10 --watch",
                 effects: "local_read local_write github_read",
                 target: "pr",
@@ -339,10 +343,10 @@ internal class Cli {
             ),
             CliCommand(
                 "approve",
-                "base-branch",
-                "repo,issue",
-                "Approve an issue for donors with a GitHub record and label; no donor assignment.",
-                "ISSUE [--base-branch BRANCH]",
+                "base-branch,yes,title,body,body-file,non-interactive",
+                "repo",
+                "Create or approve an issue for donors with a GitHub record and label; no donor assignment.",
+                "[ISSUE | --title TEXT [--body TEXT | --body-file FILE]] [--base-branch BRANCH] [--non-interactive] [--yes]",
                 "approve 42",
                 effects: "local_read github_read github_write",
                 target: "issue",
@@ -394,12 +398,12 @@ internal class Cli {
             ),
             CliCommand(
                 "doctor",
-                "auth,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
+                "repo,auth,harness-path,pi-root,node,claude-profile,fix,yes,set-default",
                 "",
-                "Check prerequisites; --fix offers confirmed setup; no inference.",
-                "[owner | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
+                "Check prerequisites or owner repository health; repository checks are read-only; no inference.",
+                "[owner [OWNER/REPO] | managed [HARNESS] | external | HARNESS] [--auth] [--fix [--yes]] [--set-default]",
                 "doctor",
-                effects: "local_read local_write",
+                effects: "local_read local_write github_read",
                 target: "doctor",
                 group: "setup"
             ),
@@ -470,12 +474,23 @@ internal class Cli {
                 group: "more"
             ),
             CliCommand(
+                "recover-request",
+                "",
+                "repo,issue",
+                "Owner: process the latest unprocessed request with the installed coordinator and current login.",
+                "ISSUE",
+                "recover-request 42",
+                effects: "local_read github_read github_write",
+                target: "issue",
+                group: "more"
+            ),
+            CliCommand(
                 "amend",
                 "run,commit,time,tools,sync,summary,resume",
-                "run,commit,time",
+                "run",
                 "Verify and publish a same-donor review correction; no inference.",
-                "RUN --commit SHA --time TIME [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "amend 42 --commit SHA --time 5m",
+                "RUN\n       tokate amend RUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
+                "amend 42 --time 5m",
                 effects: "local_read local_write github_read github_write",
                 target: "run",
                 group: "more"
@@ -483,10 +498,10 @@ internal class Cli {
             CliCommand(
                 "external",
                 "run,commit,summary,time,tools",
-                "run,commit",
+                "run",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
-                "RUN --commit SHA [--summary FILE]\n       tokate external RUN --commit NEW --time TIME --tools FILE",
-                "external 42 --commit SHA",
+                "RUN [--commit SHA] [--summary FILE]\n       tokate external RUN --time TIME --tools FILE [--commit NEW]",
+                "external 42",
                 effects: "local_read local_write github_read",
                 target: "run",
                 group: "more"
@@ -504,10 +519,10 @@ internal class Cli {
             ),
             CliCommand(
                 "authorize-sync",
-                "commit,upstream",
+                "commit,upstream,sync",
                 "repo,pr,commit,upstream",
                 "Owner: grant an exact candidate synchronization; no candidate inspection or acceptance.",
-                "PR --commit SHA --upstream SHA",
+                "PR --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]",
                 "authorize-sync 10 --commit C --upstream U",
                 effects: "local_read github_read github_write",
                 target: "pr",
@@ -531,7 +546,7 @@ internal class Cli {
                 "Preview a shared workflow entry using verified matching release assets; no inference.",
                 "[OWNER/REPO] --output FILE",
                 "coordinator-setup owner/project --output coordinator.yml",
-                effects: "local_read local_write github_read",
+                effects: "local_read local_write github_read github_write",
                 target: "repo",
                 group: "more"
             ),
@@ -642,14 +657,21 @@ internal class Cli {
                     return command
                 }
             }
+
+            if name == "verify-pr" {
+                throw Exception("Unknown command: verify-pr. Use tokate verify.")
+            }
+
             var nearest = ""
             var distance int32 = 3
+
             for command in Commands {
                 if command.Group != "internal" && Distance(name, command.Name) < distance {
                     distance = Distance(name, command.Name)
                     nearest = command.Name
                 }
             }
+
             throw Exception(
                 "Unknown command: " +
                     name +
@@ -661,23 +683,31 @@ internal class Cli {
         private func Distance(a string, b string) int32 {
             let row = [b.Length + 1]int32
             var j int32 = 0
+
             while j <= b.Length {
                 row[j] = j
                 j++
             }
+
             var i int32 = 1
+
             while i <= a.Length {
                 var previous = row[0]
+
                 row[0] = i
                 j = 1
+
                 while j <= b.Length {
                     let current = row[j]
+
                     row[j] = Math.Min(Math.Min(row[j], row[j - 1]) + 1, previous + (a[i - 1] == b[j - 1]? 0: 1))
                     previous = current
                     j++
                 }
+
                 i++
             }
+
             return row[b.Length]
         }
 
@@ -692,6 +722,7 @@ internal class Cli {
                     return option
                 }
             }
+
             throw Exception("Unknown option for " + command + ": --" + name)
         }
 
@@ -708,9 +739,11 @@ internal class Cli {
             let unit = match.Groups[2].Value
             let seconds = !match.Success ? 0: Int64.Parse(match.Groups[1].Value) *
             (unit == "s" ? 1: unit == "m" ? 60: unit == "h" ? 3600: 86400)
+
             if seconds < 1 || seconds > Int32.MaxValue {
                 throw Exception("Use a time such as 90s, 30m or 2h: --" + name)
             }
+
             return seconds.ToString()
         }
 
@@ -732,21 +765,38 @@ internal class Cli {
 
         internal func Positional(command CliCommand)[]string -> switch command.Name {
             case "work": []string{"ISSUE|OWNER/REPO|RUN", "NAME"}
+
             case "claim": []string{"ISSUE|OWNER/REPO", "NAME"}
+
             case "prepare": []string{"ISSUE", "NAME"}
+
             case "status": []string{"ISSUE|OWNER/REPO|RUN"}
+
             case "checks": []string{"PR|RUN"}
+
             case "runs": []string{"ISSUE|OWNER/REPO"}
+
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
-            case "doctor": []string{"owner|managed|external|HARNESS", "HARNESS (after managed)"}
+
+            case "doctor": []string{
+                "owner|managed|external|HARNESS",
+                "OWNER/REPO (after owner) or HARNESS (after managed)"
+            }
             default: switch command.Target {
                 case "issue": []string{"ISSUE"}
+
                 case "pr": []string{"PR"}
+
                 case "prs": []string{"PR|OWNER/REPO#PR", "PR..."}
+
                 case "repo": []string{"OWNER/REPO"}
+
                 case "run": []string{"RUN"}
+
                 case "access": []string{"OPERATION", "LOGIN", "OWNER/REPO|ISSUE"}
+
                 case "defaults": []string{"list|set|show|remove|use", "NAME"}
+
                 case "subject": []string{command.Name == "help" ? "COMMAND": "bash|zsh|fish"}
                 default: []string{}
             }
@@ -759,11 +809,14 @@ internal class Cli {
 
         internal func Metadata(name string = "") Object {
             let commands = List[Object]()
+
             for command in Commands {
                 if name != "" && command.Name != name {
                     continue
                 }
+
                 let options = List[Object]()
+
                 for option in Options {
                     if command.Has(option.Name) && !Global("--" + option.Name) && option.Name != "help" {
                         options.Add(
@@ -776,23 +829,31 @@ internal class Cli {
                         )
                     }
                 }
+
                 let inputs = List[Object]()
                 let conflicts = List[Object]()
+
                 for option in command.Options.Split(',', StringSplitOptions.RemoveEmptyEntries) {
                     if command.ConflictsWithRun(option) {
                         conflicts.Add(option)
                     }
                 }
+
                 inputs.Add(command.Required == "" ? []string{}: command.Required.Split(','))
+
                 if command.SupportsSavedRun {
                     inputs.Add([]string{"run"})
                 }
+
                 let effects = map[string, Object?]{}
                 let declaredEffects = command.Effects.Split(' ')
+
                 for effect in[]string{"local_read", "local_write", "github_read", "github_write"} {
                     effects[effect] = Array.IndexOf(declaredEffects, effect) >= 0
                 }
+
                 let modes = List[Object]()
+
                 if command.Name == "defaults" {
                     for mode in[]string{"set", "show", "remove", "list", "use"} {
                         modes.Add(
@@ -813,6 +874,7 @@ internal class Cli {
                         )
                     }
                 }
+
                 if command.Name == "access" {
                     for mode in Positionals.AccessOperations {
                         let write = mode != "list" && mode != "history" && mode != "check"
@@ -832,6 +894,7 @@ internal class Cli {
                         )
                     }
                 }
+
                 if command.Name == "status" {
                     for mode in[]string{"repository", "run"} {
                         modes.Add(
@@ -848,6 +911,7 @@ internal class Cli {
                         )
                     }
                 }
+
                 commands.Add(
                     map[string, Object?]{
                         "command": command.Name,
@@ -896,12 +960,15 @@ internal class Cli {
                     }
                 )
             }
+
             let shared = List[Object]()
+
             for option in Options {
                 if Global("--" + option.Name) || option.Name == "help" {
                     shared.Add(map[string, Object?]{"name": "--" + option.Name, "description": option.Describe("")})
                 }
             }
+
             return map[string, Object?]{
                 "version": ApplicationInfo.Version(),
                 "subject": name,
@@ -916,52 +983,64 @@ internal class Cli {
                     return word == "--help" || word == "-h" ? "help": word == "version" ? "--version": word
                 }
             }
+
             return "help"
         }
 
         internal func ErrorUsage(args[]string) string {
             var name = Name(args)
             let index = Array.IndexOf(args, name)
+
             if name == "help" && index >= 0 && index + 1 < args.Length && !args[index + 1].StartsWith("-") {
                 name = args[index + 1]
             }
+
             for command in Commands {
                 if command.Name == name {
                     return Usage(name) + "\nRun tokate " + name + " --help for options."
                 }
             }
+
             return "Usage: tokate <command> [options]\nRun tokate --help for commands."
         }
 
         private func OptionHelp(text StringBuilder, label string, description string, width int32) {
             text.AppendLine("  " + label)
+
             var line = "    "
             for word in description.Split(' ', StringSplitOptions.RemoveEmptyEntries) {
                 if line.Length > 4 && line.Length + word.Length + 1 > width - 2 {
                     text.AppendLine(line)
                     line = "    "
                 }
+
                 line += (line.Length == 4 ? "": " ") + word
             }
+
             text.AppendLine(line)
             text.AppendLine()
         }
 
         internal func Help(name string = "", width int32 = 80) string {
             let text = StringBuilder()
+
             if name == "" {
                 text.AppendLine("Tokate " + ApplicationInfo.Version() + " (toh-KAH-teh)")
                 text.AppendLine("Donate AI usage to approved GitHub issues.\n\nUsage: tokate <command> [options]\n")
                 text.AppendLine("Run tokate for guided setup, donations and saved work.\n")
+
                 let more = List[string]()
+
                 for group in[]string{"donate", "own", "setup"} {
                     text.AppendLine(
                         group == "donate" ? "Donate": group == "own" ? "\nOwn a project": "\nSet up this computer"
                     )
+
                     for command in Commands {
                         if command.Group != group {
                             continue
                         }
+
                         if width < 80 {
                             OptionHelp(text, command.Name, command.Brief, width)
                         } else {
@@ -969,11 +1048,13 @@ internal class Cli {
                         }
                     }
                 }
+
                 for command in Commands {
                     if command.Group == "more" {
                         more.Add(command.Name)
                     }
                 }
+
                 text.AppendLine("\nMore commands: " + String.Join(", ", more) + ".")
                 text.AppendLine("\nUse tokate <command> --help, tokate help <command>, or -h for details.")
                 text.AppendLine("In a checkout, 42 names issue or PR 42 of its GitHub remote.")
@@ -983,8 +1064,10 @@ internal class Cli {
                 )
             } else {
                 let command = Find(name)
+
                 text.AppendLine(Usage(name))
                 text.AppendLine(command.Summary + "\n")
+
                 let issue = "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL"
                 if command.Target == "issue" {
                     OptionHelp(
@@ -1038,6 +1121,7 @@ internal class Cli {
                         width
                     )
                 }
+
                 if name == "select" {
                     OptionHelp(
                         text,
@@ -1046,9 +1130,11 @@ internal class Cli {
                         width
                     )
                 }
+
                 if name == "work" || name == "claim" || name == "prepare" {
                     OptionHelp(text, "NAME", "Saved donor profile; follows ISSUE.", width)
                 }
+
                 if command.Runs {
                     OptionHelp(
                         text,
@@ -1058,10 +1144,12 @@ internal class Cli {
                         width
                     )
                 }
+
                 for option in Options {
                     if !command.Has(option.Name) || option.Name == "traffic" {
                         continue
                     }
+
                     let required = command.Needs(option.Name) && option.Name != "run" ? " (required)": ""
                     OptionHelp(
                         text,
@@ -1070,14 +1158,17 @@ internal class Cli {
                         width
                     )
                 }
+
                 if name == "status" || name == "runs" {
                     text.AppendLine("For repository status or saved runs, use OWNER/REPO or a GitHub repository URL.")
                 }
+
                 if name == "work" || name == "claim" {
                     text.AppendLine(
                         "In a terminal, OWNER/REPO chooses a project; missing task, tool and budget choices are guided. Redirected input and --json never prompt."
                     )
                 }
+
                 if command.SupportsSavedRun {
                     text.AppendLine(
                         name == "status" ? "Use RUN or --run DIR alone for offline status without GitHub or harness tools. Repository status is bounded and may report truncation; blocked work and failed CI still exit 0 after a successful read.":
@@ -1086,73 +1177,112 @@ internal class Cli {
                         "Use RUN or --run DIR instead of PR to check a saved run. A PR with one saved run uses that run."
                     )
                 }
+
                 text.AppendLine("\nExample:\n  tokate " + command.Example)
             }
+
             return text.ToString().TrimEnd()
         }
 
         internal func PullNumbers(value string) List[int32] {
             let parts = value.Split(',')
+
             if parts.Length < 2 || parts.Length > 16 {
                 throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
             }
+
             let numbers = List[int32]()
             let seen = HashSet[int32]()
+
             for part in parts {
                 var number int32
+
                 if !Regex.IsMatch(part, "^[0-9]+\\z") || !Int32.TryParse(part, out number) || number < 1 || !seen.Add(
                     number
                 ) {
                     throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
                 }
+
                 numbers.Add(number)
             }
+
             return numbers
         }
 
         internal func Validate(args Args, guided bool = false) {
             let command = Find(args.Command)
+
+            if args.Command == "approve" {
+                if args.Get("issue") != "" && args.Get("title") + args.Get("body") + args.Get("body-file") != "" {
+                    throw Exception("ISSUE excludes --title, --body and --body-file")
+                }
+
+                if args.Get("body") != "" && args.Get("body-file") != "" {
+                    throw Exception("--body and --body-file are mutually exclusive")
+                }
+
+                if !args.Help && args.Get("issue") == "" && !DonorSelection.Interactive(args) {
+                    args.Need("title")
+                }
+            }
+
             if !args.Help {
                 RunReference.Resolve(args)
             }
+
             if args.Get("from-pr") != "" &&
                 !args.Help &&
                 (args.Get("continue-from") != "" || args.Number("from-pr") < 1) {
                 throw Exception("--from-pr requires a positive PR number and no local continuation")
             }
+
             if args.Get("unlimited") == "true" {
                 if args.Get("seconds") != "" || args.Get("continue-from") != "" ||
                     (args.Command == "prepare" && args.Get("source") != "tokate") {
                     throw Exception("--unlimited requires fresh managed work and excludes --time and --continue-from")
                 }
+
                 if !guided && !args.Help {
                     args.Need("verification-reserve")
                 }
             }
+
             if args.Get("continue-from") != "" && !args.Help {
                 args.Need("seconds")
                 args.Need("verification-reserve")
+
                 if args.Command == "prepare" && args.Get("source") != "tokate" {
                     throw Exception("--continue-from requires --source tokate")
                 }
             }
+
             if args.Command == "doctor" {
+                if args.Get("repo") != "" &&
+                    (args.Get("owner") != "true" || args.Get("fix") == "true" || args.Get("set-default") == "true") {
+                    throw Exception("Repository diagnostics require doctor owner and are read-only")
+                }
+
                 if args.Get("set-default") == "true" && args.Get("harness") == "" &&
                     (args.Get("json") == "true" || !DonorSelection.Interactive(args)) {
                     throw Exception("Name the harness when setting a default noninteractively")
                 }
+
                 if args.Get("yes") == "true" && args.Get("fix") != "true" {
                     throw Exception("doctor --yes requires --fix")
                 }
+
                 var scopes int32
+
                 for key in[]string{"owner", "managed", "external"} {
                     if args.Get(key) == "true" {
                         scopes++
                     }
                 }
+
                 if scopes > 1 {
                     throw Exception("Choose one doctor scope: owner, managed or external")
                 }
+
                 if args.Get("harness") != "" && args.Get("harness") != "codex" && args.Get("harness") != "pi" &&
                     args.Get("harness") != "claude" && args.Get("harness") != "omp" &&
                     !(
@@ -1163,15 +1293,18 @@ internal class Cli {
                 ) {
                     throw Exception("Managed diagnostics support codex, claude, pi or omp")
                 }
+
                 for key in[]string{"harness", "harness-path", "pi-root", "node", "claude-profile"} {
                     if scopes > 0 && args.Get("managed") != "true" && args.Get(key) != "" {
                         throw Exception("Harness options require managed diagnostics")
                     }
                 }
+
                 if args.Get("harness") != "pi" && (args.Get("pi-root") != "" || args.Get("node") != "") {
                     throw Exception("Pi runtime options require the pi harness")
                 }
             }
+
             if args.Command == "recover" {
                 if args.Get("commit") == "" {
                     for key in[]string{"seconds", "tools", "summary"} {
@@ -1179,14 +1312,17 @@ internal class Cli {
                             throw Exception(Label(key) + " requires an explicit corrected --commit")
                         }
                     }
+
                     args.Values["--prepare"] = "true"
                 } else if !args.Help {
                     args.Need("seconds")
                 }
             }
+
             if args.Get("run") != "" && command.Runs && args.Run == "" && args.Words.Count > 0 {
                 throw Exception("--run conflicts with a repository or task argument")
             }
+
             if args.Get("run") != "" && command.SupportsSavedRun {
                 for key in args.Values.Keys {
                     if command.ConflictsWithRun(key.Substring(2)) {
@@ -1198,38 +1334,47 @@ internal class Cli {
                     }
                 }
             }
+
             if args.Get("verification-reserve") != "" && args.Command == "prepare" && args.Get("source") != "tokate" {
                 throw Exception("--verify-time requires --source tokate")
             }
+
             if args.Get("prs") != "" {
                 PullNumbers(args.Get("prs"))
             }
+
             for key in[]string{"seconds", "verification-reserve", "timeout", "pr"} {
                 if args.Get(key) != "" {
                     args.Number(key)
                 }
             }
+
             for key in[]string{"repo", "fork"} {
                 if args.Get(key) != "" {
                     args.Values["--" + key] = RepositoryInput.Repo(args.Get(key))
                 }
             }
+
             for key in[]string{"path", "run", "runs", "file", "tools", "summary", "event", "output", "continue-from"} {
                 if args.Get(key) != "" {
                     Path.GetFullPath(args.Get(key))
                 }
             }
+
             for key in[]string{"harness-path", "pi-root", "node"} {
                 if args.Get(key) != "" {
                     LocalPaths.RuntimePath(args.Need(key))
                 }
             }
+
             if args.Get("donor") != "" && args.Get("donor") != "@me" {
                 RepositoryIdentity.Login(args.Get("donor"))
             }
+
             if args.Get("base-branch") != "" {
                 RepositoryIdentity.Branch(args.Get("base-branch"))
             }
+
             if args.Get("model") != "" && !Regex.IsMatch(
                 args.Get("model"),
                 args.Get("harness") == "pi" || args.Get("harness") == "omp" || args.Get("harness") == "" || args.Get(
@@ -1238,14 +1383,17 @@ internal class Cli {
             ) {
                 throw Exception("Invalid model name: --model")
             }
+
             if args.Get("profile") != "" {
                 DonorDefaults.Name(args.Get("profile"))
             }
+
             for key in[]string{"harness", "provider"} {
                 if args.Get(key) != "" && !Regex.IsMatch(args.Get(key), "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
                     throw Exception("Invalid identifier: --" + key)
                 }
             }
+
             for key in[]string{"effort", "source", "availability", "model-policy", "eligibility"} {
                 if args.Get(key) != "" && Array.IndexOf(
                     OptionFor(args.Command, key).Choices.Split(' '),
@@ -1254,11 +1402,13 @@ internal class Cli {
                     throw Exception("Invalid value for --" + key)
                 }
             }
+
             for key in[]string{"state", "commit", "grant", "upstream", "sync"} {
                 if args.Get(key) != "" {
                     RepositoryIdentity.CommitSha(args.Get(key))
                 }
             }
+
             if args.Command == "completion" &&
                 args.Subject != "bash" &&
                 args.Subject != "zsh" &&
@@ -1266,9 +1416,11 @@ internal class Cli {
                 (args.Subject != "" || !args.Help) {
                 throw Exception("Required shell: bash, zsh or fish")
             }
+
             if args.Help {
                 return
             }
+
             if args.Command == "defaults" {
                 if args.Subject != "use" &&
                     args.Subject != "set" &&
@@ -1277,21 +1429,26 @@ internal class Cli {
                     args.Subject != "list" {
                     throw Exception("Unknown defaults operation; use set, show, list, use or remove")
                 }
+
                 if args.Subject == "list" && args.Get("profile") != "" {
                     throw Exception("defaults list does not take NAME")
                 }
+
                 if args.Subject == "use" && args.Get("profile") == "" {
                     throw Exception("Required: NAME")
                 }
+
                 let partial = args.Subject == "set" && args.Get("harness") != "" && args.Get("model") == "" && args.Get(
                     "effort"
                 ) == ""
                 if args.Subject == "set" && !partial {
                     DonorDefaults.NormalizePair(args)
                 }
+
                 if args.Subject == "set" && args.Get("harness") != "claude" && (args.Get("claude-profile") != "") {
                     throw Exception("Claude profile options require the claude harness")
                 }
+
                 for key in[]string{
                     "harness",
                     "provider",
@@ -1317,13 +1474,16 @@ internal class Cli {
                     }
                 }
             }
+
             if (args.Command == "prepare" || args.Command == "claim") && args.Get("source") == "external" {
                 args.Need("tools")
+
                 for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
                     if args.Get(key) != "" {
                         throw Exception("External claims exclude " + Label(key))
                     }
                 }
+
                 for key in[]string{
                     "profile",
                     "harness",
@@ -1340,27 +1500,34 @@ internal class Cli {
                         throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
                     }
                 }
+
                 if args.Command == "prepare" && args.Get("non-interactive") != "" {
                     throw Exception("External declarations use --tools; selection option conflicts: --non-interactive")
                 }
             } else if args.Command == "claim" && args.Get("tools") != "" {
                 throw Exception("Claim tool declarations require --source external")
             }
+
             if args.Get("run") != "" && command.SupportsSavedRun {
                 return
             }
+
             if guided && (args.Command == "work" || args.Command == "claim") && args.Get("continue-from") == "" {
                 return
             }
+
             let missing = List[string]()
+
             for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
                 if name != "repo" && args.Get(TimeKey(name)) == "" {
                     missing.Add(Label(TimeKey(name)))
                 }
             }
+
             if missing.Count > 0 {
                 throw Exception("Required: " + String.Join(", ", missing))
             }
+
             if command.Needs("repo") && args.Get("repo") == "" && args.Command != "init" {
                 args.Values["--repo"] = RepositoryInput.Local()
             }

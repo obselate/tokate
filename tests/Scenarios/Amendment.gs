@@ -19,9 +19,13 @@ internal class AmendmentFlow {
             tools string = "",
             owner bool = false,
             summary bool = true,
-            json bool = false
+            json bool = false,
+            head bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", commit, "--time", "30s"}
+            let args = List[string]{"amend", "--run", run, "--time", "30s"}
+            if !head {
+                args.AddRange([]string{"--commit", commit})
+            }
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -49,7 +53,12 @@ internal class AmendmentFlow {
             text string = "Reviewed correction\n",
             file string = "result.txt"
         ) string {
-            let checkout = Path.Combine(run, "checkout")
+            let external = Check.Text(Saved(run)["source"]) == "external"
+            let checkout = Path.Combine(run, external ? "coding": "checkout")
+            if external {
+                flow.Git("-C", checkout, "fetch", Path.Combine(run, "checkout"), "HEAD")
+                flow.Git("-C", checkout, "checkout", "--detach", "FETCH_HEAD")
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(checkout, file)) ?? checkout)
             File.WriteAllText(Path.Combine(checkout, file), text)
             flow.Git("-C", checkout, "add", "-A")
@@ -324,6 +333,14 @@ internal class AmendmentFlow {
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 flow.ResetTraffic()
                 flow.Call([]string{"verify", "owner/project#10"}, 1)
+                if field == "amendment" {
+                    Check.Envelope(
+                        flow.Call([]string{"verify", "owner/project#10", "--json"}, 1),
+                        "verify",
+                        "error",
+                        "stale_approval"
+                    )
+                }
                 Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Altered receipt was accepted")
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -341,6 +358,14 @@ internal class AmendmentFlow {
             summary bool = true
         ) {
             Check.That(Check.Text(Saved(run)["commit"]) == commit, "Saved amendment head differs")
+            let replay = Path.Combine(flow.Temp.Root, "amendment-replay-" + commit)
+            flow.Git("clone", "--no-local", Path.Combine(run, "checkout"), replay)
+            flow.Git("-C", replay, "checkout", "--detach", Check.Text(Saved(run)["base"]))
+            flow.Git("-C", replay, "apply", "--index", Path.Combine(run, "amendments", commit, "candidate.patch"))
+            Check.That(
+                flow.Git("-C", replay, "write-tree") == flow.Git("-C", replay, "rev-parse", commit + "^{tree}"),
+                "Amendment patch changed the tree"
+            )
             flow.Reload()
             Check.That(flow.State["pulls"]?.AsArray().Count == 1, "Amendment duplicated PR")
             let body = Check.Text(flow.State["pulls"]?[0]?["body"])
@@ -542,6 +567,23 @@ internal class AmendmentFlow {
             let contribution = Check.Text(flow.State()["state"]?["contribution"])
             Review(flow.Flow)
             let commit = Edit(flow.Flow, run)
+            if !native {
+                Check.That(
+                    flow.Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == Check.Text(
+                        Check.Json(original)["commit"]
+                    ),
+                    "External amendment was copied into the verification checkout before amend"
+                )
+                Check.That(
+                    TestProcess.Run(
+                        "/usr/bin/git",
+                        []string{"-C", Path.Combine(run, "checkout"), "cat-file", "-e", commit},
+                        flow.Flow.Temp.Env
+                    )
+                        .Code != 0,
+                    "External amendment candidate already exists in the verification checkout"
+                )
+            }
             if modelPolicy != "" {
                 File.WriteAllText(
                     flow.Tools,
@@ -551,10 +593,36 @@ internal class AmendmentFlow {
             let tools = native && modelPolicy == "" ? "": flow.Tools
             if mode == "lost_push_response" || mode == "lost_request_response" {
                 flow.Flow.Mode(mode)
-                Amend(flow.Flow, run, commit, mode == "lost_request_response" ? 0: 1, tools, summary: true)
+                let rejected = Amend(
+                    flow.Flow,
+                    run,
+                    commit,
+                    mode == "lost_request_response" ? 0: 1,
+                    tools,
+                    summary: true
+                )
+                if mode == "lost_push_response" {
+                    Check.That(
+                        Check.Text(
+                            Saved(Path.Combine(run, "amendments", commit))["failure_reason"]
+                        ) == "publication_interrupted",
+                        "Interrupted Git publication lost its saved failure reason"
+                    )
+                    Check.Contains(rejected.Error, "Saved amendment")
+                    Check.Contains(rejected.Error, "Re-run the same amend command")
+                }
                 flow.Flow.Mode("")
             }
-            Amend(flow.Flow, run, commit, tools: tools, summary: true)
+            let amended = Check.Envelope(
+                Amend(flow.Flow, run, commit, tools: tools, summary: true, json: true, head: mode == "" && !native),
+                "amend",
+                "ok"
+            )
+            Check.That(Check.Text(amended["data"]?["commit"]) == commit, "Amendment JSON lost the resolved commit")
+            Check.That(
+                flow.Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == commit,
+                "Amend did not import the exact candidate into the verification checkout"
+            )
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             Check.That(Check.Text(request["action"]) == "amend", "Wrong amendment request")
@@ -566,6 +634,89 @@ internal class AmendmentFlow {
                 flow.Flow.State["request_comments"]?.AsArray().Count == 2,
                 "Amendment repeated an applied request comment"
             )
+            if mode == "" && !native {
+                let location = Path.Combine(run, "amendments", commit)
+                let saved = File.ReadAllText(Path.Combine(location, "run.json"))
+                let summary = Check.Text(Saved(location)["summary_argument"])
+                let summaryInput = File.ReadAllText(summary)
+                let toolsInput = File.ReadAllText(tools)
+                for key in[]string{"summary", "tools", "time", "sync"} {
+                    let arguments = List[string]{
+                        "amend",
+                        "--run",
+                        run,
+                        "--commit",
+                        commit,
+                        "--time",
+                        key == "time" ? "31s": "30s",
+                        "--tools",
+                        tools,
+                        "--summary",
+                        summary,
+                        "--json"
+                    }
+                    let file = key == "summary" ? summary: tools
+                    let originalInput = File.ReadAllText(file)
+                    if key == "summary" || key == "tools" {
+                        File.AppendAllText(file, "\n")
+                    } else if key == "sync" {
+                        arguments.AddRange([]string{"--sync", String('a', 40)})
+                    }
+                    let rejected = Check.Envelope(
+                        flow.Flow.Call(arguments.ToArray(), 1),
+                        "amend",
+                        "error",
+                        "invalid_state"
+                    )
+                    let message = Check.Text(rejected["error"]?["message"])
+                    Check.Contains(message, "--" + key)
+                    Check.Contains(message, "Restore the original input to continue")
+                    Check.Contains(message, "start a new amendment with a new --commit and --time")
+                    Check.That(
+                        File.ReadAllText(Path.Combine(location, "run.json")) == saved,
+                        "Changed inputs altered the saved request"
+                    )
+                    File.WriteAllText(file, originalInput)
+                }
+                File.WriteAllText(summary, "{}")
+                let rejected = Check.Envelope(
+                    flow.Flow.Call(
+                        []string{
+                            "amend",
+                            "--run",
+                            run,
+                            "--commit",
+                            commit,
+                            "--time",
+                            "30s",
+                            "--tools",
+                            tools,
+                            "--summary",
+                            summary,
+                            "--json"
+                        },
+                        1
+                    ),
+                    "amend",
+                    "error",
+                    "invalid_state"
+                )
+                Check.Contains(Check.Text(rejected["error"]?["message"]), "--summary")
+                File.Delete(summary)
+                File.Delete(tools)
+                flow.Flow.Call([]string{"amend", "--run", run, "--json"})
+                Check.That(
+                    File.ReadAllText(Path.Combine(location, "run.json")) == saved,
+                    "Saved continuation changed the request"
+                )
+                flow.Flow.Reload()
+                Check.That(
+                    flow.Flow.State["request_comments"]?.AsArray().Count == 2,
+                    "Saved continuation repeated the request"
+                )
+                File.WriteAllText(summary, summaryInput)
+                File.WriteAllText(tools, toolsInput)
+            }
             let path = flow.Event(request)
             if mode == "lost_body_response" || mode == "lost_state_response" || mode == "interrupted_state_write" {
                 flow.Flow.Mode(mode)
@@ -623,6 +774,16 @@ internal class AmendmentFlow {
                 ) == true,
                 "Amendment completion command missing from next actions"
             )
+            if mode == "" && !native {
+                let summary = Check.Text(Saved(Path.Combine(run, "amendments", commit))["summary_argument"])
+                let summaryInput = File.ReadAllText(summary)
+                let toolsInput = File.ReadAllText(tools)
+                File.Delete(summary)
+                File.Delete(tools)
+                flow.Flow.Call([]string{"amend", "--run", run, "--json"})
+                File.WriteAllText(summary, summaryInput)
+                File.WriteAllText(tools, toolsInput)
+            }
             flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).ToArray())
             let completed = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
             Check.That(
@@ -700,7 +861,7 @@ internal class AmendmentFlow {
                 } else if failure == "remote" {
                     flow.Flow.Git(
                         "-C",
-                        Path.Combine(run, "checkout"),
+                        Path.Combine(run, "coding"),
                         "push",
                         Path.Combine(flow.Flow.Bin, "fork"),
                         "HEAD:refs/heads/" + Check.Text(Saved(run)["branch"])
@@ -738,7 +899,7 @@ internal class AmendmentFlow {
                     let result = Check.Envelope(rejected, "amend", "error", "stale_approval")
                     Check.Contains(
                         Check.Text(result["error"]?["message"]),
-                        "The reservation is gone. Return to the owner before amending."
+                        "The reservation is gone. Return to the owner."
                     )
                 } else {
                     Amend(flow.Flow, run, commit, 1)

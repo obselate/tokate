@@ -9,6 +9,7 @@ import System.Text.Json
 
 internal class Data(fields Dictionary[string, Object?]? = nil) {
     internal let Fields Dictionary[string, Object?] = fields ?? Dictionary[string, Object?]()
+
     internal func Text(key string) string -> J.Text(Field(key), key)
 
     internal func Number(key string) int32 -> J.Number(Field(key), key)
@@ -28,22 +29,45 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     }
 
     internal func Write(path string) {
-        File.WriteAllText(path + ".tmp", J.Write(Fields) + "\n")
-        File.Move(path + ".tmp", path, true)
+        try {
+            File.WriteAllText(path + ".tmp", J.Write(Fields) + "\n")
+            File.Move(path + ".tmp", path, true)
+        } catch (error IOException) {
+            throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+        } catch (error UnauthorizedAccessException) {
+            throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+        }
     }
+
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
             return Read(Path.Combine(directory, "run.json"))
         }
 
-        internal func Read(path string) Data -> From(J.Parse(File.ReadAllText(path)))
+        internal func Read(path string) Data {
+            try {
+                return From(J.Parse(File.ReadAllText(path)))
+            } catch (error JsonException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            } catch (error IOException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            } catch (error UnauthorizedAccessException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+            }
+        }
 
         internal func From(value JsonElement) Data {
             let result = Data()
-            for field in value.EnumerateObject() {
-                result.Fields[field.Name] = field.Value.Clone()
+
+            try {
+                for field in value.EnumerateObject() {
+                    result.Fields[field.Name] = field.Value.Clone()
+                }
+            } catch (error InvalidOperationException) {
+                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
             }
+
             return result
         }
 

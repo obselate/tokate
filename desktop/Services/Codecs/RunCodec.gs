@@ -32,6 +32,8 @@ class RunCodec {
                 External: Json.Text(data, "source") == "external",
                 Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"): "",
                 Finish: Json.Strings(Json.Get(data, "next"), "command"),
+                Guidance: Json.Text(Json.Get(data, "next"), "action"),
+                Warning: "",
             }
         }
 

@@ -9,11 +9,13 @@ internal class GuidedWork {
     shared {
         internal func Repository(args Args) {
             var inferred = args.Get("repo")
+
             if inferred == "" {
                 try {
                     inferred = RepositoryInput.Local()
                 } catch (error Exception) { }
             }
+
             var note = "Paste a GitHub repository or issue link, or enter owner/repo."
             while true {
                 let value = WizardScreen.Read(
@@ -21,17 +23,22 @@ internal class GuidedWork {
                     note,
                     "Project",
                     inferred,
-                    "A repository lists approved work. An issue link selects that task directly. You can correct the suggested repository."
+                    "Choose the repository with approved work, or enter an issue link to select one task. Example: owner/repo#42."
                 )
+
                 if value == "" {
                     throw OperationCanceledException("Cancelled")
                 }
+
                 try {
                     let selected = Args([]string{args.Command, value})
+
                     args.Values["--repo"] = selected.Need("repo")
+
                     if selected.Get("issue") != "" {
                         args.Values["--issue"] = selected.Get("issue")
                     }
+
                     return
                 } catch (error Exception) {
                     note = error.Message
@@ -41,17 +48,21 @@ internal class GuidedWork {
 
         private func Task(args Args) {
             Terminal.Step("Reading approved issues...")
+
             let repo = args.Need("repo")
             let issues = GitHub.Api(
                 "repos/" +
                     repo +
                     "/issues?state=open&labels=tokate%3Aapproved&sort=updated&direction=desc&per_page=20&page=1"
             )
+
             if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 20 {
                 throw Exception("Cannot read approved issues")
             }
+
             let numbers = List[string]()
             let choices = List[string]()
+
             for task in J.Items(issues) {
                 if J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined || J.Text(
                     task,
@@ -60,24 +71,34 @@ internal class GuidedWork {
                     !GitHub.HasLabel(task) {
                     continue
                 }
+
                 numbers.Add(J.Number(task, "number").ToString())
                 choices.Add("#" + numbers[numbers.Count - 1] + "  " + J.Text(task, "title"))
             }
+
             if choices.Count == 0 {
                 throw Exception("No approved issues were found. The owner must approve a task before donation.")
             }
+
             let choice = WizardScreen.Choose(
                 "Choose an issue",
                 repo + "\nApproved tasks. Current access and availability are checked before a claim.",
                 choices.ToArray(),
-                "Choose an issue. For work outside this bounded list, return home and enter its issue link."
+                "Choose an approved task to work on. The list only shows approved tasks. Use an issue link for another task."
             )
             args.Values["--issue"] = numbers[choice - 1]
         }
 
         private func Eligible(value JsonElement, policy Policy) bool ->
         DonorSelection.Supported(value) &&
-            (J.Text(value, "model") == "" || policy.Allows(J.Text(value, "model"), J.Text(value, "effort"))) &&
+            (
+            J.Text(value, "model") == "" || policy.Allows(
+                J.Text(value, "harness"),
+                J.Text(value, "provider"),
+                J.Text(value, "model"),
+                J.Text(value, "effort")
+            )
+        ) &&
             (policy.AllowsTool(J.Text(value, "harness"), J.Text(value, "provider")))
 
         internal func Profile(args Args, policy Policy) {
@@ -94,83 +115,108 @@ internal class GuidedWork {
             } {
                 args.Values.Remove("--" + key)
             }
+
             args.SavedDefaults = JsonElement{}
+
             let saved = DonorDefaults.Run(Args([]string{"defaults", "list"}))
             let names = List[string]()
             let labels = List[string]()
             let defaults = J.Get(saved, "default")
+
             if Eligible(defaults, policy) {
                 names.Add("")
                 labels.Add(Label(defaults, "Saved default"))
             }
+
             for entry in J.Get(saved, "profiles").EnumerateObject() {
                 if Eligible(entry.Value, policy) {
                     names.Add(entry.Name)
                     labels.Add(Label(entry.Value, entry.Name))
                 }
             }
+
             if labels.Count > 0 {
                 labels.Add("Set up another coding tool")
-                let selected = ModelChecklist.Pick(labels.ToArray())
+
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a saved tool profile to use its settings. Choose \"Set up another coding tool\" to select a different tool."
+                )
+
                 if selected < names.Count {
                     let value = DonorDefaults.Read(names[selected])
+
                     for field in value.EnumerateObject() {
                         if field.Name != "harness-path" || args.Get("harness-path") == "" {
                             args.Values["--" + field.Name] = field.Value.GetString() ?? ""
                         }
                     }
+
                     if args.Get("model") != "" {
                         return
                     }
                 }
             }
+
             let tools = List[string]()
             let routes = List[string]()
+
             if policy.AllowsTool("codex", "openai") {
                 tools.Add("Codex | Subscription")
                 routes.Add("codex")
             }
+
             if policy.AllowsTool("claude", "anthropic") {
                 tools.Add("Claude Code | Subscription")
                 routes.Add("claude")
             }
+
             if policy.AllowsTool("pi", "local-chat-completions") {
                 tools.Add("Pi | Local")
                 routes.Add("pi")
             }
+
             if policy.Providers("omp").Count > 0 {
                 tools.Add("OMP | Your OMP providers")
                 routes.Add("omp")
             }
+
             if tools.Count == 0 {
                 throw Exception("The owner policy allows no supported managed coding tools")
             }
+
             let preferred = routes.IndexOf(args.Get("harness"))
             let tool = preferred >= 0 ? preferred + 1: WizardScreen.Choose(
                 "Your coding tool",
                 "Choose one permitted tool. Availability is checked before starting.",
-                tools.ToArray()
+                tools.ToArray(),
+                "Choose a tool you have configured and are allowed to use. Choose Pi for your local model server. Choose a subscription tool to use its account."
             )
             args.Values["--harness"] = routes[tool - 1]
             DonorDefaults.NormalizePair(args)
             Startup.Check(args)
+
             if args.Need("harness") == "claude" {
                 let models = List[string]()
                 let efforts = List[string]()
+
                 labels.Clear()
-                if policy.ModelPolicy == "unrestricted" {
+
+                if policy.Unrestricted("claude", "anthropic") {
                     args.Values["--model"] = WizardScreen.Read(
                         "Claude Code model",
                         "Choose the exact model identifier.",
-                        "Model ID"
+                        "Model ID",
+                        help: "Choose the exact model configured in Claude Code. Example: claude-sonnet-5-5."
                     )
                     args.Values["--effort"] = WizardScreen.Read(
                         "Reasoning effort",
                         "Choose a supported effort level.",
-                        "Effort"
+                        "Effort",
+                        help: "Choose an effort supported by your model. Use the lowest level that gives you enough reasoning time."
                     )
                 } else {
-                    for model in J.Get(policy.Value, "models").EnumerateObject() {
+                    for model in policy.ToolModels("claude", "anthropic").EnumerateObject() {
                         for level in J.Items(model.Value) {
                             let effort = level.GetString() ?? ""
                             if ClaudeCode.Pair(model.Name, effort) {
@@ -180,10 +226,15 @@ internal class GuidedWork {
                             }
                         }
                     }
+
                     if labels.Count == 0 {
                         throw Exception("The owner policy permits no supported Claude model and effort")
                     }
-                    let selected = ModelChecklist.Pick(labels.ToArray())
+
+                    let selected = ModelChecklist.Pick(
+                        labels.ToArray(),
+                        help: "Choose a model and effort allowed by the project. Use the lowest effort that is enough for the task."
+                    )
                     args.Values["--model"] = models[selected]
                     args.Values["--effort"] = efforts[selected]
                 }
@@ -191,66 +242,144 @@ internal class GuidedWork {
                 if args.Get("pi-root") == "" && args.Get("harness-path") == "" && LocalPaths.Harness("pi") == "" {
                     MachineSetup.Harness(args)
                 }
+
                 args.Values["--endpoint"] = WizardScreen.Read(
                     "Local model",
                     "Use your existing model server or local tunnel.",
                     "Endpoint URL",
                     args.Get("endpoint"),
-                    "No-auth loopback Chat Completions URL, including /v1. Tokate does not start a server."
-                )
-                args.Values["--model"] = WizardScreen.Read(
-                    "Local model",
-                    "Choose the exact model configured in Pi and advertised by your server.",
-                    "Model ID"
+                    "Enter the URL of your existing local model server. Example: http://127.0.0.1:1234/v1. Tokate does not start the server."
                 )
                 PiHarness.Runtime(args)
+
+                let models = List[string]()
+                let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
+
+                try {
+                    for entry in J.Items(J.Get(PiCatalog.Read(args.Need("node"), "", endpoint), "data")) {
+                        if policy.AllowsModel("pi", "local-chat-completions", J.Text(entry, "id")) {
+                            models.Add(J.Text(entry, "id"))
+                        }
+                    }
+                } catch (error CliFailure) { }
+
+                var selected = models.Count + 1
+
+                if models.Count > 0 {
+                    labels.Clear()
+                    labels.AddRange(models)
+                    labels.Add("Enter another model ID")
+                    selected = WizardScreen.Choose(
+                        "Local model",
+                        "Choose a model advertised by your server and configured in Pi.",
+                        labels.ToArray(),
+                        "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
+                    )
+                }
+
+                args.Values["--model"] = selected <= models.Count ? models[selected - 1]: WizardScreen.Read(
+                    "Local model",
+                    "Choose the exact model configured in Pi and advertised by your server.",
+                    "Model ID",
+                    help: "Choose a model listed by your server and configured in Pi. If you enter one, use its exact model ID, for example qwen2.5-coder."
+                )
+
                 let settings = PiBoundary.ModelSettings(
                     args.Need("pi-root"),
                     args.Need("node"),
                     args.Need("model"),
                     PiBoundary.Endpoint(args.Need("endpoint"))
                 )
+
                 let efforts = List[string]()
+
                 for level in J.Items(J.Get(settings, "efforts")) {
                     let effort = level.GetString() ?? ""
-                    if policy.Allows(args.Need("model"), effort) {
+                    if policy.Allows("pi", "local-chat-completions", args.Need("model"), effort) {
                         efforts.Add(effort)
                     }
                 }
+
                 if efforts.Count == 0 {
                     throw Exception("The owner policy permits none of this Pi model's supported reasoning levels")
                 }
+
                 args.Values["--effort"] = efforts[
                     WizardScreen.Choose(
                         "Reasoning effort",
                         "Choose a level supported by Pi and permitted by the project.",
-                        efforts.ToArray()
+                        efforts.ToArray(),
+                        "Choose an effort supported by Pi and allowed by the project. Use the lowest level that is enough for the task."
                     ) - 1
                 ]
             } else if args.Need("harness") == "omp" {
                 OmpRuntime.Runtime(args)
+
                 let providers = List[string]()
                 let models = List[string]()
                 let efforts = List[string]()
+
                 labels.Clear()
-                if policy.ModelPolicy == "unrestricted" {
-                    let selector = WizardScreen.Read(
+
+                if policy.Providers("omp").Exists(provider -> policy.Unrestricted("omp", provider)) {
+                    let selectors = List[string]()
+
+                    try {
+                        for entry in OmpRuntime.Models(args.Need("harness-path")) {
+                            if J.Text(entry, "kind") == "chat" && policy.AllowsModel(
+                                "omp",
+                                J.Text(entry, "provider"),
+                                J.Text(entry, "id")
+                            ) {
+                                selectors.Add(J.Text(entry, "selector"))
+                            }
+                        }
+                    } catch (error Exception) { }
+
+                    var choice = selectors.Count + 1
+
+                    if selectors.Count > 0 {
+                        labels.AddRange(selectors)
+                        labels.Add("Enter another model ID")
+                        choice = WizardScreen.Choose(
+                            "OMP model",
+                            "Choose a model from your OMP catalog.",
+                            labels.ToArray(),
+                            "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
+                        )
+                        labels.Clear()
+                    }
+
+                    let selector = choice <= selectors.Count ? selectors[choice - 1]: WizardScreen.Read(
                         "OMP model",
                         "Choose the exact model as OMP lists it.",
                         "provider/model",
                         "",
-                        "Run omp models to see the selectors your OMP setup provides."
+                        "Enter a model selector listed by your OMP setup and allowed by the project. Example: openrouter/model-name."
                     )
+
                     let split = selector.IndexOf('/')
+
                     if split < 1 {
                         throw Exception("Use the provider/model selector that omp models lists")
                     }
+
                     let settings = OmpRuntime.Model(
                         args.Need("harness-path"),
                         selector.Substring(0, split),
                         selector.Substring(split + 1)
                     )
+
                     for level in J.Items(J.Get(settings, "efforts")) {
+                        if !policy.Allows(
+                            "omp",
+                            selector.Substring(0, split),
+                            selector.Substring(split + 1),
+                            level.GetString() ?? ""
+                        ) {
+                            continue
+                        }
+
                         providers.Add(selector.Substring(0, split))
                         models.Add(selector.Substring(split + 1))
                         efforts.Add(level.GetString() ?? "")
@@ -258,12 +387,14 @@ internal class GuidedWork {
                     }
                 } else {
                     let allowed = policy.Providers("omp")
+
                     for entry in OmpRuntime.Models(args.Need("harness-path")) {
                         if !allowed.Contains(J.Text(entry, "provider")) || J.Text(entry, "kind") != "chat" {
                             continue
                         }
+
                         for effort in OmpRuntime.Efforts(entry) {
-                            if policy.Allows(J.Text(entry, "id"), effort) {
+                            if policy.Allows("omp", J.Text(entry, "provider"), J.Text(entry, "id"), effort) {
                                 providers.Add(J.Text(entry, "provider"))
                                 models.Add(J.Text(entry, "id"))
                                 efforts.Add(effort)
@@ -274,32 +405,44 @@ internal class GuidedWork {
                         }
                     }
                 }
+
                 if labels.Count == 0 {
                     throw Exception(
                         "OMP lists no model and effort that the owner policy permits. Check omp models and your OMP sign-in."
                     )
                 }
-                let selected = ModelChecklist.Pick(labels.ToArray())
+
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a model and effort listed by OMP and allowed by the project. Use the lowest effort that is enough for the task."
+                )
                 args.Values["--provider"] = providers[selected]
                 args.Values["--model"] = models[selected]
                 args.Values["--effort"] = efforts[selected]
             } else {
                 let models = List[string]()
                 let efforts = List[string]()
+
                 labels.Clear()
+
                 for entry in CodexRuntime.Capabilities(args.Get("harness-path")) {
                     for effort in entry.Value {
-                        if policy.Allows(entry.Key, effort) {
+                        if policy.Allows("codex", "openai", entry.Key, effort) {
                             models.Add(entry.Key)
                             efforts.Add(effort)
                             labels.Add("OpenAI | Codex | Subscription | " + entry.Key + " / " + effort)
                         }
                     }
                 }
+
                 if labels.Count == 0 {
                     throw Exception("No permitted model and effort are advertised by the installed Codex")
                 }
-                let selected = ModelChecklist.Pick(labels.ToArray())
+
+                let selected = ModelChecklist.Pick(
+                    labels.ToArray(),
+                    help: "Choose a model and effort supported by your Codex setup and allowed by the project. Use the lowest effort that is enough for the task."
+                )
                 args.Values["--model"] = models[selected]
                 args.Values["--effort"] = efforts[selected]
             }
@@ -320,6 +463,7 @@ internal class GuidedWork {
             if args.Get("unlimited") == "true" && !allowUnlimited {
                 throw Exception("Repository policy does not allow unlimited coding")
             }
+
             let cap = (limit / 60).ToString() + " minutes"
             while true {
                 let answer = WizardScreen.Read(
@@ -331,8 +475,9 @@ internal class GuidedWork {
                         " for coding and verification combined. Choose coding minutes.",
                     allowUnlimited ? "Coding minutes or unlimited": "Coding minutes",
                     args.Get("unlimited") == "true" ? "unlimited": "30",
-                    "This is a client time limit, not a token, billing or server-resource cap."
+                    "Choose how many minutes Tokate may spend on coding. Use the default unless you need a different limit. The owner sets the maximum."
                 )
+
                 let unlimited = allowUnlimited && answer.Trim().Equals("unlimited", StringComparison.OrdinalIgnoreCase)
                 var coding int32
                 var reserve int32
@@ -340,8 +485,10 @@ internal class GuidedWork {
                     "Verification time",
                     "Reserve time for the owner's independent checks after coding.",
                     "Verification minutes",
-                    "30"
+                    "30",
+                    "Reserve time for the owner's checks after coding. Example: 30 minutes."
                 )
+
                 if int32.TryParse(verification, out reserve) &&
                     reserve > 0 &&
                     reserve <= 1440 &&
@@ -362,13 +509,17 @@ internal class GuidedWork {
                         args.Values.Remove("--unlimited")
                         args.Values["--seconds"] = ((coding + reserve) * 60).ToString()
                     }
+
                     args.Values["--verification-reserve"] = (reserve * 60).ToString()
+
                     return
                 }
+
                 WizardScreen.Read(
                     "Time limit",
                     "Use positive whole minutes. The combined owner limit is " + limit.ToString() + " seconds.",
-                    "Enter to try again"
+                    "Enter to try again",
+                    help: "Enter positive whole minutes for coding and verification. The total must be within the owner's limit."
                 )
             }
         }
@@ -380,6 +531,7 @@ internal class GuidedWork {
                 args.Get("continue-from") != "" || (args.Command != "work" && args.Command != "claim") {
                 return
             }
+
             let guided = args.Get("repo") == "" || args.Get("issue") == "" ||
                 (args.Get("seconds") == "" && args.Get("unlimited") != "true") ||
                 (args.Get("unlimited") == "true" && args.Get("verification-reserve") == "") ||
@@ -387,40 +539,54 @@ internal class GuidedWork {
             if !guided {
                 return
             }
+
             args.Guided = true
+
             if args.Get("repo") == "" {
                 Repository(args)
             }
+
             Startup.Check(Args([]string{"status", args.Need("repo")}))
+
             if args.Get("issue") == "" {
                 Task(args)
             }
+
             let repo = args.Need("repo")
             let viewer = GitHub.Api("user")
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
             let info = GitHub.Api("repos/" + repo)
             let policy = Policy.Load(repo, J.Text(info, "default_branch"))
+
             CoordinationState.Load(repo, args.Number("issue")).Check(
                 repo,
                 args.Number("issue"),
                 donor,
                 J.Get(viewer, "id")
             )
+
             let allowUnlimited = J.Bool(policy.Value, "allow_unlimited")
+
             if (args.Get("seconds") == "" && args.Get("unlimited") != "true") ||
                 (args.Get("unlimited") == "true" && args.Get("verification-reserve") == "") {
                 Budget(args, J.Number(policy.Value, "max_seconds"), allowUnlimited)
             }
+
             if args.Get("profile") == "" && args.Get("harness") == "" && args.Get("model") == "" {
                 Profile(args, policy)
             }
+
             DonorSelection.ApplyDefaults(args)
+
             while true {
                 Terminal.Step("Checking the selected coding tool...")
                 Startup.Check(args)
+
                 let selection = DonorSelection.Resolve(args, policy)
                 let reserve = RuntimeBudget.Reserve(args, RuntimeBudget.ReadSeconds(args))
+
                 args.Values["--verification-reserve"] = reserve.ToString()
+
                 let body = repo + " #" + args.Need("issue") + "\n\nTool     " + J.Text(selection, "harness") +
                     " / " +
                     J.Text(selection, "provider") + "\nModel    " + J.Text(selection, "model") + " / " + J.Text(
@@ -446,35 +612,41 @@ internal class GuidedWork {
                         "harness"
                     ) == "omp" ? "Uses the provider account or local runtime configured in your OMP. Charges are unknown.": "Uses your selected harness subscription. Extra-charge status is unknown."
                 ) +
-                    "\nAvailability: " +
-                    J.Text(selection, "availability")
+                    "\nTokate cannot check your remaining usage before it starts."
                 let options = args.Command == "claim" ? []string{
                     "Reserve for later, without starting AI",
                     "Change tool or time limit"
                 }:
                 []string{"Start donation", "Change tool or time limit", "Reserve for later, without starting AI"}
+
                 let action = WizardScreen.Choose(
                     "Review donation",
                     body,
                     options,
-                    "Starting rechecks authority, prepares your fork and runs the selected tool. Reserving spends no inference. You can return home without posting anything."
+                    "Start to let Tokate prepare work and run your selected tool. Reserve saves the task without running the tool. Returning home posts nothing."
                 )
+
                 if action == 1 || (args.Command == "work" && action == 3) {
                     if action == 3 {
                         args.Command = "claim"
                     }
+
                     args.Values["--yes"] = "true"
                     return
                 }
+
                 if action == 2 {
                     let change = WizardScreen.Choose(
                         "Change donation",
                         "Only change what you need.",
-                        []string{"Coding tool and model", "Time limit", "Back to review"}
+                        []string{"Coding tool and model", "Time limit", "Back to review"},
+                        "Change the coding tool and model, or change the time limit. Choose back to review the donation again."
                     )
+
                     if change == 1 {
                         Profile(args, policy)
                     }
+
                     if change == 2 {
                         Budget(args, J.Number(policy.Value, "max_seconds"), allowUnlimited)
                     }

@@ -77,10 +77,15 @@ class TokateCommands {
 
         func HarnessDoctor(harness string) []string -> []string{"doctor", "managed", harness}
 
-        func OwnerDoctor() []string -> []string{"doctor", "owner", "--auth"}
+        func OwnerDoctor(repo string = "") []string -> repo == "" ? []string{"doctor", "owner", "--auth"}:
+        []string{"doctor", "owner", repo, "--auth"}
+
+        func CoordinatorSetup(repo string, output string, apply bool = false) []string -> apply ?
+        []string{"coordinator-setup", repo, "--output", output, "--non-interactive", "--yes"}:
+        []string{"coordinator-setup", repo, "--output", output, "--non-interactive"}
 
         func Approve(repo string, issue string, branch string) []string ->
-        []string{"approve", repo + "#" + issue, "--base-branch", branch}
+        []string{"approve", repo + "#" + issue, "--base-branch", branch, "--yes"}
 
         func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue}
 
@@ -96,10 +101,6 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        func SetupModelsJson(draft SetupDraft) string -> draft.ModelPolicy == "whitelist" ? Json.StringListMap(
-            draft.Models
-        ): draft.ModelsJson
-
         func Init(repo string, draft SetupDraft) []string {
             let args = List[string]{"init", repo, "--path", draft.Path, "--non-interactive"}
             if draft.CommandsChanged {
@@ -110,22 +111,13 @@ class TokateCommands {
                 args.Add("--required-checks")
                 args.Add(Json.StringArray(draft.Checks))
             }
-            if draft.ModelPolicy != "" {
-                args.Add("--model-policy")
-                args.Add(draft.ModelPolicy)
-            }
             if draft.Minutes != "" {
                 args.Add("--max-time")
                 args.Add((draft.MinutesSeconds() / 60).ToString() + "m")
             }
-            let models = SetupModelsJson(draft)
-            if models.Trim() != "" {
-                args.Add("--models")
-                args.Add(models)
-            }
-            if draft.Tools.Trim() != "" {
+            if draft.PermissionsChanged {
                 args.Add("--allowed-tools")
-                args.Add(draft.Tools)
+                args.Add(Json.AllowedTools(draft.EffectiveTools(), draft.ToolModels))
             }
             if draft.Eligibility.Trim() != "" {
                 args.Add("--eligibility")

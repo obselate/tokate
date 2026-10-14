@@ -13,6 +13,7 @@ internal class OverlapContribution {
     internal var Binding Data? = nil
     internal var Files HashSet[string]? = nil
     internal var Stable bool
+
     internal init(number int32) {
         Number = number
         Facts = map[string, Object?]{
@@ -52,6 +53,7 @@ internal class Overlaps {
                 PublicOutput.Truncated = true
                 return
             }
+
             Remaining -= bytes
             rows.Add(item)
         }
@@ -76,9 +78,11 @@ internal class Overlaps {
         private func Resolution(issue JsonElement) Object {
             let result = J.Select(issue, "closed_at")
             let closer = J.Get(issue, "closed_by")
+
             if closer.ValueKind == JsonValueKind.Object {
                 result["closed_by"] = J.Select(closer, "id,login")
             }
+
             for key in[]string{"duplicate_of", "resolution"} {
                 let value = J.Get(issue, key)
                 if value.ValueKind == JsonValueKind.Object {
@@ -87,6 +91,7 @@ internal class Overlaps {
                     result[key] = value
                 }
             }
+
             return result
         }
 
@@ -97,12 +102,14 @@ internal class Overlaps {
             facts["dependencies_status"] = "incomplete"
             facts["dependencies_output_complete"] = true
             facts["dependency_gate"] = "unknown"
+
             let seen = HashSet[string](StringComparer.Ordinal)
             var complete bool
             var valid bool = true
             var blocked bool
             var review bool
             var count int32
+
             try {
                 for page in 1 ... 11 {
                     let value = GitHub.Api(
@@ -110,12 +117,15 @@ internal class Overlaps {
                             "/dependencies/blocked_by?per_page=100&page=" +
                             page.ToString()
                     )
+
                     if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 100 {
-                        throw Exception("Incomplete native dependency evidence")
+                        throw CliFailure("invalid_state", "Incomplete native dependency evidence")
                     }
+
                     for dependency in value.EnumerateArray() {
                         count++
                         let url = J.Text(dependency, "url")
+
                         if url == "" || J.Number(dependency, "number") < 1 || !seen.Add(url) || J.Get(
                             dependency,
                             "pull_request"
@@ -124,6 +134,7 @@ internal class Overlaps {
                             review = true
                             valid = false
                         }
+
                         let state = J.Text(dependency, "state")
                         let reason = J.Text(dependency, "state_reason")
                         let resolution = J.Parse(J.Write(Resolution(dependency)))
@@ -151,16 +162,20 @@ internal class Overlaps {
                                 !duplicate &&
                                 resolved ? "open_dependency_removed": "owner_review"
                         )
+
                         blocked = blocked || gate == "blocking"
                         review = review || gate == "owner_review"
+
                         let row = J.Select(dependency, "id,number,url,html_url,state,state_reason")
                         row["resolution"] = resolution
                         row["gate"] = gate
+
                         Retain(rows, row)
                         facts["dependency_count"] = count
                         facts["dependencies_output_complete"] = rows.Count == count
                         facts["dependency_gate"] = blocked ? "blocked": "unknown"
                     }
+
                     if value.GetArrayLength() < 100 {
                         complete = valid
                         break
@@ -168,7 +183,9 @@ internal class Overlaps {
                 }
             } catch (error ApiDeadlineException) {
                 throw error
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure || error is JsonException || error.GetType() == typeof(
+                Exception
+            ) {
                 Failure(facts, "dependencies", error)
             } finally {
                 facts["dependencies"] = rows
@@ -188,18 +205,21 @@ internal class Overlaps {
         ) Dictionary[string, Object?] {
             let facts = evidence ?? Dictionary[string, Object?]()
             let remaining = Remaining
+
             try {
                 Remaining = 24000
                 Dependencies(repo, issue, facts)
             } finally {
                 Remaining = remaining
             }
+
             return facts
         }
 
         internal func RequireDependencies(repo string, issue int32, evidence Dictionary[string, Object?]? = nil) {
             let facts = evidence ?? DependencyEvidence(repo, issue)
             ApiTransport.CheckDeadline()
+
             if facts["dependencies_status"]?.ToString() != "complete" ||
                 facts["dependency_gate"]?.ToString() != "no_open_dependencies" {
                 throw CliFailure("invalid_state", "Dependency evidence is blocked, incomplete or requires owner review")
@@ -214,29 +234,38 @@ internal class Overlaps {
             changes Dictionary[string, HashSet[string]]
         ) {
             let facts = item.Facts
+
             if target == "" {
-                throw Exception("Current target is unavailable")
+                throw CliFailure("invalid_state", "Current target is unavailable")
             }
+
             let key = base + ":" + target
             if !changes.ContainsKey(key) {
                 changes[key] = base == target ? HashSet[string](): GitHubPathEvidence.Diff(repo, base, repo, target)
             }
+
             let paths = List[string]()
+
             for path in changes[key] {
                 if item.Files?.Contains(path) == true {
                     paths.Add(path)
                 }
             }
+
             paths.Sort(StringComparer.Ordinal)
+
             let retained = List[Object]()
+
             for path in paths {
                 Retain(retained, path)
             }
+
             facts["upstream_status"] = base == target ? "current": "changed"
             facts["upstream_file_count"] = changes[key].Count
             facts["upstream_overlap_count"] = paths.Count
             facts["upstream_paths"] = retained
             facts["upstream_paths_complete"] = retained.Count == paths.Count
+
             if base != target {
                 facts["upstream_next"] = paths.Count > 0 ?
                 "Owner: ask the current donor to reconcile these overlapping paths with the current target, then verify the resulting commit. Further coding requires a new donor budget.":
@@ -251,134 +280,187 @@ internal class Overlaps {
             changes Dictionary[string, HashSet[string]]
         ) {
             let facts = item.Facts
+
             try {
                 let pull = GitHub.Api("repos/" + repo + "/pulls/" + item.Number.ToString())
                 item.Identity = Identity(pull)
+
                 let head = J.Get(pull, "head")
                 facts["head"] = RepositoryIdentity.CommitSha(J.Text(head, "sha"))
                 facts["head_branch"] = J.Text(head, "ref")
                 facts["head_repo"] = RepositoryIdentity.Repo(J.Text(J.Get(head, "repo"), "full_name"))
+
                 let branch = RepositoryIdentity.Branch(J.Text(J.Get(pull, "base"), "ref"))
                 item.Target = branch
                 facts["target_branch"] = branch
+
                 if !targets.ContainsKey(branch) {
                     try {
                         targets[branch] = GitHub.Branch(repo, branch)
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure ||
+                        error is JsonException ||
+                        error is ApiDeadlineException ||
+                        error.GetType() == typeof(Exception) {
                         targets[branch] = ""
                     }
                 }
+
                 facts["target_revision"] = targets[branch]
                 facts["pr_url"] = J.Text(pull, "html_url")
                 facts["mergeable"] = J.Get(pull, "mergeable")
                     .ValueKind == JsonValueKind.True ? true: (
                     J.Get(pull, "mergeable").ValueKind == JsonValueKind.False ? false as Object: nil
                 )
+
                 let binding = ReceiptVerification.Verify(repo, item.Number, ready: false, paths: false)
+
                 item.Binding = binding
                 facts["binding_status"] = "validated"
                 facts["binding"] = J.Select(
                     binding.Element(),
                     "version,issue,approval,authority_revision,donor,base,base_branch,commit"
                 )
+
                 try {
                     let history = J.Items(J.Get(binding.Element(), "synchronizations"))
                     let base = history.Count > 0 ? J.Text(history[history.Count - 1], "upstream"): binding.Text("base")
+
                     let files = GitHubPathEvidence.Diff(
                         repo,
                         base,
                         J.Text(J.Get(head, "repo"), "full_name"),
                         binding.Text("commit")
                     )
+
                     item.Files = files
                     facts["diff_status"] = "complete"
                     facts["file_count"] = files.Count
                     facts["diff_base"] = base
                     facts["diff_head"] = binding.Text("commit")
+
                     try {
                         Upstream(repo, item, base, targets[branch], changes)
-                    } catch (error Exception) {
+                    } catch (error Exception) when error is CliFailure ||
+                        error is JsonException ||
+                        error is ApiDeadlineException ||
+                        error.GetType() == typeof(Exception) {
                         Failure(facts, "upstream", error)
                     }
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(facts, "diff", error)
                 }
+
                 try {
                     let checks = CommitChecks.Read(repo, binding.Text("commit"))
                     let rows = List[Object]()
+
                     for check in J.Items(checks) {
                         Retain(rows, J.Select(check, "name,state,bucket,link,workflow"))
                     }
+
                     facts["checks"] = rows
                     facts["check_count"] = checks.GetArrayLength()
                     facts["checks_status"] = "complete"
                     facts["checks_output_complete"] = rows.Count == checks.GetArrayLength()
                     facts["checks_head"] = binding.Text("commit")
+
                     let names = J.Items(J.Get(J.Get(binding.Element(), "policy"), "required_checks"))
                     let required = List[Object]()
+
                     for name in names {
                         Retain(required, name)
                     }
+
                     facts["required_checks"] = required
                     facts["required_check_count"] = names.Count
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(facts, "checks", error)
                 }
+
                 Dependencies(repo, binding.Number("issue"), facts)
-            } catch (error Exception) {
+            } catch (error Exception) when error is CliFailure ||
+                error is JsonException ||
+                error is ApiDeadlineException ||
+                error.GetType() == typeof(Exception) {
                 Failure(facts, "binding", error)
             }
         }
 
         internal func Run(args Args) {
             Remaining = 24000
+
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let numbers = Cli.PullNumbers(args.Need("prs"))
             let items = List[OverlapContribution]()
             let targets = Dictionary[string, string](StringComparer.Ordinal)
             let changes = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
+
             for number in numbers {
                 let item = OverlapContribution(number)
                 items.Add(item)
                 Read(repo, item, targets, changes)
             }
+
             for item in items {
                 try {
                     let pull = GitHub.Api("repos/" + repo + "/pulls/" + item.Number.ToString())
                     item.Facts["head_after"] = J.Text(J.Get(pull, "head"), "sha")
                     item.Facts["target_branch_after"] = J.Text(J.Get(pull, "base"), "ref")
+
                     if item.Identity == "" || Identity(pull) != item.Identity {
-                        throw Exception("Contribution identity changed during evidence collection")
+                        throw CliFailure("stale_approval", "Contribution identity changed during evidence collection")
                     }
+
                     if let binding = item.Binding {
                         let live = ReceiptVerification.Verify(repo, item.Number, ready: false, paths: false)
                         let fields = "version,issue,approval,authority_revision,base,base_branch,commit,synchronizations"
                         let current = J.Write(J.Select(live.Element(), fields))
                         let original = J.Write(J.Select(binding.Element(), fields))
+
                         if current != original {
-                            throw Exception("Contribution binding changed during evidence collection")
+                            throw CliFailure(
+                                "stale_approval",
+                                "Contribution binding changed during evidence collection"
+                            )
                         }
                     }
+
                     item.Stable = true
                     item.Facts["identity_status"] = "stable"
-                } catch (error Exception) {
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) {
                     Failure(item.Facts, "identity", error)
                     item.Facts["binding_status"] = "unknown"
                     item.Invalidate()
                 }
             }
+
             for target in targets {
                 var current string = ""
                 try {
                     current = GitHub.Branch(repo, target.Key)
-                } catch (error Exception) { }
+                } catch (error Exception) when error is CliFailure ||
+                    error is JsonException ||
+                    error is ApiDeadlineException ||
+                    error.GetType() == typeof(Exception) { }
+
                 for item in items {
                     if item.Target != target.Key {
                         continue
                     }
+
                     let stable = target.Value != "" && current == target.Value
                     item.Facts["target_status"] = stable ? "stable": "unknown"
                     item.Facts["target_revision_after"] = current
+
                     if !stable {
                         item.Facts[
                             "target_error"
@@ -389,7 +471,9 @@ internal class Overlaps {
                     }
                 }
             }
+
             let pairs = List[Object]()
+
             for i in 0 ... items.Count {
                 for j in i + 1 ... items.Count {
                     let left = items[i]
@@ -398,9 +482,11 @@ internal class Overlaps {
                     let paths = List[Object]()
                     var count int32
                     let known = same && left.Stable && right.Stable && left.Files != nil && right.Files != nil
+
                     if known {
                         let names = List[string](left.Files ?? HashSet[string]())
                         names.Sort(StringComparer.Ordinal)
+
                         for name in names {
                             if right.Files?.Contains(name) == true {
                                 count++
@@ -408,6 +494,7 @@ internal class Overlaps {
                             }
                         }
                     }
+
                     let status = !left.Stable ||
                         !right.Stable ||
                         left.Target == "" ||
@@ -416,6 +503,7 @@ internal class Overlaps {
                             !known ? "unknown": (count > 0 ? "overlap": "no_filename_overlap")
                         )
                     )
+
                     pairs.Add(
                         map[string, Object?]{
                             "left_pr": left.Number,
@@ -429,7 +517,9 @@ internal class Overlaps {
                     )
                 }
             }
+
             let contributions = List[Object]()
+
             for item in items {
                 contributions.Add(item.Facts)
                 if item.Binding != nil {
@@ -441,6 +531,7 @@ internal class Overlaps {
                     )
                 }
             }
+
             let result = map[string, Object?]{
                 "repo": repo,
                 "contributions": contributions,
@@ -448,6 +539,7 @@ internal class Overlaps {
                 "advisory": Advisory
             }
             PublicOutput.ResultData = result
+
             if !PublicOutput.Enabled {
                 result["truncated"] = PublicOutput.Truncated
                 Terminal.Message(Advisory, "cyan")

@@ -17,13 +17,16 @@ data struct RunDetails {
     var Form Blob?
     /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
     var Note Feedback
+    var LastMessage string
     var Waiting bool
     var OnAction Action[RunAction]?
     var OnToggleAmendment Action?
+    var OnFollow Action[NextAction]?
 
     func Build() Blob {
         let act = OnAction
         let amend = OnToggleAmendment
+        let follow = OnFollow
         let run = Item.Run ?? Run.Empty
         let status = Item.Status()
         let tone = Statuses.ToneOf(status)
@@ -61,7 +64,13 @@ data struct RunDetails {
             children.Add(Label{Content: text}.Build())
         }
         if run.ErrorMessage != "" {
-            children.Add(Callout{Message: run.ErrorMessage, Tone: Tone.Fail}.Build())
+            children.Add(Callout{Message: run.FailureReason + ": " + run.ErrorMessage + "\n" + CliError{Code: run.FailureReason}.Recovery, Tone: Tone.Fail}.Build())
+        }
+        if run.Warning != "" {
+            children.Add(Callout{Message: run.Warning, Tone: Tone.Need}.Build())
+        }
+        if run.Guidance != "" {
+            children.Add(Callout{Message: run.Guidance, Tone: Tone.Need}.Build())
         }
         if Note.Message != "" {
             children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
@@ -97,6 +106,37 @@ data struct RunDetails {
         }
         if buttons.Count > 0 {
             children.Add(Row{Children: buttons.ToArray()}.Build())
+        }
+        for next in Item.Actions {
+            let continuation = Array.IndexOf(next.Arguments, "--continue-from") >= 0
+            if next.Command == "help" || (next.Command == "status" && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
+                if continuation {
+                    for command in []string{"pause", "resume"} {
+                        let request = NextAction{Arguments: []string{"tokate", command, "--run", run.Path, "--json"}}
+                        children.Add((Button with{
+                            Label = command == "pause" ? "Pause stopped attempt": "Resume reservation",
+                            Disabled = Waiting,
+                            OnClick = () -> follow?.Invoke(request),
+                        }).Build())
+                    }
+                }
+                children.Add(Label{Content: String.Join(" ", next.Arguments)}.Build())
+                children.Add((Button with{
+                    Label = next.Command == "prepare" ? "Prepare continuation": next.Command == "help" ? "Read recovery help": "Inspect authority",
+                    Disabled = Waiting,
+                    OnClick = () -> follow?.Invoke(next),
+                }).Build())
+            }
+        }
+        let failure = String.Join("\n", run.Guidance, run.ErrorMessage, LastMessage)
+        if failure.Contains("Tokate workflow failed.") || failure.Contains("GitHub could not start the Tokate workflow") {
+            let recovery = NextAction{Arguments: []string{"tokate", "recover-request", run.Repo + "#" + run.Issue.ToString(), "--json"}}
+            children.Add(Label{Content: "Only an owner with repository write access can recover the pending request. Fix the workflow cause first."}.Build())
+            children.Add((Button with{
+                Label = "Owner: recover request",
+                Disabled = Waiting,
+                OnClick = () -> follow?.Invoke(recovery),
+            }).Build())
         }
         if let form = Form {
             children.Add(form)

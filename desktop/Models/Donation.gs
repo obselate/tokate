@@ -125,15 +125,18 @@ data struct ModelChoice {
         func Catalog(harness string, provider string, codex []ModelChoice, omp []ModelChoice, policy Policy) []ModelChoice {
             let offered = harness == "codex" ? codex: harness == "claude" ? Claude: harness == "omp" ? omp: []ModelChoice{}
             let result = List[ModelChoice]()
+            let toolProvider = harness == "omp" ? provider: HarnessOption.ProviderOf(harness)
+            let restricted = policy.RestrictsTool(harness, toolProvider)
+            let allowances = policy.ModelsFor(harness, toolProvider)
             for model in offered {
                 if harness == "omp" && model.Provider != provider {
                     continue
                 }
-                if !policy.RestrictsModels {
+                if !restricted {
                     result.Add(model)
                     continue
                 }
-                for allowance in policy.Models {
+                for allowance in allowances {
                     if allowance.Model == model.Slug {
                         let efforts = List[string]()
                         for effort in model.Efforts {
@@ -145,10 +148,10 @@ data struct ModelChoice {
                     }
                 }
             }
-            if harness == "pi" && policy.RestrictsModels {
-                for allowance in policy.Models {
+            if harness == "pi" && restricted {
+                for allowance in allowances {
                     let slug = allowance.Model
-                    if !Array.Exists(codex, model -> model.Slug == slug) && !Array.Exists(Claude, model -> model.Slug == slug) {
+                    if policy.Version >= 3 || (!Array.Exists(codex, model -> model.Slug == slug) && !Array.Exists(Claude, model -> model.Slug == slug)) {
                         result.Add(ModelChoice{Slug: slug, DisplayName: slug, Efforts: allowance.Efforts, Provider: ""})
                     }
                 }
@@ -328,7 +331,7 @@ data struct DonationState {
     func Settled() DonationState {
         let harness = Draft.Harness
         if Draft.Profile != "" || (harness == "codex" && Models.Length == 0) || (harness == "omp" && OmpModels.Length == 0) ||
-            (harness == "pi" && !Policy.RestrictsModels) {
+            (harness == "pi" && !Policy.RestrictsTool(harness, HarnessOption.ProviderOf(harness))) {
             return this
         }
         let models = Catalog()

@@ -37,7 +37,6 @@ func ArchitectureTests() {
     let root = DesktopRoot()
     for file in Sources(root, "Views") {
         let text = File.ReadAllText(file)
-        // Array literals such as `[]Container{...}` hold component results and are allowed.
         let primitive = Regex.Match(text, "(?<!\\[\\])\\b(Container|Text|Button|Image)\\s*\\{")
         Regression.Check(!primitive.Success, "views use components only: " + Relative(root, file))
     }

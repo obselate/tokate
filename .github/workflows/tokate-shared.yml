@@ -63,6 +63,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TOKATE_REPOSITORY: ${{ github.repository }}
         run: '"$RUNNER_TEMP/tokate" coordinate "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
+  approve-label:
+    if: github.event_name == 'issues' && github.event.label.name == 'tokate:approved' && github.event.issue.pull_request == null
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    concurrency:
+      group: tokate-coordinate-${{ github.event.issue.number }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - *namespace
+      - *bootstrap
+      - name: Coordinate bounded GitHub request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOKATE_REPOSITORY: ${{ github.repository }}
+        run: '"$RUNNER_TEMP/tokate" coordinate "$TOKATE_REPOSITORY" --event "$GITHUB_EVENT_PATH" --traffic'
   admit:
     if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-24.04

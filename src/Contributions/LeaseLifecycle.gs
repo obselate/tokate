@@ -16,7 +16,13 @@ internal class LeaseLifecycle {
         internal func Owner(state CoordinationState, actor JsonElement, active bool = false) {
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
+
+            if reservation.ValueKind != JsonValueKind.Object {
+                throw CliFailure("stale_approval", "The reservation is gone. Return to the owner.")
+            }
+
             RepositoryIdentity.PositiveId(actor)
+
             if RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) != RepositoryIdentity.PositiveId(actor) ||
                 CoordinationState.Unix(reservation, "expires") <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() || J.Text(
                 reservation,
@@ -24,36 +30,42 @@ internal class LeaseLifecycle {
             ) == "released" {
                 throw CliFailure("stale_approval", "Lease expired, released or belongs to another numeric donor")
             }
+
             let identity = J.Get(value, "identity")
             var id Guid
             var lease Guid
+
             if !Guid.TryParseExact(J.Text(reservation, "lease"), "D", out lease) || lease.ToString("D") != J.Text(
                 reservation,
                 "lease"
             ) ||
                 !Guid.TryParseExact(J.Text(identity, "id"), "D", out id) || id.ToString("D") != J.Text(identity, "id") {
-                throw Exception("Incomplete lease or contribution identity")
+                throw CliFailure("invalid_state", "Incomplete lease or contribution identity")
             }
+
             if J.Text(identity, "id") != J.Text(reservation, "reservation") || RepositoryIdentity.PositiveId(
                 J.Get(identity, "actor")
             ) != RepositoryIdentity.PositiveId(actor) {
-                throw Exception("Lease differs from the contribution identity")
+                throw CliFailure("invalid_state", "Lease differs from the contribution identity")
             }
+
             let status = J.Text(reservation, "status")
+
             if status == "active" {
                 var attempt Guid
                 if !Guid.TryParseExact(J.Text(reservation, "attempt"), "D", out attempt) || attempt.ToString(
                     "D"
                 ) != J.Text(reservation, "attempt") {
-                    throw Exception("Active lease needs a canonical attempt identity")
+                    throw CliFailure("invalid_state", "Active lease needs a canonical attempt identity")
                 }
             } else if status == "paused" {
                 if J.Text(reservation, "attempt") != "" {
-                    throw Exception("Paused lease cannot retain an active attempt")
+                    throw CliFailure("invalid_state", "Paused lease cannot retain an active attempt")
                 }
             } else {
-                throw Exception("Unsupported lease lifecycle state")
+                throw CliFailure("invalid_state", "Unsupported lease lifecycle state")
             }
+
             if active && status != "active" {
                 throw CliFailure("stale_approval", "No active coding attempt; resume grants a fresh fence only")
             }
@@ -82,18 +94,25 @@ internal class LeaseLifecycle {
                 policy,
                 "reservation_seconds"
             )
+
             if action == "claim" {
                 if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                     CoordinationState.Unix(reservation, "expires") > now {
-                    throw Exception("An unexpired reservation already owns this contribution")
+                    throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
                 }
+
                 if reservation.ValueKind == JsonValueKind.Object && !Supported(value) {
-                    throw Exception("Legacy lease reacquisition is unsupported; fresh owner approval is required")
+                    throw CliFailure(
+                        "stale_approval",
+                        "Legacy lease reacquisition is unsupported; fresh owner approval is required"
+                    )
                 }
+
                 let same = Supported(value) && RepositoryIdentity.PositiveId(
                     J.Get(identity, "actor")
                 ) == RepositoryIdentity.PositiveId(actor)
                 let id = same ? J.Text(identity, "id"): uuid
+
                 if !same {
                     let next = map[string, Object?]{"id": id, "actor": actor}
                     if Supported(value) {
@@ -103,6 +122,7 @@ internal class LeaseLifecycle {
                             "actor": J.Get(identity, "actor")
                         }
                     }
+
                     state.Fields["identity"] = next
                     state.Fields["contribution"] = nil
                     state.Fields["amendments"] = []Object{}
@@ -110,6 +130,7 @@ internal class LeaseLifecycle {
                 } else {
                     Pin(state)
                 }
+
                 let outcome = map[string, Object?]{
                     "reservation": id,
                     "lease": uuid,
@@ -120,23 +141,36 @@ internal class LeaseLifecycle {
                     "status": "active",
                     "attempt": uuid
                 }
+
                 state.Fields["reservation"] = outcome
+
                 return outcome
             }
+
             if !Supported(value) {
-                throw Exception("Legacy lease transitions are unsupported; fresh owner approval is required")
+                throw CliFailure(
+                    "stale_approval",
+                    "Legacy lease transitions are unsupported; fresh owner approval is required"
+                )
             }
+
             Owner(state, actor)
+
             let status = J.Text(reservation, "status")
             if (action == "pause" && status != "active") || (action == "resume" && status != "paused") {
-                throw Exception("Lifecycle transition does not match the current lease state")
+                throw CliFailure("invalid_state", "Lifecycle transition does not match the current lease state")
             }
+
             Pin(state)
+
             let fields = map[string, Object?]{}
+
             for field in reservation.EnumerateObject() {
                 fields[field.Name] = field.Value.Clone()
             }
+
             fields["donor"] = donor
+
             if action == "release" {
                 fields["status"] = "released"
                 fields["attempt"] = ""
@@ -152,12 +186,15 @@ internal class LeaseLifecycle {
                     fields["attempt"] = uuid
                 }
             }
+
             state.Fields["reservation"] = fields
+
             return fields
         }
 
         private func Pin(state CoordinationState) {
             let value = state.Value()
+
             if J.Get(value, "contribution").ValueKind == JsonValueKind.Object && J.Text(
                 value,
                 "publication_revision"

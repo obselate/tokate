@@ -16,12 +16,13 @@ curl -qfsSL https://tokate.dev/install.sh | sh
 Open a new terminal if prompted. Use `tokate update` to update or `tokate uninstall`
 to remove the installation while keeping saved work.
 
-Requires **Linux x86_64 with glibc 2.34+ or Alpine 3.24, and public GitHub repositories**.
+Current main supports **Linux x86_64 with glibc 2.34+ or Alpine 3.24, and public GitHub repositories**.
 Windows, macOS and ARM64 are not supported. See [Nix](docs/nix.md) and
 [Alpine](docs/alpine.md) for distribution setup. Managed donations use
 native Codex with a ChatGPT login, native Claude Code with a personal Pro/Max login,
 Pi with a configured local model endpoint, or OMP with its configured providers.
 Owners need neither harness nor an AI subscription.
+See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) for system packages, GitHub login and harness checks.
 
 ## Start here
 

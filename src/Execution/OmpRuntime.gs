@@ -11,13 +11,16 @@ internal class OmpRuntime {
     shared {
         internal func Command(executable string) List[string] {
             let command = List[string]()
+
             for key in[]string{"PI_CONFIG_DIR", "PI_CODING_AGENT_DIR", "OMP_PROFILE", "PI_PROFILE"} {
                 let value = Environment.GetEnvironmentVariable(key) ?? ""
                 if value != "" {
                     command.Add(key + "=" + value)
                 }
             }
+
             command.Add(executable)
+
             return command
         }
 
@@ -26,6 +29,7 @@ internal class OmpRuntime {
                 Path.Combine("/tmp", "tokate-omp-" + Guid.NewGuid().ToString("N")),
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
             )
+
             try {
                 let command = Command(executable)
                 command.AddRange(arguments)
@@ -43,44 +47,77 @@ internal class OmpRuntime {
         }
 
         internal func Runtime(args Args, budget RuntimeBudget? = nil) JsonElement {
-            if !OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64 {
-                throw Exception("Managed OMP requires Linux x64; no host fallback")
-            }
-            let found = LocalPaths.Harness("omp", args.Get("harness-path"))
-            if found == "" {
-                throw Exception(
-                    "OMP was not found. Install it with its official installer and sign in, or select --harness-path FILE. No inference started."
+            try {
+                if !OperatingSystem.IsLinux() || RuntimeInformation.ProcessArchitecture != Architecture.X64 {
+                    throw ExecutionFailure.Create("missing_tools", "Managed OMP requires Linux x64; no host fallback")
+                }
+
+                let found = LocalPaths.Harness("omp", args.Get("harness-path"))
+                if found == "" {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "OMP was not found. Install it with its official installer and sign in, or select --harness-path FILE. No inference started."
+                    )
+                }
+
+                let binary = LocalPaths.CanonicalPath(found)
+                if !LocalPaths.Executable(binary) {
+                    throw ExecutionFailure.Create(
+                        "missing_tools",
+                        "The selected OMP executable is missing or not executable; check --harness-path"
+                    )
+                }
+
+                let result = Native(binary, []string{"--version"}, 30, budget)
+                let version = Regex.Match(
+                    result.Output.Trim(),
+                    "^omp/([0-9]+\\.[0-9]+\\.[0-9]+[A-Za-z0-9.+-]{0,40})\\z"
                 )
+                if result.Code != 0 || result.Truncated || result.ReadFailed || !version.Success {
+                    throw LinuxSandbox.ProbeFailure(result, "OMP version check failed; no inference started")
+                }
+
+                args.Values["--harness-path"] = binary
+
+                return J.Parse(J.Write(map[string, Object?]{"type": "omp.probe", "version": version.Groups[1].Value}))
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
-            let binary = LocalPaths.CanonicalPath(found)
-            if !LocalPaths.Executable(binary) {
-                throw Exception("The selected OMP executable is missing or not executable; check --harness-path")
-            }
-            let result = Native(binary, []string{"--version"}, 30, budget)
-            let version = Regex.Match(result.Output.Trim(), "^omp/([0-9]+\\.[0-9]+\\.[0-9]+[A-Za-z0-9.+-]{0,40})\\z")
-            if result.Code != 0 || result.Truncated || result.ReadFailed || !version.Success {
-                throw LinuxSandbox.ProbeFailure(result, "OMP version check failed; no inference started")
-            }
-            args.Values["--harness-path"] = binary
-            return J.Parse(J.Write(map[string, Object?]{"type": "omp.probe", "version": version.Groups[1].Value}))
         }
 
         internal func Models(executable string, budget RuntimeBudget? = nil) List[JsonElement] {
-            let result = Native(executable, []string{"models", "--json"}, 60, budget)
-            if result.Code != 0 || result.Truncated || result.ReadFailed {
-                throw Exception("OMP could not list its configured models; run omp models. No inference started")
+            try {
+                let result = Native(executable, []string{"models", "--json"}, 60, budget)
+                if result.Code != 0 || result.Truncated || result.ReadFailed {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "OMP could not list its configured models; run omp models. No inference started"
+                    )
+                }
+
+                let listing = RequestData.Parse(result.Output.Trim(), 16 * 1024 * 1024)
+                let models = J.Get(listing, "models")
+                if listing.ValueKind != JsonValueKind.Object || models.ValueKind != JsonValueKind.Array {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "OMP returned an unsupported model list; no inference started"
+                    )
+                }
+
+                return J.Items(models)
+            } catch (error Exception) when error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                throw ExecutionFailure.From(error, "missing_tools")
             }
-            let listing = RequestData.Parse(result.Output.Trim(), 16 * 1024 * 1024)
-            let models = J.Get(listing, "models")
-            if listing.ValueKind != JsonValueKind.Object || models.ValueKind != JsonValueKind.Array {
-                throw Exception("OMP returned an unsupported model list; no inference started")
-            }
-            return J.Items(models)
         }
 
         internal func Model(executable string, provider string, model string, budget RuntimeBudget? = nil) JsonElement {
             var selected JsonElement
             var matches int32
+
             for entry in Models(executable, budget) {
                 if J.Text(entry, "provider") == provider && J.Text(entry, "id") == model && J.Text(
                     entry,
@@ -90,8 +127,10 @@ internal class OmpRuntime {
                     matches += 1
                 }
             }
+
             if matches != 1 || J.Text(selected, "selector") != provider + "/" + model {
-                throw Exception(
+                throw ExecutionFailure.Create(
+                    "invalid_state",
                     "OMP does not list exactly one " +
                         provider +
                         "/" +
@@ -99,6 +138,7 @@ internal class OmpRuntime {
                         " chat model. Check omp models and your OMP sign-in. No inference started"
                 )
             }
+
             let context = J.Get(selected, "contextWindow")
             let output = J.Get(selected, "maxTokens")
             var contextWindow int32
@@ -107,8 +147,12 @@ internal class OmpRuntime {
                 contextWindow < 1 ||
                 output.ValueKind != JsonValueKind.Number ||
                 !output.TryGetInt32(out maxTokens) || maxTokens < 1 {
-                throw Exception("OMP reports no usable context or output limit for this model; no inference started")
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "OMP reports no usable context or output limit for this model; no inference started"
+                )
             }
+
             return J.Parse(
                 J.Write(
                     map[string, Object?]{
@@ -125,6 +169,7 @@ internal class OmpRuntime {
         internal func Efforts(entry JsonElement) List[string] {
             let efforts = List[string]()
             let thinking = J.Get(entry, "thinking")
+
             if J.Get(entry, "reasoning").ValueKind == JsonValueKind.True && thinking.ValueKind == JsonValueKind.Array {
                 efforts.Add("off")
                 for level in thinking.EnumerateArray() {
@@ -135,6 +180,7 @@ internal class OmpRuntime {
             } else {
                 efforts.Add("absent")
             }
+
             return efforts
         }
 
@@ -144,7 +190,9 @@ internal class OmpRuntime {
                     return
                 }
             }
-            throw Exception(
+
+            throw ExecutionFailure.Create(
+                "invalid_state",
                 "OMP does not support the selected reasoning effort for this model; choose a supported level before starting"
             )
         }

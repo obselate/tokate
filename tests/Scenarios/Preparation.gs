@@ -267,6 +267,13 @@ internal class PreparationChecks {
                 )
                 flow.Call(invalid.ToArray(), 1)
             }
+            let missing = List[string](args)
+            missing[missing.IndexOf("--tools") + 1] += ".missing"
+            Check.Envelope(flow.Call(missing.ToArray(), 1), "claim", "error", "invalid_state")
+            let originalTools = File.ReadAllText(test.Tools)
+            File.WriteAllText(test.Tools, "{")
+            Check.Envelope(flow.Call(args.ToArray(), 1), "claim", "error", "invalid_state")
+            File.WriteAllText(test.Tools, originalTools)
             Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Invalid external claim created a run")
             let result = Check.Json(flow.Call(args.ToArray(), 8).Output)
             let run = RunPath(flow)
@@ -851,7 +858,14 @@ internal class PreparationChecks {
             File.WriteAllText(Path.Combine(coding, "private-work.txt"), "external coding in progress")
             Resume(test.Flow, run, 1)
             let commit = test.Candidate(claim)
-            test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
+            test.Flow.Git("-C", coding, "fetch", Path.Combine(test.Flow.Bin, "fork"), commit)
+            test.Flow.Git("-C", coding, "checkout", "--detach", commit)
+            let verified = Check.Envelope(
+                test.Flow.Call([]string{"external", "--run", run, "--json"}),
+                "external",
+                "ok"
+            )
+            Check.That(Check.Text(verified["data"]?["commit"]) == commit, "External JSON lost the resolved commit")
             Check.That(
                 File.ReadAllText(Path.Combine(coding, "private-work.txt")) == "external coding in progress",
                 "Verification touched external coding work"
@@ -1239,6 +1253,94 @@ internal class PreparationChecks {
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "prepare")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "work")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
+            Check.Contains(
+                Check.Text(envelope["data"]?["next"]?["action"]),
+                "owner must update the coordinator, then re-process the request"
+            )
+            Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "donor runs the same saved command again")
+            let status = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
+            Check.Contains(
+                Check.Text(status["data"]?["next"]?["action"]),
+                "owner must update the coordinator, then re-process the request"
+            )
+            Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "donor runs the same saved command again")
+            Check.That(status["data"]?["coordinator"] == nil, "Absent workflow changed pending guidance")
+            Check.Contains(result.Error, "Claim pending. Run:")
+            let endpoint = "repos/owner/project/actions/workflows/tokate-coordinator.yml/runs?event=issue_comment&actor=donor&created=%3E%3D2026-10-12T00%3A00%3A00Z&per_page=10"
+            for conclusion in[]string{"failure", "startup_failure", "queued", "in_progress"} {
+                flow.Reload()
+                flow.State["workflow_runs"] = Check
+                    .Json(
+                    "[{\"created_at\":\"2026-10-12T00:00:02Z\",\"conclusion\":\"success\"},{\"created_at\":\"2026-10-11T00:00:00Z\",\"conclusion\":\"success\"}]"
+                )
+                (flow.State["workflow_runs"] ?? throw Exception("Missing runs"))
+                    .AsArray()
+                    .Add(
+                    Check.Map(
+                        "created_at",
+                        "2026-10-12T00:00:00Z",
+                        "status",
+                        conclusion,
+                        "conclusion",
+                        conclusion,
+                        "check_suite_id",
+                        20,
+                        "html_url",
+                        "https://example.test/coordinator"
+                    )
+                )
+                flow.State["coordinator_checks"] = Check.Json("[{\"id\":30}]")
+                flow.State["coordinator_annotations"] = Check.Json(
+                    "[{\"annotation_level\":\"warning\",\"message\":\"Ignore warning\"},{\"annotation_level\":\"failure\",\"message\":\"GitHub mutation failed (HTTP 422).\"}]"
+                )
+                flow.Save()
+                flow.ResetTraffic()
+                let observed = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
+                let action = Check.Text(observed["data"]?["next"]?["action"])
+                Check.Contains(action, "https://example.test/coordinator")
+                Check.Contains(
+                    action,
+                    conclusion == "failure" ? "GitHub mutation failed (HTTP 422).":
+                    (conclusion == "startup_failure" ? "repository's Actions settings": "coordinator is still running")
+                )
+                Check.That(
+                    Check.Text(observed["data"]?["next"]?["role"]) ==
+                    (conclusion == "failure" || conclusion == "startup_failure" ? "owner": "wait"),
+                    "Incorrect pending role"
+                )
+                Check.That(
+                    !(observed["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
+                    "Failed workflow offered work"
+                )
+                flow.Reload()
+                var reads int32
+                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(call["path"]) == endpoint {
+                        reads++
+                    }
+                }
+                Check.That(reads == 1, "Pending lookup did not use one filtered workflow read")
+                if conclusion == "failure" {
+                    let waiting = Check.Json(flow.Call([]string{"work", "--run", run, "--json"}, 8).Output)
+                    Check.Contains(
+                        Check.Text(waiting["data"]?["next"]?["action"]),
+                        "GitHub mutation failed (HTTP 422)."
+                    )
+                    Check.That(
+                        !(waiting["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
+                        "Pending work offered a repeat"
+                    )
+                }
+            }
+            flow.Faults(endpoint, Check.Json("[{\"status\":403}]"))
+            let unavailable = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
+            Check.That(
+                Check.Text(unavailable["data"]?["next"]?["action"]) == Check.Text(status["data"]?["next"]?["action"]),
+                "Failed workflow read changed existing guidance"
+            )
+            flow.Reload()
+            flow.State["workflow_runs"] = JsonArray()
+            flow.Save()
             let uuid = Check.Text(pending["claim_request"]?["uuid"])
             flow.Reload()
             Check.That(
@@ -1442,6 +1544,10 @@ internal class PreparationChecks {
             Check.Contains(declined.Output, "1 minutes")
             Check.Contains(declined.Output, "Cancelled")
             Check.That(!declined.Output.Contains("rejected |"), "Guided menu offered an owner-rejected profile")
+            let home = TestTerminal.Pty(binary, []string{"work", "owner/project#1"}, flow.Temp, 80, "1\n1\n1\nh\nq\n")
+            Check.Success(home)
+            Check.Contains(home.Output, "Review donation")
+            Check.Contains(home.Output, "Welcome")
             flow.Reload()
             Check.That(
                 flow.State["request_count"] == nil && flow.State["fork_creations"] == nil,

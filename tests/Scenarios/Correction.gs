@@ -225,8 +225,8 @@ internal class CorrectionChecks {
                     "--find-renames=100%",
                     Check.Text(Read(run)["base"]),
                     commit
-                ) == File
-                    .ReadAllText(patch).Trim(),
+                ) +
+                    "\n" == File.ReadAllText(patch),
                 "Corrected binary evidence depends on rename configuration"
             )
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
@@ -324,7 +324,7 @@ internal class CorrectionChecks {
             let commit = Commit(flow, run)
             Check.That(flow.Git("-C", checkout, "rev-parse", "HEAD^{tree}") == tree, "Commit changed original work")
             Check.That(
-                flow.Git("-C", checkout, "diff", "--binary", Check.Text(Read(run)["base"]), commit) == original,
+                flow.Git("-C", checkout, "diff", "--binary", Check.Text(Read(run)["base"]), commit) + "\n" == original,
                 "Commit changed the original candidate patch"
             )
             RecoverAndSubmit(flow, run, commit)
@@ -900,6 +900,7 @@ internal class CorrectionChecks {
                 }
                 let run = ManagedRun(flow, originalMode)
                 Prepared(flow.Flow, run)
+                Check.That(Read(run)["public_summary"] != nil, "Original managed summary is missing")
                 let originalTools = Check.Text(Read(run)["tools"])
                 let commit = Correct(flow.Flow, run)
                 File.WriteAllText(
@@ -909,6 +910,14 @@ internal class CorrectionChecks {
                 )
                 Recover(flow.Flow, run, commit, tools: flow.Tools)
                 Once(flow.Flow)
+                Check.That(
+                    Read(run)["public_summary"] == nil,
+                    "Recovery without a summary retained the original summary"
+                )
+                Check.That(
+                    Read(run)["summary_patch_sha256"] == nil,
+                    "Recovery retained the original summary patch binding"
+                )
                 Check.That(Read(run)["publication_uuid"] == nil, "Recovery posted a v2 publication")
                 Check.That(Check.Text(Read(run)["tools"]) == originalTools, "Correction replaced original source/tools")
                 let results = Check.Text(Read(run, "correction.json")["verification"])
@@ -990,9 +999,24 @@ internal class CorrectionChecks {
                     flow.Flow.State["request_response_fault"] = JsonValue.Create(fault)
                     flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
                     flow.Flow.Save()
+                    using let response = FixtureSnapshot(flow.Flow.Temp.Root)
+                    Check.Envelope(
+                        flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                        "submit",
+                        "error",
+                        "command_failed"
+                    )
+                    response.Restore()
+                    flow.Flow.Reload()
                     let first = flow.Flow.Call([]string{"submit", "--run", run}, 1)
                     let request = File.ReadAllText(Path.Combine(run, "request.json"))
                     Check.Contains(first.Error, "Uncertain request write")
+                    Check.Envelope(
+                        flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                        "submit",
+                        "error",
+                        "invalid_state"
+                    )
                     Check.That(Check.Text(Read(run)["state"]) == "generated", "Inconsistent response published a run")
                     if corrected {
                         Check.That(

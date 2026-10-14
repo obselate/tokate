@@ -63,8 +63,6 @@ class DonationService {
         approvalCheck = nil
     }
 
-    // Issue
-
     func SetInput(value string) {
         Issues.Reset("", IssueFilter.Approved)
         feedback.Clear()
@@ -201,8 +199,6 @@ class DonationService {
         window.Post(() -> Set(Current with{Unready = unready}))
     }
 
-    // Limits
-
     func ChooseHarness(id string) {
         let providers = Current.Policy.Providers(id)
         SetDraft(Current.Draft.ForHarness(id) with{Provider = id == "omp" && providers.Length > 0 ? providers[0]: ""})
@@ -273,8 +269,6 @@ class DonationService {
         }
     }
 
-    // Review
-
     func ChangeDetails() -> Set(Current with{Step = DonationStep.Limits})
 
     /// Asks the coordinator to reserve the issue with the reviewed selection and limits.
@@ -333,7 +327,7 @@ class DonationService {
                         RunCodec.Reader(directory),
                         (status Reply[Run]) -> {
                             if !commands.Failed(status.Outcome) {
-                                Open(status.Value, directory)
+                                Open(status.Value with{Warning = status.Outcome.Warning}, directory)
                             }
                         }
                     )
@@ -354,8 +348,6 @@ class DonationService {
             completeOnError: true
         )
     }
-
-    // Donation
 
     /// Shows a reserved run. A run still waiting for approval is checked now and every five seconds.
     func Open(run Run, directory string) {
@@ -523,7 +515,7 @@ class DonationService {
             output.Append(outcome.Failure)
             progress = progress with{Output = output.Lines, OutputRevision = output.Revision, Truncated = output.Dropped}
         } else if reply.Value.Path != "" {
-            progress = progress with{Run = reply.Value}
+            progress = progress with{Run = reply.Value with{Warning = outcome.Warning}}
         }
         SetProgress(progress)
     }

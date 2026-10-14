@@ -50,7 +50,13 @@ class IssueCodec {
                     drafts.Add(Json.Text(draft, "pr"))
                 }
                 result.Add(
-                    IssueWork{Issue: Json.Text(item, "issue"), State: Json.Text(item, "state"), Drafts: drafts.ToArray()}
+                    IssueWork{
+                        Issue: Json.Text(item, "issue"),
+                        State: Json.Text(item, "state"),
+                        Drafts: drafts.ToArray(),
+                        ApprovalStatus: Json.Text(item, "approval_status"),
+                        NextAction: Json.Text(Json.Get(item, "next"), "action"),
+                    }
                 )
             }
             return result.ToArray()

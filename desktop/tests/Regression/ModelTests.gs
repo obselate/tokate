@@ -150,11 +150,21 @@ func ModelTests() {
         "Could not complete this action.",
         "generic fallback"
     )
+    Regression.Equal(
+        (outcome with{Envelope = CliCodec.Envelope(Json.Parse("{\"error\":{\"code\":\"invalid_state\",\"message\":\"Command failed.\"}}"))}).ErrorMessage(),
+        "invalid_state: Command failed.\nInspect saved state and artifacts. Do not overwrite evidence or start another attempt to bypass this refusal.",
+        "stable failure code remains visible when the message is generic"
+    )
+    Regression.Equal(
+        (outcome with{Diagnostics = "diagnostic\nWarning: Repository coordinator 0.4.0 is older than CLI 0.4.1.\nother"}).Warning,
+        "Warning: Repository coordinator 0.4.0 is older than CLI 0.4.1.",
+        "coordinator warning is separated from other diagnostics"
+    )
 
     let setup = SetupDraft.From(Policy.Empty)
     Regression.Equal(setup.ModelPolicy, "unrestricted", "missing policy starts unrestricted")
     Regression.Equal(setup.EffectiveEligibility(Policy.Empty), "trusted", "default eligibility")
-    Regression.Check(setup.EffectiveTools(Policy.Empty)[0] == "codex/openai", "default tool")
+    Regression.Check(setup.EffectiveTools()[0] == "codex/openai", "default tool")
     Regression.Throws(
         () -> (setup with{Minutes = "0"}).MinutesSeconds(),
         "Enter 1 to 1440 minutes per donation.",

@@ -26,17 +26,20 @@ internal class GitHub {
             expires int64 = 0
         ) JsonElement -> ApiTransport.Request(path, body, method, missing, expires)
 
-        internal func FileAt(repo string, path string, revision string, missing bool = false) string {
+        internal func FileAt(repo string, path string, revision string = "", missing bool = false) string {
             let result = Api(
-                "repos/" + repo + "/contents/" + path + "?ref=" + Uri.EscapeDataString(revision),
+                "repos/" + repo + "/contents/" + path + (revision == "" ? "": "?ref=" + Uri.EscapeDataString(revision)),
                 missing: missing
             )
+
             if result.ValueKind == JsonValueKind.Undefined {
                 return ""
             }
+
             if J.Text(result, "encoding") != "base64" {
                 throw Exception("Expected a small repository configuration file")
             }
+
             return Encoding.UTF8.GetString(Convert.FromBase64String(J.Text(result, "content")))
         }
 
@@ -48,9 +51,11 @@ internal class GitHub {
 
         internal func Issue(repo string, number int32) JsonElement {
             let issue = Api("repos/" + repo + "/issues/" + number.ToString())
+
             if J.Text(issue, "state") != "open" || J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
                 throw Exception("Choose an open issue")
             }
+
             return issue
         }
 
@@ -60,6 +65,7 @@ internal class GitHub {
                     return true
                 }
             }
+
             return false
         }
 

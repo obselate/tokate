@@ -80,6 +80,12 @@ internal class DonorSelectionChecks {
             Check.Contains(flow.Call([]string{"defaults", "show"}).Output, "gpt-6.1-sol")
             flow.Call([]string{"defaults", "remove"})
             Check.That(!File.Exists(path), "Defaults were not removed")
+            for flag in[]string{"--plain", "--ascii"} {
+                Check.Contains(
+                    flow.Call([]string{"defaults", flag}).Output,
+                    "Default: none. Choose one with tokate defaults use NAME.\n"
+                )
+            }
             let named = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-profiles/local.json")
             let privateRoot = Path.Combine(flow.Temp.Root, "private-runtime", "node_modules")
             let privateNode = Path.Combine(flow.Temp.Root, "private-runtime", "node")
@@ -379,18 +385,32 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 flow.Temp.Env,
-                "2\n"
+                "?\n2\n"
             )
             Check.Success(result)
+            Check.Contains(
+                result.Output,
+                "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
+            )
             Check.Contains(result.Output, "Model: gpt-6.1-sol\r\n")
             Check.Contains(result.Output, "Effort: xhigh\r\n")
             Check.Contains(result.Output, "Source: interactive donor choice\r\n")
             Check.That(!File.Exists(Settings(flow)), "Interactive choice saved preferences implicitly")
+            flow.Temp.Env["TERM"] = "xterm-256color"
+            let explained = TestTerminal.Pty(binary, []string{"select", "owner/project"}, flow.Temp, 160, "?\x1b[B\n")
+            Check.Success(explained)
+            Check.Contains(
+                explained.Output,
+                "Choose a model and effort allowed by the project and supported by your tool."
+            )
+            Check.Contains(explained.Output, "Availability is not checked before you start.")
+            Check.Contains(explained.Output, "Effort: xhigh")
+            flow.Temp.Env.Remove("TERM")
             let refused = TestProcess.Run(
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", command, "/dev/null"},
                 flow.Temp.Env,
-                "\n"
+                "\nq\n"
             )
             Check.That(refused.Code == 1, "Blank input accepted the first eligible pair")
             Check.Contains(refused.Output, "No inference started")
@@ -411,7 +431,11 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
                 flow.Temp.Env,
-                "1\nn\n"
+                "1\n?\n\n"
+            )
+            Check.Contains(
+                declined.Output,
+                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing."
             )
             Check.That(declined.Code == 1, "Declined confirmation launched work")
             Check.Contains(declined.Output, "Inference was not confirmed")
@@ -422,7 +446,7 @@ internal class DonorSelectionChecks {
                 "/usr/bin/script",
                 []string{"-q", "-e", "-c", work, "/dev/null"},
                 flow.Temp.Env,
-                "1\ny\n"
+                "1\n1\n"
             )
             Check.That(confirmed.Code == 8, "Confirmed claim did not wait for owner coordination")
             Check.Contains(confirmed.Output, "Claim pending")
@@ -554,7 +578,7 @@ internal class DonorSelectionChecks {
                     "/usr/bin/script",
                     []string{"-q", "-e", "-c", command, "/dev/null"},
                     flow.Temp.Env,
-                    "\n"
+                    "\nq\n"
                 )
                 Check.That(cancelled.Code == 1, "Unrestricted terminal selection chose a fallback")
                 flow.NoInference()

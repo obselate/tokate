@@ -32,10 +32,12 @@ internal class TerminalProgress : IDisposable {
 
     private func Draw() {
         let value = Phase + ": " + Budget.Status() + (Total == nil ? "": "; total " + (Total?.Left() ?? "") + " left")
+
         if Live {
             DonationView.Status(value)
         } else if Interactive {
             let width = Terminal.Width(true) - 1
+
             Console.Error.Write("\r\x1b[2K" + value.Substring(0, Math.Min(width, value.Length)))
         } else {
             Terminal.Message(value, "cyan", true)
@@ -45,12 +47,15 @@ internal class TerminalProgress : IDisposable {
     private func Update() {
         try {
             let interval int32 = Live ? 1: 5
+
             while true {
                 using let tick = after(TimeSpan.FromSeconds(interval))
+
                 select {
                     case <- Stop {
                         return
                     }
+
                     case <- tick {
                         Draw()
                     }
@@ -64,6 +69,7 @@ internal class TerminalProgress : IDisposable {
     public func Dispose() {
         Stop <- true
         <-Finished
+
         if Interactive {
             Console.Error.Write("\r\x1b[2K")
         }
@@ -82,6 +88,7 @@ internal class Terminal {
 
         internal func Initialize() {
             let term = Environment.GetEnvironmentVariable("TERM")
+
             try {
                 Environment.SetEnvironmentVariable("TERM", "dumb")
                 Console.WindowWidth.ToString()
@@ -96,7 +103,9 @@ internal class Terminal {
                 "(?:\\x1b\\[|\\x9b)[0-?]*[ -/]*[@-~]|(?:\\x1b\\]|\\x9d)[^\\x07\\x1b\\x9c]*(?:\\x07|\\x1b\\\\|\\x9c)|\\x1b[@-_]",
                 ""
             )
+
             let text = StringBuilder()
+
             for c in stripped {
                 if c == '\t' {
                     text.Append("    ")
@@ -104,6 +113,7 @@ internal class Terminal {
                     text.Append(c)
                 }
             }
+
             return text.ToString()
         }
 
@@ -129,6 +139,7 @@ internal class Terminal {
             if color == "truecolor" || color == "24bit" || term.Contains("direct") || term.Contains("truecolor") {
                 return ColorSystemSupport.TrueColor
             }
+
             return term.Contains("256color") ? ColorSystemSupport.EightBit: ColorSystemSupport.Legacy
         }
 
@@ -136,16 +147,21 @@ internal class Terminal {
             if error ? Console.IsErrorRedirected: Console.IsOutputRedirected {
                 return 80
             }
+
             return Math.Max(20, Output(error).Profile.Width)
         }
 
         private func Accent(color string) string {
             let background = Environment.GetEnvironmentVariable("COLORFGBG") ?? ""
             let dark = background.EndsWith(";0") || background.EndsWith(";8")
+
             return switch color {
                 case "green": dark ? "#b0bfa6": Sage
+
                 case "red": dark ? "#d99a7d": Terracotta
+
                 case "yellow": dark ? "#e2bb80": Gold
+
                 case "cyan": dark ? "#a9bdd9": Blue
                 default: "default"
             }
@@ -154,9 +170,12 @@ internal class Terminal {
         private func Line(value string, color string, error bool) {
             if Rich(error) {
                 let console = Output(error)
+
                 console.Profile.Width = Math.Max(console.Profile.Width, value.Length + 1)
+
                 let split = value.IndexOf(' ', value.Length - value.TrimStart().Length)
                 let length = split < 0 ? value.Length: split
+
                 console.Write(
                     value.Substring(0, length),
                     Style.Parse((value.EndsWith(":") ? "bold ": "") + Accent(color))
@@ -172,18 +191,23 @@ internal class Terminal {
         internal func Message(text string, color string = "green", error bool = false) {
             if DonationView.Active() {
                 DonationView.Append(text)
+
                 return
             }
+
             if WizardScreen.Pending(text) {
                 return
             }
+
             let stderr = error || PublicOutput.Enabled
             let value = Clean(PublicOutput.Enabled ? PublicOutput.Prose(text): text)
             let width = (stderr ? Console.IsErrorRedirected: Console.IsOutputRedirected) ? int32.MaxValue: Width(stderr)
+
             for source in value.Split('\n') {
                 let indent = source.Length - source.TrimStart().Length
                 let prefix = source.Substring(0, indent)
                 var remaining = source.Substring(indent)
+
                 while width > indent && remaining.Length + indent > width && !source.Contains(" Run: ") &&
                     !source.StartsWith("Next: ") && !remaining.StartsWith("tokate ") && !remaining.StartsWith("gh ") {
                     var split = remaining.LastIndexOf(' ', Math.Min(remaining.Length - 1, width - indent))
@@ -196,6 +220,7 @@ internal class Terminal {
                     Line(prefix + remaining.Substring(0, split), color, stderr)
                     remaining = remaining.Substring(split + 1)
                 }
+
                 Line(prefix + remaining, color, stderr)
             }
         }
@@ -209,10 +234,13 @@ internal class Terminal {
 
         internal func Runs(args Args, rows List[SavedRun], error bool = false) {
             var width int32 = 3
+
             for row in rows {
                 width = Math.Max(width, RunReference.Label(args, row).Length)
             }
+
             Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+
             for row in rows {
                 Line(
                     Clean(
@@ -224,6 +252,7 @@ internal class Terminal {
                     "default",
                     error
                 )
+
                 if row.Next != "" {
                     Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
                 }
@@ -232,34 +261,42 @@ internal class Terminal {
 
         private func Hint(action[]string) string {
             let index = Array.IndexOf(action, "--run")
+
             if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
                 action[1]
             )
                 .Runs {
                 return Command(action)
             }
+
             let words = List[string](action)
+
             words.RemoveRange(index, 2)
             words.Remove("--json")
             words.Insert(2, PublicOutput.RunName)
+
             return Command(words.ToArray())
         }
 
         internal func Command(command JsonElement, flatten bool = true) string {
             let words = StringBuilder()
+
             if command.ValueKind == JsonValueKind.Array {
                 for item in command.EnumerateArray() {
                     AppendWord(words, item.ToString())
                 }
             }
+
             return CommandText(words, flatten)
         }
 
         internal func Command(command[]string, flatten bool = true) string {
             let words = StringBuilder()
+
             for word in command {
                 AppendWord(words, word)
             }
+
             return CommandText(words, flatten)
         }
 
@@ -267,6 +304,7 @@ internal class Terminal {
             if words.Length > 0 {
                 words.Append(' ')
             }
+
             words.Append(
                 Regex.IsMatch(word, "^[A-Za-z0-9_./:-][A-Za-z0-9_./:#-]*$") ? word:
                 "'" + word.Replace("'", "'\"'\"'") + "'"
@@ -290,9 +328,12 @@ internal class Terminal {
         ) CommandResult {
             let name = "Verification " + (results.Count + 1).ToString() + ": " + PublicOutput.Prose(Command(command))
             let timing = progressBudget ?? budget ?? RuntimeBudget(Stopwatch.StartNew(), seconds)
+
             try {
                 workspace?.CheckCancellation()
+
                 var result CommandResult
+
                 Message(name, "cyan", true)
                 {
                     using let progress = TerminalProgress(
@@ -308,6 +349,7 @@ internal class Terminal {
                         budget
                     )
                 }
+
                 Message(
                     name + " - " + (result.Code == 0 ? "passed": "failed") + " (exit " + result.Code.ToString() +
                         "); " +
@@ -315,6 +357,7 @@ internal class Terminal {
                     result.Code == 0 ? "green": "red",
                     true
                 )
+
                 return result
             } catch (error Exception) {
                 Message(
@@ -325,6 +368,7 @@ internal class Terminal {
                     "red",
                     true
                 )
+
                 throw error
             }
         }
@@ -333,6 +377,7 @@ internal class Terminal {
             if PublicOutput.RunDirectory == "" || !Foreground() {
                 return
             }
+
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
                 var stage = "Run"
@@ -343,6 +388,7 @@ internal class Terminal {
                 } else if run.Text("state") == "generated" && exitCode != 0 {
                     stage = "Publication"
                 }
+
                 var outcome = " failed (" + code + ")"
                 var color = "red"
                 if exitCode == 0 {
@@ -352,9 +398,13 @@ internal class Terminal {
                     outcome = " pending"
                     color = "yellow"
                 }
+
                 Message(stage + outcome + ". Run: " + PublicOutput.RunDirectory, color, true)
+
                 let summary = RunSummaryArtifacts(PublicOutput.RunDirectory)
+
                 Message("Saved artifacts: " + summary, "default", true)
+
                 for action in PublicOutput.Actions {
                     Message("Next: " + Hint(action), "default", true)
                 }
@@ -370,10 +420,12 @@ internal class Terminal {
             if Rich(error) {
                 let console = Output(error)
                 let ascii = Ascii || !console.Profile.Capabilities.Unicode
+
                 console.Write(ascii ? "* ": "☼ ", Style.Parse(Accent("yellow")))
                 console.WriteLine("Tokate", Style.Parse("bold " + Parchment + " on " + Blue))
                 console.WriteLine(String(ascii ? '-': '─', Math.Min(Width(error), 32)), Style.Parse(Accent("yellow")))
             }
+
             if Rich(error) {
                 Output(error).WriteLine(Clean(title), Style.Parse("bold"))
             } else {
@@ -397,7 +449,9 @@ internal class Terminal {
         private func StatusAction(next JsonElement) {
             Message("Next action: " + J.Text(next, "action"), "default")
             Row("Role", J.Text(next, "role"))
+
             let command = Command(J.Get(next, "command"))
+
             if command != "" {
                 Row("Command", command)
             }
@@ -406,9 +460,12 @@ internal class Terminal {
         internal func SavedRun(value JsonElement) {
             if Console.IsOutputRedirected && !Plain && !Ascii {
                 Json(value, "Donor run")
+
                 return
             }
+
             Heading("Donor run")
+
             var details = ""
             for action in PublicOutput.Actions {
                 if action.Length > 1 {
@@ -419,75 +476,102 @@ internal class Terminal {
                     }
                 }
             }
+
             let state = J.Text(value, "state")
+
             if state != "" {
                 Row("State", state, state == "failed" ? "red": "yellow")
             }
+
             let repo = J.Text(value, "repo")
             let issue = J.Get(value, "issue").ToString()
+
             if repo != "" {
                 Row("Task", repo + (issue == "" ? "": " #" + issue))
             }
+
             let checks = J.Items(J.Get(value, "verification"))
+
             if checks.Count == 0 {
                 Row("Verification", "no result recorded")
             } else {
                 let check = checks[checks.Count - 1]
                 let checkState = J.Text(check, "state")
+
                 Row("Verification", J.Number(value, "verification_count").ToString() + " recorded")
+
                 if checkState != "" {
                     Row("Recorded check", checkState)
                 }
+
                 let exitCode = J.Get(check, "exit_code").ToString()
+
                 if exitCode != "" {
                     Row("Exit code", exitCode)
                 }
+
                 let command = Command(J.Get(check, "command"))
+
                 if command != "" && exitCode != "0" {
                     Row("Command", command)
                 }
             }
+
             for key in[]string{"run", "donor", "model", "effort", "pr_url"} {
                 let text = J.Text(value, key)
+
                 if text != "" {
                     Row(key == "pr_url" ? "PR": Label(key), text)
                 }
             }
+
             if J.Text(value, "model") == "" {
                 for tool in J.Items(J.Get(value, "tools")) {
                     let model = J.Text(tool, "model")
                     let effort = J.Text(tool, "effort")
+
                     if model != "" {
                         Row("Reported model", model + (effort == "" ? "": " / " + effort))
                     }
                 }
             }
+
             let failure = J.Text(J.Get(value, "error"), "message")
+
             if failure != "" {
                 Row("Error", failure, "red")
             }
+
             let next = J.Get(value, "next")
             let amendment = J.Get(value, "amendment")
+
             if J.Text(amendment, "state") == "requested" {
                 Row("Amendment", "requested")
                 Row("Previous commit", J.Text(amendment, "previous"))
                 Row("Candidate commit", J.Text(amendment, "commit"))
             }
+
             if next.ValueKind == System.Text.Json.JsonValueKind.Object {
                 StatusAction(next)
             }
+
             let correction = J.Get(value, "correction")
             let correctionState = J.Text(correction, "state")
+
             if correctionState != "" {
                 Row("Correction", correctionState, correctionState == "failed" ? "red": "yellow")
             }
+
             let correctionFailure = J.Text(J.Get(correction, "error"), "message")
+
             if correctionFailure != "" {
                 Row("Correction error", correctionFailure, "red")
             }
+
             if J.Bool(value, "truncated") {
                 Message("Bounded snapshot: some data was omitted.", "yellow")
             }
+
             if details != "" {
                 Row("Details", details)
             }
@@ -497,28 +581,39 @@ internal class Terminal {
             if PublicOutput.Enabled {
                 return
             }
+
             if Console.IsOutputRedirected && !Plain && !Ascii {
                 Console.WriteLine(J.Write(value))
+
                 return
             }
+
             let remote = J.Text(value, "remote_status")
+
             if remote != "observed" {
                 Row("Status", remote == "unavailable" ? "unavailable; partial facts only": remote, "yellow")
             }
+
             if J.Bool(value, "truncated") {
                 Message("Bounded snapshot: some data was omitted.", "yellow")
             }
+
             let work = J.Items(J.Get(value, "work"))
             let pending = J.Count(J.Get(value, "pending_requests"))
+
             if remote != "observed" || work.Count == 0 || pending > 0 {
                 StatusAction(J.Get(value, "next"))
             }
+
             Row("Repository", J.Text(value, "repo"))
+
             if pending > 0 {
                 Row("Pending access requests", pending.ToString(), "yellow")
             }
+
             if work.Count == 0 {
                 Row("Issue", "none observed")
+
                 if remote == "observed" {
                     Row(
                         "State",
@@ -527,20 +622,25 @@ internal class Terminal {
                     )
                 }
             }
+
             for task in work {
                 if remote == "observed" {
                     StatusAction(J.Get(task, "next"))
                 }
+
                 let title = Clean(J.Text(task, "title")).Replace('\n', ' ').Trim()
                 let prefix = "Issue: #" + J.Number(task, "issue").ToString() + " "
                 let limit = Math.Max(4, Math.Min(80, Width() - prefix.Length))
                 var length = Math.Min(limit - 3, title.Length)
+
                 if length > 0 && Char.IsHighSurrogate(title[length - 1]) {
                     length--
                 }
+
                 Message(prefix + (title.Length > limit ? title.Substring(0, length) + "...": title), "default")
                 Message("State: " + J.Text(task, "state").Replace('_', ' '), "yellow")
                 Row("Issue URL", J.Text(task, "url"))
+
                 for draft in J.Items(J.Get(task, "drafts")) {
                     Row("PR", J.Text(draft, "url"))
                     Row("Contribution", J.Text(draft, "lifecycle").Replace('_', ' '))
@@ -553,10 +653,12 @@ internal class Terminal {
             let name = Clean(label)
             let text = Clean(value)
             let redirected = error ? Console.IsErrorRedirected: Console.IsOutputRedirected
+
             if redirected || (name.Length + text.Length + 2 <= Width(error) && !text.Contains('\n')) {
                 Message(name + ": " + text, color, error)
             } else {
                 Message(name + ":", color, error)
+
                 for line in text.Split('\n') {
                     Line(line, "default", error)
                 }
@@ -571,19 +673,35 @@ internal class Terminal {
         private func Fields(value JsonElement, prefix string = "") {
             for field in value.EnumerateObject() {
                 let label = prefix + Label(field.Name)
+
                 if field.Value.ValueKind == JsonValueKind.Object {
                     Message(label + ":", "default")
                     Fields(field.Value, "  ")
                 } else if field.Value.ValueKind == JsonValueKind.Array {
                     let items = J.Items(field.Value)
+
                     if field.Name == "command" {
                         Message(label + ":", "default")
                         Line(Command(field.Value, false), "default", false)
                         continue
                     }
+
                     Message(label + ":" + (items.Count == 0 ? " none": ""), "default")
+
                     for i in 0 ... items.Count {
-                        if items[i].ValueKind == JsonValueKind.Object {
+                        if field.Name == "allowed_tools" {
+                            Line(
+                                Clean("  " + J.Text(items[i], "harness") + " / " + J.Text(items[i], "provider")),
+                                "default",
+                                false
+                            )
+                        } else if field.Name == "verification" && items[i].ValueKind == JsonValueKind.Array {
+                            let command = J.Items(items[i])
+                            let text = command.Count == 3 && command[0].ToString() == "/bin/sh" &&
+                                command[1].ToString() == "-c" ?
+                            command[2].ToString(): Command(items[i], false)
+                            Line(Clean("  " + text), "default", false)
+                        } else if items[i].ValueKind == JsonValueKind.Object {
                             Message("  " + (i + 1).ToString() + ".", "default")
                             Fields(items[i], "    ")
                         } else {
@@ -591,8 +709,13 @@ internal class Terminal {
                         }
                     }
                 } else {
-                    let text = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() ?? "":
+                    var text = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() ?? "":
                     field.Value.GetRawText()
+
+                    if field.Name == "default" && field.Value.ValueKind == JsonValueKind.Null {
+                        text = "none. Choose one with tokate defaults use NAME."
+                    }
+
                     let color = field.Name == "state" || field.Name == "status" || field.Name.EndsWith(
                         "_status",
                         StringComparison.Ordinal
@@ -616,12 +739,16 @@ internal class Terminal {
                     value,
                     "reservation,lease,donor,actor,expires,status,attempt,pr,url,head"
                 )
+
                 return
             }
+
             if Console.IsOutputRedirected && !Plain && !Ascii {
                 Console.WriteLine(J.Write(value))
+
                 return
             }
+
             Heading(title)
             Fields(value)
         }
@@ -629,14 +756,19 @@ internal class Terminal {
         internal func Checks(rows JsonElement) {
             for check in J.Items(rows) {
                 var state = J.Text(check, "bucket")
+
                 if state == "" {
                     state = J.Text(check, "state")
                 }
+
                 if state == "" {
                     state = "unknown"
                 }
+
                 Row(J.Text(check, "name"), state, state == "pass" ? "green": (state == "fail" ? "red": "yellow"))
+
                 let link = J.Text(check, "link")
+
                 if link != "" {
                     Message(link, "default")
                 }

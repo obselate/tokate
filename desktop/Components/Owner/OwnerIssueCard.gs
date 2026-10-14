@@ -25,7 +25,8 @@ data struct OwnerIssueCard {
     func Build() Blob {
         let p = AppTheme.Current
         let number = Issue.NumberText
-        let approved = Issue.IsApproved
+        let stale = Work?.NeedsApproval ?? false
+        let approved = Issue.IsApproved && !stale
         let look = AppTheme.Look(approved ? Tone.Done: Tone.Wait)
         let approval = Panel{
             Compact: Compact,
@@ -39,15 +40,16 @@ data struct OwnerIssueCard {
                             FlexBasis: 0,
                             MinWidth: 200,
                             Gap: 2,
-                            Heading{Content: approved ? "Approved for donation": "Not approved for donation", Size: AppTheme.ItemSize}.Build(),
+                            Heading{Content: stale ? "Fresh owner approval required": approved ? "Approved for donation": "Not approved for donation", Size: AppTheme.ItemSize}.Build(),
                             Label{
-                                Content: approved ? "Donors with access can reserve this issue.": "Donors cannot reserve this issue.",
+                                Content: stale ? Work!!.NextAction: approved ?
+                                    "The tokate:approved label permits donors with access to reserve this issue.": "Donors cannot reserve this issue.",
                                 Size: AppTheme.SmallSize,
                                 Muted: true,
                             }.Build(),
                         },
                         (Button with{
-                            Label = approved ? "Revoke approval #" + number: "Approve issue #" + number,
+                            Label = stale ? "Re-approve issue #" + number: approved ? "Revoke approval #" + number: "Approve issue #" + number,
                             OnClick = OnApproval,
                             Primary = !approved,
                             Disabled = !CanWrite || (!approved && !SupportsApproval),
@@ -56,6 +58,15 @@ data struct OwnerIssueCard {
                 }.Build(),
             },
         }.Build()
+        approval.Children.Add(Label{
+            Content: "Approval binds verification, checks, protected paths, tool models, runtime limits and reservation duration. " +
+                "Changes to these task fields, the issue text or the PR template need fresh approval. Descriptive policy edits do not.",
+            Size: AppTheme.SmallSize,
+            Muted: true,
+        }.Build())
+        if !stale && (Work?.NextAction ?? "") != "" {
+            approval.Children.Add(Label{Content: Work!!.NextAction, Size: AppTheme.SmallSize}.Build())
+        }
         let drafts = Work?.Drafts ?? []string{}
         let lines = List[Blob]()
         for draft in drafts {
