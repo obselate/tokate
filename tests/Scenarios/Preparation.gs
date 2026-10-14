@@ -60,7 +60,7 @@ internal class PreparationChecks {
             flow.Initialize()
             flow.Approve()
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{"renamed", "ambiguous", "incomplete", "ownership", "parent", "permission"} {
+            for mode in[]string{"renamed", "explicit", "ambiguous", "incomplete", "ownership", "parent", "permission"} {
                 baseline.Restore()
                 flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
@@ -117,12 +117,18 @@ internal class PreparationChecks {
                     "--time",
                     "30s"
                 }
-                let success = mode == "renamed"
+                let success = mode == "renamed" || mode == "explicit"
+                if mode == "explicit" {
+                    args.AddRange([]string{"--fork", "donor/custom"})
+                }
                 args.AddRange([]string{"--runs", Path.Combine(flow.Temp.Root, "runs")})
                 flow.Acquire(args.ToArray(), success ? 0: 1)
                 if success {
                     let saved = Check.Json(File.ReadAllText(Path.Combine(RunPath(flow), "run.json")))
-                    Check.That(Check.Text(saved["head_repo"]) == "donor/renamed", "Renamed fork was not selected")
+                    Check.That(
+                        Check.Text(saved["head_repo"]) == (mode == "explicit" ? "donor/custom": "donor/renamed"),
+                        "Renamed fork was not selected"
+                    )
                 }
                 flow.Reload()
                 for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -190,7 +196,7 @@ internal class PreparationChecks {
                 "Fork default branch was synchronized"
             )
             File.WriteAllText(Path.Combine(checkout, "private.txt"), "preserve me")
-            Resume(flow, run, 1)
+            Check.Contains(Resume(flow, run, 1).Error, "Preserved")
             flow.Call([]string{"work", "--run", run}, 1)
             Check.That(
                 File.ReadAllText(Path.Combine(checkout, "private.txt")) == "preserve me",
@@ -238,9 +244,14 @@ internal class PreparationChecks {
                 Path.Combine(flow.Temp.Root, "runs"),
                 "--json"
             }
-            let managed = List[string](args)
-            managed.AddRange([]string{"--harness", "codex"})
-            flow.Call(managed.ToArray(), 1)
+            for option in[]string{"--harness", "--verify-time"} {
+                let invalid = List[string](args)
+                invalid.AddRange([]string{option, option == "--verify-time" ? "5s": "codex"})
+                flow.Call(invalid.ToArray(), 1)
+            }
+            let missing = List[string](args)
+            missing[missing.IndexOf("--tools") + 1] += ".missing"
+            Check.Envelope(flow.Call(missing.ToArray(), 1), "claim", "error", "invalid_state")
             let originalTools = File.ReadAllText(test.Tools)
             File.WriteAllText(test.Tools, "{")
             Check.Envelope(flow.Call(args.ToArray(), 1), "claim", "error", "invalid_state")
@@ -367,14 +378,18 @@ internal class PreparationChecks {
             Check.That(File.Exists(Path.Combine(checkout, "partial.txt")), "Interrupted work was not retained")
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             let summary = "{\"changes\":[\"Preserve incomplete work for the next donor.\"],\"verification\":[],\"limitations\":[\"Independent verification has not passed.\"]}"
-            for mode in[]string{"protected", "expired"} {
+            for mode in[]string{"empty", "protected", "missing-summary", "expired"} {
                 baseline.Restore()
                 flow.Reload()
-                File.WriteAllText(Path.Combine(checkout, "tokate-public-summary.json"), summary)
-                if mode == "protected" {
+                if mode != "missing-summary" {
+                    File.WriteAllText(Path.Combine(checkout, "tokate-public-summary.json"), summary)
+                }
+                if mode == "empty" {
+                    File.Delete(Path.Combine(checkout, "partial.txt"))
+                } else if mode == "protected" {
                     Directory.CreateDirectory(Path.Combine(checkout, ".github/workflows"))
                     File.WriteAllText(Path.Combine(checkout, ".github/workflows/unsafe.yml"), "name: unsafe\n")
-                } else {
+                } else if mode == "expired" {
                     test.Expire()
                 }
                 flow.Call([]string{"submit", "--run", run, "--incomplete"}, 1)
@@ -404,9 +419,12 @@ internal class PreparationChecks {
             )
             let invalidPath = Path.Combine(flow.Temp.Root, "invalid-partial-request.json")
             let changed = request.DeepClone()
-            (changed["metadata"] ?? throw Exception("Missing metadata"))["incomplete"] = JsonValue.Create(false)
+            (changed["metadata"] ?? throw Exception("Missing metadata"))["incomplete"] = JsonValue.Create("true")
             File.WriteAllText(invalidPath, changed.ToJsonString())
-            flow.Call([]string{"request", "owner/project#1", "--file", invalidPath}, 1)
+            Check.Contains(
+                flow.Call([]string{"request", "owner/project#1", "--file", invalidPath}, 1).Error,
+                "Incomplete work must be declared explicitly"
+            )
             saved["commit"] = JsonValue.Create("")
             File.WriteAllText(path, saved.ToJsonString())
             flow.Call([]string{"submit", "--run", run, "--incomplete"})
@@ -438,6 +456,34 @@ internal class PreparationChecks {
             flow.Reload()
             (flow.State["pulls"]?[0] ?? throw Exception("Missing draft"))["body"] = JsonValue.Create(body)
             flow.Save()
+            File.WriteAllText(Path.Combine(checkout, "result.txt"), "Completed work\n")
+            flow.Git("-C", checkout, "add", "result.txt")
+            flow.DonorGit(checkout, "commit", "-m", "Complete partial work")
+            let completed = flow.Git("-C", checkout, "rev-parse", "HEAD")
+            let plain = []string{
+                "amend",
+                "--run",
+                run,
+                "--commit",
+                completed,
+                "--time",
+                "30s",
+                "--summary",
+                PublishedContribution.Summary(flow, completed, "Complete the interrupted contribution.")
+            }
+            flow.Call(plain)
+            flow.CoordinatePosted()
+            flow.Call(plain)
+            flow.Reload()
+            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Completion created another PR")
+            Check.That(
+                Check.Json(File.ReadAllText(path))["incomplete"] == nil,
+                "Completed run retained incomplete status"
+            )
+            Check.That(
+                Check.Text(flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
+                "Completion retained generated incomplete title"
+            )
             for action in[]string{"pause", "resume"} {
                 let reservation = []string{action, "--run", run}
                 flow.Call(reservation, 8)
@@ -449,20 +495,20 @@ internal class PreparationChecks {
                 )
                 flow.Call(reservation)
             }
-            File.WriteAllText(Path.Combine(checkout, "result.txt"), "Completed work\n")
+            File.AppendAllText(Path.Combine(checkout, "result.txt"), "Resumed work\n")
             flow.Git("-C", checkout, "add", "result.txt")
-            flow.DonorGit(checkout, "commit", "-m", "Complete partial work")
-            let completed = flow.Git("-C", checkout, "rev-parse", "HEAD")
+            flow.DonorGit(checkout, "commit", "-m", "Continue completed work")
+            let resumed = flow.Git("-C", checkout, "rev-parse", "HEAD")
             let args = List[string]{
                 "amend",
                 "--run",
                 run,
                 "--commit",
-                completed,
+                resumed,
                 "--time",
                 "30s",
                 "--summary",
-                PublishedContribution.Summary(flow, completed, "Complete the interrupted contribution.")
+                PublishedContribution.Summary(flow, resumed, "Continue the completed contribution.")
             }
             flow.Call(args.ToArray(), 1)
             args.Add("--resume")
@@ -473,21 +519,13 @@ internal class PreparationChecks {
             test.Coordinate(PostedEvent(test, amendment))
             flow.Call(args.ToArray())
             flow.Reload()
-            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Completion created another PR")
-            Check.That(
-                Check.Json(File.ReadAllText(path))["incomplete"] == nil,
-                "Completed run retained incomplete status"
-            )
+            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Resumed amendment created another PR")
             let current = Check.Json(File.ReadAllText(path))
             Check.That(
                 Check.Text(current["attempt"]) == originalAttempt && Check.Text(
                     current["publication_attempt"]
                 ) == Check.Text(test.State()["state"]?["reservation"]?["attempt"]),
                 "Resumed publication changed original execution identity or lost the new fence"
-            )
-            Check.That(
-                Check.Text(flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
-                "Completion retained generated incomplete title"
             )
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
@@ -501,7 +539,7 @@ internal class PreparationChecks {
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Partial publication restarted inference")
         }
 
-        private func Handoff(binary string) {
+        private func Handoff(binary string, external bool = false) {
             using let test = CoordinationFixture(binary)
             let flow = test.Flow
             test.Initialize()
@@ -531,11 +569,11 @@ internal class PreparationChecks {
                 "--format=%an <%ae>",
                 priorHead
             )
-            let args = []string{
+            let args = List[string]{
                 "claim",
                 "owner/project#1",
                 "--source",
-                "tokate",
+                external ? "external": "tokate",
                 "--time",
                 "30s",
                 "--from-pr",
@@ -544,17 +582,16 @@ internal class PreparationChecks {
                 "other/project",
                 "--runs",
                 Path.Combine(flow.Temp.Root, "handoffs"),
-                "--json",
-                "--harness",
-                "codex",
-                "--model",
-                "gpt-6.1-sol",
-                "--effort",
-                "high",
-                "--verify-time",
-                "10s"
+                "--json"
             }
-            flow.Acquire(args, 1)
+            if external {
+                args.AddRange([]string{"--tools", test.Tools})
+            } else {
+                args.AddRange(
+                    []string{"--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high", "--verify-time", "10s"}
+                )
+                flow.Acquire(args.ToArray(), 1)
+            }
             flow.Git("clone", "--bare", flow.Upstream, Path.Combine(flow.Bin, "otherfork"))
             flow.Reload()
             flow.State["viewer_id"] = JsonValue.Create(124)
@@ -588,7 +625,9 @@ internal class PreparationChecks {
                 )
             )
             flow.Save()
-            flow.Acquire(args, 1)
+            if !external {
+                flow.Acquire(args.ToArray(), 1)
+            }
             flow.Reload()
             flow.State["viewer_id"] = JsonValue.Create(1)
             flow.State["viewer_login"] = JsonValue.Create("owner")
@@ -598,21 +637,25 @@ internal class PreparationChecks {
             flow.State["viewer_id"] = JsonValue.Create(124)
             flow.State["viewer_login"] = JsonValue.Create("other")
             flow.Save()
-            flow.Acquire(args, 1)
+            if !external {
+                flow.Acquire(args.ToArray(), 1)
+            }
             test.Expire()
-            flow.Reload()
-            let oldPull = flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft")
-            oldPull["merged"] = JsonValue.Create(true)
-            flow.Save()
-            flow.Acquire(args, 1)
-            flow.Reload()
-            (flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft"))["merged"] = JsonValue.Create(false)
-            flow.Save()
-            let acquired = Check.Json(flow.Acquire(args).Output)
+            if !external {
+                flow.Reload()
+                let oldPull = flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft")
+                oldPull["merged"] = JsonValue.Create(true)
+                flow.Save()
+                flow.Acquire(args.ToArray(), 1)
+                flow.Reload()
+                (flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft"))["merged"] = JsonValue.Create(false)
+                flow.Save()
+            }
+            let acquired = Check.Json(flow.Acquire(args.ToArray()).Output)
             let run = Check.Text(acquired["data"]?["run"])
             let path = Path.Combine(run, "run.json")
             let saved = Check.Json(File.ReadAllText(path))
-            let checkout = Path.Combine(run, "checkout")
+            let checkout = Path.Combine(run, external ? "coding": "checkout")
             Check.That(Check.Text(saved["handoff"]?["head"]) == priorHead, "Handoff lost its coordinated source")
             Check.That(flow.Git("-C", checkout, "rev-parse", "HEAD") == priorHead, "Handoff did not import prior work")
             Check.That(
@@ -620,6 +663,13 @@ internal class PreparationChecks {
                 "Handoff rewrote original attribution"
             )
             Check.That(File.ReadAllText(priorPath) == priorRecord, "Handoff changed the original saved run")
+            if external {
+                let record = File.ReadAllText(path)
+                flow.Call([]string{"external", "--run", run, "--commit", Check.Text(saved["base"])}, 1)
+                Check.That(File.ReadAllText(path) == record, "Rejected ancestry changed saved work")
+                flow.NoInference()
+                return
+            }
             Resume(flow, run)
             let altered = saved.DeepClone()
             (altered["handoff"] ?? throw Exception("Missing handoff"))["head"] = JsonValue.Create(
@@ -1320,6 +1370,7 @@ internal class PreparationChecks {
                 TestCase[string]("Reservation", async (value string) -> Reservation(value)),
                 TestCase[string]("Partial", async (value string) -> Partial(value)),
                 TestCase[string]("Handoff", async (value string) -> Handoff(value)),
+                TestCase[string]("HandoffExternal", async (value string) -> Handoff(value, true)),
                 TestCase[string]("Acquisition", async (value string) -> Acquisition(value)),
                 TestCase[string]("PendingClaim", async (value string) -> PendingClaim(value)),
                 TestCase[string]("ClaimGates", async (value string) -> ClaimGates(value)),
