@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -89,11 +89,6 @@ internal class CliDiscovery {
             return result
         }
 
-        private func Checkout(flow NativeFixture, root string, repo string = "owner/project") {
-            flow.Git("init", "-q", "-b", "main", root)
-            flow.Git("-C", root, "remote", "add", "origin", "https://github.com/" + repo + ".git")
-        }
-
         private func Publish(flow NativeFixture, text string?) {
             let upstream = Path.Combine(flow.Upstream, ".github/tokate.json")
             if text == nil {
@@ -117,388 +112,256 @@ internal class CliDiscovery {
             )
         }
 
+        private func Plus(args[]string, extra ...string)[]string {
+            let all = List[string](args)
+            all.AddRange(extra)
+            return all.ToArray()
+        }
+
+        private func Unchanged(flow NativeFixture, message string) {
+            flow.Reload()
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(Check.Text(call["method"]) == "GET", message)
+            }
+            Check.That(flow.State["pulls"] == nil, message)
+        }
+
+        private func Proposed(flow NativeFixture, path string) string -> flow.Git(
+            "-C",
+            flow.Upstream,
+            "show",
+            "tokate-setup:" + path
+        )
+
+        private func Merge(flow NativeFixture) {
+            flow.Git("-C", flow.Upstream, "merge", "-q", "--ff-only", "tokate-setup")
+            flow.Git("-C", flow.Upstream, "branch", "-q", "-D", "tokate-setup")
+            flow.Reload()
+            flow.State["pulls"] = nil
+            flow.State["api_calls"] = JsonArray()
+            flow.Save()
+        }
+
         internal func Setup(binary string) {
             using let flow = NativeFixture(binary)
-            flow.Initialize()
+            flow.Initialize(access: false)
             flow.ReleaseReady(hosted: false)
-            let root = Path.Combine(flow.Temp.Root, "adopter")
-            let github = Path.Combine(root, ".github")
+            Publish(flow, nil)
+            let shared = "obselate/tokate/.github/workflows/tokate-shared.yml@"
+            let pin = shared + String('a', 40)
             let args = []string{
                 "init",
                 "owner/project",
-                "--path",
-                root,
-                "--model-policy",
-                "unrestricted",
                 "--verification",
                 "[[\"bash\",\"scripts/verify.sh\"]]",
                 "--required-checks",
                 "[\"verify\"]",
-                "--non-interactive",
-                "--yes"
+                "--plain"
             }
-            Check.Contains(flow.Call(args, 1, true).Error, "does not exist")
-            Directory.CreateDirectory(root)
-            Check.Contains(flow.Call(args, 1, true).Error, "is not a Git checkout")
-            let other = Path.Combine(flow.Temp.Root, "other")
-            Checkout(flow, other, "someone/else")
-            let mismatch = List[string](args)
-            mismatch[3] = other
-            Check.Contains(
-                flow.Call(mismatch.ToArray(), 1, true).Error,
-                "is a checkout of someone/else, not owner/project"
+            Check.Contains(flow.Call([]string{"init", "owner/project", "--yes"}, 1, true).Error, "--verification")
+            flow.ResetTraffic()
+            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Bootstrap required")
+            Unchanged(flow, "Failed setup changed GitHub")
+            let selected = Check.Map(
+                "github_owned_allowed",
+                true,
+                "verified_allowed",
+                false,
+                "patterns_allowed",
+                JsonArray(JsonValue.Create("actions/checkout@*"), JsonValue.Create(shared + String('c', 40)))
             )
-            Check.That(!Directory.Exists(Path.Combine(other, ".github")), "Mismatched checkout received setup files")
-            Checkout(flow, root)
-            Check.Contains(flow.Call(args, 1, true).Error, "Bootstrap required")
-            Check.That(!Directory.Exists(github), "Failed setup created adopter files")
             flow.Reload()
             flow.State["hosted_workflow"] = JsonValue.Create(true)
+            flow.State["actions_permissions"] = Check.Map("enabled", false)
             flow.Save()
-            flow.Approve()
+            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Actions is disabled")
+            Unchanged(flow, "Disabled Actions setup changed GitHub")
             flow.Reload()
-            let secondIssue = flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
-            secondIssue["number"] = JsonValue.Create(2)
-            secondIssue["title"] = JsonValue.Create("Second task")
-            flow.State["issues"] = Check.Map("1", flow.State["issue"]?.DeepClone(), "2", secondIssue)
-            flow.Save()
-            flow.Call([]string{"approve", "owner/project#2"}, owner: true)
-            let sharedWorkflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
-            flow.State["branch_protection"] = Check.Json(
-                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\"]}}"
+            flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
+            flow.State["selected_actions"] = selected.DeepClone()
+            flow.State["allowlist_setup"] = JsonValue.Create(true)
+            flow.State["actions_policies"] = Check.Map("total_count", 0, "policies", JsonArray())
+            flow.State["workflow_permissions"] = Check.Map(
+                "default_workflow_permissions",
+                "read",
+                "can_approve_pull_request_reviews",
+                false
             )
             flow.Save()
-            for setting in[]string{"disabled", "local_only", "stale", "empty", "excluded"} {
-                flow.Reload()
-                flow.State["actions_permissions"] = Check.Map(
-                    "enabled",
-                    setting != "disabled",
-                    "allowed_actions",
-                    setting == "local_only" ? "local_only": "selected"
-                )
-                let patterns = JsonArray()
-                if setting == "stale" {
-                    patterns.Add(JsonValue.Create(sharedWorkflow + String('b', 40)) as JsonNode)
-                }
-                if setting == "excluded" {
-                    patterns.Add(JsonValue.Create("*") as JsonNode)
-                    patterns.Add(JsonValue.Create("!" + sharedWorkflow + "*") as JsonNode)
-                }
-                flow.State["selected_actions"] = Check.Map("patterns_allowed", patterns)
-                flow.Save()
+            for flag in[]string{"--non-interactive", "--json", "redirected"} {
                 flow.ResetTraffic()
-                let warned = flow.Call(args, owner: true)
-                Check.Contains(warned.Output, "Commit and push")
-                Check.Contains(warned.Error, "Settings > Actions > General > Actions permissions")
-                Check.Contains(warned.Error, setting == "disabled" ? "Enable Actions": sharedWorkflow + String('a', 40))
-                flow.Reload()
-                var permissionsReads int32
-                var selectedReads int32
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    let path = Check.Text(call["path"])
-                    if path == "repos/owner/project/actions/permissions" {
-                        permissionsReads++
-                    }
-                    if path == "repos/owner/project/actions/permissions/selected-actions" {
-                        selectedReads++
-                    }
+                let preview = flow.Call(flag == "redirected" ? args: Plus(args, flag), owner: true)
+                for change in[]string{
+                    "Actions allowed workflows",
+                    pin,
+                    "Allow GitHub Actions to create and approve pull requests",
+                    "Actions event policy",
+                    "Required checks on main",
+                    "Branch tokate/access",
+                    ".github/tokate.json",
+                    ".github/workflows/tokate-coordinator.yml",
+                    "Branch tokate-setup",
+                    "Setup PR",
+                    "Do not delete them",
+                    "--yes"
+                } {
+                    Check.Contains(preview.Error, change)
                 }
-                Check.That(permissionsReads == 1, "Init did not read Actions permissions exactly once")
-                Check.That(
-                    selectedReads == (setting == "disabled" || setting == "local_only" ? 0: 1),
-                    "Init read the wrong selected Actions settings"
-                )
-                if setting == "stale" {
-                    let jsonArgs = List[string](args)
-                    jsonArgs.Add("--json")
-                    Directory.Delete(github, true)
-                    let json = flow.Call(jsonArgs.ToArray(), owner: true)
-                    let report = Check.Envelope(json, "init", "ok")
-                    Check.That(Check.Text(report["data"]?["applied"]) == "true", "Actions warning prevented JSON setup")
-                    Check.Contains(json.Error, "Settings > Actions > General > Actions permissions")
-                    Check.Contains(json.Error, sharedWorkflow + String('a', 40))
-                    Directory.Delete(github, true)
-                    let env = System.Collections.Generic.Dictionary[string, string](flow.Temp.Env)
-                    env["GH_TOKEN"] = "fixture-owner"
-                    let screen = TestProcess.Run(
-                        "/usr/bin/script",
-                        []string{
-                            "-q",
-                            "-e",
-                            "-c",
-                            "'" +
-                                binary +
-                                "' init --path '" +
-                                root +
-                                "' --plain --model-policy unrestricted --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'",
-                            "/dev/null"
-                        },
-                        env,
-                        "y\n"
+                if flag == "--json" {
+                    let data = Check.Envelope(preview, "init", "ok")["data"]
+                    Check.That(
+                        Check.Text(data?["applied"]) == "false" && data?["changes"]?.AsArray().Count == 9,
+                        "Preview data did not list every change"
                     )
-                    Check.Success(screen)
-                    Check.Contains(screen.Output, sharedWorkflow + String('a', 40))
-                    Check.Contains(screen.Output, "Commit and push")
                 }
-                Check.That(
-                    File.Exists(Path.Combine(github, "tokate.json")) && File.Exists(
-                        Path.Combine(github, "workflows/tokate-coordinator.yml")
-                    ),
-                    "Actions warning prevented setup files"
-                )
-                flow.Reload()
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    Check.That(Check.Text(call["method"]) == "GET", "Init changed blocked Actions settings")
-                }
-                Directory.Delete(github, true)
+                Unchanged(flow, "Preview changed GitHub")
             }
-            flow.State["branch_protection"] = nil
-            flow.State["selected_actions"] = Check.Map(
-                "patterns_allowed",
-                Check.Json("[\"" + sharedWorkflow + String('a', 40) + "\"]")
-            )
-            flow.Save()
-            let created = flow.Call(args, owner: true)
-            Check.Contains(created.Error, "Re-approve these issues after the policy change is merged: 1, 2")
-            Check.Contains(created.Error, "tokate approve owner/project#1")
-            Check.Contains(created.Error, "tokate approve owner/project#2")
-            Check.Contains(created.Error, "Added ")
-            Check.Contains(created.Output, "Commit and push")
-            Check.Contains(created.Error, "contents write")
-            Check.Contains(created.Error, "tokate/contributions/N")
-            let policyPath = Path.Combine(root, ".github/tokate.json")
-            let workflowPath = Path.Combine(root, ".github/workflows/tokate-coordinator.yml")
-            let original = File.ReadAllText(policyPath)
-            var policy = Check.Json(original)
+            flow.Call([]string{"--version"}, owner: true)
+            let token = flow.Temp.Env["GH_TOKEN"]
+            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
+            flow.ResetTraffic()
+            let declined = TestTerminal.Pty(binary, args, flow.Temp, 80, "\n")
+            Check.That(declined.Code == 1, declined.Output + declined.Error)
+            Check.Contains(declined.Output, "Apply this setup? [y/N]")
+            Unchanged(flow, "Declined setup changed GitHub")
+            let accepted = TestTerminal.Pty(binary, args, flow.Temp, 80, "y\n")
+            flow.Temp.Env["GH_TOKEN"] = token
+            Check.Success(accepted)
+            Check.That(accepted.Output.Split("Apply this setup? [y/N]").Length == 2, "Setup did not ask once")
+            Check.Contains(accepted.Output, "Opened setup PR https://github.com/owner/project/pull/10")
+            flow.Reload()
+            selected["patterns_allowed"]?.AsArray().Add(JsonValue.Create(pin) as JsonNode)
             Check.That(
-                Check.Text(policy["eligibility"]) == "trusted" && Check.Text(policy["approval_scope"]) == "task",
-                "New setup did not default to task-scoped trusted access"
+                flow.State["selected_actions"]?.ToJsonString() == selected.ToJsonString(),
+                "Setup did not add the pin and preserve the allowlist"
             )
             Check.That(
-                Check.Text(policy["version"]) == "3" &&
-                    policy["models"] == nil &&
-                    policy["model_policy"] == nil &&
-                    policy["allowed_tools"]?[0]?["models"] == nil,
-                "Unrestricted setup silently restricted models"
+                flow.State["branch_protection"]?.ToJsonString() ==
+                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
+                "Setup did not require the policy checks with the exact protection settings"
             )
             Check.That(
-                Directory.GetFiles(github, "*", SearchOption.AllDirectories).Length == 2,
-                "New adopter footprint is not two files"
+                flow.State["actions_policy"]?.ToJsonString() ==
+                "{\"name\":\"Tokate coordinator events\",\"enforcement\":\"active\",\"conditions\":{\"workflow_path\":{\"include\":[\".github/workflows/tokate-coordinator.yml\"],\"exclude\":[]}},\"rules\":[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]}",
+                "Setup created the wrong Actions event policy"
             )
-            let yaml = File.ReadAllText(workflowPath)
+            Check.That(
+                flow.State["workflow_permissions"]?.ToJsonString() ==
+                "{\"default_workflow_permissions\":\"read\",\"can_approve_pull_request_reviews\":true}",
+                "Setup did not enable PR creation while preserving workflow permissions"
+            )
+            Check.That(
+                Check.Text(flow.State["pulls"]?[0]?["head"]?["ref"]) == "tokate-setup" && Check.Text(
+                    flow.State["pulls"]?[0]?["base"]?["ref"]
+                ) == "main",
+                "Setup PR has the wrong branches"
+            )
+            Check.Contains(flow.Git("-C", flow.Upstream, "show", "tokate/access:access.json"), "\"members\":[]")
+            Check.That(
+                !File.Exists(Path.Combine(flow.Upstream, ".github/tokate.json")),
+                "Setup changed the default branch"
+            )
+            var policy = Check.Json(Proposed(flow, ".github/tokate.json"))
+            Check.That(
+                Check.Text(policy["version"]) == "3" && Check.Text(policy["eligibility"]) == "trusted" && Check.Text(
+                    policy["approval_scope"]
+                ) == "task" &&
+                    policy["allowed_tools"]?.ToJsonString() ==
+                "[{\"harness\":\"codex\",\"provider\":\"openai\"},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
+                "New setup did not use trusted access and any supported model"
+            )
+            let yaml = Proposed(flow, ".github/workflows/tokate-coordinator.yml")
+            Check.Contains(yaml, "uses: " + pin)
             Check.That(
                 !yaml.Contains("run:") && !yaml.Contains("checkout") && yaml.Split('\n').Length < 25,
                 "Setup copied runtime code"
             )
-            Publish(flow, original)
+            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Branch tokate-setup exists")
+            Merge(flow)
+            Check.Contains(flow.Call(Plus(args, "--yes"), owner: true).Output, "Nothing to change")
+            Unchanged(flow, "Repeated setup changed GitHub")
             flow.Approve()
-            let staleApproval = flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            Check.Contains(staleApproval.Error, "tokate approve owner/project#2")
-            Check.That(!staleApproval.Error.Contains("Task fields changed."), "Unchanged init reported task changes")
-            Check.That(!staleApproval.Error.Contains("Approvals stay valid."), "Unchanged init hid stale approval")
+            flow.Reload()
+            let second = flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
+            second["number"] = JsonValue.Create(2)
+            second["title"] = JsonValue.Create("Second task")
+            flow.State["issues"] = Check.Map("1", flow.State["issue"]?.DeepClone(), "2", second)
+            flow.Save()
             flow.Call([]string{"approve", "owner/project#2"}, owner: true)
-            let unchangedTasks = flow.Call(
-                []string{
-                    "init",
-                    "--path",
-                    root,
-                    "--eligibility",
-                    "open",
-                    "--pr-text",
-                    "Owner notes",
-                    "--non-interactive",
-                    "--yes"
-                },
-                owner: true
+            let descriptive = Check.Envelope(
+                flow.Call(
+                    []string{
+                        "init",
+                        "owner/project",
+                        "--eligibility",
+                        "open",
+                        "--pr-text",
+                        "Owner notes",
+                        "--yes",
+                        "--json"
+                    },
+                    owner: true
+                ),
+                "init",
+                "ok"
             )
-            Check.Contains(unchangedTasks.Error, "Approvals stay valid.")
-            Check.That(!unchangedTasks.Error.Contains("tokate approve"), "Nontask init asked for new approvals")
-            Publish(flow, File.ReadAllText(policyPath))
-            let current = Check.Envelope(flow.Call([]string{"status", "owner/project#1", "--json"}), "status", "ok")
             Check.That(
-                Check.Text(current["data"]?["work"]?[0]?["approval_status"]) == "current",
+                Check.Text(descriptive["data"]?["task_fields_changed"]) == "false" &&
+                    descriptive["data"]?["approvals_to_renew"]
+                    ?.AsArray().Count == 0,
+                "Nontask init asked for new approvals"
+            )
+            Merge(flow)
+            let status = Check.Envelope(flow.Call([]string{"status", "owner/project#1", "--json"}), "status", "ok")
+            Check.That(
+                Check.Text(status["data"]?["work"]?[0]?["approval_status"]) == "current",
                 "Nontask init revoked approval"
             )
-            File.WriteAllText(policyPath, original)
-            Publish(flow, original)
-            let repeated = flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            Check.Contains(repeated.Output, "nothing to commit")
-            Check.That(
-                File.ReadAllText(policyPath) == original && File.ReadAllText(workflowPath) == yaml,
-                "Repeated setup changed owner files"
-            )
-            File.WriteAllText(workflowPath, yaml.Replace(String('a', 40), String('c', 40)))
-            Check.Contains(
-                flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true).Error,
-                sharedWorkflow + String('c', 40)
-            )
-            Check.That(
-                File.ReadAllText(workflowPath) == yaml.Replace(String('a', 40), String('c', 40)),
-                "Actions warning changed an existing workflow"
-            )
-            File.WriteAllText(workflowPath, yaml)
-            flow.Reload()
-            flow.State["selected_actions"] = Check.Map(
-                "patterns_allowed",
-                Check.Json("[\"Obselate/Tokate/.github/workflows/tokate-shared.yml@*\"]")
-            )
-            flow.Save()
-            flow.Call([]string{"init", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            Check.That(File.ReadAllText(workflowPath) == yaml, "Wildcard allowlist changed the pinned workflow")
-            flow.Reload()
-            flow.State["actions_permissions"] = nil
-            flow.State["selected_actions"] = nil
-            flow.Save()
-            let fresh = Path.Combine(flow.Temp.Root, "fresh")
-            Checkout(flow, fresh)
-            flow.Call([]string{"init", "owner/project", "--path", fresh, "--non-interactive", "--yes"}, owner: true)
-            let freshPolicy = Path.Combine(fresh, ".github/tokate.json")
-            Check.That(
-                File.ReadAllText(freshPolicy) == original,
-                "Setup in a new checkout did not start from the GitHub policy"
-            )
-            let unpushed = original.Replace("\"max_seconds\": 3600", "\"max_seconds\": 1800")
-            Check.That(unpushed != original, "Fixture policy lacks the expected time limit")
-            File.WriteAllText(freshPolicy, unpushed)
-            Check.Contains(
-                flow.Call([]string{"init", "--path", fresh, "--max-time", "900s", "--non-interactive"}, 1, true).Error,
-                "differs from the policy on owner/project@main"
-            )
-            Check.That(File.ReadAllText(freshPolicy) == unpushed, "Setup overwrote an unpushed local policy")
-            let renamed = Path.Combine(root, ".github/workflows/owner.yaml")
-            File.Move(workflowPath, renamed)
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            Check.That(
-                !File.Exists(workflowPath) && File.ReadAllText(renamed) == yaml && Directory.GetFiles(
-                    github,
-                    "*",
-                    SearchOption.AllDirectories
-                )
-                    .Length == 2,
-                "Repeat duplicated renamed owner workflow"
-            )
-            File.Move(renamed, workflowPath)
-            let escaped = "custom owner workflow\n# synthetic-preview-\x1b[31m\n"
-            File.WriteAllText(workflowPath, escaped)
-            let safePreview = flow.Call(
-                []string{"init", "owner/project", "--path", root, "--non-interactive", "--yes", "--plain"},
-                owner: true
-            )
-            Check.That(!safePreview.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
-            Check.Contains(
-                safePreview.Error,
-                "Review wiring and permissions against a pinned workflow: tokate coordinator-setup owner/project --output tokate-coordinator.yml."
-            )
-            Check.That(File.ReadAllText(workflowPath) == escaped, "Preview changed the custom workflow")
-            let custom = Path.Combine(root, ".github/tokate-pr.md")
-            File.WriteAllText(custom, TestResources.Template("tokate-pr.md") + "Owner customization\n")
-            File.WriteAllText(workflowPath, "custom owner workflow\n")
-            flow.Call(
+            let task = flow.Call(
                 []string{
                     "init",
                     "owner/project",
-                    "--path",
-                    root,
-                    "--model-policy",
-                    "whitelist",
-                    "--models",
-                    "{\"model-a\":[\"low\",\"high\"],\"model-b\":[\"absent\"]}",
-                    "--eligibility",
-                    "open",
+                    "--max-time",
+                    "30m",
+                    "--reservation-time",
+                    "1h",
                     "--base-branch",
                     "release",
-                    "--max-time",
-                    "5400s",
-                    "--reservation-time",
-                    "300s",
-                    "--pr-text",
-                    "Literal {{issue}} owner text",
                     "--close-message",
-                    "Ask the owner for access.",
-                    "--non-interactive",
+                    "Request access.",
+                    "--allowed-tools",
+                    "claude/anthropic,aider/openrouter",
                     "--yes"
                 },
                 owner: true
             )
-            let restricted = File.ReadAllText(policyPath)
-            Publish(flow, restricted)
-            policy = Check.Json(restricted)
+            Check.Contains(task.Error, "tokate approve owner/project#1")
+            Check.Contains(task.Error, "tokate approve owner/project#2")
+            policy = Check.Json(Proposed(flow, ".github/tokate.json"))
             Check.That(
-                Check.Text(policy["target_branch"]) == "release" && Check.Text(policy["max_seconds"]) == "5400" &&
-                    policy["allow_network"] == nil,
-                "Noninteractive settings were not applied"
+                Check.Text(policy["max_seconds"]) == "1800" && Check.Text(policy["reservation_seconds"]) == "3600" &&
+                    Check.Text(policy["target_branch"]) == "release" && Check.Text(
+                    policy["close_message"]
+                ) == "Request access." &&
+                    Check.Text(policy["pr_text"]) == "Owner notes" && Check.Text(policy["eligibility"]) == "open" &&
+                    policy["allowed_tools"]?.ToJsonString() ==
+                "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]",
+                "Init changed explicit policy options"
             )
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
+            Merge(flow)
+            let routes = "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"claude-opus-5-5\":[\"high\"]}}]"
+            flow.Call([]string{"init", "owner/project", "--allowed-tools", routes, "--yes"}, owner: true)
             Check.That(
-                File.ReadAllText(policyPath) == restricted && File.ReadAllText(
-                    workflowPath
-                ) == "custom owner workflow\n" &&
-                    File
-                    .ReadAllText(custom).EndsWith("Owner customization\n"),
-                "Repeat overwrote customization or restrictions"
+                Check.Json(Proposed(flow, ".github/tokate.json"))["allowed_tools"]?.ToJsonString() == routes,
+                "Init lost per-tool model maps"
             )
-            let invalid = []string{"init", "owner/project", "--path", root, "--verification", "[]", "--non-interactive"}
-            flow.Call(invalid, 1, true)
-            Check.That(File.ReadAllText(policyPath) == restricted, "Invalid policy replaced owner work")
-            policy["allowed_tools"] = Check.Json(
-                "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"gufo\"}]"
-            )
-            Publish(flow, policy.ToJsonString())
-            File.WriteAllText(policyPath, policy.ToJsonString())
-            let toolArgs = List[string]{
-                "init",
-                "owner/project",
-                "--path",
-                root,
-                "--allowed-tools",
-                "pi",
-                "--non-interactive",
-                "--yes"
-            }
-            flow.Call(toolArgs.ToArray(), owner: true)
-            Publish(flow, File.ReadAllText(policyPath))
-            let mixed = Check.Json(File.ReadAllText(policyPath))["allowed_tools"]?.ToJsonString() ?? ""
-            for name in[]string{"omp", "pi"} {
-                Check.Contains(mixed, "\"harness\":\"" + name + "\"")
-            }
-            toolArgs[5] = "claude/anthropic,aider/openrouter"
-            flow.Call(toolArgs.ToArray(), owner: true)
-            Publish(flow, File.ReadAllText(policyPath))
-            policy = Check.Json(File.ReadAllText(policyPath))
-            let exact = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
-            Check.That(
-                exact.Count == 2 && Check.Text(exact[1]?["harness"]) == "aider",
-                "Exact external tools were not selected"
-            )
-            toolArgs[5] = "codex"
-            flow.Call(toolArgs.ToArray(), owner: true)
-            Publish(flow, File.ReadAllText(policyPath))
-            policy = Check.Json(File.ReadAllText(policyPath))
-            let kept = policy["allowed_tools"]?.AsArray() ?? throw Exception("Missing tools")
-            Check.That(
-                kept.Count == 2 && Check.Text(kept[0]?["harness"]) == "aider",
-                "Managed selection removed external permissions"
-            )
-            let beforeInvalidTool = File.ReadAllText(policyPath)
-            flow.Call(
-                []string{"init", "owner/project", "--path", root, "--eligibility", "manual", "--non-interactive"},
-                1,
-                true
-            )
-            Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Removed eligibility mode changed policy")
-            toolArgs[5] = "claude/"
-            flow.Call(toolArgs.ToArray(), 1, true)
-            Check.That(File.ReadAllText(policyPath) == beforeInvalidTool, "Invalid tool pair changed policy")
-            let obsolete = Path.Combine(flow.Temp.Root, "obsolete")
-            Checkout(flow, obsolete)
-            let obsoletePolicy = Check.Json(TestResources.Template("tokate.json"))
-            obsoletePolicy["version"] = JsonValue.Create(1)
-            Publish(flow, obsoletePolicy.ToJsonString())
-            flow.Call([]string{"init", "owner/project", "--path", obsolete, "--non-interactive"}, 1, true)
-            Check.That(
-                !File.Exists(Path.Combine(obsolete, ".github/tokate.json")),
-                "Unsupported GitHub policy was rewritten"
-            )
+            Merge(flow)
+            let original = File.ReadAllText(Path.Combine(flow.Upstream, ".github/tokate.json"))
+            let obsolete = Check.Json(original)
+            obsolete["version"] = JsonValue.Create(1)
+            Publish(flow, obsolete.ToJsonString())
+            flow.Call([]string{"init", "owner/project", "--yes"}, 1, true)
+            Unchanged(flow, "Unsupported GitHub policy was rewritten")
             let legacy = Check.Json(original)
             legacy["version"] = JsonValue.Create(2)
             legacy["eligibility"] = JsonValue.Create("manual")
@@ -509,10 +372,8 @@ internal class CliDiscovery {
             )
             Publish(flow, legacy.ToJsonString())
             Check.Contains(flow.Call([]string{"policy", "owner/project"}, 1).Error, "tokate init OWNER/REPO")
-            flow.NoInference()
-            File.WriteAllText(policyPath, legacy.ToJsonString())
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            let migrated = Check.Json(File.ReadAllText(policyPath))
+            flow.Call([]string{"init", "owner/project", "--yes"}, owner: true)
+            let migrated = Check.Json(Proposed(flow, ".github/tokate.json"))
             Check.That(
                 Check.Text(migrated["version"]) == "3" && Check.Text(migrated["eligibility"]) == "trusted" &&
                     migrated["models"] == nil &&
@@ -521,323 +382,50 @@ internal class CliDiscovery {
                     migrated["allowed_tools"]?[1]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString(),
                 "Version 2 migration changed model permissions or lost trusted eligibility"
             )
-            Publish(flow, File.ReadAllText(policyPath))
-            let routes = "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"claude-opus-5-5\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
-            flow.Call(
-                []string{
-                    "init",
-                    "owner/project",
-                    "--path",
-                    root,
-                    "--allowed-tools",
-                    routes,
-                    "--non-interactive",
-                    "--yes"
-                },
-                owner: true
+            Merge(flow)
+            let workflow = Path.Combine(flow.Upstream, ".github/workflows/tokate-coordinator.yml")
+            File.WriteAllText(
+                workflow,
+                yaml.Replace(String('a', 40), String('c', 40)) + "# synthetic-preview-\x1b[31m\n"
             )
-            let routed = File.ReadAllText(policyPath)
-            Check.That(Check.Json(routed)["allowed_tools"]?.ToJsonString() == routes, "Init lost per-tool model maps")
-            Publish(flow, routed)
-            flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
-            Check.That(File.ReadAllText(policyPath) == routed, "Repeat changed per-tool models")
-            Publish(flow, nil)
-            let interactiveRoot = Path.Combine(flow.Temp.Root, "interactive")
-            Checkout(flow, interactiveRoot)
+            flow.Commit("Install old coordinator pin")
+            let update = flow.Call([]string{"init", "owner/project", "--yes", "--plain"}, owner: true)
+            Check.That(!update.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
             Check.Contains(
-                flow.Call([]string{"init", "owner/project", "--path", interactiveRoot, "--non-interactive"}, 1, true)
-                    .Error,
-                "Choose --model-policy"
+                update.Error,
+                "Compare shared workflows: https://github.com/obselate/tokate/compare/" +
+                    String('c', 40) +
+                    "..." +
+                    String('a', 40)
             )
-            for missing in[]string{"events", "pull-requests", "both"} {
+            Check.That(
+                Proposed(flow, ".github/workflows/tokate-coordinator.yml") == yaml,
+                "Init did not update the pin"
+            )
+            Merge(flow)
+            for mode in[]string{"excluded", "local_only"} {
                 flow.Reload()
-                flow.State["actions_policies"] = missing == "pull-requests" ? nil:
-                Check.Map("total_count", 0, "policies", JsonArray())
-                flow.State["workflow_permissions"] = Check.Map(
-                    "default_workflow_permissions",
-                    "read",
-                    "can_approve_pull_request_reviews",
-                    missing == "events"
+                flow.State["actions_permissions"] = Check.Map(
+                    "enabled",
+                    true,
+                    "allowed_actions",
+                    mode == "excluded" ? "selected": mode
                 )
-                flow.State["api_calls"] = JsonArray()
+                flow.State["selected_actions"] = Check.Map(
+                    "patterns_allowed",
+                    JsonArray(JsonValue.Create("*"), JsonValue.Create("!" + shared + "*"))
+                )
                 flow.Save()
-                let blocked = flow.Call(
-                    []string{
-                        "init",
-                        "--path",
-                        interactiveRoot,
-                        "--model-policy",
-                        "unrestricted",
-                        "--verification",
-                        "[[\"/usr/bin/true\"]]",
-                        "--required-checks",
-                        "[\"verify\"]"
-                    },
-                    1,
-                    true
-                )
-                Check.Contains(blocked.Error, "Missing GitHub settings")
-                Check.Contains(blocked.Error, "--yes")
-                if missing != "pull-requests" {
-                    Check.Contains(blocked.Error, "Actions event policy")
-                }
-                if missing != "events" {
-                    Check.Contains(blocked.Error, "Allow GitHub Actions to create and approve pull requests")
-                }
-                Check.That(
-                    !Directory.Exists(Path.Combine(interactiveRoot, ".github")),
-                    "Missing settings wrote setup files"
-                )
-                flow.Reload()
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    Check.That(Check.Text(call["method"]) == "GET", "Noninteractive setup changed GitHub settings")
-                }
-            }
-            let savedOwnerToken = flow.Temp.Env["GH_TOKEN"]
-            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
-            let setupArgs = []string{
-                "init",
-                "owner/project",
-                "--path",
-                interactiveRoot,
-                "--model-policy",
-                "unrestricted",
-                "--verification",
-                "[[\"/usr/bin/true\"]]",
-                "--required-checks",
-                "[\"verify\"]"
-            }
-            let declinedSetup = TestTerminal.Pty(binary, setupArgs, flow.Temp, 80, "\n")
-            Check.That(declinedSetup.Code == 1, declinedSetup.Output + declinedSetup.Error)
-            Check.Contains(declinedSetup.Output, "Apply this project setup? [y/N]")
-            flow.Reload()
-            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                Check.That(Check.Text(call["method"]) == "GET", "Declined setup changed GitHub settings")
-            }
-            Check.That(!Directory.Exists(Path.Combine(interactiveRoot, ".github")), "Declined setup wrote files")
-            let acceptedSetup = TestTerminal.Pty(binary, setupArgs, flow.Temp, 80, "y\n")
-            Check.Success(acceptedSetup)
-            Check.That(
-                acceptedSetup.Output.Split("Apply this project setup? [y/N]").Length == 2,
-                "Setup did not ask once"
-            )
-            Check.That(
-                File.Exists(Path.Combine(interactiveRoot, ".github/tokate.json")),
-                "Accepted setup wrote no policy"
-            )
-            Directory.Delete(Path.Combine(interactiveRoot, ".github"), true)
-            flow.Temp.Env["GH_TOKEN"] = savedOwnerToken
-            flow.Call(
-                []string{
-                    "init",
-                    "owner/project",
-                    "--path",
-                    interactiveRoot,
-                    "--yes",
-                    "--verification",
-                    "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]",
-                    "--required-checks",
-                    "[\"verify\",\"build\"]",
-                    "--base-branch",
-                    "release",
-                    "--max-time",
-                    "2h",
-                    "--reservation-time",
-                    "30m",
-                    "--pr-text",
-                    "Owner notes",
-                    "--allowed-tools",
-                    "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"model-a\":[\"high\",\"xhigh\"]}},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]"
-                },
-                owner: true
-            )
-            flow.Reload()
-            Check.That(
-                flow.State["branch_protection"]?.ToJsonString() ==
-                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\",\"build\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
-                "Setup did not require the policy checks with the exact protection settings"
-            )
-            let eventPolicy = Check.Map(
-                "name",
-                "Tokate coordinator events",
-                "enforcement",
-                "active",
-                "conditions",
-                Check.Map(
-                    "workflow_path",
-                    Check.Map(
-                        "include",
-                        Check.Json("[\".github/workflows/tokate-coordinator.yml\"]"),
-                        "exclude",
-                        JsonArray()
-                    )
-                ),
-                "rules",
-                Check.Json(
-                    "[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]"
-                )
-            )
-            Check.That(
-                flow.State["actions_policy"]?.ToJsonString() == eventPolicy.ToJsonString(),
-                "Setup created the wrong Actions event policy"
-            )
-            Check.That(
-                Check.Text(flow.State["workflow_permissions"]?["default_workflow_permissions"]) == "read" && Check.Text(
-                    flow.State["workflow_permissions"]?["can_approve_pull_request_reviews"]
-                ) == "true",
-                "Setup did not enable PR creation while preserving workflow permissions"
-            )
-            Check.That(
-                File.Exists(Path.Combine(interactiveRoot, ".github/tokate.json")),
-                "Explicit confirmation did not apply setup"
-            )
-            let selected = Check.Json(File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
-            Check.That(
-                Check.Text(selected["max_seconds"]) == "7200" && Check.Text(selected["reservation_seconds"]) == "1800",
-                "Flag setup did not accept times with units"
-            )
-            Check.That(
-                Check.Text(selected["version"]) == "3" &&
-                    selected["models"] == nil &&
-                    selected["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\",\"xhigh\"]}" &&
-                    selected["verification"]?.ToJsonString() == "[[\"/bin/sh\",\"-c\",\"/usr/bin/true\"]]" &&
-                    selected["required_checks"]?.ToJsonString() == "[\"verify\",\"build\"]",
-                "Flag setup lost selected models, commands or check names"
-            )
-            Check.That(
-                Check.Text(selected["target_branch"]) == "release" && Check.Text(
-                    selected["pr_text"]
-                ) == "Owner notes" &&
-                    selected["allowed_tools"]?.ToJsonString() ==
-                "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"model-a\":[\"high\",\"xhigh\"]}},{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"pi\",\"provider\":\"local-chat-completions\"}]",
-                "Init lost branch, PR text or tool choices"
-            )
-            Publish(flow, File.ReadAllText(Path.Combine(interactiveRoot, ".github/tokate.json")))
-            let savedToken = flow.Temp.Env["GH_TOKEN"]
-            flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
-            for flag in[]string{"", "--non-interactive", "--json", "redirected"} {
-                flow.Reload()
-                flow.State["api_calls"] = JsonArray()
-                flow.Save()
-                let optionRoot = Path.Combine(flow.Temp.Root, "options-" + flag.Replace('-', '_'))
-                Checkout(flow, optionRoot)
-                let optionArgs = List[string]{
-                    "init",
-                    "owner/project",
-                    "--path",
-                    optionRoot,
-                    "--model-policy",
-                    "whitelist",
-                    "--models",
-                    "{\"model-a\":[\"high\"]}",
-                    "--allowed-tools",
-                    "claude/anthropic,aider/openrouter",
-                    "--eligibility",
-                    "open",
-                    "--base-branch",
-                    "release",
-                    "--max-time",
-                    "20m",
-                    "--reservation-time",
-                    "30m",
-                    "--verification",
-                    "[[\"/usr/bin/true\"]]",
-                    "--required-checks",
-                    "[\"verify\"]",
-                    "--pr-text",
-                    "Option notes",
-                    "--close-message",
-                    "Request access.",
-                    "--plain"
-                }
-                if flag.StartsWith("--") {
-                    optionArgs.Add(flag)
-                }
-                let preview = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
-                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "\n": "")
-                Check.That(preview.Code == (flag == "" ? 1: 0), preview.Output + preview.Error)
-                if flag == "--json" {
-                    Check.That(
-                        Check.Text(Check.Envelope(preview, "init", "ok")["data"]?["applied"]) == "false",
-                        "Preview claimed setup was applied"
-                    )
-                }
+                let manual = flow.Call([]string{"init", "owner/project", "--yes"}, owner: true)
                 Check.Contains(
-                    preview.Output +
-                        preview.Error +
-                        (flag == "--json" ? File.ReadAllText(Path.Combine(flow.Temp.Root, "diagnostics")): ""),
-                    "--yes"
+                    manual.Error,
+                    "Manual: in owner/project > Settings > Actions > General > Actions permissions, allow " + pin
                 )
-                Check.That(!File.Exists(Path.Combine(optionRoot, ".github/tokate.json")), "Preview wrote policy")
-                flow.Reload()
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    Check.That(Check.Text(call["method"]) == "GET", "Preview changed GitHub settings")
-                }
-                if flag != "" {
-                    optionArgs.Add("--yes")
-                }
-                let options = flag == "redirected" ? flow.Call(optionArgs.ToArray(), owner: true):
-                TestTerminal.Pty(binary, optionArgs.ToArray(), flow.Temp, 80, flag == "" ? "y\n": "")
-                Check.Success(options)
-                Check.That(
-                    !options.Output.Contains("Who can contribute?") && !options.Output.Contains(
-                        "Choose how much control"
-                    ) &&
-                        !options
-                        .Output
-                        .Contains("Shell command:") && !options.Output.Contains("Check names:"),
-                    "Explicit options still prompted for policy fields"
-                )
-                let configured = Check.Json(File.ReadAllText(Path.Combine(optionRoot, ".github/tokate.json")))
-                Check.That(
-                    Check.Text(configured["version"]) == "3" &&
-                        configured["model_policy"] == nil &&
-                        configured["models"] == nil &&
-                        configured["allowed_tools"]?[0]?["models"]?.ToJsonString() == "{\"model-a\":[\"high\"]}" &&
-                        Check.Text(configured["eligibility"]) == "open" && Check.Text(
-                        configured["target_branch"]
-                    ) == "release" &&
-                        Check.Text(configured["max_seconds"]) == "1200" && Check.Text(
-                        configured["reservation_seconds"]
-                    ) == "1800" &&
-                        configured["verification"]?.ToJsonString() == "[[\"/usr/bin/true\"]]" &&
-                        configured["required_checks"]?.ToJsonString() == "[\"verify\"]" &&
-                        configured["allowed_tools"]?.ToJsonString() ==
-                    "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"models\":{\"model-a\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\",\"models\":{\"model-a\":[\"high\"]}}]" &&
-                        Check.Text(configured["pr_text"]) == "Option notes" && Check.Text(
-                        configured["close_message"]
-                    ) == "Request access.",
-                    "Init changed explicit policy options"
-                )
-                flow.Reload()
-                for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                    Check.That(
-                        !Check.Text(call["path"]).Contains("/check-runs"),
-                        "Explicit check names triggered discovery"
-                    )
-                }
+                Unchanged(flow, "Blocked allowlist was changed")
             }
-            flow.Temp.Env["GH_TOKEN"] = savedToken
-            flow.Call([]string{"defaults", "set", "--model", "gpt-6.1-sol", "--effort", "high"})
-            flow.Call(
-                []string{
-                    "defaults",
-                    "set",
-                    "local",
-                    "--harness",
-                    "pi",
-                    "--model",
-                    "local-" + String('x', 120),
-                    "--effort",
-                    "absent",
-                    "--endpoint",
-                    "http://127.0.0.1:12345/v1"
-                }
-            )
             flow.NoInference()
-            flow.NoPr()
             Console.WriteLine(
-                "PASS CLI owner setup: checkout identity, GitHub policy source, direct writes, two files, repeat, restrictions, upgrade and explicit options"
+                "PASS CLI owner setup: defaults, exact preview, one question, settings, access, setup PR, repeat, approvals, options, migration and pin update"
             )
         }
 
@@ -1522,7 +1110,6 @@ internal class CliDiscovery {
                 []string{"prepare", "owner/project#1", "--source=invalid"},
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
-                []string{"coordinator-setup", "--repo=owner/project"},
                 []string{"coordinate", "--repo=owner/project"},
                 []string{"submit"},
                 []string{"completion"},
@@ -1551,7 +1138,7 @@ internal class CliDiscovery {
                     Directory.CreateDirectory(spaced)
                     let files = Path.Combine(temp.Root, "files with spaces")
                     Directory.CreateDirectory(files)
-                    for name in[]string{"request.json", "summary with spaces.json", "output with spaces.yml"} {
+                    for name in[]string{"request.json", "summary with spaces.json"} {
                         File.WriteAllText(Path.Combine(temp.Root, name), "")
                     }
                     File.WriteAllText(Path.Combine(files, "summary with spaces.json"), "")
@@ -1569,7 +1156,6 @@ internal class CliDiscovery {
                         "COMP_WORDS=(tokate \"$$cmd\" \"$$option\" = \"$$stem\"); COMP_CWORD=4; _tokate; expect_reply \"$$expected\"; }; " +
                         "file_completion request --file req request.json; " +
                         "file_completion external --summary sum 'summary with spaces.json'; " +
-                        "file_completion coordinator-setup --output out 'output with spaces.yml'; " +
                         "file_completion external --summary 'files with spaces/sum' 'files with spaces/summary with spaces.json'; " +
                         "COMP_WORDS=(tokate request --file missing-candidate); COMP_CWORD=3; _tokate; [[ $${#COMPREPLY[@]} == 0 ]] || exit 1; " +
                         "COMP_WORDS=(tokate request --file =); _tokate; [[ \" $${COMPREPLY[*]} \" == *' request.json '* ]] || exit 1"

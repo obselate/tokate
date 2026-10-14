@@ -457,11 +457,7 @@ internal class OwnerSetup {
                 )
                 let commit = GitHub.Api(
                     "repos/" + repo + "/git/commits",
-                    map[string, Object?]{
-                        "message": "Set up Tokate",
-                        "tree": J.Text(tree, "sha"),
-                        "parents": []string{head}
-                    }
+                    GitHub.AutomationCommit("Set up Tokate", J.Text(tree, "sha"), []string{head})
                 )
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",

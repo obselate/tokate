@@ -106,7 +106,7 @@ internal partial class NativeFlow : NativeFixture {
         Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? "")
         let version = Call([]string{"--version"}).Output.Trim().Substring(7)
         let warning = "Warning: Repository coordinator 0.3.5 is older than CLI " + version
-        let update = "tokate coordinator-setup owner/project --output tokate-coordinator.yml"
+        let update = "tokate init owner/project"
         for pinned in[]string{version, "99.0.0", "0.3.5"} {
             File.WriteAllText(
                 workflow,
