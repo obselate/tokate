@@ -260,7 +260,9 @@ internal class DonorDefaults {
                 let policy = Policy.Load(repo, J.Text(GitHub.Api("repos/" + repo), "default_branch"))
                 let fields = "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
 
-                return J.Parse(J.Write(J.Select(DonorSelection.Resolve(args, policy), fields)))
+                let selection = DonorSelection.Resolve(args, policy)
+
+                return PublicOutput.Enabled ? J.Parse(J.Write(J.Select(selection, fields))): selection
             }
 
             if args.Subject == "show" || args.Subject == "use" {
