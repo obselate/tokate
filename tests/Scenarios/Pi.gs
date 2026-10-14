@@ -463,10 +463,10 @@ internal class PiChecks {
                 flow.Flow.Temp.Env["NO_COLOR"] = "1"
                 let guided = TestTerminal.Pty(
                     binary,
-                    []string{"work", "owner/project"},
+                    []string{"work", "owner/project#1"},
                     flow.Flow.Temp,
                     80,
-                    "1\n1\n1\n1\n" + endpoint + "\n1\n1\nq\n"
+                    "1\n1\n1\n" + endpoint + "\n1\n1\nq\n"
                 )
                 Check.That(guided.Code == 1, guided.Output + guided.Error)
                 Check.Contains(guided.Output, "Reasoning effort")

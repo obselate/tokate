@@ -444,13 +444,21 @@ internal class ContributionPreparation {
                 J.Get(run.Element(), "donor_id")
             )
 
-            ApiTransport.BeginDeadline(30)
+            ApiTransport.BeginDeadline(Donate.Active ? args.Number("seconds"): 30)
 
             var accepted CoordinationState? = nil
 
             try {
                 while true {
                     ApiTransport.CheckDeadline()
+                    if Donate.Active {
+                        Submission.ResetWorkflow()
+                        if let guidance = Submission.PendingWorkflow(directory, run) {
+                            if guidance["role"]?.ToString() == "owner" {
+                                throw CliFailure("command_failed", "Owner workflow failed")
+                            }
+                        }
+                    }
                     let state = CoordinationState.Load(repo, issue)
 
                     if J.Text(state.Value(), "approval_id") != run.Text("approval") {
@@ -475,7 +483,7 @@ internal class ContributionPreparation {
 
                     ApiTransport.PollWait()
                 }
-            } catch (error ApiDeadlineException) { } finally {
+            } catch (error ApiDeadlineException) when !Donate.Active { } finally {
                 ApiTransport.EndDeadline()
             }
 

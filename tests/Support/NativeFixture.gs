@@ -223,7 +223,7 @@ internal open class NativeFixture : IDisposable {
         Call([]string{"submit", "--run", run})
     }
 
-    internal func CoordinatePosted() {
+    internal func CoordinatePosted(issue int32 = 1) {
         Reload()
         let comments = State["request_comments"]?.AsArray() ?? throw Exception("Missing request")
         let comment = comments[comments.Count - 1] ?? throw Exception("Missing request comment")
@@ -236,7 +236,7 @@ internal open class NativeFixture : IDisposable {
                 "repository",
                 Check.Map("full_name", "owner/project", "id", 1),
                 "issue",
-                Check.Map("number", 1),
+                Check.Map("number", issue),
                 "comment",
                 comment.DeepClone()
             )

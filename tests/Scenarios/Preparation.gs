@@ -1532,12 +1532,12 @@ internal class PreparationChecks {
             flow.Call([]string{"defaults", "set", "rejected", "--model", "not-allowed", "--effort", "high"})
             flow.Temp.Env["XDG_STATE_HOME"] = Path.Combine(flow.Temp.Root, "new state")
             let runRoot = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
-            let args = []string{"work", "owner/project"}
+            let args = []string{"work", "owner/project#1"}
             let cancelled = TestTerminal.Pty(binary, args, flow.Temp, 80, "q\n")
             Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
-            Check.Contains(cancelled.Output, "Choose an issue")
+            Check.Contains(cancelled.Output, "Set your limit")
             Check.Contains(cancelled.Output, "Cancelled")
-            let declined = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\n1\nq\n")
+            let declined = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\nq\n")
             Check.That(declined.Code == 1, declined.Output + declined.Error)
             Check.Contains(declined.Output, "Review donation")
             Check.Contains(declined.Output, "owner/project #1")
@@ -1565,7 +1565,7 @@ internal class PreparationChecks {
                     File.WriteAllText(path, policy.ToJsonString())
                     flow.Commit("Set owner budget")
                     flow.Approve()
-                    let budget = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\n1\nq\n")
+                    let budget = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\nq\n")
                     Check.That(budget.Code == 1, budget.Output + budget.Error)
                     Check.Contains(budget.Output, "Owner limit: " + (limit / 60).ToString() + " minutes")
                     Check.Contains(budget.Output, "Review donation")
@@ -1573,7 +1573,7 @@ internal class PreparationChecks {
                         !budget.Output.Contains("Unlimited coding"),
                         "Wizard advertised forbidden unlimited coding"
                     )
-                    let refused = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n240\n1\nq\n")
+                    let refused = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n240\n1\nq\n")
                     Check.That(refused.Code == 1, refused.Output + refused.Error)
                     Check.Contains(refused.Output, "Use positive whole minutes.")
                     Check.That(!refused.Output.Contains("Review donation"), "Wizard accepted an excessive budget")
@@ -1591,7 +1591,7 @@ internal class PreparationChecks {
             )
             flow.Call([]string{"work", "owner/project", "--non-interactive"}, 1)
             flow.Call([]string{"work", "owner/project", "--json"}, 1)
-            let accepted = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\n1\n1\n")
+            let accepted = TestTerminal.Pty(binary, args, flow.Temp, 80, "1\n1\n1\n1\n")
             Check.That(accepted.Code == 8, accepted.Output + accepted.Error)
             let runs = Directory.GetDirectories(runRoot)
             Check.That(runs.Length == 1, "Guided claim did not use the selected state root")
@@ -1607,7 +1607,8 @@ internal class PreparationChecks {
             Check.That(Check.Text(flow.State["request_count"]) == "1", "Guided work posted more than once")
             flow.NoInference()
             test.Coordinate(PostedEvent(test, comment))
-            let unavailable = TestTerminal.Pty(binary, args, flow.Temp, 40, "1\n1\n1\n1\n1\n")
+            let fresh = []string{"work", "owner/project#1", "ready"}
+            let unavailable = TestTerminal.Pty(binary, fresh, flow.Temp, 40, "1\n1\n1\n1\n")
             Check.That(unavailable.Code == 1, unavailable.Output + unavailable.Error)
             Check.Contains(
                 unavailable.Output.Replace("\r\n", " ").Replace("\n", " "),
