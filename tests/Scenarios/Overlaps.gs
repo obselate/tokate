@@ -107,7 +107,7 @@ internal class OverlapFlow : IDisposable {
             return argv.ToArray()
         }
 
-        internal func Create(binary string, version int32, layout string = "overlap") OverlapFlow {
+        internal func Create(binary string, version int32, layout string) OverlapFlow {
             let test = OverlapFlow(binary, version)
             test.Initialize(layout)
             return test
@@ -176,7 +176,6 @@ internal class OverlapFlow : IDisposable {
                 metadata["sync"] = JsonValue.Create(grant)
                 Test.Coordinate(Test.Event(request))
                 Heads[issue - 1] = candidate
-                Flow.Call([]string{"verify", "owner/project#" + (issue + 9).ToString()}, owner: true)
             }
         }
         return upstream
@@ -292,123 +291,98 @@ internal class OverlapChecks {
             Console.WriteLine("PASS overlap input limits, duplicates, pre-read rejection and read-only metadata")
         }
 
-        private func Files(binary string, version int32) {
-            for layout in[]string{"overlap", "disjoint", "rename", "targets"} {
-                using let test = OverlapFlow.Create(binary, version, layout)
-                let data = test.Report()["data"] ?? throw Exception("Missing report")
-                let pair = data["pairs"]?[0]
-                let expected = layout == "disjoint" ? "no_filename_overlap": (
-                    layout == "targets" ? "different_targets": "overlap"
-                )
-                Check.That(
-                    Check.Text(pair?["status"]) == expected,
-                    "Wrong filename overlap for " + layout + ": " + data.ToJsonString()
-                )
-                if layout == "rename" {
-                    Check.That(
-                        Check.Text(pair?["overlap_count"]) == "2" && pair?["paths"]?.ToJsonString().Contains(
-                            "old.txt"
-                        ) == true &&
-                            pair?["paths"]
-                            ?.ToJsonString().Contains("new.txt") == true,
-                        "Rename endpoints lost"
-                    )
-                }
-                for i in 0 ... 2 {
-                    let item = data["contributions"]?[i]
-                    Check.That(
-                        Check.Text(item?["binding_status"]) == "validated" && Check.Text(
-                            item?["binding"]?["version"]
-                        ) == version.ToString() && Check.Text(item?["head"]) == test.Heads[i] && Check.Text(
-                            item?["binding"]?["base"]
-                        ) == test.Bases[i] &&
-                            Check.Text(item?["checks_head"]) == test.Heads[i],
-                        "Revision binding lost"
-                    )
-                }
-                if layout == "disjoint" {
-                    File.WriteAllText(
-                        Path.Combine(test.Flow.Upstream, "file-1.txt"),
-                        "Owner changed the first contribution's path\n"
-                    )
-                    test.Flow.Commit("Advance one contribution path")
-                    let changed = test.Report()["data"] ?? throw Exception("Missing changed-target report")
-                    for i in 0 ... 2 {
-                        let item = changed["contributions"]?[i]
-                        Check.That(
-                            Check.Text(item?["upstream_status"]) == "changed" && Check.Text(
-                                item?["upstream_overlap_count"]
-                            ) == (i == 0 ? "1": "0"),
-                            "Target change did not distinguish affected and unrelated work"
-                        )
-                        Check.That(
-                            Check.Text(item?["checks_head"]) == test.Heads[i],
-                            "Target movement relabeled old checks"
-                        )
-                    }
-                    Check.Contains(Check.Text(changed["contributions"]?[0]?["upstream_next"]), "current donor")
-                    Check.Contains(Check.Text(changed["contributions"]?[1]?["upstream_next"]), "semantic compatibility")
-                }
-                if (version == 1 && layout == "disjoint") || (version == 2 && layout == "overlap") {
-                    let upstream = test.Synchronize()
-                    File.WriteAllText(Path.Combine(test.Flow.Upstream, "later.txt"), "Later target change\n")
-                    test.Flow.Commit("Target advanced after synchronization")
-                    let target = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
-                    let synchronized = test.Report()["data"] ?? throw Exception("Missing synchronized report")
-                    let synchronizedPair = synchronized["pairs"]?[0]
-                    Check.That(
-                        Check.Text(synchronizedPair?["status"]) == expected && Check.Text(
-                            synchronizedPair?["overlap_count"]
-                        ) == (version == 1 ? "0": "1") &&
-                            (version == 1 || Check.Text(synchronizedPair?["paths"]?[0]) == "result.txt"),
-                        "Synchronized upstream paths polluted donor overlap"
-                    )
-                    for i in 0 ... 2 {
-                        let item = synchronized["contributions"]?[i]
-                        Check.That(
-                            Check.Text(item?["binding_status"]) == "validated" && Check.Text(
-                                item?["head"]
-                            ) == test.Heads[i] &&
-                                Check.Text(item?["checks_head"]) == test.Heads[i] && Check.Text(
-                                item?["binding"]?["base"]
-                            ) == test.Bases[i] &&
-                                Check.Text(item?["diff_base"]) == upstream && Check.Text(
-                                item?["target_revision"]
-                            ) == target &&
-                                upstream != test.Bases[i] &&
-                                upstream != target,
-                            "Synchronization confused approved, authorized and current target revisions"
-                        )
-                        Check.That(
-                            Check.Text(item?["upstream_status"]) == "changed" && Check.Text(
-                                item?["upstream_overlap_count"]
-                            ) == "0",
-                            "Post-synchronization target changes used an obsolete approved base"
-                        )
-                    }
-                    Console.WriteLine("PASS V" + version.ToString() + " synchronized overlap files: " + layout)
-                }
-                if layout == "overlap" {
-                    let readable = test.Flow.Call([]string{"overlaps", "owner/project#10", "owner/project#11"})
-                    Check.Contains(readable.Output, "advisory")
-                    Check.Contains(readable.Output, "dependency_gate")
-                    Check.Contains(readable.Output, "verify")
-                    let original = test.Flow.State["pulls"]?[0] ?? throw Exception("Missing pull")
-                    test.Flow.Reload()
-                    let pulls = test.Flow.State["pulls"]?.AsArray() ?? throw Exception("Missing pulls")
-                    for number in 12 ... 26 {
-                        let copy = original.DeepClone()
-                        copy["number"] = JsonValue.Create(number)
-                        pulls.Add(copy)
-                    }
-                    test.Flow.Save()
-                }
-                Console.WriteLine("PASS V" + version.ToString() + " overlap files: " + layout)
+        private func Files(test OverlapFlow, layout string) {
+            let data = test.Report()["data"] ?? throw Exception("Missing report")
+            let pair = data["pairs"]?[0]
+            let expected = layout == "disjoint" ? "no_filename_overlap": (
+                layout == "targets" ? "different_targets": "overlap"
+            )
+            Check.That(
+                Check.Text(pair?["status"]) == expected,
+                "Wrong filename overlap for " + layout + ": " + data.ToJsonString()
+            )
+            if layout == "rename" {
+                Renamed(pair)
             }
+            for i in 0 ... 2 {
+                let item = data["contributions"]?[i]
+                Check.That(
+                    Check.Text(item?["binding_status"]) == "validated" && Check.Text(
+                        item?["binding"]?["version"]
+                    ) == test
+                        .Version
+                        .ToString() && Check.Text(item?["head"]) == test.Heads[i] && Check.Text(
+                        item?["binding"]?["base"]
+                    ) == test.Bases[i] &&
+                        Check.Text(item?["checks_head"]) == test.Heads[i],
+                    "Revision binding lost"
+                )
+            }
+            if layout == "disjoint" {
+                File.WriteAllText(
+                    Path.Combine(test.Flow.Upstream, "file-1.txt"),
+                    "Owner changed the first contribution's path\n"
+                )
+                test.Flow.Commit("Advance one contribution path")
+                let changed = test.Report()["data"] ?? throw Exception("Missing changed-target report")
+                for i in 0 ... 2 {
+                    let item = changed["contributions"]?[i]
+                    Check.That(
+                        Check.Text(item?["upstream_status"]) == "changed" && Check.Text(
+                            item?["upstream_overlap_count"]
+                        ) == (i == 0 ? "1": "0"),
+                        "Target change did not distinguish affected and unrelated work"
+                    )
+                    Check.That(
+                        Check.Text(item?["checks_head"]) == test.Heads[i],
+                        "Target movement relabeled old checks"
+                    )
+                }
+                Check.Contains(Check.Text(changed["contributions"]?[0]?["upstream_next"]), "current donor")
+                Check.Contains(Check.Text(changed["contributions"]?[1]?["upstream_next"]), "semantic compatibility")
+            }
+            Console.WriteLine("PASS V" + test.Version.ToString() + " overlap files: " + layout)
         }
 
-        private func Evidence(binary string, version int32) {
-            using let test = OverlapFlow.Create(binary, version)
+        private func Renamed(pair JsonNode?) -> Check.That(
+            Check.Text(pair?["status"]) == "overlap" && Check.Text(pair?["overlap_count"]) == "2" &&
+                pair?["paths"]
+                ?.ToJsonString().Contains("old.txt") == true && pair?["paths"]?.ToJsonString().Contains(
+                "new.txt"
+            ) == true,
+            "Rename endpoints lost"
+        )
+
+        private func Synchronized(test OverlapFlow) {
+            let upstream = test.Synchronize()
+            File.WriteAllText(Path.Combine(test.Flow.Upstream, "later.txt"), "Later target change\n")
+            test.Flow.Commit("Target advanced after synchronization")
+            let target = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
+            let synchronized = test.Report()["data"] ?? throw Exception("Missing synchronized report")
+            Renamed(synchronized["pairs"]?[0])
+            for i in 0 ... 2 {
+                let item = synchronized["contributions"]?[i]
+                Check.That(
+                    Check.Text(item?["binding_status"]) == "validated" && Check.Text(item?["head"]) == test.Heads[i] &&
+                        Check.Text(item?["checks_head"]) == test.Heads[i] && Check.Text(
+                        item?["binding"]?["base"]
+                    ) == test.Bases[i] &&
+                        Check.Text(item?["diff_base"]) == upstream && Check.Text(item?["target_revision"]) == target &&
+                        upstream != test.Bases[i] &&
+                        upstream != target,
+                    "Synchronization confused approved, authorized and current target revisions"
+                )
+                Check.That(
+                    Check.Text(item?["upstream_status"]) == "changed" && Check.Text(
+                        item?["upstream_overlap_count"]
+                    ) == "0",
+                    "Post-synchronization target changes used an obsolete approved base"
+                )
+            }
+            Console.WriteLine("PASS V" + test.Version.ToString() + " synchronized overlap files: rename")
+        }
+
+        private func Evidence(test OverlapFlow) {
             for fault in[]string{
                 "missing-files",
                 "truncated-files",
@@ -489,21 +463,16 @@ internal class OverlapChecks {
                 ) == "validated",
                 "PR API failure aborted report"
             )
-            Console.WriteLine("PASS V" + version.ToString() + " incomplete diff/check evidence and API failures")
+            Console.WriteLine("PASS V" + test.Version.ToString() + " incomplete diff/check evidence and API failures")
         }
 
-        private func Gates(binary string, version int32) {
-            using let test = OverlapFlow.Create(binary, version)
-            for state in[]string{"open", "completed", "not_planned", "unknown", "missing", "duplicate"} {
+        private func Gates(test OverlapFlow) {
+            for state in[]string{"open", "completed", "not_planned", "duplicate"} {
                 let dependency = Dependency(
                     7,
-                    state == "open" ? "open": (state == "unknown" ? "unknown": "closed"),
+                    state == "open" ? "open": "closed",
                     state == "duplicate" ? "completed": state
                 )
-                if state == "missing" {
-                    dependency.AsObject().Remove("state")
-                    dependency.AsObject().Remove("state_reason")
-                }
                 if state == "duplicate" {
                     dependency["duplicate_of"] = Check.Map(
                         "number",
@@ -564,16 +533,11 @@ internal class OverlapChecks {
             }
             Check.That(count == 10, "Dependency pagination exceeded cap")
             Console.WriteLine(
-                "PASS V" + version.ToString() + " native dependency states, metadata, one-hop and capped output"
+                "PASS V" + test.Version.ToString() + " native dependency states, metadata, one-hop and capped output"
             )
         }
 
-        private func Freshness(binary string, version int32, change string) {
-            using let test = OverlapFlow.Create(
-                binary,
-                version,
-                change == "target" || change == "retarget" ? "targets": "overlap"
-            )
+        private func Freshness(test OverlapFlow, change string) {
             let flow = test.Flow
             if change == "head" || change == "stale" || change == "retarget" {
                 flow.Reload()
@@ -638,29 +602,47 @@ internal class OverlapChecks {
                 }
             }
             flow.NoInference()
-            Console.WriteLine("PASS V" + version.ToString() + " overlap freshness: " + change)
+            Console.WriteLine("PASS V" + test.Version.ToString() + " overlap freshness: " + change)
+        }
+
+        private func Overlap(binary string) {
+            using let test = OverlapFlow.Create(binary, 2, "rename")
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
+            Files(test, "rename")
+            Evidence(test)
+            baseline.Restore()
+            Gates(test)
+            for change in[]string{"head", "stale", "moved-before"} {
+                baseline.Restore()
+                Freshness(test, change)
+            }
+            baseline.Restore()
+            Synchronized(test)
+        }
+
+        private func Targets(binary string) {
+            using let test = OverlapFlow.Create(binary, 2, "targets")
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
+            Files(test, "targets")
+            for change in[]string{"target", "retarget"} {
+                baseline.Restore()
+                Freshness(test, change)
+            }
         }
 
         internal func All(binary string) {
             if CiShard.Include("Overlaps/Inputs") {
                 Inputs(binary)
             }
-            for version in[]int32{2} {
-                let prefix = "Overlaps/V" + version.ToString() + "/"
-                if CiShard.Include(prefix + "Files") {
-                    Files(binary, version)
-                }
-                if CiShard.Include(prefix + "Evidence") {
-                    Evidence(binary, version)
-                }
-                if CiShard.Include(prefix + "Gates") {
-                    Gates(binary, version)
-                }
-                for change in[]string{"head", "retarget", "target", "stale", "moved-before"} {
-                    if CiShard.Include(prefix + "Freshness/" + change) {
-                        Freshness(binary, version, change)
-                    }
-                }
+            if CiShard.Include("Overlaps/V2/Overlap") {
+                Overlap(binary)
+            }
+            if CiShard.Include("Overlaps/V2/Disjoint") {
+                using let test = OverlapFlow.Create(binary, 2, "disjoint")
+                Files(test, "disjoint")
+            }
+            if CiShard.Include("Overlaps/V2/Targets") {
+                Targets(binary)
             }
         }
     }

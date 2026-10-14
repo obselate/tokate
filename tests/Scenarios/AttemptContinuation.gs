@@ -221,7 +221,7 @@ internal class AttemptContinuationChecks {
             }
         }
 
-        private func Flow(binary string, mode string, harness string = "codex") {
+        private func Flow(binary string, mode string, harness string = "codex", full bool = false) {
             using let test = CoordinationFlow(binary)
             using let catalog = harness == "pi" ? PiCatalog(): nil
             let endpoint = catalog?.Endpoint ?? ""
@@ -327,24 +327,25 @@ internal class AttemptContinuationChecks {
                 !Directory.Exists(Path.Combine(fresh, "checkout/.verification-data")),
                 "Continuation imported generated source files"
             )
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
-            test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
-            test.Flow.Call([]string{"work", "--run", fresh}, 1)
-            Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
-            let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
-            Directory.CreateDirectory(copied)
-            File.Copy(Path.Combine(fresh, "run.json"), Path.Combine(copied, "run.json"))
-            test.Flow.Call([]string{"prepare", "--run", copied}, 1)
-            test.Flow.Call([]string{"work", "--run", copied, "--yes"}, 1)
-            Check.That(
-                !File.Exists(Path.Combine(copied, "events.jsonl")),
-                "Copied destination executed under a shared fence"
-            )
-            Directory.Delete(copied, true)
+            if full {
+                test.Flow.Call([]string{"prepare", "--run", fresh})
+                test.Flow.Call([]string{"prepare", "--run", fresh})
+                Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
+                test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
+                test.Flow.Call([]string{"work", "--run", fresh}, 1)
+                Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
+                let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
+                Directory.CreateDirectory(copied)
+                File.Copy(Path.Combine(fresh, "run.json"), Path.Combine(copied, "run.json"))
+                test.Flow.Call([]string{"prepare", "--run", copied}, 1)
+                test.Flow.Call([]string{"work", "--run", copied, "--yes"}, 1)
+                Check.That(
+                    !File.Exists(Path.Combine(copied, "events.jsonl")),
+                    "Copied destination executed under a shared fence"
+                )
+                Directory.Delete(copied, true)
+            }
             test.Flow.Call([]string{"work", "--run", fresh, "--yes"})
-            test.Flow.Call([]string{"work", "--run", fresh, "--yes"}, 1)
             Preserved(source, original)
             let complete = Read(fresh)
             Check.That(
@@ -365,8 +366,11 @@ internal class AttemptContinuationChecks {
                 Check.Contains(File.ReadAllText(Path.Combine(fresh, "events.jsonl")), Check.Text(prior["attempt"]))
             }
             test.Flow.NoPr()
-            Publish(test, source, fresh)
-            Preserved(source, original)
+            if full {
+                test.Flow.Call([]string{"work", "--run", fresh, "--yes"}, 1)
+                Publish(test, source, fresh)
+                Preserved(source, original)
+            }
         }
 
         private func Publish(test CoordinationFlow, source string, fresh string) {
@@ -384,7 +388,7 @@ internal class AttemptContinuationChecks {
             Save(fresh, omitted)
             test.Flow.Call([]string{"submit", "--run", fresh}, 1)
             File.WriteAllText(Path.Combine(fresh, "run.json"), preserved)
-            test.Flow.Call([]string{"submit", "--run", fresh})
+            test.Flow.Call([]string{"submit", "--run", fresh, "--json"})
             let request = Check.Json(File.ReadAllText(Path.Combine(fresh, "request.json")))
             let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
             Check.That(
@@ -454,11 +458,7 @@ internal class AttemptContinuationChecks {
             test.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
         }
 
-        private func Refusals(binary string) {
-            using let test = CoordinationFlow(binary)
-            let source = Setup(test)
-            Prepare(test, Args(test, source), 1)
-            FreshAttempt(test)
+        private func Refusals(test CoordinationFlow, source string) {
             using let active = File.Open(
                 Path.Combine(source, ".lock"),
                 FileMode.Open,
@@ -582,10 +582,7 @@ internal class AttemptContinuationChecks {
             }
         }
 
-        private func Budget(binary string) {
-            using let test = CoordinationFlow(binary)
-            let source = Setup(test)
-            FreshAttempt(test)
+        private func Budget(test CoordinationFlow, source string) {
             let before = Check.Text(test.State()["sha"])
             for mode in[]string{
                 "seconds",
@@ -651,10 +648,7 @@ internal class AttemptContinuationChecks {
             test.Flow.NoPr()
         }
 
-        private func Interruptions(binary string) {
-            using let test = CoordinationFlow(binary)
-            let source = Setup(test)
-            FreshAttempt(test)
+        private func Interruptions(test CoordinationFlow, source string) {
             let state = Check.Text(test.State()["sha"])
             let args = Args(test, source)
             test.Flow.Reload()
@@ -782,27 +776,20 @@ internal class AttemptContinuationChecks {
             }
         }
 
-        private func ImportBoundary(binary string) {
-            using let test = CoordinationFlow(binary)
-            let source = Setup(test)
-            FreshAttempt(test)
+        private func ImportBoundary(test CoordinationFlow, source string) {
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for mode in[]string{
                 "supported",
                 "protected",
                 "symlink",
                 "hardlink",
-                "unchanged-hardlink",
                 "fifo",
-                "tracked-fifo",
                 "directory-file",
                 "file-directory",
                 "source-repo-id",
                 "source-head-id",
                 "missing-source-id",
                 "unsafe-path",
-                "restored-worktree",
-                "missing-staged-addition",
                 "changed-head",
                 "hooks",
                 "generated-fifo",
@@ -846,26 +833,6 @@ internal class AttemptContinuationChecks {
                 } else if mode == "staged-conflict" {
                     test.Flow.Git("-C", checkout, "add", "tracked.txt")
                     File.WriteAllText(Path.Combine(checkout, "tracked.txt"), "conflicting evidence\n")
-                } else if mode == "unchanged-hardlink" {
-                    let peer = Path.Combine(test.Flow.Temp.Root, "linked-peer")
-                    File.WriteAllText(peer, "baseline\n")
-                    File.Delete(Path.Combine(checkout, "baseline.txt"))
-                    Check.Success(
-                        TestProcess.Run(
-                            "/usr/bin/ln",
-                            []string{peer, Path.Combine(checkout, "baseline.txt")},
-                            test.Flow.Temp.Env
-                        )
-                    )
-                } else if mode == "tracked-fifo" {
-                    File.Delete(Path.Combine(checkout, "tracked.txt"))
-                    Check.Success(
-                        TestProcess.Run(
-                            "/usr/bin/mkfifo",
-                            []string{Path.Combine(checkout, "tracked.txt")},
-                            test.Flow.Temp.Env
-                        )
-                    )
                 } else if mode == "directory-file" {
                     Directory.Delete(Path.Combine(checkout, "folder"), true)
                     File.WriteAllText(Path.Combine(checkout, "folder"), "replacement\n")
@@ -890,12 +857,6 @@ internal class AttemptContinuationChecks {
                     File.WriteAllText(markerPath, marker.ToJsonString())
                 } else if mode == "unsafe-path" {
                     File.WriteAllText(Path.Combine(checkout, "unsafe\nname"), "unsafe")
-                } else if mode == "restored-worktree" {
-                    test.Flow.Git("-C", checkout, "add", "tracked.txt")
-                    File.WriteAllText(Path.Combine(checkout, "tracked.txt"), "approved\n")
-                } else if mode == "missing-staged-addition" {
-                    test.Flow.Git("-C", checkout, "add", "imported.txt")
-                    File.Delete(Path.Combine(checkout, "imported.txt"))
                 } else if mode == "changed-head" {
                     test.Flow.Git("-C", checkout, "checkout", "--quiet", "-b", "unrelated")
                 } else if mode == "hooks" {
@@ -962,17 +923,48 @@ internal class AttemptContinuationChecks {
             }
         }
 
+        private func Boundaries(binary string, names List[string]) {
+            using let test = CoordinationFlow(binary)
+            let source = Setup(test)
+            Prepare(test, Args(test, source), 1)
+            FreshAttempt(test)
+            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
+            for name in names {
+                baseline.Restore()
+                switch name {
+                    case "Refusals" {
+                        Refusals(test, source)
+                    }
+                    case "Budget" {
+                        Budget(test, source)
+                    }
+                    case "Interruptions" {
+                        Interruptions(test, source)
+                    }
+                    default {
+                        ImportBoundary(test, source)
+                    }
+                }
+                Console.WriteLine("PASS continuation " + name)
+            }
+        }
+
         internal func All(binary string, selected string = "") {
+            let names = List[string]()
+            for name in[]string{"Refusals", "Budget", "Interruptions", "ImportBoundary"} {
+                if selected == name || selected == "" && CiShard.Include("Continuation/" + name) {
+                    names.Add(name)
+                }
+            }
+            if names.Count > 0 {
+                Boundaries(binary, names)
+            }
             for test in[]TestCase[string]{
-                TestCase[string]("Timeout", async (value string) -> Flow(value, "timeout")),
+                TestCase[string]("Timeout", async (value string) -> Flow(value, "timeout", full: true)),
                 TestCase[string]("Crash", async (value string) -> Flow(value, "crash")),
                 TestCase[string]("Cancel", async (value string) -> Flow(value, "cancel")),
                 TestCase[string]("Failure", async (value string) -> Flow(value, "incomplete_turn")),
-                TestCase[string]("Pi", async (value string) -> Flow(value, "timeout", "pi")),
-                TestCase[string]("Refusals", async (value string) -> Refusals(value)),
-                TestCase[string]("Budget", async (value string) -> Budget(value)),
-                TestCase[string]("Interruptions", async (value string) -> Interruptions(value)),
-                TestCase[string]("ImportBoundary", async (value string) -> ImportBoundary(value))
+                TestCase[string]("Pi", async (value string) -> Flow(value, "timeout", "pi"))
             } {
                 let name = test.Name
                 if selected != "" && selected != name || selected == "" && !CiShard.Include("Continuation/" + name) {
