@@ -44,17 +44,6 @@ internal class ContributionStatusChecks {
         private func Row(result JsonNode) JsonNode -> result["data"]?["work"]?[0] ??
             throw Exception("Missing status work")
 
-        private func PrepareGuidance(result JsonNode) {
-            let command = Check.Json("[\"tokate\",\"help\",\"prepare\",\"--json\"]").ToJsonString()
-            Check.That(result["data"]?["next"]?["command"]?.ToJsonString() == command, "Missing prepare guidance")
-            var found bool
-            for action in result["next_actions"]?.AsArray() ?? JsonArray() {
-                found = found || action?.ToJsonString() == command
-                Check.That(Check.Text(action[1]) != "work", "Failed attempt recommends work")
-            }
-            Check.That(found, "Next actions omitted prepare guidance")
-        }
-
         private func Access(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize(false)
@@ -249,12 +238,12 @@ internal class ContributionStatusChecks {
                 "status",
                 "ok"
             )
-            PrepareGuidance(offline)
+            Check.PrepareGuidance(offline)
             let local = test.Flow.Call([]string{"status", "owner/project#1-1", "--plain"})
             Check.Contains(local.Output, "explicit new time budget")
             Check.That(!local.Output.Contains("Next: tokate work"), "Terminal status recommends stale work")
             let remote = Read(test)
-            PrepareGuidance(remote)
+            Check.PrepareGuidance(remote)
             Check.That(
                 Row(remote)["next"]?.ToJsonString() == remote["data"]?["next"]?.ToJsonString(),
                 "Issue status retained remote start-work guidance"
@@ -283,7 +272,7 @@ internal class ContributionStatusChecks {
                 "status",
                 "ok"
             )
-            PrepareGuidance(stopped)
+            Check.PrepareGuidance(stopped)
             Check.That(
                 Row(stopped)["next"]?.ToJsonString() == stopped["data"]?["next"]?.ToJsonString(),
                 "Failed execution retained remote start-work guidance"
