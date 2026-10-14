@@ -227,8 +227,6 @@ class SavedWorkService {
         }
     }
 
-    // Selected run
-
     func Select(item SavedRun) {
         guard let run = item.Run else {
             return
@@ -421,8 +419,6 @@ class SavedWorkService {
         }
     }
 
-    // Coordinator request
-
     /// Waits for the coordinator to record `sent`, then repeats its command, which saves the result.
     private func Await(sent CoordinatorRequest) {
         request = sent
@@ -492,8 +488,6 @@ class SavedWorkService {
             requestTimer = window.Every(5000, () -> CheckRequest())
         }
     }
-
-    // Amendment
 
     /// Opens or closes the amendment form. Opening reads the public summary of the run, so the form
     /// starts with the lines that the pull request shows, and with manual editing as the declared tool.

@@ -43,8 +43,6 @@ class OwnerService {
 
     private func EditSetup(setup SetupDraft) -> Edit(Current with{Setup = setup})
 
-    // Project
-
     /// Called when the page opens: reads the user's repositories the first time.
     func Enter() {
         if !Current.Open && !Current.ProjectsLoaded && !activity.Busy {
@@ -160,8 +158,6 @@ class OwnerService {
         }
     }
 
-    // Contributions
-
     func Select(issue Issue) {
         Set(Current with{Selected = issue})
         activity.Activate("Refresh contribution")
@@ -238,8 +234,6 @@ class OwnerService {
         )
     }
 
-    // Access
-
     /// Reads donor access, then runs `then`. The count of requests on the Access tab comes from this read.
     func LoadAccess(then Action? = nil) {
         commands.Cli[AccessList](
@@ -280,8 +274,6 @@ class OwnerService {
             }
         )
     }
-
-    // Setup
 
     func SetStep(step int32) -> Set(Current with{Setup = Current.Setup with{Step = step}})
 
