@@ -239,6 +239,18 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 | Provider error | Work stops and prints OMP's reason. Tokate does not retry it. |
 | Charges | Charges are unknown to Tokate. |
 
+## Use an owner-declared command
+
+The owner can allow a `command` tool. It runs the owner's command from the policy
+on your computer, without a sandbox. Read the command in `tokate policy OWNER/REPO`
+or in the `select --json` output before you claim.
+
+```sh
+tokate claim OWNER/REPO#42 --harness command --model MODEL --effort EFFORT --time 1h
+```
+
+Add `--provider PROVIDER` when the policy allows more than one command tool.
+
 ## Check or control a run
 
 1. List saved runs offline.
