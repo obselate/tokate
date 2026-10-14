@@ -1893,5 +1893,106 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Donation repeated inference")
         let pulls = Flow.State["pulls"]?.AsArray() ?? JsonArray()
         Check.That(pulls.Count == 1 && Check.Text(pulls[0]?["draft"]) == "true", "Missing draft PR")
+
+        using let gratis = NativeFixture(Flow.Binary)
+        gratis.Initialize(access: false)
+        File.Delete(Path.Combine(gratis.Upstream, ".github/tokate.json"))
+        File.WriteAllText(
+            Path.Combine(gratis.Upstream, "CONTRIBUTING.md"),
+            "Task: Add result.txt with the fixture completion text.\nTest command: `sh -c 'test -f result.txt'`.\nSubmit a pull request from your fork.\n"
+        )
+        gratis.Commit("Repository contribution guidance")
+        gratis.Reload()
+        gratis.State["donation_stop_after_pr"] = JsonValue.Create(
+            Path.Combine(gratis.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/stop")
+        )
+        gratis.Save()
+        let taskPrompt = "Follow the contribution guide and add the fixture completion result."
+        let promptFile = Path.Combine(gratis.Temp.Root, "donation-prompt.txt")
+        File.WriteAllText(promptFile, taskPrompt)
+        let gratisArgs = []string{
+            "work",
+            "owner/project",
+            "--harness",
+            "codex",
+            "--model",
+            "gpt-6.1-sol",
+            "--effort",
+            "high",
+            "--time",
+            "30s",
+            "--total",
+            "60s",
+            "--prompt",
+            promptFile,
+            "--yes",
+            "--json"
+        }
+        let donated = Check.Envelope(gratis.Call(gratisArgs), "work", "ok")["data"] ??
+            throw Exception("Missing gratis report")
+        Check.That(
+            Check.Text(donated["mode"]) == "gratis" && Check.Text(donated["submitted"]) == "1" && Check.Text(
+                donated["failed"]
+            ) == "0",
+            "Gratis task did not submit: " + donated.ToJsonString()
+        )
+        Check.That(Check.Text(donated["reason"]) == "stopped", "Gratis donation did not stop with a report")
+        gratis.Reload()
+        Check.That(Check.Text(gratis.State["exec_count"]) == "1", "Gratis donation repeated inference")
+        Check.That(gratis.State["request_comments"] == nil, "Gratis donation posted a claim")
+        let gratisPulls = gratis.State["pulls"]?.AsArray() ?? JsonArray()
+        Check.That(
+            gratisPulls.Count == 1 && Check.Text(gratisPulls[0]?["draft"]) == "true",
+            "Gratis donation did not open one draft PR"
+        )
+        let gratisPull = gratisPulls[0] ?? throw Exception("Missing gratis PR")
+        Check.That(
+            Check.Text(gratisPull["head"]?["repo"]?["full_name"]) == "donor/project",
+            "Gratis PR did not use the donor fork"
+        )
+        let body = Check.Text(gratisPull["body"])
+        Check.Contains(body, "https://github.com/obselate/tokate")
+        Check.Contains(body, "No owner approved the task.")
+        Check.Contains(body, "gpt-6.1-sol")
+        Check.Contains(body, "Repository guidance checks passed locally.")
+        let runDirectory = Check.Text(donated["tasks"]?[0]?["run_directory"])
+        let saved = Check.Json(File.ReadAllText(Path.Combine(runDirectory, "run.json")))
+        Check.That(
+            saved["verification"]?.AsArray().Count == 1 && Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
+            "Gratis guidance check did not pass"
+        )
+        Check.That(File.Exists(Path.Combine(runDirectory, "open-prs.json")), "Gratis PR snapshot was not saved")
+        let promptText = Check.Text(gratis.State["prompts"]?[0])
+        Check.Contains(promptText, "CONTRIBUTING.md")
+        Check.Contains(promptText, "open-prs.json")
+        Check.Contains(promptText, "Drop any task already covered by an open PR.")
+        Check.Contains(promptText, taskPrompt)
+        Check.That(Check.Text(saved["prompt_hash"]) == Check.TextHash(taskPrompt), "Gratis prompt hash differs")
+        Check.That(
+            File.ReadAllText(Path.Combine(runDirectory, "task-prompt.txt")) == taskPrompt,
+            "Gratis prompt was not retained"
+        )
+        File.SetUnixFileMode(
+            Path.Combine(gratis.Bin, "codex-impl"),
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+        )
+        for restriction in[]string{
+            "AI contributions are forbidden.",
+            "Contributors must obtain maintainer approval before starting work.",
+            "We automatically close pull requests from new contributors."
+        } {
+            File.WriteAllText(Path.Combine(gratis.Upstream, "CONTRIBUTING.md"), restriction + "\n")
+            gratis.Commit("Repository contribution restriction")
+            let blocked = Check.Envelope(gratis.Call(gratisArgs), "work", "ok")["data"]
+            Check.That(
+                Check.Text(blocked?["reason"]) == "guidance_forbids_work",
+                "Gratis ignored a contribution restriction"
+            )
+            gratis.Reload()
+            Check.That(
+                Check.Text(gratis.State["exec_count"]) == "1" && gratis.State["pulls"]?.AsArray().Count == 1,
+                "Restricted gratis donation ran or published"
+            )
+        }
     }
 }

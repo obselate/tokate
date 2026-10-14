@@ -1208,6 +1208,9 @@ internal partial class Fixture {
             let pulls = State["pulls"]?.AsArray() ?? JsonArray()
             pulls.Add(body)
             State["pulls"] = pulls
+            if Check.Text(State["donation_stop_after_pr"]) != "" {
+                File.WriteAllText(Check.Text(State["donation_stop_after_pr"]), "stop")
+            }
             if Check.Text(State["mode"]) == "revoke_after_pr" {
                 let issue = State["issue"] ?? throw Exception("Missing issue")
                 issue["labels"] = JsonArray()

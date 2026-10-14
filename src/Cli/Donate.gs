@@ -103,6 +103,33 @@ internal class Donate {
             return task
         }
 
+        private func GratisTask(
+            options Args,
+            revision string,
+            guidance JsonElement,
+            prompt string,
+            snapshot JsonElement,
+            issue JsonElement,
+            policy Policy,
+            selection JsonElement
+        ) Dictionary[string, Object?] {
+            var directory = ""
+            let task = map[string, Object?]{"issue": J.Number(issue, "number"), "result": "failed"}
+            try {
+                directory = Gratis.Prepare(options, revision, guidance, prompt, snapshot, issue, policy, selection)
+                Worker.Execute(directory, Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
+                task["result"] = GratisPublication.Submit(directory)
+            } catch (error Exception) when !(error is CommandInterrupted) {
+                directory = PublicOutput.RunDirectory
+                task["error"] = error.Message
+                Terminal.Message("Gratis task failed: " + error.Message, error: true)
+            }
+            task["pr_url"] = directory == "" ? "": Data.Load(directory).Text("pr_url")
+            task["discussion_url"] = directory == "" ? "": Data.Load(directory).Text("discussion_url")
+            task["run_directory"] = directory
+            return task
+        }
+
         internal func Run(options Args) int32 {
             let repo = options.Need("repo")
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
@@ -112,7 +139,20 @@ internal class Donate {
             File.Delete(marker)
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
-            let policy = Policy.Load(repo, GitHub.Branch(repo, J.Text(info, "default_branch")))
+            let branch = J.Text(info, "default_branch")
+            var revision = GitHub.Branch(repo, branch)
+            let policyFile = GitHub.Api(
+                "repos/" + repo + "/contents/.github/tokate.json?ref=" + revision,
+                missing: true
+            )
+            let gratis = policyFile.ValueKind == JsonValueKind.Undefined
+            let policyText = gratis ? "": GitHub.FileAt(repo, ".github/tokate.json", revision)
+            if !gratis && options.Get("prompt") != "" {
+                throw CliFailure("invalid_arguments", "--prompt applies only to repositories without a Tokate policy")
+            }
+            let guidance = gratis ? GratisGuidance.Discover(repo, revision): JsonElement{}
+            let prompt = gratis ? GratisGuidance.Prompt(options.Get("prompt")): ""
+            let policy = gratis ? Gratis.PolicyFor(options, guidance): Policy(policyText)
             let maximum = Math.Min(3600, J.Number(policy.Value, "max_seconds"))
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
@@ -124,7 +164,14 @@ internal class Donate {
                 "model"
             ) +
                 "\nEffort: " +
-                J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() + " seconds\nTotal: " + limit
+                J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() +
+                " seconds\nTotal: " +
+                limit +
+                (
+                gratis ? GratisGuidance.Consent(guidance) + "\nTask instruction (SHA-256 " + Data.Hash(prompt) +
+                    "):\n" +
+                    prompt: ""
+            )
             if options.Get("yes") != "true" {
                 if WizardScreen.Choose(repo, consent, []string{"Start", "Cancel"}, selected: 2) != 1 {
                     throw CliFailure("confirmation_required", "Donation start was not confirmed")
@@ -144,6 +191,9 @@ internal class Donate {
             let session = Data(
                 map[string, Object?]{
                     "repo": repo,
+                    "mode": gratis ? "gratis": "coordinated",
+                    "prompt_sha256": gratis ? Data.Hash(prompt): "",
+                    "guidance": gratis ? J.Get(guidance, "files"): []Object{},
                     "tasks": tasks,
                     "usage": usage,
                     "reason": "stopped",
@@ -162,11 +212,46 @@ internal class Donate {
                         break
                     }
                     PublicOutput.RunDirectory = ""
-                    let issue = Pick(repo, attempted)
+                    if gratis && J.Text(guidance, "blocked") != "" {
+                        session.Fields["reason"] = "guidance_forbids_work"
+                        session.Fields["message"] = J.Text(guidance, "blocked")
+                        Terminal.Message(J.Text(guidance, "blocked"))
+                        break
+                    }
+                    var snapshot = JsonElement{}
+                    var selectedIssue = JsonElement{}
+                    var issue int32
+                    if gratis {
+                        revision = GitHub.Branch(repo, branch)
+                        if GitHub.Api("repos/" + repo + "/contents/.github/tokate.json?ref=" + revision, missing: true)
+                            .ValueKind != JsonValueKind.Undefined ||
+                            !RequestData
+                            .Same(GratisGuidance.Discover(repo, revision), guidance) {
+                            session.Fields["reason"] = "guidance_changed"
+                            Terminal.Message(
+                                "Repository guidance or policy changed. Start a new donation to confirm it."
+                            )
+                            break
+                        }
+                        snapshot = Gratis.Snapshot(repo)
+                        if J.Count(J.Get(guidance, "files")) == 0 {
+                            selectedIssue = Gratis.Pick(repo, attempted, snapshot)
+                            if selectedIssue.ValueKind == JsonValueKind.Undefined {
+                                session.Fields["reason"] = "no_eligible_issues"
+                                Terminal.Message(
+                                    "No eligible issue: open issues must be unassigned, unlocked and have no linked open PR."
+                                )
+                                break
+                            }
+                        }
+                        issue = J.Number(selectedIssue, "number")
+                    } else {
+                        issue = Pick(repo, attempted)
+                    }
                     if File.Exists(marker) || seconds > total - timer.Elapsed.TotalSeconds {
                         continue
                     }
-                    if issue == 0 {
+                    if issue == 0 && !gratis {
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
                         let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
                         while !File.Exists(marker) && timer.Elapsed.TotalSeconds < next {
@@ -175,7 +260,16 @@ internal class Donate {
                         continue
                     }
                     attempted.Add(issue)
-                    let task = Task(options, issue)
+                    let task = gratis ? GratisTask(
+                        options,
+                        revision,
+                        guidance,
+                        prompt,
+                        snapshot,
+                        selectedIssue,
+                        policy,
+                        selection
+                    ): Task(options, issue)
                     tasks.Add(task)
                     let result = task["result"]?.ToString() ?? ""
                     session.Fields[result] = session.Number(result) + 1
@@ -189,6 +283,15 @@ internal class Donate {
                         }
                     }
                     session.Write(sessionPath)
+                    if gratis && issue == 0 && result == "failed" {
+                        session.Fields["reason"] = "task_failed"
+                        break
+                    }
+                    if gratis && result == "skipped" {
+                        session.Fields["reason"] = "no_uncovered_task"
+                        Terminal.Message("No code change or findings returned. Gratis donation stopped.")
+                        break
+                    }
                 }
             } finally {
                 Active = false
@@ -199,7 +302,7 @@ internal class Donate {
                 session.Write(sessionPath)
                 Report(session.Element())
             }
-            return consecutive == 3 ? 1: 0
+            return consecutive == 3 || session.Text("reason") == "task_failed" ? 1: 0
         }
     }
 }

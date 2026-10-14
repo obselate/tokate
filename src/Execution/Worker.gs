@@ -264,10 +264,14 @@ internal class Worker {
                     )
                 }
 
-                Terminal.Step("Checking owner approval and donor login...")
+                Terminal.Step(
+                    run.Text(
+                        "mode"
+                    ) == "gratis" ? "Checking gratis inputs and donor login...": "Checking owner approval and donor login..."
+                )
 
                 let record = ContributionAuthority.Recheck(run)
-                let policy = Policy(J.Write(J.Get(record, "policy")))
+                let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Text("mode") == "gratis")
                 policy.Digest = run.Text("policy_hash")
                 DonorSelection.Revalidate(run, policy)
 

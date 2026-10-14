@@ -18,7 +18,7 @@ internal class Submission {
             }
         }
 
-        private func CommitPrepared(directory string, run Data, incomplete bool = false) {
+        internal func CommitPrepared(directory string, run Data, incomplete bool = false) {
             let record = ContributionAuthority.Recheck(run)
 
             if run.Text("source") != "tokate" || run.Text("state") != (
@@ -530,7 +530,7 @@ internal class Submission {
             }
         }
 
-        internal func PublicationRequest(run Data, correction Data? = nil) JsonElement {
+        internal func PublicationTools(run Data) Object {
             let value = run.Element()
             var tools Object = J.Get(value, "tools")
 
@@ -551,6 +551,11 @@ internal class Submission {
                 tool["coding_seconds"] = run.Number("execution_seconds")
                 tools = []Object{tool}
             }
+            return tools
+        }
+
+        internal func PublicationRequest(run Data, correction Data? = nil) JsonElement {
+            let tools = PublicationTools(run)
 
             let metadata = map[string, Object?]{
                 "fork": run.Text("head_repo"),
@@ -617,6 +622,14 @@ internal class Submission {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+
+            if run.Text("mode") == "gratis" {
+                if args.Get("incomplete") == "true" {
+                    throw CliFailure("invalid_state", "Gratis publication requires a completed outcome")
+                }
+                GratisPublication.SubmitPrepared(directory, run)
+                return
+            }
 
             if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
                 "failure_reason"

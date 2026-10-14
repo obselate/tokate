@@ -130,10 +130,12 @@ internal class SavedRuns {
                             }
                         }
 
-                        if J.Number(value, "version") != 2 || J.Number(value, "issue") < 1 || J.Text(
-                            value,
-                            "state"
-                        ) == "" {
+                        if J.Number(value, "version") != 2 ||
+                            (
+                            J.Number(value, "issue") < 1 &&
+                                !(J.Number(value, "issue") == 0 && J.Text(value, "mode") == "gratis")
+                        ) ||
+                            J.Text(value, "state") == "" {
                             reason = "Unsupported version or incomplete saved contribution."
                             throw ExecutionFailure.Create(
                                 "invalid_state",

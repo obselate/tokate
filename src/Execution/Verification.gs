@@ -12,7 +12,7 @@ internal class Verification {
             let checks = J.Items(J.Get(run.Element(), "verification"))
             let commands = J.Items(J.Get(J.Get(record, "policy"), "verification"))
 
-            if checks.Count == 0 || checks.Count != commands.Count {
+            if (checks.Count == 0 && run.Text("mode") != "gratis") || checks.Count != commands.Count {
                 throw ExecutionFailure.Create("verification_failed", "Missing independent verification results")
             }
 

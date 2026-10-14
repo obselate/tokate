@@ -34,6 +34,9 @@ internal class Contribution {
                 using let progress = TerminalProgress("Candidate validation", coding, total)
                 coding.Remaining()
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
+                if run.Text("mode") == "gratis" && Gratis.Outcome(directory, checkout, run, coding) {
+                    return
+                }
 
                 if coding.Git(checkout, "status", "--porcelain") == "" {
                     throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
@@ -72,7 +75,11 @@ internal class Contribution {
                 coding.Remaining()
             }
 
-            Terminal.Step("Running independent owner verification...")
+            Terminal.Step(
+                run.Text(
+                    "mode"
+                ) == "gratis" ? "Running independent repository verification...": "Running independent owner verification..."
+            )
 
             if run.Flag("unlimited") {
                 total = RuntimeBudget(Stopwatch.StartNew(), reserve)

@@ -13,7 +13,7 @@ internal class Policy {
     internal var Eligibility string = ""
     internal var TaskFields JsonElement
 
-    internal init(text string) {
+    internal init(text string, gratis bool = false) {
         Value = J.Parse(text)
         let version = J.Number(Value, "version")
         if version != 2 && version != 3 {
@@ -124,7 +124,7 @@ internal class Policy {
         }
 
         let commands = J.Items(J.Get(Value, "verification"))
-        if commands.Count == 0 {
+        if commands.Count == 0 && !gratis {
             throw Exception("At least one verification command is required")
         }
 
@@ -142,7 +142,7 @@ internal class Policy {
         }
 
         let checks = J.Items(J.Get(Value, "required_checks"))
-        if checks.Count == 0 {
+        if checks.Count == 0 && !gratis {
             throw Exception("At least one required check is needed")
         }
 

@@ -14,6 +14,9 @@ internal class ContributionAuthority {
 
             let viewer = GitHub.Api("user")
             let repo = RepositoryIdentity.Repo(run.Text("repo"))
+            if run.Text("mode") == "gratis" {
+                return Gratis.Recheck(run, viewer)
+            }
             let state = CoordinationState.Load(repo, run.Number("issue"))
             let value = state.Value()
             let saved = run.Element()

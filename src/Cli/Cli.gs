@@ -214,6 +214,7 @@ internal class Cli {
             CliOption("grant", "SHA", "Synchronization grant to revoke"),
             CliOption("upstream", "SHA", "Exact current trusted target revision"),
             CliOption("commit", "SHA", "Exact candidate commit to verify"),
+            CliOption("prompt", "URL|FILE", "Task instruction for repository work without a Tokate policy"),
             CliOption("help", "", "Show help (-h); no tools, network or inference"),
             CliOption("traffic", "", "Print Tokate API counts on stderr; default: off"),
             CliOption("json", "", "Emit one schema-version-1 result on stdout; diagnostics on stderr"),
@@ -224,10 +225,10 @@ internal class Cli {
         internal let Commands[]CliCommand = []CliCommand{
             CliCommand(
                 "work",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,unlimited,fork,runs,run,continue-from",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,unlimited,fork,runs,run,continue-from",
                 "repo",
-                "Code an approved issue with your harness and verify it. With a repository, work approved issues oldest first until stopped. Uses donor inference.",
-                "[ISSUE [NAME] | RUN | OWNER/REPO] [--time PER_TASK] [--total TOTAL] [options]\n       tokate work OWNER/REPO stop [--yes]",
+                "Code an approved issue with your harness and verify it. With a repository, donate until stopped, using gratis mode when no Tokate policy exists. Uses donor inference.",
+                "[ISSUE [NAME] | RUN | OWNER/REPO] [--time PER_TASK] [--total TOTAL] [--prompt URL|FILE] [options]\n       tokate work OWNER/REPO stop [--yes]",
                 "work 42 --model MODEL --effort high",
                 effects: "local_read local_write github_read github_write inference",
                 target: "issue",
@@ -1236,6 +1237,9 @@ internal class Cli {
                 throw Exception(
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )
+            }
+            if args.Get("prompt") != "" && !RepositoryWork(args) && !args.Help {
+                throw Exception("--prompt requires repository work")
             }
             if args.Get("total") != "" && !RepositoryWork(args) && !args.Help {
                 throw Exception("--total requires repository work")

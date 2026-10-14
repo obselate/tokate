@@ -119,7 +119,7 @@ internal class Publication {
 
             run.Save(directory)
 
-            Terminal.Message("Draft PR: " + run.Text("pr_url"))
+            Terminal.Message((J.Bool(pull, "draft") ? "Draft PR: ": "PR: ") + run.Text("pr_url"))
         }
     }
 }

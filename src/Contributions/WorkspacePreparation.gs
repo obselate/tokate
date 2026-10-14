@@ -45,6 +45,10 @@ internal class WorkspacePreparation {
         private func BoundIdentity(run Data) string {
             var identity = Identity(run)
 
+            if run.Text("mode") == "gratis" {
+                identity = Data.Hash(identity + ":gratis:" + run.Text("gratis_hash"))
+            }
+
             if run.Text("harness_path") != "" {
                 identity = Data.Hash(identity + ":" + run.Text("harness_path"))
             }
@@ -220,7 +224,11 @@ internal class WorkspacePreparation {
 
             run.Save(directory)
 
-            Terminal.Step("Approved source " + run.Text("base") + " for target " + run.Text("base_branch"))
+            Terminal.Step(
+                (run.Text("mode") == "gratis" ? "Prepared source ": "Approved source ") + run.Text("base") +
+                    " for target " +
+                    run.Text("base_branch")
+            )
             if run.Text("source") == "external" {
                 Terminal.Step("External coding checkout: " + checkout + "; independent verification uses DIR/checkout")
                 Terminal.Step(
