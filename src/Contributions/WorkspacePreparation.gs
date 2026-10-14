@@ -169,10 +169,11 @@ internal class WorkspacePreparation {
                 throw CliFailure("invalid_state", failure)
             }
 
-            if fields.ContainsKey("codex_version") || fields.ContainsKey("pi_version") || fields.ContainsKey(
-                "claude_version"
-            ) ||
-                fields.ContainsKey("omp_version") || fields.ContainsKey("commit") {
+            var started = fields.ContainsKey("commit")
+            for name in Harness.Table.Keys {
+                started = started || fields.ContainsKey(name + "_version")
+            }
+            if started {
                 throw CliFailure("invalid_state", failure)
             }
 

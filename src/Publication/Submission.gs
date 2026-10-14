@@ -111,12 +111,13 @@ internal class Submission {
                 return
             }
 
+            var started = false
+            for name in Harness.Table.Keys {
+                started = started || run.Text(name + "_version") != ""
+            }
             if run.Text("source") != "tokate" ||
                 (run.Text("state") != "failed" && run.Text("state") != "running") ||
-                (
-                run.Text("codex_version") == "" && run.Text("pi_version") == "" && run.Text("claude_version") == "" &&
-                    run.Text("omp_version") == ""
-            ) ||
+                !started ||
                 run.Text("commit") != "" || run.Number("pr") != 0 {
                 throw CliFailure("invalid_state", "Incomplete publication requires stopped, unpublished managed work")
             }
