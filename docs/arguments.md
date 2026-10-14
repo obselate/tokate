@@ -44,8 +44,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `access check` | `tokate access check ISSUE` | Check your eligibility. |
 | `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
 | `verify` | `tokate verify PR` | Check a receipt against owner approval. |
-| `policy` | `tokate policy [OWNER/REPO]` | Read upstream owner policy. |
-| `doctor` | `tokate doctor [owner\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites or read owner repository health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
+| `doctor` | `tokate doctor [repo\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites, or read repository policy and coordinator health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
 | `update` | `tokate update` | Install the latest stable release. |
 | `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |

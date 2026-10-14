@@ -2,8 +2,8 @@
 
 Set up a repository for current main. Approve tasks, then review donated work before merge.
 
-Check an existing repository with `tokate doctor owner OWNER/REPO` or add `--json` for structured results.
-It reads the coordinator pin, latest release, Actions settings, policy, access record,
+Check an existing repository with `tokate doctor repo OWNER/REPO` or add `--json` for structured results.
+It shows the policy and reads the coordinator pin, Actions settings, access record,
 approvals and last Tokate workflow run. Each problem names a fix command or setting.
 It changes nothing. Exit 0 means the read succeeded, even when problems are found.
 
@@ -21,10 +21,10 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    gh auth login
    ```
 
-3. Check the owner tools and authentication.
+3. Check the GitHub tools and authentication.
 
    ```sh
-   tokate doctor owner --auth
+   tokate doctor external --auth
    ```
 
 4. Check that Actions permits the `obselate/tokate` reusable workflow.
@@ -71,7 +71,7 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
 | Requirement | Check |
 | --- | --- |
 | Public GitHub repository | Repository visibility is public. |
-| Git, GitHub CLI and repository admin rights | `tokate doctor owner --auth` |
+| Git, GitHub CLI and repository admin rights | `tokate doctor external --auth` |
 | Actions permits the `obselate/tokate` reusable workflow | `gh api repos/OWNER/REPO/actions/permissions` |
 | CI already ran on `main` | `gh run list --repo OWNER/REPO --branch main` |
 | Test command works on Linux from a clean clone | Run your test command from the repository root. |

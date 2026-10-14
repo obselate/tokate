@@ -7,7 +7,7 @@ PRs. Donors use their own accounts and tools. Owners review and merge.
 
 1. Infer whether the user is an owner or donor. Confirm the repository, issue and
    active account with `gh api user --jq .login`. Ask only for missing choices.
-2. Read the issue, repository instructions and `tokate policy OWNER/REPO`.
+2. Read the issue, repository instructions and `tokate doctor repo OWNER/REPO`.
 3. Explain the next action briefly, perform authorized work, and report actual
    results and the responsible person's next action.
 
@@ -56,12 +56,12 @@ Install only the harness you will use. Owners need no harness.
 
 See [harness installation](docs/linux-harnesses.md) and
 [Pi endpoint setup](docs/donors.md#local-inference-with-pi) for paths and model selection.
-Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
-`tokate doctor owner OWNER/REPO` after repository setup.
+Finish with `tokate doctor`. Owners also run `tokate doctor external --auth` and
+`tokate doctor repo OWNER/REPO` after repository setup.
 
 ## Guide an owner
 
-Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
+Run `tokate doctor external --auth`, then `tokate init OWNER/REPO` inside the
 repository with `--model-policy` or per-tool `--allowed-tools JSON`,
 `--verification JSON` and `--required-checks JSON` for new policy choices.
 Init previews local files, GitHub Actions settings and branch protection, then asks once in a terminal.

@@ -260,7 +260,7 @@ Keep the saved run directory. Use [recovery](recovery.md) for stopped work, exte
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
 | `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix --yes` |
-| `The owner policy allows no supported managed coding tools` | `tokate policy OWNER/REPO` |
+| `The owner policy allows no supported managed coding tools` | `tokate doctor repo OWNER/REPO` |
 | `OMP lists no models. Sign in with omp login or configure a provider.` | `omp login` |
 
 For other failures, use the exact-message tables in [recovery](recovery.md) and [Linux security](linux-security.md).
