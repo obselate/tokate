@@ -82,30 +82,34 @@ internal class OwnerHealth {
         )
         let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
-        InspectActions(repo, pin)
-        Read(
-            "workflow_permissions",
-            async () -> {
-                let permissions = GitHub.Api("repos/" + repo + "/actions/permissions/workflow")
-                let defaults = J.Text(permissions, "default_workflow_permissions")
-                let create = J.Bool(permissions, "can_approve_pull_request_reviews")
-                Add(
-                    "workflow_permissions",
-                    !create ? "problem": "ok",
-                    "Default workflow permissions: " +
-                        defaults +
-                        ". Actions may create pull requests: " +
-                        (create ? "yes.": "no.") +
-                        (
-                        !create ? " In " +
-                            settings +
-                            " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
-                    ),
-                    J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
-                    !create ? openSettings: []string{}
-                )
-            }
-        )
+        if J.Bool(J.Get(info, "permissions"), "admin") {
+            InspectActions(repo, pin)
+            Read(
+                "workflow_permissions",
+                async () -> {
+                    let permissions = GitHub.Api("repos/" + repo + "/actions/permissions/workflow")
+                    let defaults = J.Text(permissions, "default_workflow_permissions")
+                    let create = J.Bool(permissions, "can_approve_pull_request_reviews")
+                    Add(
+                        "workflow_permissions",
+                        !create ? "problem": "ok",
+                        "Default workflow permissions: " +
+                            defaults +
+                            ". Actions may create pull requests: " +
+                            (create ? "yes.": "no.") +
+                            (
+                            !create ? " In " +
+                                settings +
+                                " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
+                        ),
+                        J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
+                        !create ? openSettings: []string{}
+                    )
+                }
+            )
+        } else {
+            Add("actions", "warning", "Requires repository admin access.")
+        }
         Read(
             "policy",
             async () -> {

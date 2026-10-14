@@ -99,7 +99,9 @@ internal class Startup {
                     }
                 }
 
-                return Requirements(selected)
+                let names = List[string](Requirements(selected))
+                names.AddRange(doctorScope == "external" ? []string{"curl", "tar"}: []string{})
+                return names.ToArray()
             }
 
             if (command == "status" && options.Get("run") != "") || command == "defaults" {
@@ -650,13 +652,8 @@ internal class Startup {
 
             if code != "" {
                 if code == "missing_tools" && options.Get("fix") != "true" {
-                    let action = List[string]{"tokate", "doctor", "--" + doctorScope, "--fix"}
-
-                    if options.Get("harness") != "" {
-                        action.AddRange([]string{"--harness", options.Get("harness")})
-                    }
-
-                    PublicOutput.Actions.Add(action.ToArray())
+                    let word = options.Get("harness") == "" ? doctorScope: options.Get("harness")
+                    PublicOutput.Actions.Add([]string{"tokate", "doctor", word, "--fix"})
                 }
 
                 throw CliFailure(

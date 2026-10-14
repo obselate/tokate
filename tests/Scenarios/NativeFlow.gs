@@ -92,6 +92,7 @@ internal partial class NativeFlow : NativeFixture {
         let health = Call([]string{"doctor", "repo", "owner/project", "--json"})
         let value = Check.Envelope(health, "doctor", "ok")
         Check.That(Check.Text(value["data"]?["policy"]?["version"]) == "3", "Missing projected policy")
+        Check.Contains(health.Output, "Requires repository admin access.")
         for flag in[]string{"--plain", "--ascii"} {
             let human = Call([]string{"doctor", "repo", "owner/project", flag}).Output
             Check.Contains(human, "Allowed tools:\n  codex / openai\n  pi / local-chat-completions\n")
@@ -921,7 +922,7 @@ internal partial class NativeFlow : NativeFixture {
                 Check.Text(Check.Json(result.Output)["data"]?["policy"]?["version"]) == "3",
                 "Retry lost policy result"
             )
-            Traffic(11, 0, 1, result)
+            Traffic(9, 0, 1, result)
         }
         for status in[]int32{0, 503, 401, 404, 422, 304, 403, 429} {
             let faults = JsonArray()

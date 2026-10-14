@@ -1255,10 +1255,6 @@ internal class Cli {
                     throw Exception("doctor repo is read-only")
                 }
 
-                if args.Subject == "repo" && args.Get("repo") == "" && !args.Help {
-                    args.Values["--repo"] = RepositoryInput.Local()
-                }
-
                 if args.Get("set-default") == "true" && args.Get("harness") == "" {
                     args.Need("harness")
                 }
@@ -1286,6 +1282,10 @@ internal class Cli {
 
                 if args.Get("harness") != "pi" && (args.Get("pi-root") != "" || args.Get("node") != "") {
                     throw Exception("Pi runtime options require the pi harness")
+                }
+
+                if args.Subject == "repo" && args.Get("repo") == "" && !args.Help {
+                    args.Values["--repo"] = RepositoryInput.Local()
                 }
             }
 

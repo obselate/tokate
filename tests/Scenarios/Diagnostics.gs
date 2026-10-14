@@ -189,7 +189,9 @@ internal class Diagnostics {
             Check.That(!File.Exists(calls), "Rejected external saved work probed managed tools")
             let incomplete = Call(binary, temp, []string{"doctor", "external"}, "error", "missing_tools")
             Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Doctor accepted missing Git")
-            Tool(temp, "git", "exit 0\n")
+            for name in[]string{"git", "curl", "tar"} {
+                Tool(temp, name, "exit 0\n")
+            }
             let ready = Call(binary, temp, []string{"doctor", "external"})
             Check.That(Check.Text(ready["data"]?["authentication_requested"]) == "false", "Implicit authentication")
             Check.That(!File.ReadAllText(calls).Contains("status"), "No-auth doctor checked authentication")
@@ -200,7 +202,9 @@ internal class Diagnostics {
             Directory.CreateDirectory(longTools)
             File.CreateSymbolicLink(Path.Combine(longTools, "setsid"), "/usr/bin/setsid")
             File.CreateSymbolicLink(Path.Combine(longTools, "gh"), Path.Combine(temp.Root, "bin/gh"))
-            File.CreateSymbolicLink(Path.Combine(longTools, "git"), Path.Combine(temp.Root, "bin/git"))
+            for name in[]string{"git", "curl", "tar"} {
+                File.CreateSymbolicLink(Path.Combine(longTools, name), Path.Combine(temp.Root, "bin", name))
+            }
             temp.Env["PATH"] = longTools
             let longPath = Call(binary, temp, []string{"doctor", "external"})
             Check.That(
@@ -650,7 +654,19 @@ internal class Diagnostics {
                 if (Directory.ResolveLinkTarget("/sbin", true)?.FullName ?? "/sbin") != "/usr/bin" {
                     args.AddRange([]string{"--tmpfs", "/sbin"})
                 }
-                for name in[]string{"sh", "env", "setsid", "setpriv", "unshare", "git", "cp", "find", "chmod"} {
+                for name in[]string{
+                    "sh",
+                    "env",
+                    "setsid",
+                    "setpriv",
+                    "unshare",
+                    "git",
+                    "curl",
+                    "tar",
+                    "cp",
+                    "find",
+                    "chmod"
+                } {
                     args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/" + name), "/usr/bin/" + name})
                 }
                 args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/sh"), "/bin/sh"})
