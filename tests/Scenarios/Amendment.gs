@@ -358,6 +358,11 @@ internal class AmendmentFlow {
             summary bool = true
         ) {
             Check.That(Check.Text(Saved(run)["commit"]) == commit, "Saved amendment head differs")
+            let change = Saved(Path.Combine(run, "amendments", commit))
+            Check.That(
+                Check.Text(change["snapshot"]) != "" && change["tree"] == nil && change["patch_sha256"] == nil,
+                "Published amendment changed the saved snapshot format"
+            )
             let replay = Path.Combine(flow.Temp.Root, "amendment-replay-" + commit)
             flow.Git("clone", "--no-local", Path.Combine(run, "checkout"), replay)
             flow.Git("-C", replay, "checkout", "--detach", Check.Text(Saved(run)["base"]))
@@ -1626,6 +1631,9 @@ internal class AmendmentFlow {
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
             flow.Call([]string{"work", "--run", run}, 1)
+            let head = flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD")
+            Check.Contains(Rework(flow, run, head, 1).Error, "original-evidence")
+            Check.That(!File.Exists(Path.Combine(run, "correction.json")), "Missing archive accepted a candidate")
             Prepared(flow, run)
             let commit = Correct(flow, run)
             flow.Mode("push_fail")

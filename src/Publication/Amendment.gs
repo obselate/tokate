@@ -351,6 +351,12 @@ internal class Amendment {
                 }
             }
 
+            if previous != "" {
+                return Commands.Git(checkout, "rev-parse", "HEAD^{tree}") + "\n" + Commands.GitRaw(
+                    checkout,
+                    []string{"diff", "--no-ext-diff", "--no-textconv", "--binary", run.Text("base"), commit}
+                )
+            }
             return Commands.GitRaw(
                 checkout,
                 []string{
@@ -409,11 +415,11 @@ internal class Amendment {
                         "Contribution already has a physical PR; inspect publication instead"
                     )
                 }
-                if File.Exists(Path.Combine(directory, "correction.json")) {
+                if !continuing || existing != nil {
                     OriginalEvidence.Load(directory, run)
                 }
-                OriginalEvidence.Capture(directory, run, record)
                 if continuing {
+                    OriginalEvidence.Capture(directory, run, record)
                     for key in[]string{"tools", "summary"} {
                         if args.Get(key) != "" {
                             args.Need("seconds")
@@ -596,8 +602,10 @@ internal class Amendment {
                 Directory.CreateDirectory(location)
                 try {
                     let snapshot = correcting ? Snapshot(checkout, run, commit, "", record, history): accepted
-                    change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
-                    change.Fields["patch_sha256"] = Data.Hash(snapshot)
+                    if correcting {
+                        change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
+                    }
+                    change.Fields[correcting ? "patch_sha256": "snapshot"] = Data.Hash(snapshot)
                     File.WriteAllText(Path.Combine(location, "candidate.patch"), snapshot)
                     File.WriteAllText(
                         Path.Combine(location, "conflict-evidence.txt"),
@@ -699,9 +707,10 @@ internal class Amendment {
                 record,
                 Synchronization.History(change.Element())
             )
-            let tree = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
+            let correcting = change.Text("uuid") != ""
             let patch = File.ReadAllText(Path.Combine(Location(directory, change), "candidate.patch"))
-            if tree != change.Text("tree") || Data.Hash(snapshot) != change.Text("patch_sha256") || snapshot != patch {
+            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) ||
+                Data.Hash(snapshot) != change.Text(correcting ? "patch_sha256": "snapshot") || snapshot != patch {
                 throw CliFailure("invalid_state", "Verified amendment candidate changed")
             }
             return snapshot

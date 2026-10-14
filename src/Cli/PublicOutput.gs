@@ -447,10 +447,6 @@ internal class PublicOutput {
                 "id,uuid,previous,commit,tree,patch_sha256,seconds,state,pr,elapsed_seconds,verification_seconds"
             )
 
-            if change.Text("uuid") == "" {
-                result.Remove("tree")
-                result.Remove("patch_sha256")
-            }
             let tools = J.Get(value, "tools")
 
             result["tools"] = Rows(tools, "harness,provider,model,effort,version")
