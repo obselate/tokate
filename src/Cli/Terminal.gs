@@ -167,7 +167,7 @@ internal class Terminal {
             }
         }
 
-        private func Line(value string, color string, error bool) {
+        internal func Line(value string, color string, error bool) {
             if Rich(error) {
                 let console = Output(error)
 
@@ -254,7 +254,7 @@ internal class Terminal {
             }
         }
 
-        private func Hint(action[]string) string {
+        internal func Hint(action[]string) string {
             let index = Array.IndexOf(action, "--run")
 
             if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
@@ -431,209 +431,6 @@ internal class Terminal {
         internal func Help(command string = "") {
             Heading(command == "" ? "Commands": "Command: " + command)
             Message(Cli.Help(command, Width()), "default")
-        }
-
-        private func StatusAction(next JsonElement) {
-            Message("Next action: " + J.Text(next, "action"), "default")
-            Row("Role", J.Text(next, "role"))
-
-            let command = Command(J.Get(next, "command"))
-
-            if command != "" {
-                Row("Command", command)
-            }
-        }
-
-        internal func SavedRun(value JsonElement) {
-            if Console.IsOutputRedirected && !Plain && !Ascii {
-                Json(value, "Donor run")
-
-                return
-            }
-
-            Heading("Donor run")
-
-            var details = ""
-            for action in PublicOutput.Actions {
-                if action.Length > 1 {
-                    if action[1] == "status" {
-                        details = Command(action)
-                    } else {
-                        Row("Next", Hint(Array.FindAll(action, word -> word != "--json")))
-                    }
-                }
-            }
-
-            let state = J.Text(value, "state")
-
-            if state != "" {
-                Row("State", state, state == "failed" ? "red": "yellow")
-            }
-
-            let repo = J.Text(value, "repo")
-            let issue = J.Get(value, "issue").ToString()
-
-            if repo != "" {
-                Row("Task", repo + (issue == "" ? "": " #" + issue))
-            }
-
-            let checks = J.Items(J.Get(value, "verification"))
-
-            if checks.Count == 0 {
-                Row("Verification", "no result recorded")
-            } else {
-                let check = checks[checks.Count - 1]
-                let checkState = J.Text(check, "state")
-
-                Row("Verification", J.Number(value, "verification_count").ToString() + " recorded")
-
-                if checkState != "" {
-                    Row("Recorded check", checkState)
-                }
-
-                let exitCode = J.Get(check, "exit_code").ToString()
-
-                if exitCode != "" {
-                    Row("Exit code", exitCode)
-                }
-
-                let command = Command(J.Get(check, "command"))
-
-                if command != "" && exitCode != "0" {
-                    Row("Command", command)
-                }
-            }
-
-            for key in[]string{"run", "donor", "model", "effort", "pr_url"} {
-                let text = J.Text(value, key)
-
-                if text != "" {
-                    Row(key == "pr_url" ? "PR": Label(key), text)
-                }
-            }
-
-            if J.Text(value, "model") == "" {
-                for tool in J.Items(J.Get(value, "tools")) {
-                    let model = J.Text(tool, "model")
-                    let effort = J.Text(tool, "effort")
-
-                    if model != "" {
-                        Row("Reported model", model + (effort == "" ? "": " / " + effort))
-                    }
-                }
-            }
-
-            let failure = J.Text(J.Get(value, "error"), "message")
-
-            if failure != "" {
-                Row("Error", failure, "red")
-            }
-
-            let next = J.Get(value, "next")
-            let amendment = J.Get(value, "amendment")
-
-            if J.Text(amendment, "state") == "requested" {
-                Row("Amendment", "requested")
-                Row("Previous commit", J.Text(amendment, "previous"))
-                Row("Candidate commit", J.Text(amendment, "commit"))
-            }
-
-            if next.ValueKind == System.Text.Json.JsonValueKind.Object {
-                StatusAction(next)
-            }
-
-            let correction = J.Get(value, "correction")
-            let correctionState = J.Text(correction, "state")
-
-            if correctionState != "" {
-                Row("Correction", correctionState, correctionState == "failed" ? "red": "yellow")
-            }
-
-            let correctionFailure = J.Text(J.Get(correction, "error"), "message")
-
-            if correctionFailure != "" {
-                Row("Correction error", correctionFailure, "red")
-            }
-
-            if J.Bool(value, "truncated") {
-                Message("Bounded snapshot: some data was omitted.", "yellow")
-            }
-
-            if details != "" {
-                Row("Details", details)
-            }
-        }
-
-        internal func ContributionStatus(value JsonElement) {
-            if PublicOutput.Enabled {
-                return
-            }
-
-            if Console.IsOutputRedirected && !Plain && !Ascii {
-                Console.WriteLine(J.Write(value))
-
-                return
-            }
-
-            let remote = J.Text(value, "remote_status")
-
-            if remote != "observed" {
-                Row("Status", remote == "unavailable" ? "unavailable; partial facts only": remote, "yellow")
-            }
-
-            if J.Bool(value, "truncated") {
-                Message("Bounded snapshot: some data was omitted.", "yellow")
-            }
-
-            let work = J.Items(J.Get(value, "work"))
-            let pending = J.Count(J.Get(value, "pending_requests"))
-
-            if remote != "observed" || work.Count == 0 || pending > 0 {
-                StatusAction(J.Get(value, "next"))
-            }
-
-            Row("Repository", J.Text(value, "repo"))
-
-            if pending > 0 {
-                Row("Pending access requests", pending.ToString(), "yellow")
-            }
-
-            if work.Count == 0 {
-                Row("Issue", "none observed")
-
-                if remote == "observed" {
-                    Row(
-                        "State",
-                        pending > 0 ?
-                        "access review needed": "no approved work observed"
-                    )
-                }
-            }
-
-            for task in work {
-                if remote == "observed" {
-                    StatusAction(J.Get(task, "next"))
-                }
-
-                let title = Clean(J.Text(task, "title")).Replace('\n', ' ').Trim()
-                let prefix = "Issue: #" + J.Number(task, "issue").ToString() + " "
-                let limit = Math.Max(4, Math.Min(80, Width() - prefix.Length))
-                var length = Math.Min(limit - 3, title.Length)
-
-                if length > 0 && Char.IsHighSurrogate(title[length - 1]) {
-                    length--
-                }
-
-                Message(prefix + (title.Length > limit ? title.Substring(0, length) + "...": title), "default")
-                Message("State: " + J.Text(task, "state").Replace('_', ' '), "yellow")
-                Row("Issue URL", J.Text(task, "url"))
-
-                for draft in J.Items(J.Get(task, "drafts")) {
-                    Row("PR", J.Text(draft, "url"))
-                    Row("Contribution", J.Text(draft, "lifecycle").Replace('_', ' '))
-                    Row("Receipt", J.Text(draft, "receipt"))
-                }
-            }
         }
 
         internal func Row(label string, value string, color string = "default", error bool = false) {
