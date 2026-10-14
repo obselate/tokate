@@ -51,12 +51,7 @@ internal class ProgressChecks {
             completed <- text.ToString()
         }
 
-        private func Live(
-            flow NativeFixture,
-            run string,
-            phase string,
-            unlimited bool = false
-        ) Result {
+        private func Live(flow NativeFixture, run string, phase string, unlimited bool = false) Result {
             let info = TestProcess.StartInfo(
                 flow.Binary,
                 []string{"work", "--run", run, "--json", "--plain", "--traffic"},

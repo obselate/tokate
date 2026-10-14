@@ -40,14 +40,7 @@ internal class DisposableVerificationChecks {
             Directory.CreateDirectory(storage)
             flow.Temp.Env["TMPDIR"] = storage
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{
-                "success",
-                "failure",
-                "timeout",
-                "cancel",
-                "terminate",
-                "tracked"
-            } {
+            for mode in[]string{"success", "failure", "timeout", "cancel", "terminate", "tracked"} {
                 baseline.Restore()
                 flow.Reload()
                 flow.State["verify_outcome"] = JsonValue.Create(mode)

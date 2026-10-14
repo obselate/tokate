@@ -307,7 +307,12 @@ internal class ClaudeChecks {
             Check.SaveJson(policyPath, policy)
             words[6] = "claude-opus-5-5"
             words[8] = "high"
-            for pair in[]string{"loggedIn=false", "authMethod=api_key", "apiProvider=bedrock", "subscriptionType=team"} {
+            for pair in[]string{
+                "loggedIn=false",
+                "authMethod=api_key",
+                "apiProvider=bedrock",
+                "subscriptionType=team"
+            } {
                 let rejected = status.DeepClone()
                 let parts = pair.Split('=')
                 rejected[parts[0]] = parts[1] == "false" ? JsonValue.Create(false): JsonValue.Create(parts[1])

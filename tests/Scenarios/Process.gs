@@ -189,9 +189,7 @@ internal class ProcessChecks {
                 flow.NoInference()
                 flow.NoPr()
             }
-            Console.WriteLine(
-                "PASS CLI work refuses existing, linked and dangling output evidence before inference"
-            )
+            Console.WriteLine("PASS CLI work refuses existing, linked and dangling output evidence before inference")
         }
 
         private func CaptureWriteFailure(binary string) {
