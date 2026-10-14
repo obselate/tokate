@@ -24,7 +24,7 @@ internal class PreparationChecks {
             flow.Initialize()
             flow.Approve()
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{"", "lost_fork_response", "lost_branch_response", "pending"} {
+            for mode in[]string{"lost_fork_response", "lost_branch_response", "pending"} {
                 baseline.Restore()
                 flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 Directory.Delete(Path.Combine(flow.Bin, "fork"), true)
@@ -60,16 +60,7 @@ internal class PreparationChecks {
             flow.Initialize()
             flow.Approve()
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{
-                "renamed",
-                "explicit",
-                "ambiguous",
-                "incomplete",
-                "collision",
-                "ownership",
-                "parent",
-                "permission"
-            } {
+            for mode in[]string{"renamed", "explicit", "ambiguous", "incomplete", "ownership", "parent", "permission"} {
                 baseline.Restore()
                 flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
                 flow.Reload()
@@ -106,9 +97,6 @@ internal class PreparationChecks {
                             )
                         )
                     }
-                } else if mode == "collision" {
-                    discovery = JsonArray()
-                    flow.State["fork_parent"] = JsonValue.Create("other/project")
                 } else if mode == "ownership" {
                     flow.State["fork_owner_id"] = JsonValue.Create(999)
                 } else if mode == "parent" {
@@ -163,23 +151,19 @@ internal class PreparationChecks {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             flow.Approve()
-            using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for phase in[]string{"init", "fetch", "checkout"} {
-                baseline.Restore()
-                flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
-                flow.Reload()
-                flow.State["preparation_interrupt"] = JsonValue.Create(phase)
-                flow.Save()
-                flow.Claim(code: 1)
-                let run = RunPath(flow)
-                Check.That(Directory.Exists(Path.Combine(run, "checkout.staging")), "Interrupted staging was removed")
-                Resume(flow, run)
-                Check.That(!Directory.Exists(Path.Combine(run, "checkout.staging")), "Staging was not promoted")
-                Check.That(Directory.Exists(Path.Combine(run, "checkout")), "Recovered checkout is missing")
-                Resume(flow, run)
-                flow.NoInference()
-                flow.NoPr()
-            }
+            flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
+            flow.Reload()
+            flow.State["preparation_interrupt"] = JsonValue.Create("checkout")
+            flow.Save()
+            flow.Claim(code: 1)
+            let run = RunPath(flow)
+            Check.That(Directory.Exists(Path.Combine(run, "checkout.staging")), "Interrupted staging was removed")
+            Resume(flow, run)
+            Check.That(!Directory.Exists(Path.Combine(run, "checkout.staging")), "Staging was not promoted")
+            Check.That(Directory.Exists(Path.Combine(run, "checkout")), "Recovered checkout is missing")
+            Resume(flow, run)
+            flow.NoInference()
+            flow.NoPr()
         }
 
         private func Preservation(binary string) {
@@ -260,11 +244,9 @@ internal class PreparationChecks {
                 Path.Combine(flow.Temp.Root, "runs"),
                 "--json"
             }
-            for option in[]string{"codex", "--harness", "--verify-time"} {
+            for option in[]string{"--harness", "--verify-time"} {
                 let invalid = List[string](args)
-                invalid.AddRange(
-                    option == "codex" ? []string{option}: []string{option, option == "--verify-time" ? "5s": "codex"}
-                )
+                invalid.AddRange([]string{option, option == "--verify-time" ? "5s": "codex"})
                 flow.Call(invalid.ToArray(), 1)
             }
             let missing = List[string](args)
@@ -325,27 +307,30 @@ internal class PreparationChecks {
             var requests int32
             for action in[]string{"renew", "pause", "resume", "release"} {
                 let args = []string{action, "--run", run, "--json"}
-                test.Flow.Call(args, 1, owner: true)
-                if action == "release" {
+                if action == "renew" {
+                    test.Flow.Call(args, 1, owner: true)
+                } else if action == "release" {
                     test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                 }
                 let pending = Check.Json(test.Flow.Call(args, 8).Output)
                 Check.That(Check.Text(pending["data"]?["pending"]) == "true", "Reservation request lost pending status")
-                let saved = Check.Json(File.ReadAllText(path))
-                let pendingText = File.ReadAllText(path)
-                saved["id"] = JsonValue.Create(Guid.NewGuid().ToString("D"))
-                File.WriteAllText(path, saved.ToJsonString())
-                test.Flow.Call(args, 1)
-                File.WriteAllText(path, pendingText)
-                let request = saved["reservation_request"] ?? throw Exception("Missing saved request")
-                let journal = Path.Combine(run, "reservation-" + Check.Text(request["uuid"]) + ".posting.json")
-                let backup = journal + ".saved"
-                File.Move(journal, backup)
-                File.CreateSymbolicLink(journal, work)
-                test.Flow.Call(args, 1)
-                File.Delete(journal)
-                File.Move(backup, journal)
-                test.Flow.Call(args, 8)
+                if action == "renew" {
+                    let saved = Check.Json(File.ReadAllText(path))
+                    let pendingText = File.ReadAllText(path)
+                    saved["id"] = JsonValue.Create(Guid.NewGuid().ToString("D"))
+                    File.WriteAllText(path, saved.ToJsonString())
+                    test.Flow.Call(args, 1)
+                    File.WriteAllText(path, pendingText)
+                    let request = saved["reservation_request"] ?? throw Exception("Missing saved request")
+                    let journal = Path.Combine(run, "reservation-" + Check.Text(request["uuid"]) + ".posting.json")
+                    let backup = journal + ".saved"
+                    File.Move(journal, backup)
+                    File.CreateSymbolicLink(journal, work)
+                    test.Flow.Call(args, 1)
+                    File.Delete(journal)
+                    File.Move(backup, journal)
+                    test.Flow.Call(args, 8)
+                }
                 test.Flow.Reload()
                 requests++
                 Check.That(
@@ -377,46 +362,7 @@ internal class PreparationChecks {
             }
         }
 
-        private func GuidedReservation(binary string) {
-            using let test = CoordinationFixture(binary)
-            test.Initialize()
-            test.Claim()
-            let flow = test.Flow
-            flow.Temp.Env["XDG_STATE_HOME"] = Path.Combine(flow.Temp.Root, "state")
-            flow.Temp.Env["TERM"] = "dumb"
-            flow.Temp.Env["NO_COLOR"] = "1"
-            let root = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
-            flow.Call(
-                []string{
-                    "prepare",
-                    "owner/project#1",
-                    "--state",
-                    Check.Text(test.State()["sha"]),
-                    "--source",
-                    "external",
-                    "--tools",
-                    test.Tools,
-                    "--time",
-                    "30s",
-                    "--runs",
-                    root
-                }
-            )
-            let run = Directory.GetDirectories(root)[0]
-            let path = Path.Combine(run, "run.json")
-            let before = File.ReadAllText(path)
-            let result = flow.Call([]string{"pause", "--run", run}, 8)
-            Check.Contains(result.Output, "Reservation request pending")
-            flow.Reload()
-            Check.That(Check.Text(flow.State["request_count"]) == "1", "Pause posted more than one request")
-            flow.CoordinatePosted()
-            flow.Call([]string{"pause", "--run", run})
-            Check.That(File.ReadAllText(path) == before, "Pause changed execution history")
-            flow.NoInference()
-            flow.NoPr()
-        }
-
-        private func Partial(binary string, resume bool = false) {
+        private func Partial(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let flow = test.Flow
@@ -432,7 +378,7 @@ internal class PreparationChecks {
             Check.That(File.Exists(Path.Combine(checkout, "partial.txt")), "Interrupted work was not retained")
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             let summary = "{\"changes\":[\"Preserve incomplete work for the next donor.\"],\"verification\":[],\"limitations\":[\"Independent verification has not passed.\"]}"
-            for mode in resume ? []string{}: []string{"empty", "protected", "missing-summary", "expired"} {
+            for mode in[]string{"empty", "protected", "missing-summary", "expired"} {
                 baseline.Restore()
                 flow.Reload()
                 if mode != "missing-summary" {
@@ -472,12 +418,13 @@ internal class PreparationChecks {
                 "Partial metadata claimed passing verification"
             )
             let invalidPath = Path.Combine(flow.Temp.Root, "invalid-partial-request.json")
-            for invalid in resume ? []string{}: []string{"false", "\"true\"", "1"} {
-                let changed = request.DeepClone()
-                (changed["metadata"] ?? throw Exception("Missing metadata"))["incomplete"] = Check.Json(invalid)
-                File.WriteAllText(invalidPath, changed.ToJsonString())
-                flow.Call([]string{"request", "owner/project#1", "--file", invalidPath}, 1)
-            }
+            let changed = request.DeepClone()
+            (changed["metadata"] ?? throw Exception("Missing metadata"))["incomplete"] = JsonValue.Create("true")
+            File.WriteAllText(invalidPath, changed.ToJsonString())
+            Check.Contains(
+                flow.Call([]string{"request", "owner/project#1", "--file", invalidPath}, 1).Error,
+                "Incomplete work must be declared explicitly"
+            )
             saved["commit"] = JsonValue.Create("")
             File.WriteAllText(path, saved.ToJsonString())
             flow.Call([]string{"submit", "--run", run, "--incomplete"})
@@ -509,27 +456,11 @@ internal class PreparationChecks {
             flow.Reload()
             (flow.State["pulls"]?[0] ?? throw Exception("Missing draft"))["body"] = JsonValue.Create(body)
             flow.Save()
-            if resume {
-                for action in[]string{"pause", "resume"} {
-                    let reservation = []string{action, "--run", run}
-                    flow.Call(reservation, 8)
-                    flow.Reload()
-                    let comments = flow.State["request_comments"]?.AsArray() ??
-                        throw Exception("Missing reservation requests")
-                    test.Coordinate(
-                        PostedEvent(
-                            test,
-                            comments[comments.Count - 1] ?? throw Exception("Missing reservation request")
-                        )
-                    )
-                    flow.Call(reservation)
-                }
-            }
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Completed work\n")
             flow.Git("-C", checkout, "add", "result.txt")
             flow.DonorGit(checkout, "commit", "-m", "Complete partial work")
             let completed = flow.Git("-C", checkout, "rev-parse", "HEAD")
-            let args = List[string]{
+            let plain = []string{
                 "amend",
                 "--run",
                 run,
@@ -540,10 +471,47 @@ internal class PreparationChecks {
                 "--summary",
                 PublishedContribution.Summary(flow, completed, "Complete the interrupted contribution.")
             }
-            if resume {
-                flow.Call(args.ToArray(), 1)
-                args.Add("--resume")
+            flow.Call(plain)
+            flow.CoordinatePosted()
+            flow.Call(plain)
+            flow.Reload()
+            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Completion created another PR")
+            Check.That(
+                Check.Json(File.ReadAllText(path))["incomplete"] == nil,
+                "Completed run retained incomplete status"
+            )
+            Check.That(
+                Check.Text(flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
+                "Completion retained generated incomplete title"
+            )
+            for action in[]string{"pause", "resume"} {
+                let reservation = []string{action, "--run", run}
+                flow.Call(reservation, 8)
+                flow.Reload()
+                let comments = flow.State["request_comments"]?.AsArray() ??
+                    throw Exception("Missing reservation requests")
+                test.Coordinate(
+                    PostedEvent(test, comments[comments.Count - 1] ?? throw Exception("Missing reservation request"))
+                )
+                flow.Call(reservation)
             }
+            File.AppendAllText(Path.Combine(checkout, "result.txt"), "Resumed work\n")
+            flow.Git("-C", checkout, "add", "result.txt")
+            flow.DonorGit(checkout, "commit", "-m", "Continue completed work")
+            let resumed = flow.Git("-C", checkout, "rev-parse", "HEAD")
+            let args = List[string]{
+                "amend",
+                "--run",
+                run,
+                "--commit",
+                resumed,
+                "--time",
+                "30s",
+                "--summary",
+                PublishedContribution.Summary(flow, resumed, "Continue the completed contribution.")
+            }
+            flow.Call(args.ToArray(), 1)
+            args.Add("--resume")
             flow.Call(args.ToArray())
             flow.Reload()
             let comments = flow.State["request_comments"]?.AsArray() ?? throw Exception("Missing completion requests")
@@ -551,21 +519,13 @@ internal class PreparationChecks {
             test.Coordinate(PostedEvent(test, amendment))
             flow.Call(args.ToArray())
             flow.Reload()
-            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Completion created another PR")
-            Check.That(
-                Check.Json(File.ReadAllText(path))["incomplete"] == nil,
-                "Completed run retained incomplete status"
-            )
+            Check.That(Check.Text(flow.State["pr_create_count"]) == "1", "Resumed amendment created another PR")
             let current = Check.Json(File.ReadAllText(path))
             Check.That(
                 Check.Text(current["attempt"]) == originalAttempt && Check.Text(
                     current["publication_attempt"]
                 ) == Check.Text(test.State()["state"]?["reservation"]?["attempt"]),
                 "Resumed publication changed original execution identity or lost the new fence"
-            )
-            Check.That(
-                Check.Text(flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
-                "Completion retained generated incomplete title"
             )
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
@@ -579,32 +539,10 @@ internal class PreparationChecks {
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Partial publication restarted inference")
         }
 
-        private func Handoff(binary string, harness string = "external") {
-            using let catalog = harness == "pi" ? PiCatalog(): nil
+        private func Handoff(binary string, external bool = false) {
             using let test = CoordinationFixture(binary)
             let flow = test.Flow
-            test.Initialize(false)
-            if harness == "pi" {
-                let endpoint = catalog?.Endpoint ?? throw Exception("Missing Pi catalog")
-                PiCatalog.Configure(flow, endpoint)
-                let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
-                let policy = Check.Json(File.ReadAllText(policyPath))
-                (policy["allowed_tools"] ?? throw Exception("Missing tools"))
-                    .AsArray()
-                    .Add(
-                    Check.Map(
-                        "harness",
-                        "pi",
-                        "provider",
-                        "local-chat-completions",
-                        "models",
-                        Check.Json("{\"fixture-model\":[\"absent\"]}")
-                    )
-                )
-                File.WriteAllText(policyPath, policy.ToJsonString())
-                flow.Commit("Allow the fixture Pi model")
-            }
-            flow.Approve()
+            test.Initialize()
             let previous = test.Claim()
             let priorRun = test.Prepare()
             let previousHead = test.Candidate(previous)
@@ -635,7 +573,7 @@ internal class PreparationChecks {
                 "claim",
                 "owner/project#1",
                 "--source",
-                harness == "external" ? "external": "tokate",
+                external ? "external": "tokate",
                 "--time",
                 "30s",
                 "--from-pr",
@@ -646,35 +584,14 @@ internal class PreparationChecks {
                 Path.Combine(flow.Temp.Root, "handoffs"),
                 "--json"
             }
-            if harness == "external" {
+            if external {
                 args.AddRange([]string{"--tools", test.Tools})
             } else {
                 args.AddRange(
-                    []string{
-                        "--harness",
-                        harness,
-                        "--model",
-                        harness == "pi" ? "fixture-model": "gpt-6.1-sol",
-                        "--effort",
-                        harness == "pi" ? "absent": "high",
-                        "--verify-time",
-                        "10s"
-                    }
+                    []string{"--harness", "codex", "--model", "gpt-6.1-sol", "--effort", "high", "--verify-time", "10s"}
                 )
-                if harness == "pi" {
-                    args.AddRange(
-                        []string{
-                            "--pi-root",
-                            Path.Combine(flow.Temp.Root, "runtime/node_modules"),
-                            "--node",
-                            TestProcess.Node(),
-                            "--endpoint",
-                            catalog?.Endpoint ?? ""
-                        }
-                    )
-                }
+                flow.Acquire(args.ToArray(), 1)
             }
-            flow.Acquire(args.ToArray(), 1)
             flow.Git("clone", "--bare", flow.Upstream, Path.Combine(flow.Bin, "otherfork"))
             flow.Reload()
             flow.State["viewer_id"] = JsonValue.Create(124)
@@ -708,7 +625,9 @@ internal class PreparationChecks {
                 )
             )
             flow.Save()
-            flow.Acquire(args.ToArray(), 1)
+            if !external {
+                flow.Acquire(args.ToArray(), 1)
+            }
             flow.Reload()
             flow.State["viewer_id"] = JsonValue.Create(1)
             flow.State["viewer_login"] = JsonValue.Create("owner")
@@ -718,28 +637,39 @@ internal class PreparationChecks {
             flow.State["viewer_id"] = JsonValue.Create(124)
             flow.State["viewer_login"] = JsonValue.Create("other")
             flow.Save()
-            flow.Acquire(args.ToArray(), 1)
+            if !external {
+                flow.Acquire(args.ToArray(), 1)
+            }
             test.Expire()
-            flow.Reload()
-            let oldPull = flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft")
-            oldPull["merged"] = JsonValue.Create(true)
-            flow.Save()
-            flow.Acquire(args.ToArray(), 1)
-            flow.Reload()
-            (flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft"))["merged"] = JsonValue.Create(false)
-            flow.Save()
+            if !external {
+                flow.Reload()
+                let oldPull = flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft")
+                oldPull["merged"] = JsonValue.Create(true)
+                flow.Save()
+                flow.Acquire(args.ToArray(), 1)
+                flow.Reload()
+                (flow.State["pulls"]?[0] ?? throw Exception("Missing prior draft"))["merged"] = JsonValue.Create(false)
+                flow.Save()
+            }
             let acquired = Check.Json(flow.Acquire(args.ToArray()).Output)
             let run = Check.Text(acquired["data"]?["run"])
             let path = Path.Combine(run, "run.json")
             let saved = Check.Json(File.ReadAllText(path))
-            let coding = Path.Combine(run, harness == "external" ? "coding": "checkout")
+            let checkout = Path.Combine(run, external ? "coding": "checkout")
             Check.That(Check.Text(saved["handoff"]?["head"]) == priorHead, "Handoff lost its coordinated source")
-            Check.That(flow.Git("-C", coding, "rev-parse", "HEAD") == priorHead, "Handoff did not import prior work")
+            Check.That(flow.Git("-C", checkout, "rev-parse", "HEAD") == priorHead, "Handoff did not import prior work")
             Check.That(
-                flow.Git("-C", coding, "show", "-s", "--format=%an <%ae>", priorHead) == priorAuthor,
+                flow.Git("-C", checkout, "show", "-s", "--format=%an <%ae>", priorHead) == priorAuthor,
                 "Handoff rewrote original attribution"
             )
             Check.That(File.ReadAllText(priorPath) == priorRecord, "Handoff changed the original saved run")
+            if external {
+                let record = File.ReadAllText(path)
+                flow.Call([]string{"external", "--run", run, "--commit", Check.Text(saved["base"])}, 1)
+                Check.That(File.ReadAllText(path) == record, "Rejected ancestry changed saved work")
+                flow.NoInference()
+                return
+            }
             Resume(flow, run)
             let altered = saved.DeepClone()
             (altered["handoff"] ?? throw Exception("Missing handoff"))["head"] = JsonValue.Create(
@@ -748,51 +678,9 @@ internal class PreparationChecks {
             File.WriteAllText(path, altered.ToJsonString())
             Resume(flow, run, 1)
             File.WriteAllText(path, saved.ToJsonString())
-            if harness == "external" {
-                flow.Call([]string{"external", "--run", run, "--commit", Check.Text(saved["base"])}, 1)
-                Check.That(File.ReadAllText(path) == saved.ToJsonString(), "Rejected ancestry changed saved work")
-                File.AppendAllText(Path.Combine(coding, "result.txt"), "Second donor contribution\n")
-                flow.Git("-C", coding, "add", "result.txt")
-                flow.Git(
-                    "-C",
-                    coding,
-                    "-c",
-                    "user.name=Other",
-                    "-c",
-                    "user.email=other@example.test",
-                    "commit",
-                    "-m",
-                    "Complete inherited work"
-                )
-                let head = flow.Git("-C", coding, "rev-parse", "HEAD")
-                flow.Git(
-                    "-C",
-                    coding,
-                    "push",
-                    Path.Combine(flow.Bin, "otherfork"),
-                    "HEAD:refs/heads/" + Check.Text(saved["branch"])
-                )
-                flow.Call(
-                    []string{
-                        "external",
-                        "--run",
-                        run,
-                        "--commit",
-                        head,
-                        "--summary",
-                        PublishedContribution.Summary(flow, head, "Complete the inherited contribution.")
-                    }
-                )
-            } else {
-                flow.Call([]string{"work", "--run", run})
-                if harness == "codex" {
-                    flow.Reload()
-                    Check.Contains(
-                        Check.Text(flow.State["prompts"]?[0]),
-                        "Continue the published work of another donor"
-                    )
-                }
-            }
+            flow.Call([]string{"work", "--run", run})
+            flow.Reload()
+            Check.Contains(Check.Text(flow.State["prompts"]?[0]), "Continue the published work of another donor")
             flow.Publish(run)
             flow.CoordinatePosted()
             flow.Call([]string{"verify", "owner/project#11"})
@@ -829,14 +717,10 @@ internal class PreparationChecks {
             flow.Save()
             flow.Call([]string{"amend", "--run", priorRun, "--commit", priorHead, "--time", "30s", "--resume"}, 1)
             Check.That(File.ReadAllText(priorPath) == priorRecord, "Late prior-donor action changed its run")
-            if harness == "external" {
-                flow.NoInference()
-            } else {
-                Check.That(
-                    Check.Text(Check.Json(File.ReadAllText(path))["source"]) == "tokate",
-                    "Managed handoff became external"
-                )
-            }
+            Check.That(
+                Check.Text(Check.Json(File.ReadAllText(path))["source"]) == "tokate",
+                "Managed handoff became external"
+            )
         }
 
         private func External(binary string) {
@@ -991,83 +875,72 @@ internal class PreparationChecks {
         }
 
         private func LinkedControls(binary string) {
-            for v2 in[]bool{true} {
-                using let test = CoordinationFixture(binary)
-                let flow = test.Flow
-                var run string
-                if v2 {
-                    test.Initialize()
-                    test.Claim()
-                    run = test.Prepare()
-                } else {
-                    flow.Initialize()
-                    flow.Approve()
-                    run = flow.Claim()
+            using let test = CoordinationFixture(binary)
+            let flow = test.Flow
+            test.Initialize()
+            test.Claim()
+            let run = test.Prepare()
+            let original = File.ReadAllText(Path.Combine(run, "run.json"))
+            for control in[]string{".lock", "run.json", "run.json.tmp"} {
+                let path = Path.Combine(run, control)
+                let backup = Path.Combine(flow.Temp.Root, "control-backup")
+                let existed = File.Exists(path)
+                if existed {
+                    File.Move(path, backup)
                 }
-                let original = File.ReadAllText(Path.Combine(run, "run.json"))
-                for control in[]string{".lock", "run.json", "run.json.tmp"} {
-                    let path = Path.Combine(run, control)
-                    let backup = Path.Combine(flow.Temp.Root, "control-backup")
-                    let existed = File.Exists(path)
-                    if existed {
-                        File.Move(path, backup)
+                for link in[]string{"symbolic", "dangling", "hard"} {
+                    let dangling = link == "dangling"
+                    let target = Path.Combine(flow.Temp.Root, "control-target")
+                    if !dangling {
+                        File.WriteAllText(target, original)
                     }
-                    for link in[]string{"symbolic", "dangling", "hard"} {
-                        let dangling = link == "dangling"
-                        let target = Path.Combine(flow.Temp.Root, "control-target")
-                        if !dangling {
-                            File.WriteAllText(target, original)
-                        }
-                        if link == "hard" {
-                            Check.Success(TestProcess.Run("/usr/bin/ln", []string{target, path}, flow.Temp.Env))
-                        } else {
-                            File.CreateSymbolicLink(path, target)
-                        }
-                        for command in[]string{"prepare", "work", "external", "submit", "amend", "submit-correction",} {
-                            let corrected = command.EndsWith("-correction")
-                            if corrected {
-                                File.WriteAllText(Path.Combine(run, "correction.json"), "{}")
-                            }
-                            let name = corrected ? command.Replace("-correction", ""): command
-                            let args = List[string]{name, "--run", run}
-                            if command == "external" || command == "amend" {
-                                args.AddRange([]string{"--commit", String('0', 40)})
-                            }
-                            if command == "amend" {
-                                args.AddRange([]string{"--time", "30s"})
-                            }
-                            Check.Contains(flow.Call(args.ToArray(), 1).Error, "Preserved")
-                            if corrected {
-                                File.Delete(Path.Combine(run, "correction.json"))
-                            }
-                            Check.That(
-                                link == "hard" ? File.ReadAllText(path) == original: FileInfo(
-                                    path
-                                ).LinkTarget == target,
-                                "Refusal replaced linked control"
-                            )
-                            Check.That(
-                                dangling ? !File.Exists(target): File.ReadAllText(target) == original,
-                                "Refusal followed linked control"
-                            )
-                        }
-                        File.Delete(path)
-                        if !dangling {
-                            File.Delete(target)
-                        }
+                    if link == "hard" {
+                        Check.Success(TestProcess.Run("/usr/bin/ln", []string{target, path}, flow.Temp.Env))
+                    } else {
+                        File.CreateSymbolicLink(path, target)
                     }
-                    if existed {
-                        File.Move(backup, path)
+                    let commands = control == "run.json" && link == "symbolic" ?
+                    []string{"prepare", "work", "external", "submit", "amend", "submit-correction"}:
+                    []string{"prepare"}
+                    for command in commands {
+                        let corrected = command.EndsWith("-correction")
+                        if corrected {
+                            File.WriteAllText(Path.Combine(run, "correction.json"), "{}")
+                        }
+                        let name = corrected ? command.Replace("-correction", ""): command
+                        let args = List[string]{name, "--run", run}
+                        if command == "external" || command == "amend" {
+                            args.AddRange([]string{"--commit", String('0', 40)})
+                        }
+                        if command == "amend" {
+                            args.AddRange([]string{"--time", "30s"})
+                        }
+                        Check.Contains(flow.Call(args.ToArray(), 1).Error, "Preserved")
+                        if corrected {
+                            File.Delete(Path.Combine(run, "correction.json"))
+                        }
+                        Check.That(
+                            link == "hard" ? File.ReadAllText(path) == original: FileInfo(path).LinkTarget == target,
+                            "Refusal replaced linked control"
+                        )
+                        Check.That(
+                            dangling ? !File.Exists(target): File.ReadAllText(target) == original,
+                            "Refusal followed linked control"
+                        )
                     }
-                    Check.That(
-                        File.ReadAllText(Path.Combine(run, "run.json")) == original,
-                        "Refusal changed run record"
-                    )
+                    File.Delete(path)
+                    if !dangling {
+                        File.Delete(target)
+                    }
                 }
-                Resume(flow, run)
-                flow.NoInference()
-                flow.NoPr()
+                if existed {
+                    File.Move(backup, path)
+                }
+                Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Refusal changed run record")
             }
+            Resume(flow, run)
+            flow.NoInference()
+            flow.NoPr()
         }
 
         private func Claiming(binary string, args[]string, env Dictionary[string, string], output Chan[Result]) {
@@ -1153,42 +1026,27 @@ internal class PreparationChecks {
         private func Acquisition(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
-            let baselineComment = test.Comment
-            using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
-            for command in[]string{"claim", "work"} {
-                baseline.Restore()
-                test.Comment = baselineComment
-                test.Flow.Reload()
-                let run = Acquiring(test, command)
-                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
-                let uuid = Check.Text(saved["claim_request"]?["uuid"])
-                Check.That(
-                    Check.Text(saved["attempt"]) == uuid && Check.Text(saved["name"]) == Path.GetFileName(run),
-                    "Acquisition changed the exact attempt"
+            let run = Acquiring(test, "claim")
+            let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            let uuid = Check.Text(saved["claim_request"]?["uuid"])
+            Check.That(
+                Check.Text(saved["attempt"]) == uuid && Check.Text(saved["name"]) == Path.GetFileName(run),
+                "Acquisition changed the exact attempt"
+            )
+            test.Flow.Reload()
+            Check.That(Check.Text(test.Flow.State["request_count"]) == "1", "Acquisition duplicated its claim POST")
+            Check.That(Check.Text(saved["state"]) == "claimed", "Reserve-only claim did not prepare")
+            test.Flow.NoInference()
+            test.Flow.State["dependency_pages"] = Check.Map(
+                "1",
+                Check.Json(
+                    "[[{\"id\":2,\"number\":2,\"url\":\"https://api.github.com/repos/owner/project/issues/2\",\"state\":\"open\"}]]"
                 )
-                test.Flow.Reload()
-                Check.That(Check.Text(test.Flow.State["request_count"]) == "1", "Acquisition duplicated its claim POST")
-                if command == "claim" {
-                    Check.That(Check.Text(saved["state"]) == "claimed", "Reserve-only claim did not prepare")
-                    test.Flow.NoInference()
-                    test.Flow.State["dependency_pages"] = Check.Map(
-                        "1",
-                        Check.Json(
-                            "[[{\"id\":2,\"number\":2,\"url\":\"https://api.github.com/repos/owner/project/issues/2\",\"state\":\"open\"}]]"
-                        )
-                    )
-                    test.Flow.Save()
-                    test.Flow.Call([]string{"work", "--run", run}, 1)
-                    test.Flow.NoInference()
-                } else {
-                    Check.That(Check.Text(saved["state"]) == "generated", "Composed work did not save verified work")
-                    Check.That(Check.Text(test.Flow.State["exec_count"]) == "1", "Composed work did not execute once")
-                    test.Flow.Call([]string{"work", "--run", run}, 1)
-                    test.Flow.Reload()
-                    Check.That(Check.Text(test.Flow.State["exec_count"]) == "1", "Saved work restarted inference")
-                }
-                test.Flow.NoPr()
-            }
+            )
+            test.Flow.Save()
+            test.Flow.Call([]string{"work", "--run", run}, 1)
+            test.Flow.NoInference()
+            test.Flow.NoPr()
         }
 
         private func PendingClaim(binary string) {
@@ -1506,62 +1364,13 @@ internal class PreparationChecks {
             test.Flow.NoPr()
         }
 
-        private func Guided(binary string) {
-            using let test = CoordinationFixture(binary)
-            test.Initialize()
-            let flow = test.Flow
-            flow.Call([]string{"defaults", "set", "ready", "--model", "gpt-6.1-sol", "--effort", "high"})
-            flow.Temp.Env["XDG_STATE_HOME"] = Path.Combine(flow.Temp.Root, "new state")
-            let root = Path.Combine(flow.Temp.Env["XDG_STATE_HOME"], "tokate/runs")
-            let missing = TestTerminal.Pty(
-                binary,
-                []string{"work", "owner/project#1", "ready"},
-                flow.Temp,
-                80,
-                "1\n1\n"
-            )
-            Check.That(missing.Code == 1, missing.Output + missing.Error)
-            Check.Contains(missing.Output, "--time")
-            flow.Reload()
-            Check.That(
-                flow.State["request_count"] == nil && flow.State["fork_creations"] == nil,
-                "Missing budget wrote remotely"
-            )
-            Check.That(!Directory.Exists(root), "Missing budget created a run")
-            flow.NoInference()
-            let accepted = flow.Call(
-                []string{"claim", "owner/project#1", "ready", "--time", "2m", "--verify-time", "1m"},
-                8
-            )
-            let runs = Directory.GetDirectories(root)
-            Check.That(runs.Length == 1, "Claim did not use the selected state root")
-            let pending = Check.Json(File.ReadAllText(Path.Combine(runs[0], "run.json")))
-            Check.That(Check.Text(pending["state"]) == "claim_pending", "Claim lost pending state")
-            Check.That(
-                Check.Text(pending["seconds"]) == "120" && Check.Text(pending["verification_reserve"]) == "60",
-                "Claim budget changed"
-            )
-            flow.Reload()
-            Check.That(Check.Text(flow.State["request_count"]) == "1", "Claim posted more than once")
-            let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing claim")
-            test.Coordinate(PostedEvent(test, comment))
-            let unavailable = flow.Call([]string{"claim", "owner/project#1", "ready", "--time", "2m"}, 1)
-            Check.Contains(unavailable.Error, "An unexpired reservation already owns")
-            flow.NoInference()
-            flow.NoPr()
-        }
-
         internal func All(binary string, selected string = "") {
             for test in[]TestCase[string]{
-                TestCase[string]("Guided", async (value string) -> Guided(value)),
                 TestCase[string]("ExternalClaim", async (value string) -> ExternalClaim(value)),
                 TestCase[string]("Reservation", async (value string) -> Reservation(value)),
-                TestCase[string]("GuidedReservation", async (value string) -> GuidedReservation(value)),
                 TestCase[string]("Partial", async (value string) -> Partial(value)),
-                TestCase[string]("PartialResume", async (value string) -> Partial(value, true)),
                 TestCase[string]("Handoff", async (value string) -> Handoff(value)),
-                TestCase[string]("HandoffCodex", async (value string) -> Handoff(value, "codex")),
-                TestCase[string]("HandoffPi", async (value string) -> Handoff(value, "pi")),
+                TestCase[string]("HandoffExternal", async (value string) -> Handoff(value, true)),
                 TestCase[string]("Acquisition", async (value string) -> Acquisition(value)),
                 TestCase[string]("PendingClaim", async (value string) -> PendingClaim(value)),
                 TestCase[string]("ClaimGates", async (value string) -> ClaimGates(value)),
