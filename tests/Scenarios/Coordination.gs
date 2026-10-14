@@ -338,7 +338,19 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     "error",
                     "stale_approval"
                 )
-                if field != "legacy_digest" {
+                if field == "legacy_digest" {
+                    let status = Check.Envelope(
+                        test.Flow.Call([]string{"status", "owner/project#1", "--json"}),
+                        "status",
+                        "ok"
+                    )
+                    let work = status["data"]?["work"]?[0] ?? throw Exception("Missing task status")
+                    Check.That(Check.Text(work["approval_status"]) == "stale", "Legacy approval digest stayed current")
+                    Check.That(
+                        work["next"]?["command"]?.ToJsonString() == "[\"tokate\",\"approve\",\"owner/project#1\"]",
+                        "Stale approval status omitted the owner command"
+                    )
+                } else {
                     Check.Contains(Check.Text(refused["error"]?["message"]), "tokate approve owner/project#1")
                 }
                 Check.That(File.ReadAllText(path) == saved, "Stale task fields rewrote the saved run")
@@ -1158,7 +1170,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         File.WriteAllText(path, String('x', 1024 * 1024 + 1))
         Coordinate(path, 1)
         let prohibited = request.DeepClone()
-        prohibited["command"] = JsonValue.Create("untrusted synthetic value")
+        prohibited["uuid,expected"] = JsonValue.Create("untrusted synthetic value")
         Coordinate(Event(prohibited), 1)
         Check.That(State()["state"]?["reservation"] == nil, "Invalid event changed authority")
         Flow.NoInference()
@@ -1521,7 +1533,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare("tokate")
         let path = Path.Combine(run, "run.json")
         let saved = Check.Json(File.ReadAllText(path))
-        saved["model"] = JsonValue.Create("disallowed-model")
+        saved["effort"] = JsonValue.Create("xhigh")
         File.WriteAllText(path, saved.ToJsonString())
         Check.Envelope(Flow.Call([]string{"work", "--run", run, "--json"}, 1), "work", "error", "stale_approval")
         Flow.NoInference()
