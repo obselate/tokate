@@ -1042,7 +1042,7 @@ internal class AmendmentFlow {
             File.Delete(Path.Combine(checkout, "untracked.bin"))
             let commit = Correct(flow, run)
             let amended = Check.Envelope(
-                flow.Call([]string{"amend", "--run", run, "--time", "2m", "--json"}),
+                flow.Call([]string{"amend", "--run", run, "--time", "30s", "--json"}),
                 "amend",
                 "ok"
             )
