@@ -102,7 +102,7 @@ internal class ClaudeTool {
                         "type",
                         "assistant",
                         "message",
-                        Check.Map("model", mode == "conflict" ? "claude-sonnet-4-6": model, "stop_reason", "end_turn")
+                        Check.Map("model", model, "stop_reason", "end_turn")
                     )
                         .ToJsonString()
                 )

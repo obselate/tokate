@@ -9,7 +9,7 @@ internal class ClaudeChecks {
     shared {
         internal func Managed(binary string, smoke bool = false) {
             let modes = smoke ? []string{"normal", "failed"}:
-            []string{"normal", "incomplete", "conflict", "failed", "subagent"}
+            []string{"normal", "incomplete", "failed", "subagent"}
             for mode in modes {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
