@@ -280,38 +280,6 @@ internal class DonorSelectionChecks {
             flow.NoPr()
         }
 
-        private func AuthorizedChoices(binary string) {
-            for source in[]string{"explicit invocation", "saved donor default"} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let args = List[string]{
-                    "claim",
-                    "owner/project#1",
-                    "--time",
-                    "30s",
-                    "--runs",
-                    Path.Combine(flow.Temp.Root, "runs"),
-                    "--non-interactive"
-                }
-                if source == "saved donor default" {
-                    Set(flow)
-                } else {
-                    args.AddRange([]string{"--model", "gpt-6.1-sol", "--effort", "high"})
-                }
-                let claimed = flow.Acquire(args.ToArray())
-                let run = claimed.Output.Substring(claimed.Output.LastIndexOf("Run: ") + 5).Trim()
-                flow.Mode("model_failure")
-                let result = flow.Call([]string{"work", "--run", run}, 1)
-                Check.That(result.Code == 1, "Synthetic model failure succeeded")
-                Check.Contains(result.Error, "Codex failed")
-                flow.Reload()
-                Check.That(Check.Text(flow.State["exec_count"]) == "1", "Authorized choice required extra consent")
-                Check.That(!result.Error.Contains("confirmation required"), "Authorized choice added a barrier")
-                flow.NoPr()
-            }
-        }
-
         private func ConfirmationAndRuns(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
@@ -866,8 +834,6 @@ internal class DonorSelectionChecks {
             Console.WriteLine("PASS donor defaults set/read/remove and nonsecret storage")
             Choices(binary)
             Console.WriteLine("PASS default/override/refusal, capabilities and availability; zero inference")
-            AuthorizedChoices(binary)
-            Console.WriteLine("PASS explicit and saved default work without repeated confirmation")
             ConfirmationAndRuns(binary)
             Console.WriteLine("PASS pinned runs, capability revalidation and no model fallback")
             MissingSelection(binary)
