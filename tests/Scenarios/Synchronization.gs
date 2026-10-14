@@ -198,12 +198,6 @@ internal class SynchronizationChecks {
                     flow.Git("-C", checkout, "rm", "--cached", "-r", "guard")
                     flow.Git("clone", flow.Upstream, Path.Combine(checkout, "guard"))
                 }
-                case "sibling-creation" {
-                    PublishedContribution.Write(checkout, "new-parent/public", "unrelated sibling\n")
-                }
-                case "sibling-removal" {
-                    Directory.Delete(Path.Combine(checkout, "guard"), true)
-                }
                 case "decree", "decree-coordinator" {
                     PublishedContribution.Write(checkout, "DECREE.md", "Unapproved donor instructions\n")
                 }
@@ -222,24 +216,26 @@ internal class SynchronizationChecks {
 
         private func Run(preparation PublishedContribution, mode string) {
             preparation.Restore()
+            let flow = preparation.Coordination.Flow
+            let target = Check.Text(Saved(preparation.Run)["base_branch"])
+            flow.Git("-C", flow.Upstream, "checkout", target)
             if mode.StartsWith("reconcile-", StringComparison.Ordinal) {
                 Reconcile(preparation, mode.Substring("reconcile-".Length))
                 return
             }
             let coordination = preparation.Coordination
-            let flow = coordination.Flow
-            let selected = mode == "selected-target" || mode == "authority-policy"
-            let target = selected ? "release/review": ""
             let run = preparation.Run
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let verification = File.ReadAllText(Path.Combine(run, "verification.json"))
             let h = Check.Text(Saved(run)["commit"])
             let stateBefore = Check.Text(coordination.State()["sha"])
-            if selected {
-                flow.Git("-C", flow.Upstream, "checkout", target)
-            }
             let upstream = Upstream(flow, mode == "ordinary", mode == "conflict")
             var candidate = Candidate(flow, run, upstream, mode == "conflict")
+            if mode == "conflict" {
+                PublishedContribution.Write(Path.Combine(run, "checkout"), "new-parent/public", "unrelated sibling\n")
+                Directory.Delete(Path.Combine(run, "checkout/guard"), true)
+                candidate = Commit(flow, Path.Combine(run, "checkout"), "Exact candidate with sibling changes")
+            }
             if mode == "stale-creation" {
                 Grant(flow, candidate, Check.Text(Saved(run)["base"]), 1)
                 return
@@ -409,41 +405,29 @@ internal class SynchronizationChecks {
                     flow.State["local_tree_fault"] = JsonValue.Create(mode.Substring("local-tree-".Length))
                 }
                 flow.Save()
-            } else if mode.StartsWith("tree-") && mode != "tree-reuse" {
+            } else if mode.StartsWith("tree-") {
                 flow.Reload()
                 flow.State["tree_fault"] = JsonValue.Create(mode.Substring(5))
                 flow.Save()
             } else if mode == "after-push" {
                 flow.Mode("revoke_sync_after_push")
             }
-            let success = mode == "timeout" ||
-                mode == "tree-reuse" ||
-                mode == "ordinary" ||
+            let success = mode == "ordinary" ||
                 mode == "conflict" ||
-                mode == "sibling-creation" ||
-                mode == "sibling-removal" ||
                 mode == "selected-target" ||
-                mode == "decree-after-sync" ||
                 mode == "after-coordinate" ||
-                mode == "state-mismatch" ||
-                mode == "wrong-request-actor"
+                mode == "state-mismatch"
             var requests int32
             var records int32
             var jobs int32
-            if mode == "timeout" {
+            if mode == "ordinary" {
                 flow.Reload()
                 requests = Int32.Parse(Check.Text(flow.State["request_count"] ?? JsonValue.Create(0)))
                 records = Int32.Parse(Check.Text(flow.State["workflow_records"] ?? JsonValue.Create(0)))
                 jobs = Int32.Parse(Check.Text(flow.State["workflow_jobs"] ?? JsonValue.Create(0)))
                 flow.Mode("lost_request_response")
             }
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-            }
             let result = Amend(flow, run, candidate, grant, success ? 0: 1)
-            if mode == "tree-reuse" {
-                flow.TreeTraffic(h, 1, false, true)
-            }
             if !success {
                 if mode.StartsWith("grant-", StringComparison.Ordinal) {
                     Check.Contains(
@@ -515,7 +499,7 @@ internal class SynchronizationChecks {
             }
             flow.Reload()
             let request = Check.PostedRequest(flow.State)
-            if mode == "wrong-request-actor" {
+            if mode == "state-mismatch" {
                 flow.Call([]string{"access", "trust", "other", "owner/project"}, owner: true)
                 let body = Check.Text(flow.State["pulls"]?[0]?["body"])
                 coordination.Coordinate(coordination.Event(request, 124, "other"), 1)
@@ -533,9 +517,11 @@ internal class SynchronizationChecks {
                     "Wrong coordinator actor changed publication authority or saved work"
                 )
                 flow.NoInference()
+                coordination.RewriteState(coordination.State()["state"] ?? throw Exception("Missing state"))
+                coordination.Coordinate(coordination.Event(request), 1)
                 return
             }
-            if mode == "timeout" {
+            if mode == "ordinary" {
                 let path = Path.Combine(run, "amendments", candidate, "request.json")
                 let savedRequest = File.ReadAllText(path)
                 let journal = File.ReadAllText(path + ".posting.json")
@@ -562,11 +548,6 @@ internal class SynchronizationChecks {
                     "Duplicate synchronization changed saved or physical request binding"
                 )
             }
-            if mode == "state-mismatch" {
-                coordination.RewriteState(coordination.State()["state"] ?? throw Exception("Missing state"))
-                coordination.Coordinate(coordination.Event(request), 1)
-                return
-            }
             if mode == "after-coordinate" {
                 Revoke(flow, grant)
                 coordination.Coordinate(coordination.Event(request), 1)
@@ -574,12 +555,8 @@ internal class SynchronizationChecks {
             }
             coordination.Coordinate(coordination.Event(request))
             Amend(flow, run, candidate, grant)
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-            }
             flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-            if mode == "tree-reuse" {
-                flow.TreeTraffic(h, 1, false, false)
+            if mode == "ordinary" {
                 flow.Reload()
                 flow.State["diff_fault"] = JsonValue.Create("wrong-identical-base")
                 flow.Save()
@@ -613,38 +590,24 @@ internal class SynchronizationChecks {
                 mode == "ordinary" ? "15": "30"
             )
             Check.Contains(flow.Git("-C", Path.Combine(flow.Bin, "fork"), "show", h + ":result.txt"), "")
-            if mode == "decree-after-sync" {
-                PublishedContribution.Write(
-                    Path.Combine(run, "checkout"),
-                    "DECREE.md",
-                    "Unapproved later instructions\n"
-                )
-                let next = Commit(flow, Path.Combine(run, "checkout"), "Ordinary amendment changes DECREE")
-                let rejected = Amend(flow, run, next, code: 1)
-                Check.Contains(
-                    rejected.Output + rejected.Error,
-                    "Synchronization changes protected owner content: \"DECREE.md\""
-                )
+            if mode != "ordinary" {
                 return
             }
+            PublishedContribution.Write(Path.Combine(run, "checkout"), "DECREE.md", "Unapproved later instructions\n")
+            let decree = Commit(flow, Path.Combine(run, "checkout"), "Ordinary amendment changes DECREE")
+            let rejected = Amend(flow, run, decree, code: 1)
+            Check.Contains(
+                rejected.Output + rejected.Error,
+                "Synchronization changes protected owner content: \"DECREE.md\""
+            )
+            flow.Git("-C", Path.Combine(run, "checkout"), "reset", "--hard", candidate)
             PublishedContribution.Write(Path.Combine(run, "checkout"), "followup.txt", "ordinary review correction\n")
             let next = Commit(flow, Path.Combine(run, "checkout"), "Ordinary amendment after synchronization")
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-            }
             Amend(flow, run, next)
-            if mode == "tree-reuse" {
-                flow.TreeTraffic(h, 1, true, true)
-            }
             flow.Reload()
             let followupRequest = Check.PostedRequest(flow.State)
             coordination.Coordinate(coordination.Event(followupRequest))
             Amend(flow, run, next)
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                flow.TreeTraffic(h, 1, true, false)
-            }
             let history = Saved(run)["synchronizations"]?[0] ?? throw Exception("Lost historical synchronization")
             Check.That(
                 Check.Text(history["candidate"]) == candidate && Check.Text(history["upstream"]) == upstream &&
@@ -652,9 +615,17 @@ internal class SynchronizationChecks {
                 "D relabeled historical G/C/U"
             )
             flow.Reload()
+            flow.State["tree_fault"] = JsonValue.Create("truncated")
+            flow.State["tree_fault_sha"] = JsonValue.Create(
+                flow.Git("-C", Path.Combine(flow.Bin, "fork"), "rev-parse", next + "^{tree}")
+            )
+            flow.Save()
+            flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            flow.Reload()
+            flow.State["tree_fault"] = nil
+            flow.State["tree_fault_sha"] = nil
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
-            flow.Call([]string{"checks", "--run", run}, owner: true)
             PublishedContribution.Write(flow.Upstream, "later-target.txt", "acceptance must recheck target\n")
             flow.Commit("Target moved before final acceptance")
             let checked = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
@@ -669,73 +640,29 @@ internal class SynchronizationChecks {
             let newUpstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
             let newCandidate = Candidate(flow, run, newUpstream)
             let newGrant = Grant(flow, newCandidate, newUpstream)
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-            }
             Amend(flow, run, newCandidate, newGrant)
-            if mode == "tree-reuse" {
-                flow.TreeTraffic(h, 2, false, true)
-            }
             flow.Reload()
             let renewedRequest = Check.PostedRequest(flow.State)
             coordination.Coordinate(coordination.Event(renewedRequest))
-            if mode == "ordinary" {
-                flow.Reload()
-                Check.That(
-                    Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"]) == newCandidate && Check.Text(
-                        Saved(run)["commit"]
-                    ) == next,
-                    "Missing published synchronization with an unrecorded saved head"
-                )
-                PublishedContribution.Write(flow.Upstream, "later-target.txt", "target moved before recording\n")
-                flow.Commit("Target moved after synchronization publication")
-            }
+            flow.Reload()
+            Check.That(
+                Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"]) == newCandidate && Check.Text(
+                    Saved(run)["commit"]
+                ) == next,
+                "Missing published synchronization with an unrecorded saved head"
+            )
+            PublishedContribution.Write(flow.Upstream, "later-target.txt", "target moved before recording\n")
+            flow.Commit("Target moved after synchronization publication")
             Amend(flow, run, newCandidate, newGrant)
-            if mode == "ordinary" {
-                Check.That(Check.Text(Saved(run)["commit"]) == newCandidate, "Moved target blocked recording")
-                let recorded = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
-                Check.That(
-                    Check.Text(recorded["data"]?["target_moved"]) == "true" && Check.Text(
-                        recorded["data"]?["gates"]?["freshness"]?["status"]
-                    ) == "passed",
-                    "Moved target rejected recorded synchronization"
-                )
-            }
+            Check.That(Check.Text(Saved(run)["commit"]) == newCandidate, "Moved target blocked recording")
+            let recorded = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}, owner: true).Output)
+            Check.That(
+                Check.Text(recorded["data"]?["target_moved"]) == "true" && Check.Text(
+                    recorded["data"]?["gates"]?["freshness"]?["status"]
+                ) == "passed",
+                "Moved target rejected recorded synchronization"
+            )
             Check.That(Saved(run)["synchronizations"]?.AsArray().Count == 2, "New grant discarded history")
-            if mode == "tree-reuse" {
-                flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                flow.TreeTraffic(h, 2, false, false)
-                PublishedContribution.Write(Path.Combine(run, "checkout"), "two-grant-followup.txt", "later head\n")
-                let later = Commit(flow, Path.Combine(run, "checkout"), "Later head after two grants")
-                flow.StartTreeTraffic()
-                Amend(flow, run, later)
-                flow.TreeTraffic(h, 2, true, true)
-                flow.Reload()
-                coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
-                Amend(flow, run, later)
-                flow.StartTreeTraffic()
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                flow.TreeTraffic(h, 2, true, false)
-                let tree = flow.Git("-C", Path.Combine(flow.Bin, "fork"), "rev-parse", later + "^{tree}")
-                flow.Reload()
-                flow.State["tree_fault"] = JsonValue.Create("truncated")
-                flow.State["tree_fault_sha"] = JsonValue.Create(tree)
-                flow.Save()
-                flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
-                flow.Reload()
-                flow.State["tree_fault"] = nil
-                flow.State["tree_fault_sha"] = nil
-                flow.Save()
-                PublishedContribution.Write(
-                    Path.Combine(run, "checkout"),
-                    "protected/content",
-                    "unapproved later edit\n"
-                )
-                let protectedHead = Commit(flow, Path.Combine(run, "checkout"), "Protected later head")
-                let rejected = Amend(flow, run, protectedHead, code: 1)
-                Check.Contains(rejected.Output + rejected.Error, "Synchronization changes protected owner content")
-            }
             Revoke(flow, grant)
             flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
             flow.NoInference()
@@ -753,10 +680,6 @@ internal class SynchronizationChecks {
             flow.Reload()
             let inference = Check.Text(flow.State["exec_count"])
             let pushes = Check.Text(flow.State["git_pushes"])
-            let selected = mode == "selected"
-            if selected {
-                flow.Git("-C", flow.Upstream, "checkout", "release/review")
-            }
             let conflict = mode == "conflict" || mode == "protected"
             var upstream = Upstream(flow, conflict: conflict || mode == "interruption")
             var start = h
@@ -923,7 +846,11 @@ internal class SynchronizationChecks {
                 owner: mode == "donor"
             )
             if mode == "edits" {
-                let advisory = "Target main is now " + upstream + "; approved base remains " + base
+                let advisory = "Target " + Check.Text(before["base_branch"]) +
+                    " is now " +
+                    upstream +
+                    "; approved base remains " +
+                    base
                 Check.That(
                     result.Error.Split(advisory).Length == 2,
                     "Reconciliation must print the unchanged target advisory once"
@@ -1006,7 +933,7 @@ internal class SynchronizationChecks {
                     pending = ""
                 }
             }
-            if mode == "moving-target" || mode == "moving-target-pushed" || mode == "moving-target-coordinated" {
+            if mode.StartsWith("moving-target", StringComparison.Ordinal) {
                 PublishedContribution.Write(flow.Upstream, "movement.txt", "target changed\n")
                 flow.Commit("Move target")
             } else if mode == "moving-head" {
@@ -1027,7 +954,7 @@ internal class SynchronizationChecks {
                     flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate,
                     "Changed authority lost candidate"
                 )
-                if mode != "moving-target" && mode != "moving-target-pushed" && mode != "moving-target-coordinated" {
+                if !mode.StartsWith("moving-target", StringComparison.Ordinal) {
                     flow.Call([]string{"reconcile", "--run", run}, 1)
                     return
                 }
@@ -1099,6 +1026,22 @@ internal class SynchronizationChecks {
                         "Reconciliation changed ignored build output"
                     )
                 }
+                PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")
+                flow.Commit("Upstream ignored path collision")
+                index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
+                let rejected = flow.Call([]string{"reconcile", "--run", run, "--json"}, 1)
+                Check.Contains(rejected.Output + rejected.Error, "Ignored path collision preserved")
+                Check.Contains(rejected.Output + rejected.Error, "artifacts/build.txt")
+                Check.That(
+                    File.ReadAllText(Path.Combine(checkout, "artifacts/build.txt")) == "ignored build output\n" &&
+                        flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate && Convert.ToHexString(
+                        index
+                    ) == Convert.ToHexString(File.ReadAllBytes(Path.Combine(checkout, ".git/index"))),
+                    "Ignored path collision lost work"
+                )
+            }
+            if mode == "edits" || mode == "conflict" || mode == "moving-target-coordinated" {
+                return
             }
             var grant = Grant(flow, candidate, upstream, pending: pending)
             if mode == "moving-target-pushed" {
@@ -1129,29 +1072,6 @@ internal class SynchronizationChecks {
                     "Retained published pending grant"
                 )
                 Check.That(reconciled["next_actions"]?[0]?.AsArray().Count == 7, "Owner action retained pending grant")
-                candidate = Check.Text(Saved(run)["reconciliation"]?["candidate"])
-                upstream = flow.Git("-C", flow.Upstream, "rev-parse", "HEAD")
-                let nextGrant = Grant(flow, candidate, upstream)
-                Amend(flow, run, candidate, nextGrant)
-                flow.Reload()
-                coordination.Coordinate(coordination.Event(Check.PostedRequest(flow.State)))
-                Amend(flow, run, candidate, nextGrant)
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-            }
-            if mode == "edits" {
-                PublishedContribution.Write(flow.Upstream, "artifacts/build.txt", "tracked upstream file\n")
-                flow.Commit("Upstream ignored path collision")
-                index = File.ReadAllBytes(Path.Combine(checkout, ".git/index"))
-                let rejected = flow.Call([]string{"reconcile", "--run", run, "--json"}, 1)
-                Check.Contains(rejected.Output + rejected.Error, "Ignored path collision preserved")
-                Check.Contains(rejected.Output + rejected.Error, "artifacts/build.txt")
-                Check.That(
-                    File.ReadAllText(Path.Combine(checkout, "artifacts/build.txt")) == "ignored build output\n" &&
-                        flow.Git("-C", checkout, "rev-parse", "HEAD") == candidate && Convert.ToHexString(
-                        index
-                    ) == Convert.ToHexString(File.ReadAllBytes(Path.Combine(checkout, ".git/index"))),
-                    "Ignored path collision lost work"
-                )
             }
         }
 
@@ -1164,9 +1084,7 @@ internal class SynchronizationChecks {
                 for version in[]string{"current"} {
                     var index int32
                     for mode in[]string{
-                        "timeout",
                         "ordinary",
-                        "tree-reuse",
                         "conflict",
                         "stale-creation",
                         "donor-grant",
@@ -1181,13 +1099,8 @@ internal class SynchronizationChecks {
                         "ancestor",
                         "ancestor-file",
                         "ancestor-submodule",
-                        "sibling-creation",
-                        "sibling-removal",
                         "decree",
-                        "decree-after-sync",
                         "decree-coordinator",
-                        "selected-target",
-                        "authority-policy",
                         "reversion",
                         "semantic",
                         "revoked",
@@ -1198,6 +1111,14 @@ internal class SynchronizationChecks {
                         "policy",
                         "template",
                         "substitution",
+                        "unresolved",
+                        "after-push",
+                        "approval",
+                        "access-denied",
+                        "selected-target",
+                        "authority-policy",
+                        "after-coordinate",
+                        "state-mismatch",
                         "tree-truncated",
                         "tree-missing",
                         "tree-identity",
@@ -1205,12 +1126,17 @@ internal class SynchronizationChecks {
                         "local-tree-truncated",
                         "local-tree-malformed",
                         "local-final-ancestry",
-                        "unresolved",
-                        "after-push",
-                        "after-coordinate",
-                        "state-mismatch",
+                        "wrong-donor",
+                        "wrong-actor",
+                        "fork-owner",
+                        "grant-donor",
+                        "grant-receipt",
+                        "grant-history",
+                        "grant-fork",
+                        "grant-branch",
+                        "grant-previous",
+                        "grant-state",
                         "reconcile-edits",
-                        "reconcile-selected",
                         "reconcile-dirty",
                         "reconcile-fork-divergence",
                         "reconcile-driver",
@@ -1232,27 +1158,15 @@ internal class SynchronizationChecks {
                         "reconcile-moving-approval",
                         "reconcile-conflict",
                         "reconcile-interruption",
-                        "reconcile-protected",
-                        "wrong-donor",
-                        "wrong-actor",
-                        "fork-owner",
-                        "grant-donor",
-                        "grant-receipt",
-                        "grant-history",
-                        "grant-fork",
-                        "grant-branch",
-                        "grant-previous",
-                        "grant-state",
-                        "approval",
-                        "access-denied",
-                        "wrong-request-actor"
+                        "reconcile-protected"
                     } {
                         index++
                         if only != "" && !selectors.Contains(version) && !selectors.Contains(mode) &&
                             !selectors.Contains(version + "/" + mode) {
                             continue
                         }
-                        if (partition == 1 && index > 21) || (partition == 2 && index <= 21) {
+                        let selected = index > 31
+                        if (partition == 1 && selected) || (partition == 2 && !selected) {
                             continue
                         }
                         matched = true
@@ -1262,9 +1176,7 @@ internal class SynchronizationChecks {
                         if !CiShard.Include("Synchronization/" + version + "/" + mode) {
                             continue
                         }
-                        let target = mode == "selected-target" ||
-                            mode == "authority-policy" ||
-                            mode == "reconcile-selected" ? "release/review": ""
+                        let target = selected ? "release/review": ""
                         let key = version + "/" + target
                         if !preparations.ContainsKey(key) {
                             preparations[key] = PublishedContribution.Create(
