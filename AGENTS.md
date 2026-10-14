@@ -62,7 +62,7 @@ Finish with `tokate doctor`. Owners also run `tokate doctor external --auth` and
 ## Guide an owner
 
 1. `gh auth login`
-2. `tokate init OWNER/REPO` previews the setup and changes nothing.
+2. `tokate init OWNER/REPO` previews the setup.
 3. `tokate init OWNER/REPO --yes` applies it and opens the setup PR.
 4. Review and merge the setup PR before approving tasks.
 
