@@ -2,17 +2,15 @@ package Tokate
 
 import System
 import System.Collections.Generic
-import System.IO
 import System.Text.Json
 
 internal class CodexEvidence {
     shared {
-        internal func CompletedUsage(directory string, output string) Dictionary[string, Object?] {
+        internal func Completed(output string) Evidence {
             try {
                 var completed bool
                 var completions int32
-                var report = ""
-                let usage = Dictionary[string, Object?]()
+                let evidence = Evidence()
                 let events = output.AsSpan()
 
                 for bounds in events.Split('\n') {
@@ -25,14 +23,14 @@ internal class CodexEvidence {
 
                     if J.Text(item, "type") == "turn.started" {
                         completed = false
-                        report = ""
+                        evidence.Report = ""
                     }
 
                     if J.Text(item, "type") == "item.completed" && J.Text(
                         J.Get(item, "item"),
                         "type"
                     ) == "agent_message" {
-                        report = J.Text(J.Get(item, "item"), "text")
+                        evidence.Report = J.Text(J.Get(item, "item"), "text")
                     }
 
                     if J.Text(item, "type") == "turn.failed" {
@@ -44,21 +42,16 @@ internal class CodexEvidence {
                         completions++
 
                         for field in J.Get(item, "usage").EnumerateObject() {
-                            usage[field.Name] = field.Value.Clone()
+                            evidence.Usage[field.Name] = field.Value.Clone()
                         }
                     }
                 }
 
-                if !completed || completions != 1 || String.IsNullOrWhiteSpace(report) {
+                if !completed || completions != 1 || String.IsNullOrWhiteSpace(evidence.Report) {
                     throw CliFailure("inference_failed", "Codex did not produce a completed turn and report")
                 }
-
-                File.WriteAllText(Path.Combine(directory, "report.md"), report)
-
-                return usage
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is JsonException ||
+                return evidence
+            } catch (error Exception) when error is JsonException ||
                 error.GetType() == typeof(InvalidOperationException) {
                 throw ExecutionFailure.From(error, "inference_failed")
             }

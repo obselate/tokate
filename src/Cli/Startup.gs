@@ -22,10 +22,9 @@ internal class Startup {
             for name in names {
                 let tool = ToolCheck{
                     Name: name,
-                    Hint: switch name {
+                    Hint: Harness.Find(name)?.Hint ?? switch name {
                         case "git": "Install Git and add git to PATH."
                         case "gh": "Install GitHub CLI and add gh to PATH."
-                        case "codex": "Add native Linux x64 Codex or the @openai/codex npm launcher with its matching codex-linux-x64 native runtime to PATH; user-local installations are supported. Use --harness-path FILE for a custom location."
                         case "setsid": "Install util-linux and add setsid to PATH."
                         case "/usr/bin/setsid": "Install util-linux in a system path or Nix profile for catalog probes and independent verification."
                         case "/usr/bin/env": "Install coreutils in a system path or Nix profile for command cleanup and managed sandbox probes."
@@ -42,7 +41,7 @@ internal class Startup {
                     }
                 }
 
-                tool.Path = name == "codex" ? LocalPaths.Harness(name, harnessPath): name.StartsWith("/") ?
+                tool.Path = Harness.Find(name) != nil ? LocalPaths.Harness(name, harnessPath): name.StartsWith("/") ?
                 LocalPaths.SystemTool(Path.GetFileName(name)): LocalPaths.Find(name)
 
                 if tool.Path != "" {
@@ -78,9 +77,9 @@ internal class Startup {
         private func DoctorScope(options Args) string -> options.Get("owner") == "true" ? "owner":
         options.Get("external") == "true" ||
             (
-            options.Get("harness") != "" && DonorDefaults.Provider(options.Get("harness")) == "" &&
+            options.Get("harness") != "" && Harness.DefaultProvider(options.Get("harness")) == "" &&
                 (
-                options.Get("harness") != "omp" ||
+                Harness.Find(options.Get("harness")) == nil ||
                     (options.Get("set-default") == "true" && options.Get("managed") != "true")
             )
         ) ? "external":
@@ -111,18 +110,12 @@ internal class Startup {
 
             let names = List[string]{"setsid", "/usr/bin/env", "/usr/bin/setpriv", "/usr/bin/unshare", "gh"}
             let catalog = NeedsCatalog(command, options)
-            var pi = options.Get("harness") == "pi"
-            var claude = options.Get("harness") == "claude"
-            var omp = options.Get("harness") == "omp"
-            if options.Get("run") != "" && command == "work" {
-                let harness = Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness")
+            let adapter = Harness.Find(
+                options.Get("run") != "" && command == "work" ?
+                Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness"): options.Get("harness")
+            )
 
-                pi = harness == "pi"
-                claude = harness == "claude"
-                omp = harness == "omp"
-            }
-
-            if catalog && !pi && !claude && !omp {
+            if catalog && adapter?.Doctor == nil {
                 names.Add("codex")
             }
 
@@ -151,15 +144,7 @@ internal class Startup {
                 (command == "amend" && (options.Get("commit") != "" || options.Get("seconds") != ""))
             if catalog || independent {
                 names.Add("/usr/bin/setsid")
-
-                if pi || claude {
-                    names.Add("/bin/bash")
-                }
-
-                if claude {
-                    names.Add("bwrap")
-                    names.Add("socat")
-                }
+                names.AddRange(adapter?.Tools ?? []string{})
             }
 
             if independent {
@@ -204,7 +189,7 @@ internal class Startup {
                 }
 
                 try {
-                    let executable = tool.Name == "codex" && Path.GetFileName(
+                    let executable = Harness.Find(tool.Name) != nil && Path.GetFileName(
                         LocalPaths.CanonicalPath(tool.Path)
                     ) == "codex.js" ?
                     CodexRuntime.Resolve(tool.Path): tool.Path
@@ -214,7 +199,7 @@ internal class Startup {
                         executable,
                         []string{tool.Name == "socat" ? "-V": "--version"},
                         seconds: 30,
-                        harness: tool.Name == "codex"
+                        harness: Harness.Find(tool.Name) != nil
                     )
 
                     if result.Code != 0 || result.Truncated || result.ReadFailed {
@@ -308,7 +293,7 @@ internal class Startup {
         }
 
         private func Authentication(tools List[ToolCheck], name string) {
-            let codex = name == "codex"
+            let codex = Harness.Find(name) != nil
             let check = ToolCheck{
                 Name: name + "-auth",
                 Status: "skipped",
@@ -486,9 +471,7 @@ internal class Startup {
             }
 
             let doctorScope = DoctorScope(options)
-            let pi = doctorScope == "managed" && options.Get("harness") == "pi"
-            let claude = doctorScope == "managed" && options.Get("harness") == "claude"
-            let omp = doctorScope == "managed" && options.Get("harness") == "omp"
+            let adapter = doctorScope == "managed" ? Harness.Find(options.Get("harness")): nil
             let tools = Inspect(options)
 
             if options.Get("fix") == "true" && MachineSetup.TryFix(options, tools) {
@@ -498,22 +481,14 @@ internal class Startup {
             if doctorScope != "owner" {
                 var probe = Ready(tools, "setsid") && Ready(tools, "/usr/bin/setsid")
 
-                if pi && probe {
-                    let runtime = ToolCheck{
-                        Name: "pi",
-                        Hint: "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation."
-                    }
-
-                    let missingPi = options.Get("pi-root") == "" && options.Get("harness-path") == "" &&
-                        LocalPaths.Harness("pi") == ""
+                if probe && adapter is Harness selected && selected.Doctor is Action[Args, ToolCheck]check {
+                    let runtime = ToolCheck{Name: options.Get("harness"), Hint: selected.Hint}
+                    let missing = selected.Nix != "" && options.Get("pi-root") == "" &&
+                        options.Get("harness-path") == "" &&
+                        LocalPaths.Harness(options.Get("harness")) == ""
                     try {
-                        PiHarness.Runtime(options)
-
-                        let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
-
-                        runtime.Path = options.Need("pi-root")
+                        check(options, runtime)
                         runtime.Status = "ready"
-                        runtime.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
                     } catch (error Exception) {
                         runtime.Status = "failed"
                         if error is CliFailure failure {
@@ -521,12 +496,12 @@ internal class Startup {
                         }
 
                         runtime.Detail = error.Message +
-                            (SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
-                        if options.Get("fix") == "true" {
+                            (selected.Nix != "" && SetupUserId() == 0 ? ". If running as root, retry as a regular user.": "")
+                        if selected.Nix != "" && options.Get("fix") == "true" {
                             Terminal.Message(error.Message, "yellow", true)
                         }
 
-                        if options.Get("fix") == "true" && missingPi && MachineSetup.Harness(options) {
+                        if options.Get("fix") == "true" && missing && MachineSetup.Harness(options) {
                             return Doctor(options)
                         }
 
@@ -536,64 +511,7 @@ internal class Startup {
                     tools.Add(runtime)
                 }
 
-                if claude && probe {
-                    let runtime = ToolCheck{
-                        Name: "claude",
-                        Hint: "Use an installed Claude Code with its existing login."
-                    }
-
-                    try {
-                        let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
-
-                        runtime.Path = options.Need("harness-path")
-                        runtime.Status = "ready"
-                        runtime.Detail = J.Text(result, "version") +
-                            (
-                            options.Get(
-                                "auth"
-                            ) == "true" ? "; personal native-login status checked.": "; native controls checked without authentication status."
-                        )
-                    } catch (error Exception) {
-                        runtime.Status = "failed"
-                        runtime.Detail = error.Message
-                        probe = false
-                    }
-
-                    tools.Add(runtime)
-                }
-
-                if omp && probe {
-                    let runtime = ToolCheck{
-                        Name: "omp",
-                        Hint: "Install OMP with its official installer and sign in, or use --harness-path FILE."
-                    }
-
-                    try {
-                        let result = OmpRuntime.Runtime(options)
-                        let models = OmpRuntime.Models(options.Need("harness-path"))
-
-                        if models.Count == 0 {
-                            throw Exception("OMP lists no models. Sign in with omp login or configure a provider.")
-                        }
-
-                        runtime.Path = options.Need("harness-path")
-                        runtime.Status = "ready"
-                        runtime.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
-                            " configured models listed without inference or credential checks."
-                    } catch (error Exception) {
-                        runtime.Status = "failed"
-                        if error is CliFailure failure {
-                            runtime.Code = failure.Code
-                        }
-
-                        runtime.Detail = error.Message
-                        probe = false
-                    }
-
-                    tools.Add(runtime)
-                }
-
-                if doctorScope == "managed" && !pi && !claude && !omp {
+                if doctorScope == "managed" && adapter?.Doctor == nil {
                     let sandbox = ToolCheck{
                         Name: "sandbox",
                         Status: "skipped",
@@ -642,7 +560,7 @@ internal class Startup {
             if options.Get("auth") == "true" {
                 Authentication(tools, "gh")
 
-                if doctorScope == "managed" && !pi && !claude && !omp {
+                if doctorScope == "managed" && adapter?.Doctor == nil {
                     Authentication(tools, "codex")
                 }
             }

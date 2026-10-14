@@ -21,6 +21,17 @@ internal class ClaudeHarness {
             return J.Parse(J.Write(selected))
         }
 
+        internal func Doctor(options Args, tool ToolCheck) {
+            let result = ClaudeCode.Runtime(options, authenticate: options.Get("auth") == "true")
+            tool.Path = options.Need("harness-path")
+            tool.Detail = J.Text(result, "version") +
+                (
+                options.Get(
+                    "auth"
+                ) == "true" ? "; personal native-login status checked.": "; native controls checked without authentication status."
+            )
+        }
+
         internal func ValidateSaved(run Data) {
             if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
                 run.Text("harness_path")
@@ -90,12 +101,10 @@ internal class ClaudeHarness {
             return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[
-            string,
-            Object?
-        ] {
+        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
             let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
-            let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), directory)
+            let evidence = Evidence()
+            let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), evidence)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw ExecutionFailure.Create(
                     "inference_failed",
@@ -122,20 +131,19 @@ internal class ClaudeHarness {
                     }
                 }
             }
-            let usage = J.Select(J.Get(reports, "usage"), "input_tokens,output_tokens")
+            evidence.Usage = J.Select(J.Get(reports, "usage"), "input_tokens,output_tokens")
             let cached = J.Get(J.Get(reports, "usage"), "cache_read_input_tokens")
             if cached.ValueKind != JsonValueKind.Undefined {
-                usage["cached_input_tokens"] = cached
+                evidence.Usage["cached_input_tokens"] = cached
             }
-            run.Fields["reported_model"] = J.Get(reports, "model").ValueKind == JsonValueKind.String ? J.Text(
-                reports,
-                "model"
-            ): nil
+            if J.Get(reports, "model").ValueKind == JsonValueKind.String {
+                evidence.Model = J.Text(reports, "model")
+            }
             run.Fields["native_reports"] = reports
             run.Fields[
                 "usage_provenance"
             ] = "harness-reported; remote identity and billing are not independently proven"
-            return usage
+            return evidence
         }
     }
 }
