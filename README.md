@@ -13,6 +13,12 @@ Tokate verifies the result and opens a draft PR for owner review.
 curl -qfsSL https://tokate.dev/install.sh | sh
 ```
 
+Or give this to your coding agent:
+
+```text
+Read https://raw.githubusercontent.com/obselate/tokate/main/AGENTS.md. Install Tokate and its dependencies with the steps in "Install Tokate and its dependencies", then help me use Tokate as an owner or donor.
+```
+
 Open a new terminal if prompted. Use `tokate update` to update or `tokate uninstall`
 to remove the installation while keeping saved work.
 
@@ -37,9 +43,5 @@ Run `tokate` for guided donation, owner setup, repository status and saved work.
 issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or an issue link. See the
 [positional arguments guide](docs/arguments.md) for references and command forms.
 Use `tokate help COMMAND` for exact options. Scripts can use `--json` without prompts.
-
-To get help from your coding assistant:
-
-> Read https://raw.githubusercontent.com/obselate/tokate/main/AGENTS.md and help me use Tokate as an owner or donor.
 
 [Website](https://tokate.dev/) · [Releases](https://github.com/obselate/tokate/releases) · [Issues](https://github.com/obselate/tokate/issues) · [MIT license](LICENSE)
