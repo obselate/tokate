@@ -323,8 +323,8 @@ internal class TargetBranches {
                 File.WriteAllText(path, policy.ToJsonString())
                 policyFlow.Commit("Projected owner model and path policy")
                 let projected = Check.Envelope(
-                    policyFlow.Call([]string{"policy", "owner/project", "--json"}),
-                    "policy",
+                    policyFlow.Call([]string{"doctor", "repo", "owner/project", "--json"}),
+                    "doctor",
                     "ok"
                 )
                 Check.That(

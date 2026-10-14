@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -508,7 +508,10 @@ internal class CliDiscovery {
                 "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
             )
             Publish(flow, legacy.ToJsonString())
-            Check.Contains(flow.Call([]string{"policy", "owner/project"}, 1).Error, "tokate init OWNER/REPO")
+            Check.Contains(
+                flow.Call([]string{"doctor", "repo", "owner/project", "--json"}).Output,
+                "tokate init OWNER/REPO"
+            )
             flow.NoInference()
             File.WriteAllText(policyPath, legacy.ToJsonString())
             flow.Call([]string{"init", "owner/project", "--path", root, "--non-interactive", "--yes"}, owner: true)
@@ -1054,8 +1057,8 @@ internal class CliDiscovery {
             Check.That(diagnosis["data"]?["tools"]?.AsArray().Count == 8, "Doctor omitted common checks")
             Check.That(!doctor.Output.Contains("Tokate environment"), "Doctor emitted prose stdout")
             let blocked = Check.Envelope(
-                TestProcess.Run(binary, []string{"policy", "owner/project", "--json"}, temp.Env),
-                "policy",
+                TestProcess.Run(binary, []string{"access", "list", "owner/project", "--json"}, temp.Env),
+                "access",
                 "error",
                 "missing_tools"
             )
@@ -1617,7 +1620,7 @@ internal class CliDiscovery {
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
             Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Local Git is unavailable; name OWNER/REPO")
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "name OWNER/REPO")
+            Check.Contains(Call(binary, []string{"doctor", "repo"}, temp, 1).Error, "name OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
             File.Delete(Path.Combine(bin, "setsid"))
@@ -1625,8 +1628,8 @@ internal class CliDiscovery {
             let issueUrl = "https://github.com/owner/project/issues/1"
             let commentUrl = "https://github.com/owner/project/issues/1#issuecomment-2"
             for argv in[][]string{
-                []string{"policy", "owner/project"},
-                []string{"policy", "https://github.com/owner/project"},
+                []string{"doctor", "repo", "owner/project"},
+                []string{"doctor", "repo", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
                 []string{"verify", "https://github.com/owner/project/pull/1"},
                 []string{"work", issueUrl, "--model=model", "--effort=high"},
@@ -1661,7 +1664,7 @@ internal class CliDiscovery {
                     "[ -f holder-ready ]\n"
             )
             let clock = Stopwatch.StartNew()
-            let discovery = Call(binary, []string{"policy"}, temp, 1)
+            let discovery = Call(binary, []string{"doctor", "repo"}, temp, 1)
             let pid = <-observed
             Check.That(!pid.StartsWith("error:"), pid)
             Check.That(clock.Elapsed.TotalSeconds < 8, "Repository discovery exceeded its cleanup bound")
@@ -1685,13 +1688,14 @@ internal class CliDiscovery {
                     "/",
                     "--",
                     binary,
-                    "policy",
+                    "doctor",
+                    "repo",
                     "--json"
                 },
                 temp.Env,
                 cwd: temp.Root
             )
-            let blocked = Check.Envelope(unavailable, "policy", "error", "namespace_unavailable")
+            let blocked = Check.Envelope(unavailable, "doctor", "error", "namespace_unavailable")
             Check.Contains(Check.Text(blocked["error"]?["message"]), "Namespace startup failed")
             Check.That(
                 !File.Exists(Path.Combine(temp.Root, "namespace-command-started")),
@@ -1726,7 +1730,7 @@ internal class CliDiscovery {
             File.Delete(Path.Combine(bin, "git"))
             File.CreateSymbolicLink(Path.Combine(bin, "git"), "/usr/bin/git")
             Check.Success(TestProcess.Run("/usr/bin/git", []string{"init", "-b", "main", temp.Root}, temp.Env))
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "No GitHub remote")
+            Check.Contains(Call(binary, []string{"doctor", "repo"}, temp, 1).Error, "No GitHub remote")
             Check.Success(
                 TestProcess.Run(
                     "/usr/bin/git",
@@ -1734,13 +1738,13 @@ internal class CliDiscovery {
                     temp.Env
                 )
             )
-            let policy = TestProcess.Run(binary, []string{"policy"}, temp.Env, cwd: temp.Root)
+            let policy = TestProcess.Run(binary, []string{"doctor", "repo"}, temp.Env, cwd: temp.Root)
             Check.That(policy.Code == 1 && !policy.Error.Contains("Usage:"), "Unique remote rejected")
             Check.Contains(File.ReadAllText(log), "repos/owner/project\n")
             File.Delete(log)
             let nested = Path.Combine(temp.Root, "subdirectory")
             Directory.CreateDirectory(nested)
-            let fromSubdirectory = TestProcess.Run(binary, []string{"policy"}, temp.Env, cwd: nested)
+            let fromSubdirectory = TestProcess.Run(binary, []string{"doctor", "repo"}, temp.Env, cwd: nested)
             Check.That(
                 fromSubdirectory.Code == 1 && !fromSubdirectory.Error.Contains("Usage:"),
                 "Repository subdirectory rejected"
@@ -1754,7 +1758,7 @@ internal class CliDiscovery {
                     temp.Env
                 )
             )
-            let same = TestProcess.Run(binary, []string{"policy"}, temp.Env, cwd: temp.Root)
+            let same = TestProcess.Run(binary, []string{"doctor", "repo"}, temp.Env, cwd: temp.Root)
             Check.That(same.Code == 1 && !same.Error.Contains("Usage:"), "Equivalent remotes rejected")
             File.Delete(log)
             Check.Success(
@@ -1764,7 +1768,7 @@ internal class CliDiscovery {
                     temp.Env
                 )
             )
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "Ambiguous local remotes")
+            Check.Contains(Call(binary, []string{"doctor", "repo"}, temp, 1).Error, "Ambiguous local remotes")
             Check.That(!File.Exists(log), "Ambiguous remotes invoked GitHub")
             let urlOverride = TestProcess.Run(
                 binary,
@@ -1795,11 +1799,11 @@ internal class CliDiscovery {
                     temp.Env
                 )
             )
-            Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "Ambiguous local remotes")
+            Check.Contains(Call(binary, []string{"doctor", "repo"}, temp, 1).Error, "Ambiguous local remotes")
             Check.That(!File.Exists(log), "Conflicting push remote invoked GitHub")
             let explicitRepo = TestProcess.Run(
                 binary,
-                []string{"policy", "https://github.com/owner/project.git"},
+                []string{"doctor", "repo", "https://github.com/owner/project.git"},
                 temp.Env,
                 cwd: temp.Root
             )

@@ -89,16 +89,11 @@ internal partial class NativeFlow : NativeFixture {
         Commit("Policy display fixture")
         let approval = Call([]string{"approve", "owner/project#1", "--json"}, owner: true)
         Check.Envelope(approval, "approve", "ok")
-        let policy = Call([]string{"policy", "owner/project", "--json"})
-        let value = Check.Envelope(policy, "policy", "ok")
+        let health = Call([]string{"doctor", "repo", "owner/project", "--json"})
+        let value = Check.Envelope(health, "doctor", "ok")
         Check.That(Check.Text(value["data"]?["policy"]?["version"]) == "3", "Missing projected policy")
-        let legacy = Check.Json(Call([]string{"policy", "owner/project"}).Output)
-        Check.That(
-            legacy["schema_version"] == nil && Check.Text(legacy["version"]) == "3",
-            "Legacy piped policy changed"
-        )
         for flag in[]string{"--plain", "--ascii"} {
-            let human = Call([]string{"policy", "owner/project", flag}).Output
+            let human = Call([]string{"doctor", "repo", "owner/project", flag}).Output
             Check.Contains(human, "Allowed tools:\n  codex / openai\n  pi / local-chat-completions\n")
             Check.Contains(human, "Verification:\n  test -f result.txt\n  /bin/echo 'literal  spaces'\n")
         }
@@ -399,6 +394,21 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(Check.Text(failed.State["exec_count"]) == "1", "Failed Codex inference was repeated")
     }
 
+    private func PolicyProblem(reason string) {
+        let health = Check.Envelope(Call([]string{"doctor", "repo", "owner/project", "--json"}), "doctor", "ok")
+        var row JsonNode? = nil
+        for check in health["data"]?["checks"]?.AsArray() ?? JsonArray() {
+            if Check.Text(check["check"]) == "policy" {
+                row = check
+            }
+        }
+        Check.That(Check.Text(row?["status"]) == "problem", "Malformed policy was accepted")
+        Check.Contains(Check.Text(row?["message"]), reason)
+        Check.That(health["data"]?["policy"] == nil, "Malformed policy was projected")
+        NoInference()
+        NoPr()
+    }
+
     internal func ModelPolicyMalformed() {
         let path = Path.Combine(Upstream, ".github/tokate.json")
         let original = Check.Json(File.ReadAllText(path))
@@ -419,9 +429,7 @@ internal partial class NativeFlow : NativeFixture {
             )
             File.WriteAllText(path, original.ToJsonString())
             Commit("Malformed per-tool models")
-            Call([]string{"policy", "owner/project"}, 1)
-            NoInference()
-            NoPr()
+            PolicyProblem("")
         }
 
         original["allowed_tools"] = Check.Json(
@@ -429,7 +437,7 @@ internal partial class NativeFlow : NativeFixture {
         )
         File.WriteAllText(path, original.ToJsonString())
         Commit("Duplicate tool route")
-        Reject([]string{"policy", "owner/project"}, "Duplicate allowed tool")
+        PolicyProblem("Duplicate allowed tool")
         original["allowed_tools"] = Check.Json(
             "[{\"harness\":\"codex\",\"provider\":\"openai\",\"models\":{\"gpt-6.1-sol\":[\"high\"]}},{\"harness\":\"omp\",\"provider\":\"openrouter\",\"models\":{\"gpt-6-sol\":[\"high\"]}},{\"harness\":\"aider\",\"provider\":\"openrouter\"}]"
         )
@@ -437,18 +445,18 @@ internal partial class NativeFlow : NativeFixture {
             original[field] = field == "models" ? Check.Json("{}"): JsonValue.Create("unrestricted")
             File.WriteAllText(path, original.ToJsonString())
             Commit("Removed top-level model field")
-            Reject([]string{"policy", "owner/project"}, "Version 3 uses models inside allowed_tools")
+            PolicyProblem("Version 3 uses models inside allowed_tools")
             original.AsObject().Remove(field)
         }
 
         original["eligibility"] = JsonValue.Create("manual")
         File.WriteAllText(path, original.ToJsonString())
         Commit("Removed version 3 eligibility mode")
-        Reject([]string{"policy", "owner/project"}, "eligibility trusted or open")
+        PolicyProblem("eligibility trusted or open")
         original["eligibility"] = JsonValue.Create("trusted")
         File.WriteAllText(path, original.ToJsonString())
         Commit("Valid per-tool policy")
-        let projected = Check.Envelope(Call([]string{"policy", "owner/project", "--json"}), "policy", "ok")
+        let projected = Check.Envelope(Call([]string{"doctor", "repo", "owner/project", "--json"}), "doctor", "ok")
         let policy = projected["data"]?["policy"] ?? throw Exception("Missing projected policy")
         Check.That(
             Check.Text(policy["version"]) == "3" &&
@@ -904,13 +912,16 @@ internal partial class NativeFlow : NativeFixture {
             faults.Add(Check.Map("status", status, "headers", headers))
             Faults("repos/owner/project", faults)
             let timer = Stopwatch.StartNew()
-            let result = Call([]string{"policy", "owner/project"}, traffic: true)
+            let result = Call([]string{"doctor", "repo", "owner/project", "--json"}, traffic: true)
             Check.That(
                 timer.Elapsed.TotalSeconds >= (status == 0 || status == 503 ? 1.0: 2.0),
                 "Server retry delay was ignored"
             )
-            Check.That(Check.Text(Check.Json(result.Output)["version"]) == "3", "Retry lost policy result")
-            Traffic(3, 0, 1, result)
+            Check.That(
+                Check.Text(Check.Json(result.Output)["data"]?["policy"]?["version"]) == "3",
+                "Retry lost policy result"
+            )
+            Traffic(11, 0, 1, result)
         }
         for status in[]int32{0, 503, 401, 404, 422, 304, 403, 429} {
             let faults = JsonArray()
@@ -925,7 +936,7 @@ internal partial class NativeFlow : NativeFixture {
                 )
             }
             Faults("repos/owner/project", faults)
-            let failure = Call([]string{"policy", "owner/project"}, 1, traffic: true)
+            let failure = Call([]string{"doctor", "repo", "owner/project"}, 1, traffic: true)
             let retryable = status == 0 || status == 503
             Traffic(retryable ? 3: 1, 0, retryable ? 2: 0, failure)
             if status == 304 {
@@ -938,7 +949,7 @@ internal partial class NativeFlow : NativeFixture {
             NoInference()
         }
         Faults("repos/owner/project", Check.Json("[{\"status\":429,\"headers\":\"Retry-After: 60\\r\\n\"}]"))
-        let failure = Call([]string{"policy", "owner/project"}, 1, traffic: true)
+        let failure = Call([]string{"doctor", "repo", "owner/project"}, 1, traffic: true)
         Traffic(1, 0, 0, failure)
         Check.Contains(failure.Error, "Retry at or after")
         Faults(
@@ -946,7 +957,7 @@ internal partial class NativeFlow : NativeFixture {
             Check.Json("[{\"status\":503,\"pause_ms\":40000},{\"status\":503,\"pause_ms\":40000}]")
         )
         let timer = Stopwatch.StartNew()
-        let timed = Call([]string{"policy", "owner/project"}, 1, traffic: true)
+        let timed = Call([]string{"doctor", "repo", "owner/project"}, 1, traffic: true)
         Check.That(timer.Elapsed.TotalSeconds >= 59.0, "Subprocesses escaped the total read deadline")
         Traffic(2, 0, 1, timed)
     }

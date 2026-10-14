@@ -167,8 +167,8 @@ internal class Diagnostics {
             File.CreateSymbolicLink(Path.Combine(temp.Root, "bin/setsid"), "/usr/bin/setsid")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\nexit 1\n")
             for words in[]([]string){
-                []string{"doctor", "owner", "managed", "--auth"},
-                []string{"doctor", "owner", "external"},
+                []string{"doctor", "repo", "managed", "--auth"},
+                []string{"doctor", "repo", "external"},
                 []string{"doctor", "managed", "external", "--non-interactive"}
             } {
                 Call(binary, temp, words, "error", "invalid_arguments")
@@ -187,17 +187,11 @@ internal class Diagnostics {
             Check.That(!File.Exists(calls), "Offline commands started prerequisite probes")
             Call(binary, temp, []string{"work", "--run", saved}, "error", "invalid_state")
             Check.That(!File.Exists(calls), "Rejected external saved work probed managed tools")
-            let incomplete = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
-            Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Owner accepted missing Git")
-            for name in[]string{"git", "curl", "tar"} {
-                Tool(temp, name, "exit 0\n")
-            }
-            let owner = Call(binary, temp, []string{"doctor", "owner"})
-            Check.That(
-                Check.Text(owner["data"]?["scope"]) == "owner" && owner["data"]?["tools"]?.AsArray().Count == 8,
-                "Owner checked donor tools"
-            )
-            Check.That(Check.Text(owner["data"]?["authentication_requested"]) == "false", "Implicit authentication")
+            let incomplete = Call(binary, temp, []string{"doctor", "external"}, "error", "missing_tools")
+            Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Doctor accepted missing Git")
+            Tool(temp, "git", "exit 0\n")
+            let ready = Call(binary, temp, []string{"doctor", "external"})
+            Check.That(Check.Text(ready["data"]?["authentication_requested"]) == "false", "Implicit authentication")
             Check.That(!File.ReadAllText(calls).Contains("status"), "No-auth doctor checked authentication")
             var longTools = temp.Root
             for i in 0 ... 24 {
@@ -206,18 +200,16 @@ internal class Diagnostics {
             Directory.CreateDirectory(longTools)
             File.CreateSymbolicLink(Path.Combine(longTools, "setsid"), "/usr/bin/setsid")
             File.CreateSymbolicLink(Path.Combine(longTools, "gh"), Path.Combine(temp.Root, "bin/gh"))
-            for name in[]string{"git", "curl", "tar"} {
-                File.CreateSymbolicLink(Path.Combine(longTools, name), Path.Combine(temp.Root, "bin", name))
-            }
+            File.CreateSymbolicLink(Path.Combine(longTools, "git"), Path.Combine(temp.Root, "bin/git"))
             temp.Env["PATH"] = longTools
-            let longPath = Call(binary, temp, []string{"doctor", "owner"})
+            let longPath = Call(binary, temp, []string{"doctor", "external"})
             Check.That(
                 Check.Text(Row(longPath, "gh")["path"]) == Path.Combine(longTools, "gh"),
                 "Diagnostic tool path was shortened"
             )
             temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\n" + "test \"$1\" = auth && exit 0\nexit 4\n")
-            let auth = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "authentication_required")
+            let auth = Call(binary, temp, []string{"doctor", "external", "--auth"}, "error", "authentication_required")
             Check.That(
                 Check.Text(Row(auth, "gh-auth")["status"]) == "authentication_required",
                 "Missing auth not distinguished"
@@ -229,7 +221,7 @@ internal class Diagnostics {
                 "#!/bin/sh\ntest \"$1\" = --version && exit 0\n" +
                     "printf '%s\\n' '123'\nprintf '%s\\n' synthetic-auth-secret >&2\n"
             )
-            let authenticated = Call(binary, temp, []string{"doctor", "owner", "--auth"})
+            let authenticated = Call(binary, temp, []string{"doctor", "external", "--auth"})
             Check.That(Check.Text(Row(authenticated, "gh-auth")["status"]) == "ready", "Verified identity was rejected")
             let missing = Call(binary, temp, []string{"doctor", "managed"}, "error", "missing_tools")
             Check.That(Check.Text(Row(missing, "codex")["status"]) == "missing", "Missing Codex not distinguished")
@@ -304,13 +296,13 @@ internal class Diagnostics {
                 )
             }
             Tool(temp, "gh", "exit 17\n")
-            let failedOwner = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "missing_tools")
+            let failedAuth = Call(binary, temp, []string{"doctor", "external", "--auth"}, "error", "missing_tools")
             Check.That(
-                Check.Text(Row(failedOwner, "gh-auth")["status"]) == "skipped",
+                Check.Text(Row(failedAuth, "gh-auth")["status"]) == "skipped",
                 "Failed authentication status passed"
             )
             File.Delete(Path.Combine(temp.Root, "bin/setsid"))
-            let noRunner = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
+            let noRunner = Call(binary, temp, []string{"doctor", "external"}, "error", "missing_tools")
             Check.That(Check.Text(Row(noRunner, "gh")["status"]) == "skipped", "PATH discovery proved readiness")
             Console.WriteLine(
                 "PASS scoped diagnostics, conflicts, missing/broken tools, explicit sanitized authentication and offline routes; no inference"
@@ -358,7 +350,7 @@ internal class Diagnostics {
             } {
                 let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/setpriv" || helper == "/usr/bin/unshare"
                 let owner = Check.Envelope(
-                    FixedCall(binary, flow, helper, []string{"doctor", "owner"}),
+                    FixedCall(binary, flow, helper, []string{"doctor", "repo", "owner/project"}),
                     "doctor",
                     cleanup ? "error": "ok",
                     cleanup ? "missing_tools": ""
@@ -368,11 +360,11 @@ internal class Diagnostics {
                         Check.Text(Row(owner, helper)["status"]) == "failed" && Check.Text(
                             Row(owner, "setsid")["status"]
                         ) == "skipped",
-                        "Owner diagnostics misattributed a failed cleanup helper"
+                        "Repository diagnostics misattributed a failed cleanup helper"
                     )
                     let discovery = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"policy"}),
-                        "policy",
+                        FixedCall(binary, flow, helper, []string{"doctor", "repo"}),
+                        "doctor",
                         "error",
                         "missing_tools"
                     )
@@ -658,7 +650,7 @@ internal class Diagnostics {
                 if (Directory.ResolveLinkTarget("/sbin", true)?.FullName ?? "/sbin") != "/usr/bin" {
                     args.AddRange([]string{"--tmpfs", "/sbin"})
                 }
-                for name in[]string{"sh", "env", "setsid", "setpriv", "unshare", "git", "curl", "tar", "chmod"} {
+                for name in[]string{"sh", "env", "setsid", "setpriv", "unshare", "git", "cp", "find", "chmod"} {
                     args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/" + name), "/usr/bin/" + name})
                 }
                 args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/sh"), "/bin/sh"})
@@ -666,7 +658,7 @@ internal class Diagnostics {
                     args.AddRange([]string{"--ro-bind", privilege, "/usr/bin/" + name})
                 }
                 args.AddRange(
-                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "owner", "--fix", "--json"}
+                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "external", "--fix", "--json"}
                 )
                 Check.Envelope(
                     TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),
