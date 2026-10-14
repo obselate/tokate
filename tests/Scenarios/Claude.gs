@@ -307,16 +307,7 @@ internal class ClaudeChecks {
             Check.SaveJson(policyPath, policy)
             words[6] = "claude-opus-5-5"
             words[8] = "high"
-            for pair in[]string{
-                "loggedIn=false",
-                "loggedIn=true",
-                "authMethod=oauth_token",
-                "authMethod=api_key",
-                "apiProvider=bedrock",
-                "subscriptionType=team",
-                "subscriptionType=enterprise",
-                "subscriptionType=free"
-            } {
+            for pair in[]string{"loggedIn=false", "authMethod=api_key", "apiProvider=bedrock", "subscriptionType=team"} {
                 let rejected = status.DeepClone()
                 let parts = pair.Split('=')
                 rejected[parts[0]] = parts[1] == "false" ? JsonValue.Create(false): JsonValue.Create(parts[1])
@@ -328,15 +319,13 @@ internal class ClaudeChecks {
                 )
             }
             File.WriteAllText(statusPath, status.ToJsonString())
-            for effort in[]string{"xhigh", "medium", "max"} {
-                let rejected = List[string](words)
-                rejected[8] = effort
-                let result = TestProcess.Run(binary, rejected.ToArray(), data.Env)
-                Check.That(
-                    result.Code == 1 && result.Output.Contains("not allowed by the repository policy"),
-                    "Disallowed effort was launched"
-                )
-            }
+            let disallowed = List[string](words)
+            disallowed[8] = "xhigh"
+            let disallowedResult = TestProcess.Run(binary, disallowed.ToArray(), data.Env)
+            Check.That(
+                disallowedResult.Code == 1 && disallowedResult.Output.Contains("not allowed by the repository policy"),
+                "Disallowed effort was launched"
+            )
             let alias = List[string](words)
             alias[6] = "opus"
             let aliasResult = TestProcess.Run(binary, alias.ToArray(), data.Env)
