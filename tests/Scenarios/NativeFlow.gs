@@ -269,6 +269,11 @@ internal partial class NativeFlow : NativeFixture {
     internal func CrossAccountFlow() {
         Approve()
         let run = Claim()
+        State["event_stream"] = JsonValue.Create(
+            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n" +
+                "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":6,\"cached_input_tokens\":76379,\"output_tokens\":812}}\n"
+        )
+        Save()
         Call([]string{"work", "--run", run})
         let checkout = Path.Combine(run, "checkout")
         let replay = Path.Combine(Temp.Root, "candidate-replay")
@@ -290,6 +295,12 @@ internal partial class NativeFlow : NativeFixture {
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Publication repeated inference")
         Check.That(Check.Text(State["pulls"]?[0]?["draft"]) == "true", "PR must be draft")
+        let body = Check.Text(State["pulls"]?[0]?["body"])
+        Check.Contains(
+            body,
+            "| codex / openai | gpt-6.1-sol / high | " + Check.Text(saved["execution_seconds"]) +
+                " | input: 6; cached input: 76379; output: 812 tokens |"
+        )
         Check.That(
             Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
             "Cross-account PR must disable maintainer modification"
@@ -888,7 +899,7 @@ internal partial class NativeFlow : NativeFixture {
                 "Server retry delay was ignored"
             )
             Check.That(Check.Text(Check.Json(result.Output)["version"]) == "2", "Retry lost policy result")
-            Traffic(3, 0, 0, 1, result)
+            Traffic(3, 0, 1, result)
         }
         for status in[]int32{0, 503, 401, 404, 422, 304, 403, 429} {
             let faults = JsonArray()
@@ -905,7 +916,10 @@ internal partial class NativeFlow : NativeFixture {
             Faults("repos/owner/project", faults)
             let failure = Call([]string{"policy", "owner/project"}, 1, traffic: true)
             let retryable = status == 0 || status == 503
-            Traffic(retryable ? 3: 1, 0, status == 304 ? 1: 0, retryable ? 2: 0, failure)
+            Traffic(retryable ? 3: 1, 0, retryable ? 2: 0, failure)
+            if status == 304 {
+                Check.That(Check.Text(State["api_calls"]?[0]?["status"]) == "304", "Unmatched 304 was not exercised")
+            }
             if status == 403 || status == 429 {
                 Check.Contains(failure.Error, "Retry at or after")
                 Check.Contains(failure.Error, "in 60 seconds")
@@ -914,7 +928,7 @@ internal partial class NativeFlow : NativeFixture {
         }
         Faults("repos/owner/project", Check.Json("[{\"status\":429,\"headers\":\"Retry-After: 60\\r\\n\"}]"))
         let failure = Call([]string{"policy", "owner/project"}, 1, traffic: true)
-        Traffic(1, 0, 0, 0, failure)
+        Traffic(1, 0, 0, failure)
         Check.Contains(failure.Error, "Retry at or after")
         Faults(
             "repos/owner/project",
@@ -923,7 +937,7 @@ internal partial class NativeFlow : NativeFixture {
         let timer = Stopwatch.StartNew()
         let timed = Call([]string{"policy", "owner/project"}, 1, traffic: true)
         Check.That(timer.Elapsed.TotalSeconds >= 59.0, "Subprocesses escaped the total read deadline")
-        Traffic(2, 0, 0, 1, timed)
+        Traffic(2, 0, 1, timed)
     }
 
     internal func MutationTraffic() {

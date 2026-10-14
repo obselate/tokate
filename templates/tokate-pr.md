@@ -4,24 +4,12 @@ Fixes #{{issue}}
 
 {{report}}
 
-## Donated AI usage
+## Donation details
 
 Contribution by @{{donor}}. Review the changes and required CI before merging.
 
-<details>
-<summary>Donation details</summary>
+Base commit: `{{base}}`. Policy digest: `{{policy}}`.
 
-| Field | Value |
-| --- | --- |
-| Model (donor-reported) | `{{model}}` |
-| Reasoning effort | `{{effort}}` |
-| Runtime (seconds) | {{seconds}} |
-| Base commit | `{{base}}` |
-| Policy digest | `{{policy}}` |
-| Token counts (donor-reported) | {{usage}} |
-
-Model identity and usage are donor-reported. Raw logs remain local.
-
-</details>
+Model identity, coding seconds and usage are donor-reported. Raw logs remain local.
 
 {{receipt}}

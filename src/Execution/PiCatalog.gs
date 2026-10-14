@@ -34,6 +34,7 @@ internal class PiCatalog {
 
                 return Identity(RequestData.Parse(result.Output, 1024 * 1024), model)
             } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {

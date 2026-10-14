@@ -9,18 +9,7 @@ import System.Text.RegularExpressions
 internal class PrBody {
     shared {
         internal func ValidateTemplate(text string) {
-            for key in[]string{
-                "issue",
-                "report",
-                "donor",
-                "model",
-                "effort",
-                "seconds",
-                "base",
-                "policy",
-                "usage",
-                "receipt"
-            } {
+            for key in[]string{"issue", "report", "donor", "base", "policy", "receipt"} {
                 if !text.Contains("{{" + key + "}}") {
                     throw CliFailure("invalid_state", "PR template must contain {{" + key + "}}")
                 }
