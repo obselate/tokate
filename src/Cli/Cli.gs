@@ -190,6 +190,7 @@ internal class Cli {
             "access list": "local_read,github_read",
             "access history": "local_read,github_read",
             "access check": "local_read,github_read",
+            "doctor repo": "local_read,github_read",
             "defaults show": "local_read",
             "defaults list": "local_read",
             "defaults set": "local_read,local_write harness model,effort",
