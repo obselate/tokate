@@ -27,22 +27,18 @@ internal class SynchronizationChecks {
             return flow.Git("-C", checkout, "rev-parse", "HEAD")
         }
 
-        private func Upstream(flow NativeFixture, ordinary bool = false, conflict bool = false) string {
-            if ordinary {
-                PublishedContribution.Write(flow.Upstream, "upstream.txt", "ordinary upstream change\n")
-            } else {
-                PublishedContribution.Write(flow.Upstream, ".github/workflows/verify.yml", "timeout-minutes: 30\n")
-                flow.Git("-C", flow.Upstream, "mv", ".github/workflows/old.yml", ".github/workflows/renamed.yml")
-                File.Delete(Path.Combine(flow.Upstream, "protected/gone"))
-                File.SetUnixFileMode(
-                    Path.Combine(flow.Upstream, "protected/content"),
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                )
-                File.Delete(Path.Combine(flow.Upstream, "protected/link"))
-                File.CreateSymbolicLink(Path.Combine(flow.Upstream, "protected/link"), "content")
-                PublishedContribution.Write(flow.Upstream, "protected/new", "owner addition\n")
-                PublishedContribution.Write(flow.Upstream, "guard/other", "owner sibling change\n")
-            }
+        private func Upstream(flow NativeFixture, conflict bool = false) string {
+            PublishedContribution.Write(flow.Upstream, ".github/workflows/verify.yml", "timeout-minutes: 30\n")
+            flow.Git("-C", flow.Upstream, "mv", ".github/workflows/old.yml", ".github/workflows/renamed.yml")
+            File.Delete(Path.Combine(flow.Upstream, "protected/gone"))
+            File.SetUnixFileMode(
+                Path.Combine(flow.Upstream, "protected/content"),
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+            )
+            File.Delete(Path.Combine(flow.Upstream, "protected/link"))
+            File.CreateSymbolicLink(Path.Combine(flow.Upstream, "protected/link"), "content")
+            PublishedContribution.Write(flow.Upstream, "protected/new", "owner addition\n")
+            PublishedContribution.Write(flow.Upstream, "guard/other", "owner sibling change\n")
             if conflict {
                 PublishedContribution.Write(flow.Upstream, "shared.txt", "owner shared resolution input\n")
             }
@@ -263,11 +259,12 @@ internal class SynchronizationChecks {
             }
             if fault.StartsWith("tree-", StringComparison.Ordinal) {
                 flow.State["tree_fault"] = JsonValue.Create(fault.Substring("tree-".Length))
-                return ""
+                return fault == "tree-ancestor" ?
+                "Missing protected tree ancestor evidence": "Missing, truncated or mismatched protected tree evidence"
             }
             if fault == "local-final-ancestry" {
                 flow.State["local_final_ancestry_fault"] = JsonValue.Create("true")
-                return "Missing local synchronization ancestry evidence"
+                return "git failed: Missing local synchronization ancestry evidence"
             }
             if fault.StartsWith("local-tree-", StringComparison.Ordinal) {
                 flow.State["local_tree_fault"] = JsonValue.Create(fault.Substring("local-tree-".Length))
@@ -277,7 +274,9 @@ internal class SynchronizationChecks {
             flow.State[
                 fault == "wrong-donor" ? "viewer_login": fault == "wrong-actor" ? "viewer_id": "fork_owner_id"
             ] = fault == "wrong-donor" ? JsonValue.Create("other"): JsonValue.Create(124)
-            return ""
+            return fault == "fork-owner" ?
+            "Head repository must be writable and numerically owned by the authenticated donor":
+            "Use the same donor account and numeric identity"
         }
 
         private func Run(preparation PublishedContribution, mode string) {
@@ -295,7 +294,7 @@ internal class SynchronizationChecks {
             let verification = File.ReadAllText(Path.Combine(run, "verification.json"))
             let h = Check.Text(Saved(run)["commit"])
             let stateBefore = Check.Text(coordination.State()["sha"])
-            let upstream = Upstream(flow, mode == "ordinary", mode == "conflict")
+            let upstream = Upstream(flow, conflict: mode == "conflict")
             var candidate = Candidate(flow, run, upstream, mode == "conflict")
             if mode == "conflict" {
                 PublishedContribution.Write(Path.Combine(run, "checkout"), "new-parent/public", "unrelated sibling\n")
@@ -465,6 +464,7 @@ internal class SynchronizationChecks {
                 flow.Save()
                 let refused = Amend(flow, run, candidate, grant, 1)
                 Check.Contains(refused.Output + refused.Error, expected)
+                flow.NoInference()
                 refusal = refused
             }
             let result = refusal ?? Amend(flow, run, candidate, grant, success ? 0: 1)
@@ -541,7 +541,8 @@ internal class SynchronizationChecks {
                 )
                 flow.NoInference()
                 coordination.RewriteState(coordination.State()["state"] ?? throw Exception("Missing state"))
-                coordination.Coordinate(coordination.Event(request), 1)
+                let stale = coordination.Coordinate(coordination.Event(request), 1)
+                Check.Contains(stale.Output + stale.Error, "Stale state or approval")
                 return
             }
             if mode == "ordinary" {
@@ -610,7 +611,7 @@ internal class SynchronizationChecks {
             )
             Check.Contains(
                 flow.Git("-C", Path.Combine(flow.Bin, "fork"), "show", candidate + ":.github/workflows/verify.yml"),
-                mode == "ordinary" ? "15": "30"
+                "30"
             )
             Check.Contains(flow.Git("-C", Path.Combine(flow.Bin, "fork"), "show", h + ":result.txt"), "")
             if mode != "ordinary" {
@@ -1098,8 +1099,7 @@ internal class SynchronizationChecks {
             let preparations = Dictionary[string, PublishedContribution]()
             try {
                 for version in[]string{"current"} {
-                    var index int32
-                    for mode in[]string{
+                    let mainModes = []string{
                         "ordinary",
                         "conflict",
                         "stale-creation",
@@ -1127,7 +1127,9 @@ internal class SynchronizationChecks {
                         "approval",
                         "access-denied",
                         "reconcile-moving-target",
-                        "reconcile-moving-target-coordinated",
+                        "reconcile-moving-target-coordinated"
+                    }
+                    let selectedModes = []string{
                         "selected-target",
                         "revoked",
                         "deleted",
@@ -1161,35 +1163,35 @@ internal class SynchronizationChecks {
                         "reconcile-conflict",
                         "reconcile-interruption",
                         "reconcile-protected"
-                    } {
-                        index++
-                        if only != "" && !selectors.Contains(version) && !selectors.Contains(mode) &&
-                            !selectors.Contains(version + "/" + mode) {
+                    }
+                    for target in[]string{"", "release/review"} {
+                        if (partition == 1 && target != "") || (partition == 2 && target == "") {
                             continue
                         }
-                        let selected = index > 28
-                        if (partition == 1 && selected) || (partition == 2 && !selected) {
-                            continue
+                        for mode in target == "" ? mainModes: selectedModes {
+                            if only != "" && !selectors.Contains(version) && !selectors.Contains(mode) &&
+                                !selectors.Contains(version + "/" + mode) {
+                                continue
+                            }
+                            matched = true
+                            matchedSelectors.Add(version)
+                            matchedSelectors.Add(mode)
+                            matchedSelectors.Add(version + "/" + mode)
+                            if !CiShard.Include("Synchronization/" + version + "/" + mode) {
+                                continue
+                            }
+                            let key = version + "/" + target
+                            if !preparations.ContainsKey(key) {
+                                preparations[key] = PublishedContribution.Create(
+                                    binary,
+                                    true,
+                                    synchronization: true,
+                                    baseBranch: target
+                                )
+                            }
+                            Run(preparations[key], mode)
+                            Console.WriteLine("PASS synchronization " + version + "/" + mode)
                         }
-                        matched = true
-                        matchedSelectors.Add(version)
-                        matchedSelectors.Add(mode)
-                        matchedSelectors.Add(version + "/" + mode)
-                        if !CiShard.Include("Synchronization/" + version + "/" + mode) {
-                            continue
-                        }
-                        let target = selected ? "release/review": ""
-                        let key = version + "/" + target
-                        if !preparations.ContainsKey(key) {
-                            preparations[key] = PublishedContribution.Create(
-                                binary,
-                                true,
-                                synchronization: true,
-                                baseBranch: target
-                            )
-                        }
-                        Run(preparations[key], mode)
-                        Console.WriteLine("PASS synchronization " + version + "/" + mode)
                     }
                 }
                 Check.That(matched, "Unknown synchronization selector: " + only)
