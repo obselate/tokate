@@ -51,7 +51,10 @@ internal class OmpHarness {
             }
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget)[]string {
+        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
+            []string,
+            Dictionary[string, Object?]?
+        ] {
             let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
             let runtime = OmpRuntime.Runtime(options, coding)
             if options.Need("harness-path") != run.Text("harness_path") {
@@ -83,7 +86,7 @@ internal class OmpHarness {
                 "max_tokens": J.Number(limits, "maxTokens"),
                 "arguments": invocation.ToArray()
             }
-            return args.ToArray()
+            return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
         internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[

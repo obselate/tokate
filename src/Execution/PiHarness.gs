@@ -256,7 +256,10 @@ internal class PiHarness {
             run.Fields["endpoint_catalog"] = PiCatalog.Read(run.Text("pi_node"), run.Text("model"), endpoint, coding)
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget)[]string {
+        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
+            []string,
+            Dictionary[string, Object?]?
+        ] {
             let runtime = PiBoundary.Probe(run.Text("pi_root"), run.Text("pi_node"), coding)
             let endpoint = PiBoundary.Endpoint(run.Text("pi_endpoint"))
             let limits = PiBoundary.ModelSettings(
@@ -273,8 +276,7 @@ internal class PiHarness {
             args.AddRange([]string{"--mode", "json", "--provider", J.Text(limits, "provider")})
             args.AddRange([]string{"--model", run.Text("model")})
             args.AddRange([]string{"--thinking", run.Text("effort") == "absent" ? "off": run.Text("effort")})
-            run.Fields["pi_version"] = J.Text(runtime, "version")
-            run.Fields["observed_invocation"] = map[string, Object?]{
+            let invocation = map[string, Object?]{
                 "harness": "pi",
                 "sdk_version": J.Text(runtime, "version"),
                 "node_version": J.Text(runtime, "node"),
@@ -284,7 +286,10 @@ internal class PiHarness {
                 "context_window": J.Number(limits, "contextWindow"),
                 "max_tokens": J.Number(limits, "maxTokens")
             }
-            return args.ToArray()
+            return ValueTuple[[]string, Dictionary[string, Object?]?](
+                args.ToArray(),
+                map[string, Object?]{"pi_version": J.Text(runtime, "version"), "observed_invocation": invocation}
+            )
         }
 
         internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[

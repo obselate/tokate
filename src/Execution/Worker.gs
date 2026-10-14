@@ -216,7 +216,10 @@ internal class Worker {
             run.Fields["codex_version"] = version
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget)[]string {
+        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
+            []string,
+            Dictionary[string, Object?]?
+        ] {
             let harnessPath = run.Text("harness_path")
             let selected = J.Get(run.Element(), "selection")
             let checkout = Path.Combine(directory, "checkout")
@@ -239,7 +242,7 @@ internal class Worker {
             Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
             Config(args, "permissions.tokate.network.enabled", "true")
             args.Add("-")
-            return Command(args.ToArray(), harnessPath)
+            return ValueTuple[[]string, Dictionary[string, Object?]?](Command(args.ToArray(), harnessPath), nil)
         }
 
         internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[

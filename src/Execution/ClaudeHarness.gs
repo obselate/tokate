@@ -54,7 +54,10 @@ internal class ClaudeHarness {
             }
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget)[]string {
+        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
+            []string,
+            Dictionary[string, Object?]?
+        ] {
             let options = Args([]string{"work", "--harness", "claude"})
             options.Values["--harness-path"] = run.Text("harness_path")
             options.Values["--claude-profile"] = run.Text("claude_profile")
@@ -84,7 +87,7 @@ internal class ClaudeHarness {
                 "effort": run.Text("effort"),
                 "arguments": invocation
             }
-            return args.ToArray()
+            return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
         internal func Read(directory string, run Data, record JsonElement, result CommandResult) Dictionary[

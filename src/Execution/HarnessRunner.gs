@@ -9,14 +9,20 @@ import System.Text.Json
 
 internal class Harness {
     internal let Label string
-    internal let Prepare Func[string, Data, JsonElement, RuntimeBudget, []string]
+    internal let Prepare Func[
+        string,
+        Data,
+        JsonElement,
+        RuntimeBudget,
+        ValueTuple[[]string, Dictionary[string, Object?]?]
+    ]
     internal let Read Func[string, Data, JsonElement, CommandResult, Dictionary[string, Object?]]
     internal let Activity Action[string]
     internal let BeforeRun Action[Data, RuntimeBudget]?
 
     internal init(
         label string,
-        prepare Func[string, Data, JsonElement, RuntimeBudget, []string],
+        prepare Func[string, Data, JsonElement, RuntimeBudget, ValueTuple[[]string, Dictionary[string, Object?]?]],
         read Func[string, Data, JsonElement, CommandResult, Dictionary[string, Object?]],
         activity Action[string],
         beforeRun Action[Data, RuntimeBudget]? = nil
@@ -114,13 +120,18 @@ internal class HarnessRunner {
                 let coding = RuntimeBudget(timer, seconds - reserve)
                 let checkout = Path.Combine(directory, "checkout")
                 WorkspacePreparation.Ready(directory, run)
-                let args = adapter.Prepare.Invoke(directory, run, record, coding)
+                let prepared = adapter.Prepare.Invoke(directory, run, record, coding)
                 ContributionAuthority.Recheck(run)
                 WorkspacePreparation.Ready(directory, run)
 
                 var inferenceStarted = false
                 try {
                     adapter.BeforeRun?.Invoke(run, coding)
+                    if let fields = prepared.Item2 {
+                        for (name, value) in fields {
+                            run.Fields[name] = value
+                        }
+                    }
                     run.Fields["state"] = "running"
                     run.Fields["failure_stage"] = "inference"
                     run.Fields["failure_reason"] = "inference_failed"
@@ -147,7 +158,7 @@ internal class HarnessRunner {
                         }
                         result = Commands.Run(
                             LocalPaths.NeedSystemTool("env", codex ? directory: checkout),
-                            args,
+                            prepared.Item1,
                             checkout,
                             prompt,
                             totalSeconds,
