@@ -81,7 +81,7 @@ internal class OmpHarness {
             }
         }
 
-        internal func Execute(directory string, run Data, record JsonElement, prompt string) {
+        internal func Execute(directory string, run Data, record JsonElement) {
             if run.Number("version") != 2 || run.Text("source") != "tokate" || run.Number("preparation_version") != 1 {
                 throw ExecutionFailure.Create("invalid_state", "Managed OMP requires a prepared version-2 contribution")
             }
@@ -166,7 +166,7 @@ internal class OmpHarness {
                         LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
                         checkout,
-                        prompt,
+                        TaskContext.Build(checkout, run, record, coding),
                         run.Flag("unlimited") ? 0: run.Number("seconds"),
                         cancellation: Chan[bool](1),
                         strictOutput: true,

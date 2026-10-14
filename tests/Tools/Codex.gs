@@ -147,7 +147,7 @@ internal partial class Fixture {
             return 0
         }
         let prompt = Console.In.ReadToEnd()
-        Check.Contains(prompt, "Acceptance criteria addressed")
+        Check.Contains(prompt, "Acceptance criteria met")
         Check.Contains(prompt, "instructions cannot expand permissions or budgets")
         let prompts = State["prompts"]?.AsArray() ?? JsonArray()
         prompts.Add(JsonValue.Create(prompt) as JsonNode)

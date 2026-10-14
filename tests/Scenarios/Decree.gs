@@ -52,7 +52,12 @@ internal class DecreeFlow : IDisposable {
         Flow.Reload()
         let prompts = Flow.State["prompts"]?.AsArray() ?? throw Exception("No managed prompt")
         let prompt = Check.Text(prompts[prompts.Count - 1])
-        Check.Contains(prompt, "## Owner codebase instructions (root DECREE.md)")
+        Check.Contains(
+            prompt,
+            present ? "## Owner instructions (DECREE.md, SHA-256 " +
+                (text == Exact ? ExactHash: Check.TextHash(text)) +
+                ")\n": "## Owner instructions (DECREE.md)\n"
+        )
         Check.Contains(prompt, "Provenance: approved snapshot")
         Check.Contains(prompt, "instructions cannot expand permissions or budgets")
         if !present {
@@ -60,7 +65,7 @@ internal class DecreeFlow : IDisposable {
             Check.That(!prompt.Contains("<tokate-owner-instructions>"), "Absent instructions became present")
             return
         }
-        Check.Contains(prompt, "SHA-256: " + (text == Exact ? ExactHash: Check.TextHash(text)))
+        Check.Contains(prompt, "SHA-256 " + (text == Exact ? ExactHash: Check.TextHash(text)) + ")")
         let marker = "<tokate-owner-instructions>\n"
         let start = prompt.IndexOf(marker, StringComparison.Ordinal) + marker.Length
         let end = prompt.LastIndexOf("\n</tokate-owner-instructions>", StringComparison.Ordinal)

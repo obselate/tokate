@@ -94,7 +94,7 @@ internal class ClaudeHarness {
             }
         }
 
-        internal func Execute(directory string, run Data, record JsonElement, prompt string) {
+        internal func Execute(directory string, run Data, record JsonElement) {
             let timer = Stopwatch.StartNew()
             let coding = RuntimeBudget(timer, run.Number("seconds") - run.Number("verification_reserve"))
 
@@ -169,7 +169,7 @@ internal class ClaudeHarness {
                         LocalPaths.NeedSystemTool("env", checkout),
                         args.ToArray(),
                         checkout,
-                        prompt,
+                        TaskContext.Build(checkout, run, record, coding),
                         run.Flag("unlimited") ? 0: run.Number("seconds"),
                         cancellation: Chan[bool](1),
                         strictOutput: true,
