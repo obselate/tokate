@@ -1522,6 +1522,13 @@ internal class CliDiscovery {
                 []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
                 []string{"claim", "owner/project#1", "--source=invalid"},
                 []string{"sync", "owner/project#10", "merge"},
+                []string{
+                    "sync",
+                    "owner/project#10",
+                    "revoke",
+                    "--grant=" + String('a', 40),
+                    "--commit=" + String('b', 40)
+                },
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
                 []string{"coordinator-setup", "--repo=owner/project"},

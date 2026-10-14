@@ -1381,6 +1381,12 @@ internal class Cli {
                 for key in(args.Subject == "authorize" ? "commit,upstream": "grant").Split(',') {
                     args.Need(key)
                 }
+
+                for key in(args.Subject == "authorize" ? "grant": "commit,upstream,sync").Split(',') {
+                    if args.Get(key) != "" {
+                        throw Exception("Unknown option for sync " + args.Subject + ": --" + key)
+                    }
+                }
             }
 
             if args.Command == "defaults" {

@@ -132,7 +132,7 @@ Obtain a new owner grant for the next exact candidate and target.
 
 For a Codex, Pi or OMP managed run stopped with `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget.
 
-1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command with its current state SHA.
+1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command.
 
    ```sh
    tokate status --run PRIOR_RUN_DIR --json

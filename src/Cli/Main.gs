@@ -394,7 +394,7 @@ func Dispatch(options Args) int32 {
             }
 
             if options.Command == "work" && ready.Text("source") == "tokate" {
-                if !ready.Flag("gratis") {
+                if options.Get("run") != "" && !ready.Flag("gratis") {
                     Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
                 }
                 HarnessRunner.Execute(directory, options)

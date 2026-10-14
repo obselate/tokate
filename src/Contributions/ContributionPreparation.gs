@@ -256,11 +256,10 @@ internal class ContributionPreparation {
 
             if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                if RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) == RepositoryIdentity.PositiveId(
-                    J.Get(viewer, "id")
-                ) &&
-                    J
-                    .Get(state.Value(), "contribution").ValueKind != JsonValueKind.Object {
+                if !Donate.Active && RepositoryIdentity.PositiveId(
+                    J.Get(reservation, "actor")
+                ) == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && J.Get(state.Value(), "contribution")
+                    .ValueKind != JsonValueKind.Object {
                     return Prepare(args, repo, issue, viewer, state, record)
                 }
 
@@ -282,6 +281,8 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
+            run.Fields["state"] = "claim_pending"
+
             if run.Text("source") != "external" {
                 DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
@@ -302,7 +303,6 @@ internal class ContributionPreparation {
 
             run.Fields["claim_request"] = request
             run.Fields["requested_fork"] = args.Get("fork")
-            run.Fields["state"] = "claim_pending"
 
             let directory = Allocate(RunStorage.Store(args), run, J.Text(request, "uuid"))
             Create(directory)

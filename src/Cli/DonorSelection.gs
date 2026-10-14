@@ -253,7 +253,10 @@ internal class DonorSelection {
                         " seconds reserved for verification",
                     error: true
                 )
-                if !OwnerSetup.Confirm(args, args.Command == "claim" ? "Post this claim?": "Start this donation?") {
+                let posting = run?.Text("state") == "claim_pending"
+                let question = args.Command != "claim" ? "Start this donation?":
+                posting ? "Post this claim?": "Prepare this attempt?"
+                if !OwnerSetup.Confirm(args, question) {
                     throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
                 }
                 args.Values["--yes"] = "true"

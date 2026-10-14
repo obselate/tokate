@@ -90,7 +90,7 @@ internal class AttemptContinuation {
                         Terminal.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
                     ) +
                         Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
-                        ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before work."
+                        ". Wait for each coordinator acceptance, then read status again. Review the new time budget before work."
                 }
             } catch (error Exception) when error is CliFailure ||
                 error is JsonException ||
