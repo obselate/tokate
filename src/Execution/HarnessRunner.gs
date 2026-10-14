@@ -194,6 +194,9 @@ internal class HarnessRunner {
                     }
                     run.Fields["state"] = "failed"
                     run.Fields["error"] = error.Message
+                    if codex && !run.Fields.ContainsKey("failure_reason") {
+                        run.Fields["failure_reason"] = PublicOutput.FailureCode
+                    }
                     run.Save(directory)
                     throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }

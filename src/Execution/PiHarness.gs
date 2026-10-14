@@ -271,7 +271,6 @@ internal class PiHarness {
             )
             PiBoundary.CheckEffort(limits, run.Text("effort"))
 
-            let checkout = Path.Combine(directory, "checkout")
             let args = PiBoundary.Cli(run.Text("harness_path"), run.Text("pi_node"))
             args.AddRange([]string{"--mode", "json", "--provider", J.Text(limits, "provider")})
             args.AddRange([]string{"--model", run.Text("model")})
@@ -308,8 +307,7 @@ internal class PiHarness {
                 run.Text("model"),
                 J.Text(J.Get(run.Element(), "observed_invocation"), "provider")
             )
-            run.Fields["reported_model"] = usage["reported_model"]
-            usage.Remove("reported_model")
+            run.Fields["reported_model"] = run.Text("model")
             run.Fields[
                 "usage_provenance"
             ] = "harness-reported; server identity, resources and billing are not independently proven"

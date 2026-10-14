@@ -124,7 +124,6 @@ internal class SessionEvidence {
 
                 File.WriteAllText(Path.Combine(directory, "report.md"), report)
                 return map[string, Object?]{
-                    "reported_model": model,
                     "input_tokens": input,
                     "cached_input_tokens": cached,
                     "output_tokens": generated

@@ -108,8 +108,7 @@ internal class OmpHarness {
                 run.Text("provider"),
                 omp: true
             )
-            run.Fields["reported_model"] = usage["reported_model"]
-            usage.Remove("reported_model")
+            run.Fields["reported_model"] = run.Text("model")
             run.Fields[
                 "usage_provenance"
             ] = "harness-reported for the main session; provider identity, credits and billing are not independently proven"
