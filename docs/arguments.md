@@ -27,7 +27,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
 | `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. `OWNER/REPO` alone is invalid. |
 | `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
-| `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
+| `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show issue, state, PR and next action in a short table. `--json` adds the details. |
 | `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
 | `runs` | `tokate runs [ISSUE \| OWNER/REPO]` | List saved runs offline. |
 | `pause` | `tokate pause RUN` | Pause your reservation. |
