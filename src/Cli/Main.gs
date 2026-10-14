@@ -24,7 +24,6 @@ func Main(args[]string) int32 {
 
     try {
         options = Args(args)
-        RunReference.Locate()
         traffic = options.Get("traffic") == "true"
         Cli.Validate(options)
         validated = true
@@ -104,6 +103,10 @@ func Main(args[]string) int32 {
         if traffic {
             ApiTransport.Report()
         }
+    }
+
+    if PublicOutput.RunDirectory != "" {
+        RunReference.Locate()
     }
 
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {

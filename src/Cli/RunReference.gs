@@ -5,12 +5,15 @@ import System.Collections.Generic
 
 internal class RunReference {
     shared {
-        private var Here string = ""
+        private var Here string? = nil
 
         internal func Locate() {
-            try {
-                Here = RepositoryInput.Local()
-            } catch (error Exception) { }
+            if Here == nil {
+                Here = ""
+                try {
+                    Here = RepositoryInput.Local()
+                } catch (error Exception) { }
+            }
         }
 
         internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
@@ -93,18 +96,11 @@ internal class RunReference {
                 }
             }
 
-            var repo = args.Get("repo")
+            Locate()
+            let repo = args.Get("repo") != "" ? args.Get("repo"): optional ? Here ?? "": RepositoryInput.Local()
 
             if repo == "" {
-                try {
-                    repo = RepositoryInput.Local()
-                } catch (error Exception) {
-                    if optional {
-                        return
-                    }
-
-                    throw error
-                }
+                return
             }
 
             let saved = SavedRuns(args.Get("runs") != "" ? []string{RunStorage.Store(args)}: RunStorage.Roots())
@@ -155,6 +151,7 @@ internal class RunReference {
         }
 
         internal func Print(args Args) {
+            Locate()
             let saved = SavedRuns(RunStorage.Roots(), listingRepo: Here)
             let repo = args.Get("issue") != "" && args.Get("repo") == "" ? RepositoryInput.Local(): args.Get("repo")
             let rows = List[SavedRun]()
