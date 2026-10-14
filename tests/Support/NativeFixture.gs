@@ -369,56 +369,6 @@ internal open class NativeFixture : IDisposable {
         Git("-C", Path.Combine(Bin, "fork"), "fetch", Upstream, "main")
     }
 
-    internal func StartTreeTraffic() {
-        ResetTraffic()
-        File.WriteAllText(Path.Combine(Bin, "local-tree-heads.txt"), "")
-    }
-
-    internal func TreeTraffic(previous string, grants int32, later bool, local bool) {
-        Reload()
-        let heads = File.ReadAllLines(Path.Combine(Bin, "local-tree-heads.txt"))
-        let previousTree = Git("-C", Path.Combine(Bin, "fork"), "rev-parse", previous + "^{tree}")
-        var localPasses int32
-        for head in heads {
-            if head == previous {
-                localPasses++
-            }
-        }
-        var remotePasses int32
-        var upstreamTrees int32
-        var forkTrees int32
-        for call in State["api_calls"]?.AsArray() ?? JsonArray() {
-            let path = Check.Text(call["path"])
-            if !path.Contains("/git/trees/") || !path.EndsWith("?recursive=1", StringComparison.Ordinal) {
-                continue
-            }
-            if path.StartsWith("repos/owner/project/", StringComparison.Ordinal) {
-                upstreamTrees++
-            } else {
-                forkTrees++
-            }
-            if path == "repos/donor/project/git/trees/" + previousTree + "?recursive=1" {
-                remotePasses++
-            }
-        }
-        let candidateTrees = 2 * grants + (later ? 1: 0)
-        if local {
-            Check.That(localPasses > 0, "Missing local synchronization pass")
-            Check.That(heads.Length == localPasses * candidateTrees, "Repeated local tree materialization")
-        } else {
-            Check.That(heads.Length == 0 && remotePasses == 1, "Missing isolated remote synchronization pass")
-            Check.That(forkTrees == candidateTrees, "Repeated remote candidate tree materialization")
-            Check.That(upstreamTrees == grants + 1, "Repeated repository baseline tree materialization")
-        }
-        Console.WriteLine(
-            "Tree traffic: grants=" + grants.ToString() + " later=" + later.ToString() +
-                " local_passes=" +
-                localPasses.ToString() + " local_trees=" + heads.Length.ToString() +
-                " upstream_trees=" +
-                upstreamTrees.ToString() + " fork_trees=" + forkTrees.ToString()
-        )
-    }
-
     internal func ResetTraffic() {
         Reload()
         State["api_calls"] = JsonArray()
