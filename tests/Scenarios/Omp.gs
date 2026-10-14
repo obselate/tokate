@@ -7,8 +7,8 @@ import System.Text.Json.Nodes
 
 internal class OmpChecks {
     shared {
-        private func Managed(binary string) {
-            for mode in[]string{
+        internal func Managed(binary string, smoke bool = false) {
+            let modes = smoke ? []string{"normal", "failed"}: []string{
                 "normal",
                 "failed",
                 "substituted",
@@ -16,7 +16,8 @@ internal class OmpChecks {
                 "incomplete",
                 "late-assistant",
                 "late-tool"
-            } {
+            }
+            for mode in modes {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 let flow = test.Flow
@@ -164,6 +165,9 @@ internal class OmpChecks {
                         mode == "length" ? "output length limit":
                         mode == "incomplete" ? "did not report a terminal result": "events after its terminal result"
                     )
+                    if mode == "failed" {
+                        Check.FailedRun(flow, run)
+                    }
                     flow.NoPr()
                 }
                 flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, 1)

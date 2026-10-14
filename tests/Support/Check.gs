@@ -68,6 +68,27 @@ internal class Check {
             }
         }
 
+        internal func FailedRun(flow NativeFixture, run string) {
+            let saved = Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            That(
+                Text(saved["state"]) == "failed" && Text(saved["failure_reason"]) == "inference_failed",
+                "Harness failure state or code was not saved"
+            )
+            That(
+                saved["turn_completed"] == nil && saved["commit"] == nil && saved["verification"] == nil,
+                "Failed harness reached candidate verification"
+            )
+            let status = Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+            That(Text(status["data"]?["error"]?["code"]) == "inference_failed", "Status lost the failure code")
+            let next = "[\"tokate\",\"help\",\"prepare\",\"--json\"]"
+            That(
+                status["data"]?["next"]?["command"]?.ToJsonString() == next &&
+                    (status["next_actions"]?.ToJsonString() ?? "").Contains(next),
+                "Harness failure lost the fresh preparation action"
+            )
+            flow.NoPr()
+        }
+
         internal func Contains(text string, expected string) -> That(
             text.Contains(expected),
             "Missing: " + expected + "\n" + text
