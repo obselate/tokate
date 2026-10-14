@@ -20,8 +20,10 @@ Use this command reference for current main. Put the target after the command.
 
 | Command | Usage | What it does |
 | --- | --- | --- |
-| `work` | `tokate work [ISSUE [NAME] \| OWNER/REPO \| RUN] [options]` | Code an approved issue and verify it. Uses donor inference. |
-| `claim` | `tokate claim [ISSUE [NAME] \| OWNER/REPO] [options]` | Reserve an issue without inference or publication. |
+| `work` | `tokate work ISSUE [NAME] \| RUN [options]` | Code an approved issue and verify it. Uses donor inference. |
+| `work` repository | `tokate work OWNER/REPO [--time PER_TASK] [--total TOTAL] [options]` | Claim, work and submit approved issues until stopped. Bare `work` uses the local GitHub remote. |
+| `work` stop | `tokate work OWNER/REPO stop [--yes]` | Wait for the current task and print the session report. |
+| `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. `OWNER/REPO` alone is invalid. |
 | `submit` | `tokate submit RUN` | Push saved work and request a draft PR. |
 | `status` | `tokate status [ISSUE \| OWNER/REPO \| RUN]` | Show state and the next action. |
 | `checks` | `tokate checks PR\|RUN [--watch]` | Check receipt, report, CI and freshness gates. |
@@ -73,9 +75,9 @@ Use this command reference for current main. Put the target after the command.
 | --- | --- |
 | `42` | Issue 42 in the checkout's GitHub remote. `verify` and `checks` use PR 42. |
 | `OWNER/REPO#42` | Issue 42 in that repository. `verify` and `checks` use PR 42. |
-| `https://github.com/OWNER/REPO/issues/42` | Exact issue reference. |
-| `https://github.com/OWNER/REPO/pull/10` | Exact PR reference for a PR command. |
-| `OWNER/REPO` or repository URL | Repository target. `work OWNER/REPO` opens an issue chooser. |
+| `https://github.com/OWNER/REPO/issues/42` | Issue reference for issue commands. For `work`, it selects the repository loop. |
+| `https://github.com/OWNER/REPO/pull/10` | PR reference for PR commands. For `work`, it selects the repository loop. |
+| `OWNER/REPO` or repository URL | Repository target. `work` loops until stopped. `claim` requires a named issue. |
 | `42-1` | Attempt 1 for issue 42. |
 | `OWNER/REPO#42-1` | Attempt 1 in an explicit repository. |
 | `--run DIR` | Exact saved run directory. |
@@ -97,7 +99,7 @@ offer continuation. Other saved status reads are offline.
 | Exact commit or authority | `--commit SHA`, `--state SHA`, `--upstream SHA`, `--grant SHA` |
 | File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE`, `--output FILE` |
 | Execution selection | `--harness codex`, `--model MODEL`, `--effort high`, `--provider openai` |
-| Time with a required unit | `--time 30m`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |
+| Time with a required unit | `--time 30m`, `--total 8h`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |
 | Units | `s` seconds, `m` minutes, `h` hours, `d` days |
 
 See [owners](owners.md), [donors](donors.md) and [recovery](recovery.md).

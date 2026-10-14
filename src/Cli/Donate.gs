@@ -11,9 +11,6 @@ internal class Donate {
     shared {
         internal var Active bool
         private func Running(directory string) bool {
-            if !Directory.Exists(directory) {
-                return false
-            }
             try {
                 using let lease = RunStorage.Lease(directory)
                 return false
@@ -38,6 +35,7 @@ internal class Donate {
                 }
             }
             WizardScreen.Close()
+            Directory.CreateDirectory(directory)
             if Running(directory) {
                 File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
                 while Running(directory) {
@@ -59,7 +57,7 @@ internal class Donate {
             while true {
                 let query = "/issues?state=open&labels=tokate%3Aapproved&sort=created&direction=asc&per_page=100&page="
                 let issues = GitHub.Api("repos/" + repo + query + page.ToString())
-                for issue in J.Items(issues) {
+                for issue in issues.EnumerateArray() {
                     let number = J.Number(issue, "number")
                     if attempted.Contains(number) || J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
                         continue
@@ -88,7 +86,7 @@ internal class Donate {
                 let ineligible = error is CliFailure &&
                     (error.Code == "invalid_state" || error.Code == "stale_approval")
                 task["result"] = unclaimed && ineligible ? "skipped": "failed"
-                if directory != "" && Data.Load(directory).Text("id") != "" {
+                if !unclaimed {
                     ApiTransport.BeginDeadline(30)
                     try {
                         while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
@@ -133,6 +131,7 @@ internal class Donate {
             }
             WizardScreen.Close()
             Terminal.Message(consent + budgets, error: true)
+            options.Values["--yes"] = "true"
             for key in[]string{"harness", "provider", "model", "effort"} {
                 options.Values["--" + key] = J.Text(selection, key)
             }

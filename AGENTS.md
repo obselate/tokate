@@ -14,8 +14,8 @@ PRs. Donors use their own accounts and tools. Owners review and merge.
 Use [installation](README.md), the [owner guide](docs/owners.md) or the
 [donor guide](docs/donors.md). Main supports Linux x86_64 with glibc 2.34+ or Alpine 3.24
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
-In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use
-`OWNER/REPO#42` or a GitHub URL.
+In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42`.
+GitHub URLs select a repository loop for `work`, or an issue or PR for the other matching commands.
 Do not infer support for another platform, forge or harness.
 
 ## Install Tokate and its dependencies
@@ -106,12 +106,12 @@ command fails, writes nothing and lists the attempts. Name one as `42-1`.
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
-Use `tokate donate OWNER/REPO start [--time PER_TASK] [--total TOTAL]` with
+Use `tokate work OWNER/REPO [--time PER_TASK] [--total TOTAL]` with
 `--harness`, `--model`, `--effort` or the default donor profile to donate successive tasks.
 One confirmation names the repository, tool, model, effort and time limits. It
 consents to every task claimed in that repository within those limits.
 Noninteractive and JSON use require `--yes`. Without `--total`, it runs until stopped.
-`tokate donate OWNER/REPO stop` waits for the current task and prints the report.
+`tokate work OWNER/REPO stop` waits for the current task and prints the report.
 The loop submits drafts, rechecks idle repositories every ten minutes, releases failed tasks and stops after three consecutive failures.
 
 Before inference, obtain consent for the task, harness/model and time allocation.

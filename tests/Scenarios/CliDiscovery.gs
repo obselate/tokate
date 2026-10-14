@@ -15,7 +15,7 @@ func DiscoveryPeer(socket int32, level int32, option int32, value[]byte, length[
 
 internal class CliDiscovery {
     shared {
-        private let Commands[]string = "donate work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+        private let Commands[]string = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
             .Split(' ')
 
         private func Address(root string) UnixDomainSocketEndPoint -> UnixDomainSocketEndPoint(
@@ -1059,7 +1059,7 @@ internal class CliDiscovery {
                 }
                 Check.That(Check.Text(command["noninteractive"]) == "true", "Hidden interactive command")
                 let name = Check.Text(command["command"])
-                let inference = name == "work" || name == "donate"
+                let inference = name == "work"
                 Check.That(
                     Check.Text(command["inference"]) == (inference ? "true": "false"),
                     "Incorrect inference effects"
@@ -1738,14 +1738,15 @@ internal class CliDiscovery {
             Check.Contains(work, "inference")
             Check.Contains(work, "verify it")
             Check.Contains(work, "Total budget for coding and verification")
-            Check.Contains(work, "(required)")
+            Check.Contains(work, "Bare work uses the local GitHub remote")
             Check.Contains(work, "use RUN or --run DIR instead of required inputs")
             Check.That(!work.Contains("tokate doctor"), "Work help repeats global help")
-            let donate = Call(binary, []string{"help", "donate"}, temp).Output
-            Check.Contains(donate, "OWNER/REPO start [--time PER_TASK]")
-            Check.Contains(donate, "tokate donate OWNER/REPO stop [--yes]")
-            Check.That(!donate.Contains("--profile"), "Donate help exposes a profile flag")
-            Check.That(!donate.Contains("NAME"), "Donate help exposes a profile positional")
+            Check.Contains(work, "[--total TOTAL]")
+            Check.Contains(work, "tokate work OWNER/REPO stop [--yes]")
+            let claim = Call(binary, []string{"help", "claim"}, temp).Output
+            Check.That(!claim.Contains("ISSUE|OWNER/REPO"), "Claim help permits a repository without an issue")
+            let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
+            Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
             Check.Contains(Call(binary, []string{"recover", "-h"}, temp).Output, "default: 5m")
             Check.Contains(
                 Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
@@ -1901,25 +1902,22 @@ internal class CliDiscovery {
             Call(binary, []string{"help", "work"}, temp)
             Call(binary, []string{"-h"}, temp)
             Call(binary, []string{"completion", "bash"}, temp)
-            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Required: ISSUE")
+            Check.Contains(Call(binary, []string{"work"}, temp, 1).Error, "Local Git is unavailable; name OWNER/REPO")
             Check.Contains(Call(binary, []string{"policy"}, temp, 1).Error, "name OWNER/REPO")
             temp.Env["PATH"] = originalPath
 
             File.Delete(Path.Combine(bin, "setsid"))
             File.CreateSymbolicLink(Path.Combine(bin, "setsid"), "/usr/bin/setsid")
+            let issueUrl = "https://github.com/owner/project/issues/1"
+            let commentUrl = "https://github.com/owner/project/issues/1#issuecomment-2"
             for argv in[][]string{
                 []string{"policy", "owner/project"},
                 []string{"policy", "https://github.com/owner/project"},
                 []string{"checks", "https://github.com/owner/project/pull/1"},
                 []string{"verify", "https://github.com/owner/project/pull/1"},
-                []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", issueUrl, "--model=model", "--effort=high", "--yes"},
                 []string{"work", "owner/project#1", "--model=model", "--effort=high"},
-                []string{
-                    "work",
-                    "https://github.com/owner/project/issues/1#issuecomment-2",
-                    "--model=model",
-                    "--effort=high"
-                }
+                []string{"work", commentUrl, "--model=model", "--effort=high", "--yes"}
             } {
                 let result = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
                 Check.That(result.Code == 1, "Recording gh stub should fail")
@@ -1928,7 +1926,7 @@ internal class CliDiscovery {
                 File.Delete(log)
             }
             let reference = "https://github.com/earendil-works/pi/releases/tag/v1.2.0?ref=x#fragment"
-            let argv = []string{"donate", reference, "start", "--model=model", "--effort=high", "--yes"}
+            let argv = []string{"work", reference, "--model=model", "--effort=high", "--yes"}
             let donation = TestProcess.Run(binary, argv, temp.Env, cwd: temp.Root)
             Check.That(donation.Code == 1, "Recording gh stub should fail")
             Check.Contains(File.ReadAllText(log), "\nrepos/earendil-works/pi\n")
@@ -2056,7 +2054,7 @@ internal class CliDiscovery {
             Check.That(!File.Exists(log), "Ambiguous remotes invoked GitHub")
             let urlOverride = TestProcess.Run(
                 binary,
-                []string{"work", "https://github.com/owner/project/issues/1", "--model=model", "--effort=high"},
+                []string{"work", issueUrl, "--model=model", "--effort=high", "--yes"},
                 temp.Env,
                 cwd: temp.Root
             )

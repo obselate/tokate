@@ -199,7 +199,7 @@ internal class Terminal {
                 return
             }
 
-            let stderr = error || PublicOutput.Enabled || Donate.Active
+            let stderr = error || PublicOutput.Enabled
             let value = Clean(PublicOutput.Enabled ? PublicOutput.Prose(text): text)
             let width = (stderr ? Console.IsErrorRedirected: Console.IsOutputRedirected) ? int32.MaxValue: Width(stderr)
 
@@ -740,11 +740,6 @@ internal class Terminal {
                     "reservation,lease,donor,actor,expires,status,attempt,pr,url,head"
                 )
 
-                return
-            }
-
-            if Donate.Active {
-                Message(title)
                 return
             }
 

@@ -26,7 +26,6 @@ internal class DonorSelection {
                 args.Command != "select" &&
                     args.Command != "claim" &&
                     args.Command != "work" &&
-                    args.Command != "donate" &&
                     (args.Command != "prepare" || args.Get("source") != "tokate")
             ) {
                 return

@@ -69,7 +69,7 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
 13. If submission is pending, inspect `tokate status 42-1` before repeating the same submit command.
 
-Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO` to pick an approved issue.
+Outside a checkout, use `tokate work OWNER/REPO#42` for one issue. `tokate work OWNER/REPO` runs successive approved tasks.
 
 | Screen control | Action |
 | --- | --- |
@@ -94,17 +94,17 @@ Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO
 | Submission | Tokate pushes saved work and requests a draft PR. It discovers or creates your fork. |
 | Review | The owner reviews and merges the PR. |
 
-## Donate until stopped
+## Work until stopped
 
 ```sh
-tokate donate OWNER/REPO start
-tokate donate OWNER/REPO stop
+tokate work OWNER/REPO
+tokate work OWNER/REPO stop
 ```
 
 Use the default donor profile or override it with `--harness`, `--model` and `--effort`.
 Save one with `tokate defaults set NAME --harness codex --model MODEL --effort high`,
 then `tokate defaults use NAME`. Check it with `tokate select OWNER/REPO NAME --non-interactive`.
-Any GitHub repository, release, tree, issue or PR URL selects its OWNER/REPO.
+Any github.com URL, including release, tree, issue or PR links, selects the repository loop.
 `--time` covers coding and verification per task, defaulting to the lower of one hour
 and the owner limit. Without `--total`, it runs until stopped. A task starts only
 when its full budget fits the remaining total.

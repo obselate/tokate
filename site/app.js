@@ -53,11 +53,11 @@ const roles = {
         title: "For Donors",
         steps: [
             "Install Tokate and prepare your own coding tools",
-            "Get access and claim an approved task",
-            "Prepare, run and submit verified work for a draft PR",
+            "Get access and name an issue or a repository to work through",
+            "Submit a named run, or let repository work submit successive drafts",
         ],
         guide: "donors",
-        prompt: "Read https://raw.githubusercontent.com/obselate/tokate/main/AGENTS.md and help me donate inference to a repository\nI am the donor\nConfirm my tools, the approved issue and my access\nGuide me through coordination, preparation, work and submission with the matching stable release\nExplain the budget before starting a run",
+        prompt: "Read https://raw.githubusercontent.com/obselate/tokate/main/AGENTS.md and help me donate inference to a repository\nI am the donor\nConfirm my tools, repository and access\nUse one named issue or tokate work OWNER/REPO for the approved-task loop\nExplain the per-task --time, optional --total and how to stop, then obtain consent before starting",
     },
 };
 let selectedRole = "owner";

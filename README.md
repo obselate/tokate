@@ -39,8 +39,10 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
 Run `tokate` for guided donation, owner setup, repository status and saved work.
-`tokate work OWNER/REPO` offers available issues. In a checkout, `tokate work 42` names
-issue 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or an issue link. See the
+`tokate work OWNER/REPO` runs approved issues until stopped. Add `--total` to cap the session.
+Use `tokate work OWNER/REPO stop` to stop. Bare `tokate work` uses the local GitHub remote.
+For one issue, use `tokate work 42` in a checkout or `tokate work OWNER/REPO#42` elsewhere.
+Any github.com URL selects the repository loop. See the
 [positional arguments guide](docs/arguments.md) for references and command forms.
 Use `tokate help COMMAND` for exact options. Scripts can use `--json` without prompts.
 

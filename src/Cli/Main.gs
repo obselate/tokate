@@ -219,7 +219,7 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
-    if options.Command == "donate" && options.Subject == "stop" {
+    if Cli.RepositoryWork(options) && options.Subject == "stop" {
         return Donate.Stop(options)
     }
 
@@ -236,10 +236,6 @@ func Dispatch(options Args) int32 {
     }
 
     switch options.Command {
-        case "donate" {
-            return Donate.Run(options)
-        }
-
         case "doctor" {
             return Startup.Doctor(options)
         }
@@ -411,6 +407,9 @@ func Dispatch(options Args) int32 {
         }
 
         case "work" {
+            if Cli.RepositoryWork(options) {
+                return Donate.Run(options)
+            }
             let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options): Path.GetFullPath(
                 options.Need("run")
             )
