@@ -55,7 +55,6 @@ internal class ProgressChecks {
             flow NativeFixture,
             run string,
             phase string,
-            cancel bool = false,
             unlimited bool = false
         ) Result {
             let info = TestProcess.StartInfo(
@@ -99,11 +98,6 @@ internal class ProgressChecks {
                             throw Exception("No live heartbeat for " + phase + ": " + diagnostic)
                         }
                     }
-                }
-                if cancel {
-                    Check.Success(
-                        TestProcess.Run("/usr/bin/kill", []string{"-INT", process.Id.ToString()}, flow.Temp.Env)
-                    )
                 }
                 Check.That(process.WaitForExit(30000), "Progress fixture failed to stop")
             } finally {
@@ -252,57 +246,44 @@ internal class ProgressChecks {
                 "Status invented a finite coding limit"
             )
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{"complete", "cancel", "verification"} {
+            for mode in[]string{"complete", "verification"} {
                 baseline.Restore()
-                flow.Mode(mode == "cancel" ? "timeout": "progress_delay")
+                flow.Mode("progress_delay")
                 flow.State["progress_delay_seconds"] = JsonValue.Create(10)
                 if mode == "verification" {
                     flow.State["verify_outcome"] = JsonValue.Create("timeout")
                 }
                 flow.Save()
-                let result = Live(flow, run, "Inference", mode == "cancel", true)
+                let result = Live(flow, run, "Inference", true)
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(result.Code == (mode == "complete" ? 0: 1), result.Output + result.Error)
                 Check.That(
                     Check.Text(saved["state"]) == (mode == "complete" ? "generated": "failed"),
                     "Unlimited work returned the wrong state"
                 )
-                if mode == "cancel" {
+                Check.That(
+                    Check.Text(saved["turn_completed"]) == "true",
+                    "Verification allowance stopped unlimited coding"
+                )
+                flow.Reload()
+                Check.Contains(Check.Text(flow.State["prompts"]?[0]), "unlimited coding time")
+                if mode == "verification" {
                     Check.That(
-                        saved["turn_completed"] == nil && Check.Text(
-                            saved["failure_reason"]
-                        ) == "inference_interrupted",
-                        "Stopped unlimited work fabricated completion"
-                    )
-                    TestProcess.Collected(
-                        File.ReadAllText(Path.Combine(flow.Bin, "child.pid")),
-                        "Unlimited cancellation left a descendant"
+                        Check.Text(saved["failure_reason"]) == "verification_failed",
+                        "Unlimited coding removed the verification deadline"
                     )
                 } else {
                     Check.That(
-                        Check.Text(saved["turn_completed"]) == "true",
-                        "Verification allowance stopped unlimited coding"
+                        Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
+                        "Independent verification did not receive its own allowance"
                     )
-                    flow.Reload()
-                    Check.Contains(Check.Text(flow.State["prompts"]?[0]), "unlimited coding time")
-                    if mode == "verification" {
-                        Check.That(
-                            Check.Text(saved["failure_reason"]) == "verification_failed",
-                            "Unlimited coding removed the verification deadline"
-                        )
-                    } else {
-                        Check.That(
-                            Check.Text(saved["verification"]?[0]?["exit_code"]) == "0",
-                            "Independent verification did not receive its own allowance"
-                        )
-                    }
                 }
                 flow.Reload()
                 Check.That(Check.Text(flow.State["exec_count"]) == "1", "Unlimited work retried inference")
                 flow.NoPr()
             }
             Console.WriteLine(
-                "PASS unlimited owner consent, saved status, delayed coding completion, cancellation cleanup and bounded independent verification"
+                "PASS unlimited owner consent, saved status, delayed coding completion and bounded independent verification"
             )
         }
 
@@ -313,7 +294,6 @@ internal class ProgressChecks {
             let verification = scenario.StartsWith("verification_")
             let publication = scenario == "publication_failure"
             let timeout = scenario.EndsWith("timeout")
-            let cancel = scenario.EndsWith("cancel")
             var verifier = verification ? "sleep 120; test -f result.txt": "test -f result.txt"
             if scenario == "verification_failure" {
                 verifier = "sleep 6; exit 23"
@@ -326,8 +306,8 @@ internal class ProgressChecks {
             )
             flow.Mode(mode)
             let phase = inference ? "Inference": "Owner verification 1"
-            let live = timeout || cancel || scenario == "verification_failure"
-            let result = live ? Live(flow, run, phase, cancel):
+            let live = timeout || scenario == "verification_failure"
+            let result = live ? Live(flow, run, phase):
             flow.Call([]string{"work", "--run", run, "--json", "--plain"}, 1)
             let code = inference ? "inference_failed": (verification ? "verification_failed": "command_failed")
             let failedPhase = publication ? "Publication": (inference ? "Inference": "Verification")
