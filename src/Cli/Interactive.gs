@@ -234,7 +234,7 @@ internal class Interactive {
 
             options.Guided = true
 
-            if command == "init" || command == "approve" {
+            if command == "work" || command == "init" || command == "approve" {
                 GuidedWork.Repository(options)
 
                 if command == "approve" {
