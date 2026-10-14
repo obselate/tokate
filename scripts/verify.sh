@@ -32,6 +32,7 @@ else
     selectors=(
         '--flow CrossAccountFlow'
         '--coordination CanonicalSubmit'
+        '--coordination RepositoryDonation'
         '--flow VerificationNetwork'
         '--protected-paths'
         '--coordination ReceiptEvidence'
