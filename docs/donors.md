@@ -97,11 +97,11 @@ Outside a checkout, use `tokate work OWNER/REPO#42`. Use `tokate work OWNER/REPO
 ## Donate until stopped
 
 ```sh
-tokate donate OWNER/REPO --time 1h --profile NAME
-tokate donate stop
+tokate donate OWNER/REPO NAME --time 1h
+tokate stop
 ```
 
-Use `--harness`, `--model` and `--effort` instead of `--profile` for an explicit
+Use `--harness`, `--model` and `--effort` instead of NAME for an explicit
 selection. Add `--total 8h` to limit total elapsed time. Without it, the loop runs
 until stopped. It starts a task only when its full per-task budget fits the
 remaining total. `--time` covers coding and verification for each task.
@@ -117,7 +117,7 @@ attempted by this loop. Each task uses claim, work and submit. Pending submissio
 is checked with the same submit
 before the next task. The loop does not wait for owner merge.
 
-When no task is eligible, it checks again in ten minutes. Run `tokate donate stop`
+When no task is eligible, it checks again in ten minutes. Run `tokate stop`
 in another terminal with the same Tokate state directory to stop after the
 current task. The loop removes the stop marker. Ctrl-C retains its existing
 cancellation behavior. Failed tasks release their reservations. Three failures

@@ -219,7 +219,7 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
-    if options.Command == "donate" && options.Subject == "stop" {
+    if options.Command == "stop" {
         return Donate.Stop()
     }
 

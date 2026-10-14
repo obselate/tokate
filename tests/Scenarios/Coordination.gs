@@ -1819,22 +1819,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "error",
             "confirmation_required"
         )
+        Flow.Call([]string{"defaults", "set", "donor", "--model", "gpt-6.1-sol", "--effort", "high"})
         let exhausted = Check.Envelope(
             Flow.Call(
-                []string{
-                    "donate",
-                    "owner/project",
-                    "--time",
-                    "30s",
-                    "--total",
-                    "1s",
-                    "--model",
-                    "gpt-6.1-sol",
-                    "--effort",
-                    "high",
-                    "--yes",
-                    "--json"
-                }
+                []string{"donate", "owner/project", "donor", "--time", "30s", "--total", "1s", "--yes", "--json"}
             ),
             "donate",
             "ok"
@@ -1854,12 +1842,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let args = []string{
             "donate",
             "owner/project",
+            "donor",
             "--time",
             "30s",
-            "--model",
-            "gpt-6.1-sol",
-            "--effort",
-            "high",
             "--runs",
             Path.Combine(Flow.Temp.Root, "runs"),
             "--yes",
@@ -1883,7 +1868,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 Flow.CoordinatePosted(2)
                 handled++
                 if Check.Text(posted["action"]) == "publish" {
-                    Check.Envelope(Flow.Call([]string{"donate", "stop", "--json"}), "donate", "ok")
+                    Check.Envelope(Flow.Call([]string{"stop", "--json"}), "stop", "ok")
                     stopped = true
                 }
             }

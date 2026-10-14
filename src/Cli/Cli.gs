@@ -229,13 +229,23 @@ internal class Cli {
         internal let Commands[]CliCommand = []CliCommand{
             CliCommand(
                 "donate",
-                "harness,provider,model,effort,profile,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,fork,runs",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,fork,runs",
                 "repo,time",
                 "Donate approved tasks until stopped or the total time expires. One confirmation authorizes every task within the selected limits.",
-                "OWNER/REPO --time PER_TASK [--total TOTAL] [options]\n       stop",
-                "donate owner/project --time 1h --profile default --yes",
+                "OWNER/REPO [NAME] --time PER_TASK [--total TOTAL] [options]",
+                "donate owner/project default --time 1h --yes",
                 effects: "local_read local_write github_read github_write inference",
                 target: "repo",
+                group: "donate"
+            ),
+            CliCommand(
+                "stop",
+                "",
+                "",
+                "Stop a running donation after its current task; no inference.",
+                "",
+                "stop",
+                effects: "local_write",
                 group: "donate"
             ),
             CliCommand(
@@ -729,8 +739,7 @@ internal class Cli {
             return row[b.Length]
         }
 
-        internal func Words(command string) string -> command == "donate" ? "stop":
-        command == "defaults" ? "set show remove list use":
+        internal func Words(command string) string -> command == "defaults" ? "set show remove list use":
         command == "access" ? String.Join(" ", Positionals.AccessOperations):
         command == "doctor" ? "owner managed external codex claude pi omp":
         command == "completion" ? "bash zsh fish": ""
@@ -798,6 +807,8 @@ internal class Cli {
             case "runs": []string{"ISSUE|OWNER/REPO"}
 
             case "select": []string{"OWNER/REPO|NAME", "NAME"}
+
+            case "donate": []string{"OWNER/REPO", "NAME"}
 
             case "doctor": []string{
                 "owner|managed|external|HARNESS",
