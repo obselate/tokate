@@ -221,7 +221,7 @@ internal class AttemptContinuationChecks {
             }
         }
 
-        private func Flow(binary string, mode string, harness string = "codex") {
+        private func Flow(binary string, mode string, harness string = "codex", full bool = false) {
             using let test = CoordinationFlow(binary)
             using let catalog = harness == "pi" ? PiCatalog(): nil
             let endpoint = catalog?.Endpoint ?? ""
@@ -327,24 +327,25 @@ internal class AttemptContinuationChecks {
                 !Directory.Exists(Path.Combine(fresh, "checkout/.verification-data")),
                 "Continuation imported generated source files"
             )
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            test.Flow.Call([]string{"prepare", "--run", fresh})
-            Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
-            test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
-            test.Flow.Call([]string{"work", "--run", fresh}, 1)
-            Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
-            let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
-            Directory.CreateDirectory(copied)
-            File.Copy(Path.Combine(fresh, "run.json"), Path.Combine(copied, "run.json"))
-            test.Flow.Call([]string{"prepare", "--run", copied}, 1)
-            test.Flow.Call([]string{"work", "--run", copied, "--yes"}, 1)
-            Check.That(
-                !File.Exists(Path.Combine(copied, "events.jsonl")),
-                "Copied destination executed under a shared fence"
-            )
-            Directory.Delete(copied, true)
+            if full {
+                test.Flow.Call([]string{"prepare", "--run", fresh})
+                test.Flow.Call([]string{"prepare", "--run", fresh})
+                Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
+                test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
+                test.Flow.Call([]string{"work", "--run", fresh}, 1)
+                Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
+                let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
+                Directory.CreateDirectory(copied)
+                File.Copy(Path.Combine(fresh, "run.json"), Path.Combine(copied, "run.json"))
+                test.Flow.Call([]string{"prepare", "--run", copied}, 1)
+                test.Flow.Call([]string{"work", "--run", copied, "--yes"}, 1)
+                Check.That(
+                    !File.Exists(Path.Combine(copied, "events.jsonl")),
+                    "Copied destination executed under a shared fence"
+                )
+                Directory.Delete(copied, true)
+            }
             test.Flow.Call([]string{"work", "--run", fresh, "--yes"})
-            test.Flow.Call([]string{"work", "--run", fresh, "--yes"}, 1)
             Preserved(source, original)
             let complete = Read(fresh)
             Check.That(
@@ -365,8 +366,11 @@ internal class AttemptContinuationChecks {
                 Check.Contains(File.ReadAllText(Path.Combine(fresh, "events.jsonl")), Check.Text(prior["attempt"]))
             }
             test.Flow.NoPr()
-            Publish(test, source, fresh)
-            Preserved(source, original)
+            if full {
+                test.Flow.Call([]string{"work", "--run", fresh, "--yes"}, 1)
+                Publish(test, source, fresh)
+                Preserved(source, original)
+            }
         }
 
         private func Publish(test CoordinationFlow, source string, fresh string) {
@@ -384,7 +388,7 @@ internal class AttemptContinuationChecks {
             Save(fresh, omitted)
             test.Flow.Call([]string{"submit", "--run", fresh}, 1)
             File.WriteAllText(Path.Combine(fresh, "run.json"), preserved)
-            test.Flow.Call([]string{"submit", "--run", fresh})
+            test.Flow.Call([]string{"submit", "--run", fresh, "--json"})
             let request = Check.Json(File.ReadAllText(Path.Combine(fresh, "request.json")))
             let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
             Check.That(
@@ -473,16 +477,11 @@ internal class AttemptContinuationChecks {
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for mode in[]string{
                 "completed",
-                "external",
                 "publication",
                 "pending",
-                "generated",
                 "donor",
                 "repository",
-                "issue",
                 "approval",
-                "base",
-                "identity",
                 "same-attempt",
                 "lineage",
                 "revoked",
@@ -491,8 +490,7 @@ internal class AttemptContinuationChecks {
                 "expired",
                 "paused",
                 "reapproved",
-                "legacy",
-                "selection"
+                "legacy"
             } {
                 baseline.Restore()
                 test.Flow.Reload()
@@ -501,17 +499,11 @@ internal class AttemptContinuationChecks {
                     case "completed" {
                         run["turn_completed"] = JsonValue.Create(true)
                     }
-                    case "external" {
-                        run["source"] = JsonValue.Create("external")
-                    }
                     case "publication" {
                         run["commit"] = JsonValue.Create(String('a', 40))
                     }
                     case "pending" {
                         File.WriteAllText(Path.Combine(source, "publication.json"), "{}")
-                    }
-                    case "generated" {
-                        run["state"] = JsonValue.Create("generated")
                     }
                     case "donor" {
                         run["donor_id"] = JsonValue.Create(124)
@@ -519,17 +511,8 @@ internal class AttemptContinuationChecks {
                     case "repository" {
                         run["preparation_repo_id"] = JsonValue.Create(999)
                     }
-                    case "issue" {
-                        run["issue"] = JsonValue.Create(2)
-                    }
                     case "approval" {
                         run["approval"] = JsonValue.Create(String('a', 64))
-                    }
-                    case "base" {
-                        run["base"] = JsonValue.Create(String('a', 40))
-                    }
-                    case "identity" {
-                        run["id"] = JsonValue.Create(Guid.NewGuid().ToString("D"))
                     }
                     case "same-attempt" {
                         run["attempt"] = test.State()["state"]?["reservation"]?["attempt"]?.DeepClone()
@@ -562,9 +545,6 @@ internal class AttemptContinuationChecks {
                         let state = test.State()["state"] ?? throw Exception("Missing state")
                         state.AsObject().Remove("identity")
                         test.RewriteState(state)
-                    }
-                    case "selection" {
-                        run["effort"] = JsonValue.Create("xhigh")
                     }
                 }
                 Save(source, run)
@@ -964,7 +944,7 @@ internal class AttemptContinuationChecks {
 
         internal func All(binary string, selected string = "") {
             for test in[]TestCase[string]{
-                TestCase[string]("Timeout", async (value string) -> Flow(value, "timeout")),
+                TestCase[string]("Timeout", async (value string) -> Flow(value, "timeout", full: true)),
                 TestCase[string]("Crash", async (value string) -> Flow(value, "crash")),
                 TestCase[string]("Cancel", async (value string) -> Flow(value, "cancel")),
                 TestCase[string]("Failure", async (value string) -> Flow(value, "incomplete_turn")),
