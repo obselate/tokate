@@ -65,6 +65,18 @@ internal class CliCommand(header string, usage string, options string, summary s
     )
         .ToList()
 
+    internal prop Lines[]string -> Usage.Split('\n').Select(form -> ("tokate " + Name + " " + form).Trim()).ToArray()
+
+    internal prop Positionals[]string -> Enumerable
+        .Range(0, Forms.Max(form -> form.Count))
+        .Select(
+        index -> String.Join(
+            "|",
+            Forms.Where(form -> form.Count > index).SelectMany(form -> form[index].Trim('[', ']').Split('|')).Distinct()
+        )
+    )
+        .ToArray()
+
     internal func Kinds(literal bool) List[string] -> Forms
         .SelectMany(form -> form)
         .SelectMany(slot -> slot.Trim('[', ']').Split('|'))
@@ -175,8 +187,17 @@ internal class Cli {
             "OWNER/REPO": "Repository or repository URL; default: the local GitHub remote",
             "NAME": "Saved donor profile",
             "LOGIN": "Donor login; @me uses your signed-in account",
-            "HARNESS": "Managed harness: codex, claude, pi or omp",
+            "HARNESS": "Managed harness",
             "COMMAND": "Command to describe",
+        }
+
+        internal let Operations map[string, string] = map[string, string]{
+            "access list": "local_read,github_read",
+            "access history": "local_read,github_read",
+            "access check": "local_read,github_read",
+            "defaults show": "local_read",
+            "defaults list": "local_read",
+            "defaults set": "local_read,local_write harness model,effort",
         }
 
         internal let Commands[]CliCommand = []CliCommand{
@@ -550,10 +571,17 @@ internal class Cli {
             default: "--" + key
         }
 
-        internal func Usage(name string) string -> "Usage: tokate " + (name + " " + Find(name).Usage).Trim().Replace(
-            "\n",
-            "\n       tokate " + name + " "
-        )
+        internal func Usage(name string) string -> "Usage: " + String.Join("\n       ", Find(name).Lines)
+
+        private func Effects(declared[]string) Object {
+            let effects = map[string, Object?]{}
+
+            for effect in[]string{"local_read", "local_write", "github_read", "github_write"} {
+                effects[effect] = declared.Contains(effect)
+            }
+
+            return effects
+        }
 
         internal func Metadata(name string = "") Object {
             let commands = List[Object]()
@@ -584,10 +612,19 @@ internal class Cli {
                     for operation in form.Count > 0 && Literal(form[0]) ? form[0].Trim('[', ']').Split(
                         '|'
                     ): []string{} {
+                        var declared string
+                        let spec = (
+                            Operations.TryGetValue(
+                                command.Name + " " + operation,
+                                out declared
+                            ) ? declared: String.Join(",", command.Effects)
+                        ).Split(' ')
                         operations.Add(
                             map[string, Object?]{
                                 "name": operation,
-                                "required_inputs": form.Skip(1).Where(slot -> !slot.StartsWith("[")).ToArray()
+                                "required_inputs": form.Skip(1).Where(slot -> !slot.StartsWith("[")).ToArray(),
+                                "required_input_sets": spec.Skip(1).Select(set -> set.Split(',')).ToArray(),
+                                "effects": Effects(spec[0].Split(','))
                             }
                         )
                     }
@@ -596,7 +633,7 @@ internal class Cli {
                 let kinds = command.Kinds(false)
                 let repository = List[string]()
 
-                if command.Needs("repo") {
+                if command.Needs("repo") || kinds.Contains("ISSUE") {
                     repository.Add("repo")
 
                     if kinds.Contains("OWNER/REPO") {
@@ -622,25 +659,19 @@ internal class Cli {
                     inputs.Add([]string{"run"})
                 }
 
-                let effects = map[string, Object?]{}
-
-                for effect in[]string{"local_read", "local_write", "github_read", "github_write"} {
-                    effects[effect] = command.Effects.Contains(effect)
-                }
-
                 commands.Add(
                     map[string, Object?]{
                         "command": command.Name,
                         "summary": command.Summary,
-                        "usage": Usage(command.Name).Substring(7),
+                        "usage": command.Lines,
                         "example": "tokate " + command.Example,
                         "arguments": options,
-                        "positional_arguments": command.Forms[0].Select(slot -> slot.Trim('[', ']')).ToArray(),
+                        "positional_arguments": command.Positionals,
                         "operations": operations,
                         "required_inputs": inputs,
                         "repository_inputs": repository,
                         "exclusive_run_inputs": command.Options.Split(',').Where(command.ConflictsWithRun).ToArray(),
-                        "effects": effects,
+                        "effects": Effects(command.Effects),
                         "inference": command.Effects.Contains("inference"),
                         "noninteractive": true
                     }
@@ -777,7 +808,7 @@ internal class Cli {
                     )
                 }
 
-                text.AppendLine("Example:\n  tokate " + command.Example)
+                text.AppendLine("\nExample:\n  tokate " + command.Example)
             }
 
             return text.ToString().TrimEnd()

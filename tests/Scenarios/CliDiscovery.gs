@@ -5,6 +5,7 @@ import System
 import System.Collections.Generic
 import System.Diagnostics
 import System.IO
+import System.Linq
 import System.Net.Sockets
 import System.Runtime.InteropServices
 import System.Text
@@ -855,7 +856,16 @@ internal class CliDiscovery {
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
-            Check.That(metadata["data"]?["commands"]?.AsArray().Count > 30, "Metadata omits public commands")
+            let expected = "work claim submit status checks runs pause resume renew release init approve revoke access verify policy doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync coordinator-setup completion help --version coordination request prepare admit coordinate claude-capabilities"
+            Check.That(
+                String.Join(
+                    " ",
+                    (metadata["data"]?["commands"]?.AsArray() ?? JsonArray()).Select(
+                        command -> Check.Text(command["command"])
+                    )
+                ) == expected,
+                "Metadata commands differ"
+            )
             for command in metadata["data"]?["commands"]?.AsArray() ?? JsonArray() {
                 let name = Check.Text(command["command"])
                 let help = Check.Envelope(Call(binary, []string{name, "--help", "--json"}, temp), name, "ok")
@@ -974,11 +984,23 @@ internal class CliDiscovery {
             Check.That(Check.Text(defaults?["effects"]?["local_write"]) == "true", "Defaults write effect missing")
             Check.That(
                 JsonNode.DeepEquals(
-                    defaults?["operations"]?[1],
-                    Check.Json("{\"name\":\"use\",\"required_inputs\":[\"NAME\"]}")
+                    defaults?["operations"]?[0]?["required_input_sets"],
+                    Check.Json("[[\"harness\"],[\"model\",\"effort\"]]")
                 ),
-                "Defaults use required inputs differ"
+                "Defaults set required inputs differ"
             )
+            for subject in[]string{"defaults", "access"} {
+                let command = Check.Envelope(Call(binary, []string{"help", subject, "--json"}, temp), "help", "ok")[
+                    "data"
+                ]?["commands"]?[0]
+                for operation in command?["operations"]?.AsArray() ?? JsonArray() {
+                    let read = "show list history check".Split(' ').Contains(Check.Text(operation["name"]))
+                    let writes = Check.Text(operation["effects"]?["local_write"]) == "true" || Check.Text(
+                        operation["effects"]?["github_write"]
+                    ) == "true"
+                    Check.That(read != writes, subject + " operation effects differ: " + Check.Text(operation["name"]))
+                }
+            }
             for name in[]string{"select", "amend", "request"} {
                 let command = Check.Envelope(Call(binary, []string{"help", name, "--json"}, temp), "help", "ok")[
                     "data"
@@ -1406,7 +1428,7 @@ internal class CliDiscovery {
                 let name = Check.Text(command["command"])
                 probe += "COMP_WORDS=(tokate '" +
                     name +
-                    "' --); COMP_CWORD=2; _tokate; printf '" +
+                    "' ''); COMP_CWORD=2; _tokate; printf '" +
                     name +
                     " %s\\n' \"$${COMPREPLY[@]}\"; "
             }
@@ -1418,13 +1440,20 @@ internal class CliDiscovery {
             )
             for command in commands {
                 let name = Check.Text(command["command"])
-                Check.That(listed.Contains(name), "Completion omits command " + name)
-                let options = name == "help" ? JsonArray(): command["arguments"]?.AsArray()
-                for option in options ?? JsonArray() {
-                    Check.That(
-                        listed.Contains(name + " " + Check.Text(option["name"])),
-                        "Completion omits " + name + " " + Check.Text(option["name"])
-                    )
+                Check.That(listed.Contains(name) && listed.Contains("help " + name), "Completion omits command " + name)
+                let words = List[string]()
+                for option in command["arguments"]?.AsArray() ?? JsonArray() {
+                    words.Add(Check.Text(option["name"]))
+                    if Check.Text(option["name"]) == "--harness" && command["positional_arguments"]?.ToJsonString()
+                        .Contains("HARNESS") == true {
+                        words.AddRange(option["choices"]?.AsArray().Select(choice -> Check.Text(choice)) ?? []string{})
+                    }
+                }
+                for position in command["positional_arguments"]?.AsArray() ?? JsonArray() {
+                    words.AddRange(Check.Text(position).Split('|').Where(word -> Char.IsLower(word[0])))
+                }
+                for word in name == "help" ? List[string](): words {
+                    Check.That(listed.Contains(name + " " + word), "Completion omits " + name + " " + word)
                 }
             }
         }
@@ -1482,7 +1511,7 @@ internal class CliDiscovery {
                 }
             }
             let unnamed = Call(binary, []string{"claim", "owner/project"}, temp, 1)
-            Check.Contains(unnamed.Error, "Name an issue")
+            Check.Contains(unnamed.Error, "Name an issue: tokate claim OWNER/REPO#NUMBER.")
             Check.Contains(
                 Call(binary, []string{"init", "owner/project", "--max-time", "2d"}, temp, 1).Error,
                 "Use at most 24h: --max-time"
@@ -1551,7 +1580,8 @@ internal class CliDiscovery {
                 []string{"access", "unknown"},
                 []string{"defaults", "list", "NAME"},
                 []string{"doctor", "owner", "managed"},
-                []string{"work", "owner/project", "NAME"}
+                []string{"work", "owner/project", "NAME"},
+                []string{"work", "stop"}
             } {
                 Check.Contains(Call(binary, argv, temp, 1).Error, "Usage:")
             }

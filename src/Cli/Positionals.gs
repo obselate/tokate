@@ -101,29 +101,37 @@ internal class Positionals {
             return true
         }
 
-        private func Match(form List[string], words List[string]) bool {
+        private func Match(form List[string], words List[string]) List[KeyValuePair[string, int32]]? {
+            let pairs = List[KeyValuePair[string, int32]]()
             var i int32 = 0
 
             for slot in form {
+                let literal = Cli.Literal(slot)
+                let optional = slot.StartsWith("[")
+
                 if i < words.Count && Fits(slot, words[i]) {
+                    pairs.Add(KeyValuePair[string, int32](slot, i))
                     i = slot == "PR..." ? words.Count: i + 1
-                } else if Cli.Literal(slot) && (i < words.Count || !slot.StartsWith("[")) {
-                    return false
+                } else if i < words.Count ? literal || !optional: literal && !optional {
+                    return nil
+                } else {
+                    pairs.Add(KeyValuePair[string, int32](slot, -1))
                 }
             }
 
-            return i == words.Count
+            return i == words.Count ? pairs: nil
         }
 
         internal func Bind(args Args) {
             let words = args.Words
             let forms = Cli.Find(args.Command).Forms
-            let form = forms
-                .Where(item -> item.Any(Cli.Literal))
-                .Concat(forms.Where(item -> !item.Any(Cli.Literal)))
-                .FirstOrDefault(item -> Match(item, words))
+            let pairs = forms
+                .Where(form -> form.Any(Cli.Literal))
+                .Concat(forms.Where(form -> !form.Any(Cli.Literal)))
+                .Select(form -> Match(form, words))
+                .FirstOrDefault(matched -> matched != nil)
 
-            if form == nil {
+            if pairs == nil {
                 if words.Count > 0 {
                     throw Exception("Unexpected arguments: " + String.Join(" ", words))
                 }
@@ -131,24 +139,24 @@ internal class Positionals {
                 return
             }
 
-            var i int32 = 0
+            for pair in pairs {
+                let kind = pair.Key.Trim('[', ']')
 
-            for slot in form {
-                let kind = slot.Trim('[', ']')
-
-                if i >= words.Count || !Fits(slot, words[i]) {
-                    if Cli.Literal(slot) && args.Subject == "" {
+                if pair.Value < 0 {
+                    if Cli.Literal(kind) && args.Subject == "" {
                         args.Subject = kind.Split('|')[0]
                     }
 
                     continue
                 }
 
-                let word = words[i]
-                i++
+                let word = words[pair.Value]
 
-                if Cli.Literal(slot) || kind == "COMMAND" {
-                    args.Subject = kind == "COMMAND" ? Cli.Find(word).Name: word
+                if Cli.Literal(kind) {
+                    args.Subject = word
+                } else if kind == "COMMAND" {
+                    Cli.Find(word)
+                    args.Subject = word
                 } else if kind == "NAME" {
                     args.Values["--profile"] = word
                 } else if kind == "LOGIN" {
@@ -162,7 +170,7 @@ internal class Positionals {
                 } else if kind == "PR..." {
                     let prs = List[string]()
 
-                    for item in words.Skip(i - 1) {
+                    for item in words.Skip(pair.Value) {
                         Reference(args, item, "pr")
                         prs.Add(args.Get("pr"))
                         args.Values.Remove("--pr")
@@ -178,7 +186,7 @@ internal class Positionals {
                 }
             }
 
-            if args.Get("profile") != "" && form[0].Contains("ISSUE") &&
+            if args.Get("profile") != "" && pairs[0].Key.Contains("ISSUE") &&
                 (args.Get("issue") == "" || args.Get("attempt") != "") {
                 throw Exception("A profile name must follow an issue number")
             }

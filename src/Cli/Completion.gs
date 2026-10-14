@@ -11,9 +11,20 @@ internal class Completion {
 
         private func Quote(text string) string -> text.Replace("\\", "\\\\").Replace("'", "\\'")
 
+        private func Literals(command CliCommand) List[string] -> command
+            .Kinds(true)
+            .Concat(
+            command.Kinds(false).Contains("HARNESS") ? Cli
+                .Options
+                .First(option -> option.Name == "harness")
+                .Choices
+                .Split(' '): []string{}
+        )
+            .ToList()
+
         private func Words(command CliCommand) string -> String.Join(
             " ",
-            command.Kinds(true).Concat(
+            Literals(command).Concat(
                 Cli.Options.Where(option -> command.Has(option.Name)).Select(option -> "--" + option.Name)
             )
         ) +
@@ -101,8 +112,8 @@ internal class Completion {
 
                     text.Append("        " + command.Name + ") _arguments '-h[Show help]'")
 
-                    if command.Kinds(true).Count > 0 {
-                        text.Append(" '1:word:(" + String.Join(" ", command.Kinds(true)) + ")'")
+                    if Literals(command).Count > 0 {
+                        text.Append(" '1:word:(" + String.Join(" ", Literals(command)) + ")'")
                     }
 
                     for option in Cli.Options {
@@ -143,8 +154,8 @@ internal class Completion {
                             "'"
                     )
 
-                    if command.Kinds(true).Count > 0 {
-                        text.AppendLine(seen + " -a '" + String.Join(" ", command.Kinds(true)) + "'")
+                    if Literals(command).Count > 0 {
+                        text.AppendLine(seen + " -a '" + String.Join(" ", Literals(command)) + "'")
                     }
 
                     for option in Cli.Options {
@@ -153,6 +164,7 @@ internal class Completion {
                                 seen +
                                     " -l " +
                                     option.Name +
+                                    (option.Name == "help" ? " -s h": "") +
                                     (option.Value == "" ? "": " -r") +
                                     " -d '" +
                                     Quote(option.Describe(command.Name)) +
