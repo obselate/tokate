@@ -15,7 +15,7 @@ internal class PreparationChecks {
         }
 
         private func Resume(flow NativeFixture, run string, code int32 = 0) Result -> flow.Call(
-            []string{"prepare", "--run", run},
+            []string{"claim", "--run", run},
             code
         )
 
@@ -266,11 +266,7 @@ internal class PreparationChecks {
                 "External claim acquired a managed selection"
             )
             Check.That(Check.Text(result["status"]) == "pending", "External claim lost pending status")
-            Check.That(
-                !(result["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
-                "External pending claim offered managed inference"
-            )
-            flow.Call([]string{"work", "--run", run}, 1)
+            Check.Contains(result["next_actions"]?.ToJsonString() ?? "", "\"work\"")
             flow.Reload()
             let comment = flow.State["request_comments"]?[0] ?? throw Exception("Missing external claim")
             test.Coordinate(PostedEvent(test, comment))
@@ -288,6 +284,7 @@ internal class PreparationChecks {
                 prepared["tools"]?.ToJsonString() == File.ReadAllText(test.Tools),
                 "External claim changed donor tool declarations"
             )
+            flow.Call([]string{"work", "--run", run, "--json"}, 0)
             flow.Reload()
             Check.That(Check.Text(flow.State["request_count"]) == "1", "External claim was posted twice")
             flow.NoInference()
@@ -776,14 +773,14 @@ internal class PreparationChecks {
                 let state = test.State()
                 test.Flow.Call(
                     []string{
-                        "prepare",
+                        "claim",
                         "owner/project#1",
-                        "--state",
-                        Check.Text(state["sha"]),
                         "--source",
                         "external",
                         "--tools",
                         test.Tools,
+                        "--time",
+                        "30s",
                         "--fork",
                         "owner/project",
                         "--runs",
@@ -900,8 +897,8 @@ internal class PreparationChecks {
                         File.CreateSymbolicLink(path, target)
                     }
                     let commands = control == "run.json" && link == "symbolic" ?
-                    []string{"prepare", "work", "external", "submit", "amend", "submit-correction"}:
-                    []string{"prepare"}
+                    []string{"work", "external", "submit", "amend", "submit-correction"}:
+                    []string{"work"}
                     for command in commands {
                         let corrected = command.EndsWith("-correction")
                         if corrected {
@@ -1092,7 +1089,6 @@ internal class PreparationChecks {
                 ) == "claim_pending",
                 "Pending JSON omitted its saved state"
             )
-            Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "prepare")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "work")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
             Check.Contains(
@@ -1271,6 +1267,9 @@ internal class PreparationChecks {
                     flow.Mode("missing_controls")
                 } else if gate == "competing" {
                     test.Claim()
+                    let state = test.State()["state"] ?? throw Exception("Missing state")
+                    (state["reservation"] ?? throw Exception("Missing reservation"))["actor"] = JsonValue.Create(124)
+                    test.RewriteState(state)
                 } else if gate == "revoked" {
                     flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
                 } else {

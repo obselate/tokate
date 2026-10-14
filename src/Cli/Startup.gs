@@ -71,8 +71,7 @@ internal class Startup {
 
         internal func NeedsCatalog(command string, options Args?) bool -> command == "select" ||
             (command == "claim" && options?.Get("source") != "external") ||
-            command == "work" ||
-            (command == "prepare" && options?.Get("source") == "tokate")
+            command == "work"
 
         private func DoctorScope(options Args) string -> options.Subject == "external" ||
             (
@@ -108,26 +107,25 @@ internal class Startup {
             }
 
             let names = List[string]{"setsid", "/usr/bin/env", "/usr/bin/setpriv", "/usr/bin/unshare", "gh"}
-            let catalog = NeedsCatalog(command, options)
-            let harness = options.Get("run") != "" && command == "work" ?
-            Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness"): options.Get("harness")
+            var catalog = NeedsCatalog(command, options)
+            var harness = options.Get("harness")
+            if options.Get("run") != "" {
+                let run = Data.Load(Path.GetFullPath(options.Need("run")))
+
+                if command == "work" || command == "claim" {
+                    catalog = run.Text("source") != "external"
+                    harness = run.Text("harness")
+                }
+            }
+
             let adapter = Harness.Find(harness)
 
             if catalog && adapter?.Doctor == nil && harness != "command" {
                 names.Add("codex")
             }
 
-            if options.Get("run") != "" {
-                let run = Data.Load(Path.GetFullPath(options.Need("run")))
-
-                if command == "work" && (run.Number("version") != 2 || run.Text("source") != "tokate") {
-                    throw CliFailure("invalid_state", "External work uses external --run; inference is never launched")
-                }
-            }
-
             if command == "work" ||
                 command == "claim" ||
-                command == "prepare" ||
                 command == "external" ||
                 command == "submit" ||
                 command == "amend" ||

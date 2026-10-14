@@ -87,7 +87,7 @@ internal class CliCommand(header string, usage string, options string, summary s
 
     internal func Needs(name string) bool -> ("," + Required + ",").Contains("," + name + ",")
 
-    internal prop SupportsSavedRun bool -> Name == "work" || Name == "checks" || Name == "prepare" || Name == "status"
+    internal prop SupportsSavedRun bool -> Name == "work" || Name == "claim" || Name == "checks" || Name == "status"
 
     internal prop Brief string -> Summary.Split([]string{". ", "; "}, StringSplitOptions.None)[0].TrimEnd('.')
 
@@ -102,9 +102,8 @@ internal class CliCommand(header string, usage string, options string, summary s
         name != "plain" &&
         name != "ascii" &&
         (
-        (Name == "work" && name != "yes" && name != "non-interactive") ||
+        ((Name == "work" || Name == "claim") && name != "yes" && name != "non-interactive") ||
             (Name == "checks" && name != "watch" && name != "timeout" && name != "verbose") ||
-            Name == "prepare" ||
             Name == "status"
     )
 }
@@ -154,7 +153,6 @@ internal class Cli {
             "watch: Wait for checks; default: off",
             "verbose: Show check evidence and required owner actions",
             "timeout TIME: Check wait limit, at most 24h; default: 20m",
-            "state SHA: Exact coordination-state commit",
             "source SOURCE external tokate: Coding source",
             "tools FILE: Nonsecret JSON tool declarations",
             "summary FILE: Bounded public JSON summary for the exact candidate commit",
@@ -206,9 +204,9 @@ internal class Cli {
             ),
             CliCommand(
                 "claim donate local_read,local_write,github_read,github_write repo,issue",
-                "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\nISSUE --source external --tools FILE --time TIME",
-                "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,time,verify-time,unlimited,fork,runs,continue-from,from-pr",
-                "Reserve an approved issue and save a claim; name an issue, not only a repository. No inference or PR publication.",
+                "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\nISSUE --source external --tools FILE --time TIME\nRUN [--yes]",
+                "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from,from-pr",
+                "Reserve an approved issue and save a claim; name an issue, not only a repository. With your active reservation, prepare a fresh attempt. RUN finishes a saved claim or its preparation. No inference or PR publication.",
                 "claim 42 --model gpt-6.1-sol --effort high"
             ),
             CliCommand(
@@ -366,18 +364,11 @@ internal class Cli {
                 "reconcile 42"
             ),
             CliCommand(
-                "authorize-sync more local_read,github_read,github_write repo,pr,commit,upstream",
-                "PR --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]",
-                "commit,upstream,sync",
-                "Owner: grant an exact candidate synchronization; no candidate inspection or acceptance.",
-                "authorize-sync 10 --commit 0123456789abcdef0123456789abcdef01234567 --upstream 89abcdef0123456789abcdef0123456789abcdef"
-            ),
-            CliCommand(
-                "revoke-sync more local_read,github_read,github_write repo,grant",
-                "[OWNER/REPO] --grant SHA",
-                "grant",
-                "Owner: preserve and revoke a synchronization grant by nonforce ref advance.",
-                "revoke-sync --grant 0123456789abcdef0123456789abcdef01234567"
+                "sync more local_read,github_read,github_write repo,pr",
+                "PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]\nPR revoke --grant SHA",
+                "commit,upstream,sync,grant",
+                "Owner: grant an exact candidate synchronization, or revoke a grant by nonforce ref advance; no candidate inspection or acceptance.",
+                "sync 10 authorize --commit 0123456789abcdef0123456789abcdef01234567 --upstream 89abcdef0123456789abcdef0123456789abcdef"
             ),
             CliCommand(
                 "completion more local_read",
@@ -400,13 +391,6 @@ internal class Cli {
                 "file",
                 "Post a strict claim or publication request; no inference.",
                 "request 42 --file request.json"
-            ),
-            CliCommand(
-                "prepare internal local_read,local_write,github_read,github_write repo,issue,state,source",
-                "ISSUE [NAME] --state SHA --source external --tools FILE [options]\nISSUE [NAME] --state SHA --source tokate [--continue-from DIR --time TIME --verify-time TIME --yes] [options]\n--run DIR",
-                "run,state,source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,fork,time,verify-time,unlimited,runs,continue-from,from-pr,yes",
-                "Prepare a fresh reserved v2 contribution, or resume recorded preparation; no inference, checks or publication. --run DIR resumes only recorded preparation before coding.",
-                "prepare 42 --state 0123456789abcdef0123456789abcdef01234567 --source external --tools tools.json"
             ),
             CliCommand(
                 "admit internal local_read,github_read,github_write repo,event",
@@ -816,7 +800,7 @@ internal class Cli {
                     )
                 }
             }
-            if args.Command == "claim" && args.Get("issue") == "" && !args.Help {
+            if args.Command == "claim" && args.Get("issue") == "" && args.Get("run") == "" && !args.Help {
                 throw Exception(
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )
@@ -842,8 +826,7 @@ internal class Cli {
             }
 
             if args.Get("unlimited") == "true" {
-                if args.Get("seconds") != "" || args.Get("continue-from") != "" ||
-                    (args.Command == "prepare" && args.Get("source") != "tokate") {
+                if args.Get("seconds") != "" || args.Get("continue-from") != "" {
                     throw Exception("--unlimited requires fresh managed work and excludes --time and --continue-from")
                 }
 
@@ -855,10 +838,6 @@ internal class Cli {
             if args.Get("continue-from") != "" && !args.Help {
                 args.Need("seconds")
                 args.Need("verification-reserve")
-
-                if args.Command == "prepare" && args.Get("source") != "tokate" {
-                    throw Exception("--continue-from requires --source tokate")
-                }
             }
 
             if args.Command == "doctor" {
@@ -908,10 +887,6 @@ internal class Cli {
                         )
                     }
                 }
-            }
-
-            if args.Get("verification-reserve") != "" && args.Command == "prepare" && args.Get("source") != "tokate" {
-                throw Exception("--verify-time requires --source tokate")
             }
 
             if args.Get("prs") != "" {
@@ -973,7 +948,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"state", "commit", "grant", "upstream", "sync"} {
+            for key in[]string{"commit", "grant", "upstream", "sync"} {
                 if args.Get(key) != "" {
                     RepositoryIdentity.CommitSha(args.Get(key))
                 }
@@ -989,6 +964,22 @@ internal class Cli {
 
             if args.Help {
                 return
+            }
+
+            if args.Command == "sync" {
+                if args.Subject != "authorize" && args.Subject != "revoke" {
+                    throw Exception("Use tokate sync PR authorize or tokate sync PR revoke")
+                }
+
+                for key in(args.Subject == "authorize" ? "commit,upstream": "grant").Split(',') {
+                    args.Need(key)
+                }
+
+                for key in(args.Subject == "authorize" ? "grant": "commit,upstream,sync").Split(',') {
+                    if args.Get(key) != "" {
+                        throw Exception("Unknown option for sync " + args.Subject + ": --" + key)
+                    }
+                }
             }
 
             if args.Command == "defaults" {
@@ -1032,7 +1023,7 @@ internal class Cli {
                 }
             }
 
-            if (args.Command == "prepare" || args.Command == "claim") && args.Get("source") == "external" {
+            if args.Command == "claim" && args.Get("source") == "external" {
                 args.Need("tools")
 
                 for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
@@ -1057,12 +1048,6 @@ internal class Cli {
                         throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
                     }
                 }
-
-                if args.Command == "prepare" && args.Get("non-interactive") != "" {
-                    throw Exception("External declarations use --tools; selection option conflicts: --non-interactive")
-                }
-            } else if args.Command == "claim" && args.Get("tools") != "" {
-                throw Exception("Claim tool declarations require --source external")
             }
 
             if args.Get("all") != "" && (args.Get("repo") != "" || args.Get("issue") != "" || args.Get("run") != "") {

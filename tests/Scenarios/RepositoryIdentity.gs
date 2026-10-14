@@ -168,14 +168,11 @@ internal class RepositoryIdentityChecks {
             repository["full_name"] = JsonValue.Create("OwNeR/PrOjEcT")
             File.WriteAllText(eventPath, event.ToJsonString())
             flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
-            let state = test.State()
             let prepared = Check.Envelope(
                 flow.Call(
                     []string{
-                        "prepare",
+                        "claim",
                         "OWNER/PROJECT#1",
-                        "--state",
-                        Check.Text(state["sha"]),
                         "--source",
                         "external",
                         "--tools",
@@ -187,7 +184,7 @@ internal class RepositoryIdentityChecks {
                         "--json"
                     }
                 ),
-                "prepare",
+                "claim",
                 "ok"
             )
             let run = Check.Text(prepared["data"]?["run"])

@@ -497,7 +497,7 @@ internal class CliDiscovery {
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
-            let expected = "work claim submit status checks pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile authorize-sync revoke-sync completion help --version request prepare admit coordinate claude-capabilities"
+            let expected = "work claim submit status checks pause resume renew release init approve revoke access verify doctor defaults update uninstall select overlaps recover-request amend external reconcile sync completion help --version request admit coordinate claude-capabilities"
             Check.That(
                 String.Join(
                     " ",
@@ -545,11 +545,12 @@ internal class CliDiscovery {
                 []string{"status", "--run", "saved", "owner/project#10", "--json"},
                 []string{"status", "--run", "saved", "1", "--json"},
                 []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
-                []string{"revoke-sync", "owner/project", "--grant", "invalid", "--json"},
-                []string{"revoke-sync", "owner/project", "--grant", String('a', 40) + "\n", "--json"},
+                []string{"sync", "owner/project#10", "revoke", "--grant", "invalid", "--json"},
+                []string{"sync", "owner/project#10", "revoke", "--grant", String('a', 40) + "\n", "--json"},
                 []string{
-                    "authorize-sync",
+                    "sync",
                     "owner/project#10",
+                    "authorize",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -557,8 +558,9 @@ internal class CliDiscovery {
                     "--json"
                 },
                 []string{
-                    "authorize-sync",
+                    "sync",
                     "owner/project#10",
+                    "authorize",
                     "--commit",
                     String('a', 40),
                     "--upstream",
@@ -1214,8 +1216,15 @@ internal class CliDiscovery {
                 []string{"work", "owner/project", "--run=x"},
                 []string{"revoke", "https://github.com/owner/project/issues/0"},
                 []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
-                []string{"prepare", "owner/project#1", "--state=bad", "--source=external", "--tools=tools.json"},
-                []string{"prepare", "owner/project#1", "--source=invalid"},
+                []string{"claim", "owner/project#1", "--source=invalid"},
+                []string{"sync", "owner/project#10", "merge"},
+                []string{
+                    "sync",
+                    "owner/project#10",
+                    "revoke",
+                    "--grant=" + String('a', 40),
+                    "--commit=" + String('b', 40)
+                },
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
                 []string{"coordinate", "--repo=owner/project"},

@@ -233,13 +233,7 @@ internal class PublicOutput {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
                     "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
-                    "command": []string{
-                        "tokate",
-                        run.Text("source") == "tokate" ? "work": "prepare",
-                        "--run",
-                        directory,
-                        "--json"
-                    }
+                    "command": []string{"tokate", "work", "--run", directory, "--json"}
                 }
             }
 
@@ -353,8 +347,8 @@ internal class PublicOutput {
                     (code == "stale_approval" || code == "inference_failed") {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
-                        "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
-                        "command": []string{"tokate", "help", "prepare", "--json"}
+                        "action": "Inspect saved work, then use tokate work for a fresh attempt under current authority with an explicit new time budget.",
+                        "command": []string{"tokate", "help", "work", "--json"}
                     }
                     if AttemptContinuation.TimeLimited(run) {
                         result["error"] = map[string, Object?]{
@@ -573,7 +567,7 @@ internal class PublicOutput {
 
                     if run.Text("state") == "preparing" && run.Number("preparation_version") == 1 &&
                         code != "stale_approval" {
-                        Actions.Add([]string{"tokate", "prepare", "--run", RunDirectory, "--json"})
+                        Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
 
                     if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {

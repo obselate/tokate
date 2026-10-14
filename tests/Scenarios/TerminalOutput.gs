@@ -144,7 +144,7 @@ internal class TerminalOutput {
                 }
                 let rootHelp = TestTerminal.Pty(binary, []string{"--help"}, temp, width)
                 Check.That(rootHelp.Code == 0, rootHelp.Output + rootHelp.Error)
-                Check.Contains(rootHelp.Output, "authorize-sync")
+                Check.Contains(rootHelp.Output, "sync")
                 TestTerminal.Save(width.ToString() + "-help", rootHelp.Output)
                 let ascii = TestTerminal.Pty(binary, []string{"help", "work", "--ascii"}, temp, width)
                 Check.That(ascii.Code == 0, ascii.Output + ascii.Error)

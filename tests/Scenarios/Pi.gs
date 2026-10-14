@@ -442,12 +442,8 @@ internal class PiChecks {
             )
             File.CreateSymbolicLink(Path.Combine(flow.Flow.Bin, "node"), node)
             let args = List[string]{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(flow.State()["sha"]),
-                "--source",
-                "tokate",
                 "--harness",
                 "pi",
                 "--provider",
@@ -477,12 +473,6 @@ internal class PiChecks {
                 args.AddRange([]string{"--pi-root", root})
             }
             if catalogRejected {
-                args[0] = "claim"
-                for option in[]string{"--state", "--source"} {
-                    let position = args.IndexOf(option)
-                    args.RemoveAt(position + 1)
-                    args.RemoveAt(position)
-                }
                 args.Add("--json")
                 let rejected = flow.Flow.Call(args.ToArray(), 1)
                 Check.Envelope(rejected, "claim", "error", "endpoint_unavailable")

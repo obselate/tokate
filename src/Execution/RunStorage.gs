@@ -58,7 +58,7 @@ internal class RunStorage {
                 "invalid_state",
                 "Preserved unidentified, dirty or divergent preparation at " +
                     path +
-                    ". Inspect and move it aside explicitly, or use its original saved run; then use prepare --run DIR. No files or branches were replaced."
+                    ". Inspect and move it aside explicitly, or use its original saved run; then use work --run DIR. No files or branches were replaced."
             )
         }
 
@@ -82,31 +82,35 @@ internal class RunStorage {
         internal func Allocate(root string, repo string, issue int32, id string) string {
             let prefix = Prefix(repo, issue)
             var number int32
+            let roots = List[string](Roots())
+            roots.Add(root)
+
+            for row in SavedRuns(roots.ToArray()).Rows {
+                if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
+                    PublicOutput.RunDirectory = row.Location
+                    if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
+                        throw ExecutionFailure.Create(
+                            "invalid_state",
+                            "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
+                                []string{"tokate", "pause", "--run", row.Location}
+                            ) +
+                                ", then " +
+                                Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
+                                ". Wait for each coordinator acceptance, then run " +
+                                Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
+                                " for the continuation command. No files were overwritten."
+                        )
+                    }
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Saved contribution already exists; inspect it instead of overwriting"
+                    )
+                }
+            }
 
             if Directory.Exists(root) {
                 let saved = SavedRuns([]string{root})
                 for row in saved.Rows {
-                    if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
-                        PublicOutput.RunDirectory = row.Location
-                        if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
-                            throw ExecutionFailure.Create(
-                                "invalid_state",
-                                "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
-                                    []string{"tokate", "pause", "--run", row.Location}
-                                ) +
-                                    ", then " +
-                                    Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
-                                    ". Wait for each coordinator acceptance, then run " +
-                                    Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
-                                    " for the continuation command with the current state SHA. No files were overwritten."
-                            )
-                        }
-                        throw ExecutionFailure.Create(
-                            "invalid_state",
-                            "Saved contribution already exists; inspect it instead of overwriting"
-                        )
-                    }
-
                     if row.Matches(repo, issue) {
                         number = Math.Max(number, row.Number)
                     }

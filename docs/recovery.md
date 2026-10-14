@@ -111,7 +111,7 @@ It uses the completed work without new inference. Do not start another run.
 5. Ask the owner to authorize the exact candidate `C` and target `U` shown by reconciliation.
 
    ```sh
-   tokate authorize-sync PR --commit C --upstream U
+   tokate sync PR authorize --commit C --upstream U
    ```
 
 6. Use the returned grant `G` to verify and publish the candidate.
@@ -132,7 +132,7 @@ Obtain a new owner grant for the next exact candidate and target.
 
 For a Codex, Pi or OMP managed run stopped with `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget.
 
-1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command with its current state SHA.
+1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command.
 
    ```sh
    tokate status --run PRIOR_RUN_DIR --json
@@ -152,21 +152,17 @@ For a Codex, Pi or OMP managed run stopped with `Runtime limit reached`, keep it
    tokate status --run PRIOR_RUN_DIR --json
    ```
 
-4. Use the continuation command from this last status read. Keep its exact `--state`, `--continue-from` and original tool and fork options. Change only the new budget to `--time 2h --verify-time 20m`. For an original Codex selection of `gpt-6.1-sol` with high effort, the complete command is below. Use the `--fork` value from status for `SAVED_HEAD_REPO`.
+4. Use the continuation command from this last status read. Keep its exact `--continue-from` and original tool and fork options. Change only the new budget to `--time 2h --verify-time 20m`. For an original Codex selection of `gpt-6.1-sol` with high effort, the complete command is below. Use the `--fork` value from status for `SAVED_HEAD_REPO`.
 
    ```sh
-   tokate prepare OWNER/REPO#42 --state CURRENT_STATE_SHA --source tokate \
+   tokate work OWNER/REPO#42 \
      --harness codex --provider openai --model gpt-6.1-sol --effort high \
      --continue-from PRIOR_RUN_DIR --fork SAVED_HEAD_REPO --time 2h --verify-time 20m --yes
    ```
 
-5. Use the new run directory printed by preparation to run the fresh attempt.
+   This prepares a fresh attempt with the partial changes and runs it. It prints the new run directory.
 
-   ```sh
-   tokate work --run NEW_RUN_DIR --yes
-   ```
-
-6. Publish the new verified attempt.
+5. Publish the new verified attempt.
 
    ```sh
    tokate submit --run NEW_RUN_DIR
@@ -188,7 +184,7 @@ Keep saved work and inspect current state before any explicit next action.
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
 | `invalid_state` | `An unexpired reservation already owns this contribution` or `Reservation state does not permit this operation` | Inspect `tokate status --run DIR --json` and use the existing reservation. |
-| `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate prepare --run DIR` after inspecting the saved evidence. |
+| `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate work --run DIR` after inspecting the saved evidence. Use `tokate claim --run DIR` to finish preparation without inference. |
 | `invalid_state` | `Ambiguous or incomplete fork discovery` or `Incomplete fork discovery after 60 seconds` | Select `--fork DONOR/NAME` explicitly in a fresh preparation. |
 | `invalid_state` | Malformed coordination data, unsafe continuation paths or changed capture evidence | Preserve the run and inspect the indicated data. Do not edit authority or evidence to bypass validation. |
 | `stale_approval` | `Saved run has stale coordination authority`, `Handoff source or approval changed` or `Synchronization target moved` | Inspect `tokate status --run DIR --json`. The owner must review changed authority or issue a fresh exact synchronization grant. |
@@ -249,8 +245,7 @@ If the version check is unavailable, commands continue with a warning.
 
 | Symptom (message text) | Do (exact command) |
 | --- | --- |
-| `Claim pending.` with `work --run DIR` and `prepare --run DIR` | Managed donor: inspect status, then use `tokate work --run DIR`. If the workflow failed, use owner recovery below first. |
-| `Claim pending.` with `prepare --run DIR` only | External donor: inspect status, then use `tokate prepare --run DIR`. If the workflow failed, use owner recovery below first. |
+| `Claim pending.` with `work --run DIR` | Inspect status, then use `tokate work --run DIR`. External work starts no inference. If the workflow failed, use owner recovery below first. |
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
 | `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the linked failure and re-process the request after fixing its cause. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
 | `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the pinned shared workflow in Actions settings, then re-process the request. |

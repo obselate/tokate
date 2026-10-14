@@ -162,8 +162,8 @@ internal class RuntimeBudget {
     Commands.GitOutput(Commands.GitResult(checkout, args, budget: this))
 
     shared {
-        internal func ReadSeconds(args Args, fallback string = "") int32 -> args.Get("unlimited") == "true" ?
-        args.Number("verification-reserve"): args.Number("seconds", fallback)
+        internal func ReadSeconds(args Args) int32 -> args.Get("unlimited") == "true" ?
+        args.Number("verification-reserve"): args.Number("seconds")
 
         internal func Reserve(args Args, seconds int32) int32 {
             let reserve = args.Get("verification-reserve") == "" ? 0: args.Number("verification-reserve")

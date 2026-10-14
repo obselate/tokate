@@ -16,12 +16,7 @@ internal class DonorSelection {
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
-                (
-                args.Command != "select" &&
-                    args.Command != "claim" &&
-                    args.Command != "work" &&
-                    (args.Command != "prepare" || args.Get("source") != "tokate")
-            ) {
+                (args.Command != "select" && args.Command != "claim" && args.Command != "work") {
                 return
             }
 
@@ -261,14 +256,18 @@ internal class DonorSelection {
                     ),
                     error: true
                 )
-                if !OwnerSetup.Confirm(args, args.Command == "claim" ? "Post this claim?": "Start this donation?") {
+                let posting = run?.Text("state") == "claim_pending"
+                let question = args.Command != "claim" ? "Start this donation?":
+                posting ? "Post this claim?": "Prepare this attempt?"
+                if !OwnerSetup.Confirm(args, question) {
                     throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
                 }
                 args.Values["--yes"] = "true"
                 return
             }
 
-            let source = J.Text(selection, "source")
+            let source = (run?.Text("continuation_source") ?? "") == "" ? J.Text(selection, "source"):
+            "explicit continuation import"
 
             if args.Get("yes") == "true" ||
                 source == "explicit invocation" ||

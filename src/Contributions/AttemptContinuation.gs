@@ -48,12 +48,8 @@ internal class AttemptContinuation {
                 )
                 let command = List[string]{
                     "tokate",
-                    "prepare",
+                    "work",
                     target,
-                    "--state",
-                    state.Sha,
-                    "--source",
-                    "tokate",
                     "--continue-from",
                     directory,
                     "--time",
@@ -84,7 +80,7 @@ internal class AttemptContinuation {
                 next["command"] = command.ToArray()
                 next[
                     "action"
-                ] = "Review the new time budget, then prepare a fresh attempt with the stopped run's partial changes."
+                ] = "Review the new time budget, then work on a fresh attempt with the stopped run's partial changes."
                 let reservation = J.Get(state.Value(), "reservation")
                 if J.Text(reservation, "attempt") == run.Text("attempt") || J.Text(reservation, "status") == "paused" {
                     next["action"] = "First " +
@@ -93,7 +89,7 @@ internal class AttemptContinuation {
                         Terminal.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
                     ) +
                         Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
-                        ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before preparation."
+                        ". Wait for each coordinator acceptance, then read status again. Review the new time budget before work."
                 }
             } catch (error Exception) when error is CliFailure ||
                 error is JsonException ||
@@ -101,18 +97,6 @@ internal class AttemptContinuation {
                 error.GetType() == typeof(Exception) { }
 
             return next
-        }
-
-        internal func Confirm(args Args, selection JsonElement, run Data? = nil) {
-            let confirmed = map[string, Object?]{}
-
-            for field in selection.EnumerateObject() {
-                confirmed[field.Name] = field.Value.Clone()
-            }
-
-            confirmed["source"] = "explicit continuation import"
-
-            DonorSelection.Confirm(args, J.Parse(J.Write(confirmed)), run)
         }
 
         private func Id(value string) {

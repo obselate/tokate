@@ -196,10 +196,8 @@ internal class ContributionStatusChecks {
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
             )
             let args = []string{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(test.State()["sha"]),
                 "--source",
                 "tokate",
                 "--tools",
@@ -240,7 +238,7 @@ internal class ContributionStatusChecks {
             )
             Check.PrepareGuidance(offline)
             let local = test.Flow.Call([]string{"status", "owner/project#1-1", "--plain"})
-            Check.Contains(local.Output, "Next   tokate help prepare")
+            Check.Contains(local.Output, "Next   tokate help work")
             Check.That(!local.Output.Contains("tokate work"), "Terminal status recommends stale work")
             let remote = Read(test)
             Check.PrepareGuidance(remote)
@@ -252,7 +250,6 @@ internal class ContributionStatusChecks {
                 File.ReadAllText(Path.Combine(run, "run.json")) == invalidated,
                 "Status changed the invalidated attempt"
             )
-            args[Array.IndexOf(args, "--state") + 1] = Check.Text(test.State()["sha"])
             args[Array.IndexOf(args, "--time") + 1] = "40s"
             args[Array.IndexOf(args, "--verify-time") + 1] = "12s"
             let fresh = test.Flow.Call(args)

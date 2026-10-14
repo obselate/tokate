@@ -191,13 +191,7 @@ internal class HarnessRunner {
                 policy.Digest = run.Text("policy_hash")
                 DonorSelection.Revalidate(run, policy)
 
-                let selected = J.Get(run.Element(), "selection")
-
-                if AttemptContinuation.Has(run) {
-                    AttemptContinuation.Confirm(options, selected, run)
-                } else {
-                    DonorSelection.Confirm(options, selected, run)
-                }
+                DonorSelection.Confirm(options, J.Get(run.Element(), "selection"), run)
 
                 RuntimeBudget.Validate(run)
 
