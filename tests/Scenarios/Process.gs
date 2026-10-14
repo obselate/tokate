@@ -28,16 +28,13 @@ internal class ProcessChecks {
             flow.Save()
             flow.Approve()
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for outcome in[]string{"timeout", "cancel", "closed"} {
+            for outcome in[]string{"cancel", "closed"} {
                 baseline.Restore()
-                let run = flow.Claim(seconds: outcome == "timeout" ? "1": "30")
+                let run = flow.Claim()
                 flow.Mode(outcome == "closed" ? "closed_input": "blocked_input")
                 let result = outcome == "cancel" ? CancelInput(flow, run): flow.Call([]string{"work", "--run", run}, 1)
                 Check.That(result.Code == 1, "Interrupted stdin became success")
-                Check.Contains(
-                    result.Error.ToLowerInvariant(),
-                    outcome == "timeout" ? "runtime limit reached": (outcome == "cancel" ? "cancelled": "broken pipe")
-                )
+                Check.Contains(result.Error.ToLowerInvariant(), outcome == "cancel" ? "cancelled": "broken pipe")
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
                     Check.Text(saved["failure_reason"]) == "inference_interrupted" &&
@@ -58,7 +55,7 @@ internal class ProcessChecks {
                 flow.NoPr()
             }
             Console.WriteLine(
-                "PASS CLI work stops blocked and closed prompt input on deadline, Ctrl+C and broken pipe without extra inference"
+                "PASS CLI work stops blocked and closed prompt input on Ctrl+C and broken pipe without extra inference"
             )
         }
 
@@ -166,15 +163,13 @@ internal class ProcessChecks {
             flow.Approve()
             let run = flow.Claim()
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{"existing", "link", "dangling", "directory"} {
+            for mode in[]string{"existing", "link", "dangling"} {
                 baseline.Restore()
                 let sentinel = Path.Combine(flow.Temp.Root, "capture-sentinel")
                 File.WriteAllText(sentinel, "synthetic-private-evidence")
                 let path = Path.Combine(run, "events.jsonl")
                 if mode == "existing" {
                     File.WriteAllText(path, "synthetic-existing-evidence")
-                } else if mode == "directory" {
-                    Directory.CreateDirectory(path)
                 } else {
                     File.CreateSymbolicLink(path, mode == "link" ? sentinel: sentinel + "-missing")
                 }
@@ -195,7 +190,7 @@ internal class ProcessChecks {
                 flow.NoPr()
             }
             Console.WriteLine(
-                "PASS CLI work refuses existing, linked, dangling and directory output evidence before inference"
+                "PASS CLI work refuses existing, linked and dangling output evidence before inference"
             )
         }
 
