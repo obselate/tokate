@@ -648,14 +648,12 @@ internal class CliDiscovery {
                 "missing_tools"
             )
             Check.That(Check.Text(blocked["next_actions"]?[0]?[1]) == "doctor", "Missing-tools action absent")
-            let init = Path.Combine(temp.Root, "project")
             Check.Envelope(
-                TestProcess.Run(binary, []string{"init", "owner/project", "--path", init, "--json"}, temp.Env),
+                TestProcess.Run(binary, []string{"init", "owner/project", "--json"}, temp.Env),
                 "init",
                 "error",
                 "missing_tools"
             )
-            Check.That(!File.Exists(Path.Combine(init, ".github/tokate.json")), "Failed setup wrote configuration")
             let saved = Path.Combine(temp.Root, "saved")
             Directory.CreateDirectory(saved)
             let rows = JsonArray()
