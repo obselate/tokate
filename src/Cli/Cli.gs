@@ -1130,8 +1130,7 @@ internal class Cli {
                     OptionHelp(
                         text,
                         "RUN" + (command.Needs("run") ? " (required)": ""),
-                        "Saved run: 42-3 or OWNER/REPO#42-3 names one attempt; tokate runs lists them" +
-                            (command.Target == "run" ? "; 42 uses the newest attempt of issue 42": ""),
+                        "Saved run: 42, REPO#42 or OWNER/REPO#42; add -3 when the issue has two active attempts",
                         width
                     )
                 }

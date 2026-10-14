@@ -2,17 +2,74 @@ package Tokate
 
 import System
 import System.Collections.Generic
-import System.IO
 
 internal class RunReference {
     shared {
-        internal func Label(args Args, row SavedRun) string -> args.Words.Count > 0 && !args.Words[0].Contains("/") ?
-        row.Name: row.Text("repo") + "#" + row.Name
+        private var Here string = ""
+
+        internal func Locate() {
+            try {
+                Here = RepositoryInput.Local()
+            } catch (error Exception) { }
+        }
 
         internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
             Math.Max(0, rows.Count - 16),
             Math.Min(16, rows.Count)
         )
+
+        internal func Pick(rows List[SavedRun]) SavedRun? {
+            let active = rows.FindAll(row -> row.Text("state") != "failed")
+            return active.Count > 1 ? nil: active.Count == 1 ? active[0]: rows.Count > 0 ? rows[rows.Count - 1]: nil
+        }
+
+        internal func Label(row SavedRun, saved SavedRuns) string {
+            let repo = row.Text("repo")
+            let name = repo.Substring(repo.IndexOf('/') + 1)
+            let unique = saved.Rows.TrueForAll(other -> !Named(other, name) || other.Text("repo") == repo)
+            let prefix = String.Equals(repo, Here, StringComparison.OrdinalIgnoreCase) ? "": (unique ? name: repo) + "#"
+            let suffix = Pick(saved.For(repo, row.Issue)) == row ? "": "-" + row.Number.ToString()
+            return prefix + row.Issue.ToString() + suffix
+        }
+
+        private func Named(row SavedRun, name string) bool -> row.Text("repo").EndsWith(
+            "/" + name,
+            StringComparison.OrdinalIgnoreCase
+        )
+
+        internal func Repo(name string) string {
+            let rows = SavedRuns(RunStorage.Roots()).Rows.FindAll(row -> Named(row, name))
+
+            if rows.Count == 0 || !rows.TrueForAll(row -> row.Text("repo") == rows[0].Text("repo")) {
+                throw Exception("Saved runs do not identify " + name + "; name OWNER/REPO#N")
+            }
+
+            return rows[0].Text("repo")
+        }
+
+        internal func Short(action[]string)[]string {
+            let index = Array.IndexOf(action, "--run")
+
+            if index < 1 || action[0] != "tokate" || !Cli.Find(action[1]).Runs {
+                return action
+            }
+
+            let saved = SavedRuns(RunStorage.Roots())
+            let row = saved.Rows.Find(other -> other.Location == action[index + 1])
+
+            if row == nil ||
+                saved
+                .For(row.Text("repo"), row.Issue)
+                .FindAll(other -> other.Number == row.Number)
+                .Count > 1 {
+                return action
+            }
+
+            let words = List[string](action)
+            words.RemoveRange(index, 2)
+            words.Insert(2, Label(row, saved))
+            return words.ToArray()
+        }
 
         internal func Resolve(args Args) {
             let command = Cli.Find(args.Command)
@@ -75,12 +132,18 @@ internal class RunReference {
                 throw Exception("Saved run name " + name + " is not unique; use --run DIR")
             }
 
-            let row = rows[rows.Count - 1]
+            let row = Pick(rows) ??
+                throw Exception(
+                "Saved run name " + name + " is ambiguous: " + String.Join(
+                    ", ",
+                    rows.FindAll(other -> other.Text("state") != "failed").ConvertAll(other -> Label(other, saved))
+                ) +
+                    ". Name one attempt"
+            )
 
-            args.Run = Label(args, row)
+            args.Run = Label(row, saved)
 
             if !named {
-                args.Attempts = pull ? rows: saved.For(repo, row.Issue)
                 Terminal.Message("Run " + args.Run + ": " + row.Text("state") + ", " + row.Age() + " old", "cyan", true)
             }
 
@@ -91,39 +154,8 @@ internal class RunReference {
             args.Values["--run"] = row.Location
         }
 
-        internal func Name(args Args, directory string) string {
-            if args.Words.Count == 0 || Array.IndexOf(RunStorage.Roots(), Path.GetDirectoryName(directory) ?? "") < 0 {
-                return ""
-            }
-
-            let saved = SavedRuns(RunStorage.Roots())
-
-            for row in saved.Rows {
-                if row.Location != directory {
-                    continue
-                }
-
-                var same int32
-
-                for other in saved.For(row.Text("repo"), row.Issue) {
-                    if other.Number == row.Number {
-                        same++
-                    }
-                }
-
-                return same == 1 ? Label(args, row): ""
-            }
-
-            return ""
-        }
-
         internal func Print(args Args) {
-            var localRepo = ""
-            try {
-                localRepo = RepositoryInput.Local()
-            } catch (error Exception) { }
-
-            let saved = SavedRuns(RunStorage.Roots(), listingRepo: localRepo)
+            let saved = SavedRuns(RunStorage.Roots(), listingRepo: Here)
             let repo = args.Get("issue") != "" && args.Get("repo") == "" ? RepositoryInput.Local(): args.Get("repo")
             let rows = List[SavedRun]()
 
@@ -140,7 +172,7 @@ internal class RunReference {
             } else if rows.Count == 0 {
                 Terminal.Message("No saved runs.", "default")
             } else {
-                Terminal.Runs(args, rows)
+                Terminal.Runs(rows)
             }
         }
     }

@@ -1182,7 +1182,7 @@ internal class ContributionStatus {
                 Terminal.ContributionStatus(J.Parse(J.Write(status.Result)))
                 if attempts != nil && attempts.Count > 0 {
                     Terminal.Message("Saved runs on this computer:", "default")
-                    Terminal.Runs(args, attempts)
+                    Terminal.Runs(attempts)
                 }
             }
 

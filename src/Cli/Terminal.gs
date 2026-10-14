@@ -227,68 +227,54 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(args Args, rows List[SavedRun], error bool = false) {
+        internal func Runs(rows List[SavedRun]) {
+            let saved = SavedRuns(RunStorage.Roots())
             var width int32 = 3
 
             for row in rows {
-                width = Math.Max(width, RunReference.Label(args, row).Length)
+                width = Math.Max(width, RunReference.Label(row, saved).Length)
             }
 
-            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", false)
 
             for row in rows {
+                let name = RunReference.Label(row, saved)
                 Line(
                     Clean(
-                        "  " + RunReference.Label(args, row).PadRight(width) + "  " + row.Text("state").PadRight(20) +
+                        "  " + name.PadRight(width) + "  " + row.Text("state").PadRight(20) + "  " + row.Age().PadRight(
+                            4
+                        ) +
                             "  " +
-                            row
-                            .Age().PadRight(4) + "  " + row.Text("model")
+                            row.Text("model")
                     ),
                     "default",
-                    error
+                    false
                 )
 
                 if row.Next != "" {
-                    Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
+                    Line(Clean("    Next: tokate " + row.Next + " " + name), "default", false)
                 }
             }
         }
 
-        private func Hint(action[]string) string {
-            let index = Array.IndexOf(action, "--run")
-
-            if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
-                action[1]
-            )
-                .Runs {
-                return Command(action)
-            }
-
-            let words = List[string](action)
-
-            words.RemoveRange(index, 2)
-            words.Remove("--json")
-            words.Insert(2, PublicOutput.RunName)
-
-            return Command(words.ToArray())
-        }
+        private func Hint(action[]string) string -> Command(Array.FindAll(action, word -> word != "--json"))
 
         internal func Command(command JsonElement, flatten bool = true) string {
-            let words = StringBuilder()
+            let words = List[string]()
 
             if command.ValueKind == JsonValueKind.Array {
                 for item in command.EnumerateArray() {
-                    AppendWord(words, item.ToString())
+                    words.Add(item.ToString())
                 }
             }
 
-            return CommandText(words, flatten)
+            return Command(words.ToArray(), flatten)
         }
 
         internal func Command(command[]string, flatten bool = true) string {
             let words = StringBuilder()
 
-            for word in command {
+            for word in RunReference.Short(command) {
                 AppendWord(words, word)
             }
 
@@ -459,7 +445,7 @@ internal class Terminal {
                     if action[1] == "status" {
                         details = Command(action)
                     } else {
-                        Row("Next", Hint(Array.FindAll(action, word -> word != "--json")))
+                        Row("Next", Hint(action))
                     }
                 }
             }

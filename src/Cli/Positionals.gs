@@ -84,8 +84,9 @@ internal class Positionals {
             let attempt = match.Groups[3].Value
 
             if key != "repo" && match.Success && (attempt == "" || Cli.Find(args.Command).Runs) {
-                if match.Groups[1].Value != "" {
-                    Repo(args, match.Groups[1].Value)
+                let repo = match.Groups[1].Value
+                if repo != "" {
+                    Repo(args, repo.Contains("/") || !Cli.Find(args.Command).Runs ? repo: RunReference.Repo(repo))
                 }
 
                 Number(args, attempt == "" ? key: "issue", match.Groups[2].Value)
