@@ -197,6 +197,7 @@ internal class Diagnostics {
             }
             let ready = Call(binary, temp, []string{"doctor", "external"})
             Check.That(Check.Text(ready["data"]?["authentication_requested"]) == "false", "Implicit authentication")
+            Check.That(!ready.ToJsonString().Contains("\"/usr/bin/setsid\""), "Doctor listed one setsid twice")
             Check.That(!File.ReadAllText(calls).Contains("status"), "No-auth doctor checked authentication")
             var longTools = temp.Root
             for i in 0 ... 24 {
