@@ -524,16 +524,56 @@ internal class CheckGates {
                     "GitHub mergeability changed machine readiness"
                 )
                 Check.That(
-                    Check.Text(advanced["reconciliation_required"]) == (reconcile ? "true": "false"),
-                    "Wrong reconciliation recommendation"
+                    Check.Text(advanced["target_merge_required"]) == (reconcile ? "true": "false"),
+                    "Wrong target merge recommendation"
                 )
                 if reconcile {
-                    Check.Contains(Check.Text(advanced["reconciliation_next"]), "current donor")
-                    Check.Contains(Check.Text(advanced["reconciliation_next"]), "reconcile")
+                    Check.Contains(Check.Text(advanced["target_merge_next"]), "tokate amend")
                 } else {
-                    Check.That(advanced["reconciliation_next"] == nil, "Unneeded reconciliation recommended")
+                    Check.That(advanced["target_merge_next"] == nil, "Unneeded target merge recommended")
                 }
             }
+            let checkout = Path.Combine(test.Run, "checkout")
+            let receipt = Check.Text(Check.Json(File.ReadAllText(Path.Combine(test.Run, "run.json")))["commit"])
+            for kind in[]string{"clean", "non-target", "extra-change"} {
+                flow.Git("-C", checkout, "fetch", flow.Upstream, current)
+                var target = current
+                if kind == "non-target" {
+                    flow.Git("-C", checkout, "checkout", "--detach", current)
+                    File.WriteAllText(Path.Combine(checkout, "untrusted-target.txt"), "Not owner target history\n")
+                    flow.DonorGit(checkout, "add", ".")
+                    flow.DonorGit(checkout, "commit", "-m", "Donor-chosen target")
+                    target = flow.Git("-C", checkout, "rev-parse", "HEAD")
+                }
+                flow.Git("-C", checkout, "checkout", "--detach", receipt)
+                flow.DonorGit(checkout, "merge", "--no-ff", "--no-edit", target)
+                if kind == "extra-change" {
+                    File.AppendAllText(Path.Combine(checkout, "result.txt"), "Unverified edit\n")
+                    flow.DonorGit(checkout, "add", ".")
+                    flow.DonorGit(checkout, "commit", "--amend", "--no-edit")
+                }
+                let candidate = flow.Git("-C", checkout, "rev-parse", "HEAD")
+                let fork = Path.Combine(flow.Bin, "fork")
+                flow.Git("-C", fork, "fetch", checkout, candidate)
+                flow.Git("-C", flow.Upstream, "fetch", checkout, candidate)
+                flow.Reload()
+                let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+                let head = pull["head"] ?? throw Exception("Missing head")
+                flow.Git("-C", fork, "update-ref", "refs/heads/" + Check.Text(head["ref"]), candidate)
+                head["sha"] = JsonValue.Create(candidate)
+                flow.Save()
+                let merged = Data(Read(test, kind == "clean" ? 0: 1))
+                Gate(merged, "receipt", kind == "clean" ? "passed": (kind == "non-target" ? "failed": "stale"))
+                if kind == "clean" {
+                    Gate(merged, "checks", "passed")
+                    Check.That(
+                        Check.Text(merged["binding"]?["commit"]) == receipt,
+                        "Clean target merge changed exact-head CI binding"
+                    )
+                }
+            }
+            test.Restore()
+            Passing(test)
             for kind in[]string{
                 "head",
                 "approval",

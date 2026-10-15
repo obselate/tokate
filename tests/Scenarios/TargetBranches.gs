@@ -64,7 +64,7 @@ internal class TargetBranches {
             let current = flow.Git("-C", flow.Upstream, "rev-parse", branch)
             let checked = Check.Json(flow.Call([]string{"checks", "owner/project#10", "--json"}, owner: true).Output)
             Check.That(
-                Check.Text(checked["data"]?["reconciliation_required"]) == "false" && Check.Text(
+                Check.Text(checked["data"]?["target_merge_required"]) == "false" && Check.Text(
                     checked["data"]?["gates"]?["freshness"]?["status"]
                 ) == "passed" &&
                     Check.Text(checked["data"]?["verified_target_revision"]) == base && Check.Text(

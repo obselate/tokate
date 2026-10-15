@@ -267,9 +267,7 @@ internal class Checks {
 
                     stage = "freshness"
 
-                    if binding != "" && binding != currentBinding || J.Text(J.Get(pull, "head"), "sha") != run.Text(
-                        "commit"
-                    ) {
+                    if binding != "" && binding != currentBinding {
                         throw CliFailure("stale_approval", "PR authority changed while reading checks")
                     }
 
@@ -286,11 +284,7 @@ internal class Checks {
                     }
 
                     stage = "freshness"
-                    let history = J.Items(J.Get(run.Element(), "synchronizations"))
-                    let verifiedTarget = history.Count == 0 ? run.Text("base"): J.Text(
-                        history[history.Count - 1],
-                        "upstream"
-                    )
+                    let verifiedTarget = run.Text("verified_target_revision")
                     facts["verified_target_revision"] = verifiedTarget
 
                     stage = "report"
@@ -514,12 +508,12 @@ internal class Checks {
                         finalPull,
                         "mergeable_state"
                     ) == "behind"
-                    facts["reconciliation_required"] = reconcile
+                    facts["target_merge_required"] = reconcile
 
                     if reconcile {
                         facts[
-                            "reconciliation_next"
-                        ] = "GitHub reports a conflict or requires an up-to-date branch. Ask the current donor to reconcile and verify the resulting exact commit. Further coding requires a new explicit budget."
+                            "target_merge_next"
+                        ] = "Merge the target branch into the saved checkout. Resolve conflicts, then run tokate amend with an explicit verification budget."
                     }
 
                     ApiTransport.CheckDeadline()

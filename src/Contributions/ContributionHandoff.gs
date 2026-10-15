@@ -166,13 +166,13 @@ internal class ContributionHandoff {
                 throw CliFailure("stale_approval", "Handoff source or approval changed")
             }
 
-            Synchronization.Ancestor(repo, prior.Sha, repo, state.Sha)
+            GitHubPathEvidence.Ancestor(repo, prior.Sha, repo, state.Sha)
         }
 
         internal func Candidate(source JsonElement, fork string, head string) {
             if source.ValueKind != JsonValueKind.Undefined {
                 Declaration(source)
-                Synchronization.Ancestor(J.Text(source, "fork"), J.Text(source, "head"), fork, head)
+                GitHubPathEvidence.Ancestor(J.Text(source, "fork"), J.Text(source, "head"), fork, head)
             }
         }
 

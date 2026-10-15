@@ -246,20 +246,6 @@ func Dispatch(options Args) int32 {
             ExternalContribution.External(options)
         }
 
-        case "reconcile" {
-            Reconciliation.Run(options)
-
-            return 0
-        }
-
-        case "sync" when options.Subject == "authorize" {
-            Synchronization.Authorize(options)
-        }
-
-        case "sync" {
-            Synchronization.Revoke(options)
-        }
-
         case "amend" {
             Amendment.Run(options)
         }

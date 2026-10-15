@@ -741,9 +741,6 @@ internal partial class Fixture {
             if file == "state.json" && State["coordination_state_override"] != nil {
                 content = Check.Text(State["coordination_state_override"])
             }
-            if file == "synchronization.json" && State["synchronization_override"] != nil {
-                content = Check.Text(State["synchronization_override"])
-            }
             return Answer(
                 Check.Map("encoding", "base64", "content", Convert.ToBase64String(Encoding.UTF8.GetBytes(content)))
             )
@@ -1016,23 +1013,8 @@ internal partial class Fixture {
                 }
                 entries.Add(entry)
             }
-            let fault = recursive && Check.Text(State["tree_fault_sha"]) != "" && Check.Text(
-                State["tree_fault_sha"]
-            ) != sha ? "": Check.Text(State[recursive ? "tree_fault": "decree_tree_fault"])
+            let fault = recursive ? "": Check.Text(State["decree_tree_fault"])
             let result = Check.Map("sha", sha, "truncated", fault == "truncated", "tree", entries)
-            if recursive && fault == "missing" {
-                result.AsObject().Remove("tree")
-            } else if recursive && fault == "identity" {
-                result["sha"] = JsonValue.Create(String('a', 40))
-            } else if recursive && fault == "ancestor" {
-                for i in 0 ... entries.Count {
-                    if Check.Text(entries[i]?["path"]) == ".github" {
-                        entries.RemoveAt(i)
-                        break
-                    }
-                }
-                result["tree"] = entries.DeepClone()
-            }
             return Answer(result)
         }
         if tail.StartsWith("git/blobs/") {
@@ -1208,6 +1190,13 @@ internal partial class Fixture {
             }
             let pull = selected ?? throw Exception("Missing PR")
             if method == "PATCH" {
+                if body["maintainer_can_modify"] != nil && !String.Equals(
+                    actor,
+                    Check.Text(pull["head"]?["repo"]?["full_name"]).Split('/')[0],
+                    StringComparison.OrdinalIgnoreCase
+                ) {
+                    return Response(403)
+                }
                 if Check.Text(State["mode"]) == "body_fail" {
                     return Response(500)
                 }

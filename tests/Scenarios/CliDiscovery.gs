@@ -545,52 +545,6 @@ internal class CliDiscovery {
                 []string{"status", "--run", "saved", "owner/project#10", "--json"},
                 []string{"status", "--run", "saved", "1", "--json"},
                 []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
-                []string{"sync", "owner/project#10", "revoke", "--grant", "invalid", "--json"},
-                []string{"sync", "owner/project#10", "revoke", "--grant", String('a', 40) + "\n", "--json"},
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "authorize",
-                    "--commit",
-                    String('a', 40),
-                    "--upstream",
-                    "invalid",
-                    "--json"
-                },
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "authorize",
-                    "--commit",
-                    String('a', 40),
-                    "--upstream",
-                    String('a', 40) + "\n",
-                    "--json"
-                },
-                []string{
-                    "amend",
-                    "--run",
-                    "saved",
-                    "--commit",
-                    String('a', 40),
-                    "--time",
-                    "30s",
-                    "--sync",
-                    "invalid",
-                    "--json"
-                },
-                []string{
-                    "amend",
-                    "--run",
-                    "saved",
-                    "--commit",
-                    String('a', 40),
-                    "--time",
-                    "30s",
-                    "--sync",
-                    String('a', 40) + "\n",
-                    "--json"
-                },
                 []string{"approve", "0", "--json"},
                 []string{"approve", "owner/project", "--json"},
                 []string{"approve", "owner/project#1", "--title", "Removed", "--json"},
@@ -632,18 +586,7 @@ internal class CliDiscovery {
                 ),
                 "Defaults set required inputs differ"
             )
-            let sync = Check.Envelope(Call(binary, []string{"help", "sync", "--json"}, temp), "help", "ok")["data"]?[
-                "commands"
-            ]?[0]?["operations"]
-            Check.That(
-                Check.Text(sync?[0]?["name"]) == "authorize" && JsonNode.DeepEquals(
-                    sync?[0]?["required_input_sets"],
-                    Check.Json("[[\"commit\",\"upstream\"]]")
-                ) &&
-                    Check.Text(sync?[1]?["name"]) == "revoke",
-                "Sync operations missing from metadata"
-            )
-            for subject in[]string{"defaults", "access", "sync"} {
+            for subject in[]string{"defaults", "access"} {
                 let command = Check.Envelope(Call(binary, []string{"help", subject, "--json"}, temp), "help", "ok")[
                     "data"
                 ]?["commands"]?[0]
@@ -1231,14 +1174,6 @@ internal class CliDiscovery {
                 []string{"revoke", "https://github.com/owner/project/issues/0"},
                 []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
                 []string{"claim", "owner/project#1", "--source=invalid"},
-                []string{"sync", "owner/project#10", "merge"},
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "revoke",
-                    "--grant=" + String('a', 40),
-                    "--commit=" + String('b', 40)
-                },
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
                 []string{"coordinate", "--repo=owner/project"},
