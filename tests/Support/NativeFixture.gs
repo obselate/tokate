@@ -316,7 +316,10 @@ internal open class NativeFixture : IDisposable {
     }
 
     internal func MetadataOnly() {
-        File.WriteAllText(Path.Combine(Bin, "git"), "#!/bin/sh\necho unexpected-local-git >&2\nexit 91\n")
+        File.WriteAllText(
+            Path.Combine(Bin, "git"),
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then exec /usr/bin/git --version; fi\necho unexpected-local-git >&2\nexit 91\n"
+        )
         File.SetUnixFileMode(
             Path.Combine(Bin, "git"),
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute

@@ -923,7 +923,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let duplicate = Coordinate(path, traffic: true)
-        Flow.Traffic(12, 0, 0, duplicate)
+        Flow.Traffic(13, 0, 0, duplicate)
         Flow.Receipt("owner/project#10", owner: true)
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
         Expire()
