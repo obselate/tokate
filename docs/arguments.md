@@ -49,8 +49,8 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `doctor claude` | `tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]` | Also check the Claude invocation for one owner-permitted model and effort. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
 | `defaults check` | `tokate defaults check [OWNER/REPO] [NAME] [options]` | Check a profile or explicit choice under owner policy. |
-| `update` | `tokate update` | Install the latest stable release. |
-| `uninstall` | `tokate uninstall` | Remove the managed installation and keep runs. |
+| `update` | `tokate update [--yes]` | Show the current and latest stable version, then install it. Without a terminal, preview unless `--yes`. |
+| `uninstall` | `tokate uninstall [--yes]` | Show the files to remove, then remove the managed installation and keep runs. Without a terminal, preview unless `--yes`. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
 | `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
 | `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |

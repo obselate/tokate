@@ -164,12 +164,7 @@ func Dispatch(options Args) int32 {
     }
 
     if options.Command == "update" || options.Command == "uninstall" {
-        PublicOutput.ResultData = map[string, Object?]{
-            "version": ApplicationInfo.Version(),
-            "installation": options.Command
-        }
-
-        return Installation.Run(options.Command)
+        return Installation.Run(options)
     }
 
     if Cli.RepositoryWork(options) && options.Subject == "stop" {

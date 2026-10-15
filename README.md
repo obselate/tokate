@@ -20,7 +20,8 @@ Read https://raw.githubusercontent.com/obselate/tokate/main/AGENTS.md. Install T
 ```
 
 Open a new terminal if prompted. Use `tokate update` to update or `tokate uninstall`
-to remove the installation while keeping saved work.
+to remove the installation while keeping saved work. Each shows the change and asks once
+in a terminal. Without a terminal, add `--yes` to apply.
 
 Current main supports **Linux x86_64 with glibc 2.34+ or Alpine 3.24, and public GitHub repositories**.
 Windows, macOS and ARM64 are not supported. See [Nix](docs/nix.md) and

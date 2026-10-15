@@ -57,9 +57,12 @@ internal class ContributionStatus {
     private func Issue(task JsonElement) Dictionary[string, Object?] {
         let issue = J.Number(task, "number")
 
-        if issue < 1 || J.Text(task, "state") != "open" || J.Get(task, "pull_request")
-            .ValueKind != JsonValueKind.Undefined {
-            throw CliFailure("invalid_state", "Expected an open issue in the approved-work index")
+        if issue < 1 {
+            throw CliFailure("invalid_state", "Expected an issue number")
+        }
+
+        if J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined {
+            throw CliFailure("invalid_state", "Choose an issue, not a pull request")
         }
 
         let row = map[string, Object?]{
@@ -98,6 +101,23 @@ internal class ContributionStatus {
 
         if !loaded {
             row["state"] = "unavailable"
+            return row
+        }
+
+        if J.Text(task, "state") != "open" {
+            let drafts = List[Object]()
+            row["state"] = "closed"
+            row["drafts"] = drafts
+            row["next"] = Next("owner", "The issue is closed. Reopen it to accept more work.")
+            if approval.ValueKind != JsonValueKind.Undefined {
+                Observe(row, "drafts", async () -> Drafts(issue, row, state, approval, policy, drafts))
+            }
+            for item in drafts {
+                if Text(item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft"), "lifecycle") ==
+                "merged" {
+                    row["next"] = nil
+                }
+            }
             return row
         }
 
@@ -971,7 +991,7 @@ internal class ContributionStatus {
             "discovery",
             async () -> {
                 if issue != 0 {
-                    Issue(GitHub.Issue(Repo, issue))
+                    Issue(GitHub.Api("repos/" + Repo + "/issues/" + issue.ToString()))
                 } else {
                     let issues = GitHub.Api(
                         "repos/" +

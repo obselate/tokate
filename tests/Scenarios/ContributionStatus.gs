@@ -623,6 +623,26 @@ internal class ContributionStatusChecks {
                     "History granted work or publication authority"
                 )
             }
+            for merged in[]bool{true, false} {
+                published.Restore()
+                Close(test, merged, true)
+                test.Flow.Reload()
+                (test.Flow.State["issue"] ?? throw Exception("Missing issue"))["state"] = JsonValue.Create("closed")
+                test.Flow.Save()
+                let closed = Row(Read(test))
+                Check.That(
+                    Check.Text(closed["state"]) == "closed" && Check.Text(closed["approval_status"]) == "unknown" &&
+                        Check.Text(closed["drafts"]?[0]?["lifecycle"]) == (merged ? "merged": "closed_unmerged"),
+                    "Closed issue status omitted its contribution"
+                )
+                Check.That(
+                    merged ? closed["next"] == nil: Check.Text(closed["next"]?["action"]).Contains("Reopen"),
+                    "Closed issue next action is wrong"
+                )
+                let closedHuman = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
+                Check.Contains(closedHuman.Output, "owner/project#1")
+                Check.Contains(closedHuman.Output, "State  closed")
+            }
             for mismatch in[]string{
                 "repository",
                 "repository_id",

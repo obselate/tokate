@@ -2,12 +2,13 @@ package Tokate
 
 import Gsharp.Concurrency
 import System
+import System.Collections.Generic
 import System.Diagnostics
 import System.Runtime.ExceptionServices
 
 internal class Installation {
     shared {
-        internal func Run(command string) int32 {
+        internal func Run(options Args) int32 {
             if MachineSetup.NixManaged() {
                 throw CliFailure(
                     "invalid_state",
@@ -15,11 +16,62 @@ internal class Installation {
                 )
             }
 
-            return Execute(
-                LocalPaths.NeedSystemTool("sh"),
-                []string{"-s", "--", command, Environment.ProcessPath ?? ""},
-                ApplicationInfo.Resource("install.sh")
+            let command = options.Command
+            let path = Environment.ProcessPath ?? ""
+            let shell = LocalPaths.NeedSystemTool("sh")
+            let script = ApplicationInfo.Resource("install.sh")
+            let preview = List[string]()
+            let checked = Execute(shell, []string{"-s", "--", command, path, "preview"}, script, lines: preview)
+
+            if checked != 0 {
+                return checked
+            }
+
+            if preview.Count == 0 {
+                throw CliFailure("command_failed", "The installer preview listed no changes. Nothing changed.")
+            }
+
+            let version = ApplicationInfo.Version()
+            let result = map[string, Object?]{
+                "version": version,
+                "installation": command,
+                "path": path,
+                "applied": false
+            }
+            PublicOutput.ResultData = result
+
+            if command == "update" {
+                result["target_version"] = preview[0]
+                if preview[0] == version {
+                    Terminal.Message("Tokate " + version + " is current at " + path + ". Nothing changed.", error: true)
+                    return 0
+                }
+                Terminal.Message("Update Tokate " + version + " to " + preview[0] + " at " + path + ".", "yellow", true)
+            } else {
+                result["removes"] = preview
+                result["keeps"] = LocalPaths.StateDirectory()
+                Terminal.Message(
+                    "Remove " + String.Join(", ", preview) + ". Keep saved runs in " + LocalPaths.StateDirectory() +
+                        ".",
+                    "yellow",
+                    true
+                )
+            }
+
+            if !OwnerSetup.Confirm(options, command == "update" ? "Update Tokate?": "Uninstall Tokate?") {
+                if OwnerSetup.Unattended(options) {
+                    return 0
+                }
+                throw CliFailure("confirmation_required", "Pass --yes to " + command + " Tokate. Nothing changed.")
+            }
+
+            let code = Execute(
+                shell,
+                []string{"-s", "--", command, path, command == "update" ? "v" + preview[0]: ""},
+                script
             )
+            result["applied"] = code == 0
+            return code
         }
 
         internal func Execute(
@@ -27,14 +79,15 @@ internal class Installation {
             args[]string,
             input string? = nil,
             capture bool = false,
-            pathVariables[]string = nil
+            pathVariables[]string = nil,
+            lines List[string]? = nil
         ) int32 {
             let info = ProcessStartInfo(executable)
 
             info.UseShellExecute = false
             info.RedirectStandardInput = input != nil
-            info.RedirectStandardOutput = PublicOutput.Enabled || capture
-            info.RedirectStandardError = PublicOutput.Enabled || capture
+            info.RedirectStandardOutput = PublicOutput.Enabled || capture || lines != nil
+            info.RedirectStandardError = PublicOutput.Enabled || capture || lines != nil
 
             for arg in args {
                 info.ArgumentList.Add(arg)
@@ -175,7 +228,11 @@ internal class Installation {
                 }
 
                 PublicOutput.Truncated = PublicOutput.Truncated || stdout.Truncated || stderr.Truncated
-                Console.Error.Write(PublicOutput.Prose(stdout.Text))
+                if let output = lines {
+                    output.AddRange(stdout.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                } else {
+                    Console.Error.Write(PublicOutput.Prose(stdout.Text))
+                }
                 Console.Error.Write(PublicOutput.Prose(stderr.Text))
             }
 

@@ -8,7 +8,7 @@ import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
-        private func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
+        internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
             Console.IsInputRedirected ||
