@@ -127,6 +127,10 @@ internal class DonorSelectionChecks {
                 (UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute),
                 "Named profile permissions are not private"
             )
+            Check.Contains(
+                flow.Call([]string{"defaults", "list", "--plain"}).Output,
+                "Profiles:\n  local:\n    Harness: pi\n"
+            )
             for output in[]string{
                 pi.Output,
                 flow.Call([]string{"defaults", "show", "local"}).Output,
