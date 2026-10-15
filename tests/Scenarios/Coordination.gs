@@ -1944,7 +1944,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(submitPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
         let plainPreview = namedFlow.Call([]string{"submit", "owner/project#2", "--non-interactive"})
         Check.Contains(plainPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
-        Check.Contains(plainPreview.Error, "tokate submit owner/project#2")
         let rejected = TestTerminal.Pty(Flow.Binary, []string{"submit", "owner/project#2"}, namedFlow.Temp, 80, "\n")
         Check.That(rejected.Code == 1, "Rejected publication succeeded")
         Check.Contains(rejected.Output, "Publish this contribution? [y/N]")

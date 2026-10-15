@@ -83,7 +83,7 @@ internal class RunReference {
 
             let words = List[string](action)
             words.RemoveRange(index, 2)
-            words.Insert(2, full || action[1] == "submit" ? row.Name: Label(row, saved, action[1] == "checks"))
+            words.Insert(2, full ? row.Name: Label(row, saved, action[1] == "checks"))
             return words.ToArray()
         }
 
