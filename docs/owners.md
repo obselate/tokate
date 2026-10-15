@@ -163,15 +163,15 @@ Current eligibility still controls claims, work and publication. `tokate init`
 lists affected approved issues and the commands to run after the change is merged.
 `tokate status 42` reports stale task fields and the owner approval command.
 
-Tokate keeps its records in `tokate/` branches of your repository. Init names them.
+Tokate keeps its records in `tokate/` branches of your repository. Init names them. Keep them.
 
-| Branch | Holds | Keep |
-| --- | --- | --- |
-| `tokate/access` | Donor trust, grants and denials | Always |
-| `tokate/contributions/N` | Reservation and publication record for issue N | Always |
-| `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch | Until the PR is merged or closed |
+| Branch | Holds |
+| --- | --- |
+| `tokate/access` | Donor trust, grants and denials |
+| `tokate/contributions/N` | Reservation and publication record for issue N |
+| `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch |
 
-Do not open PRs from these branches or merge them. Exclude `tokate/access` and `tokate/contributions/` from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Deleting a synchronization branch of an open PR revokes that grant.
+Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Verification of an open PR reads its synchronization branches.
 
 Donor PR head branches, such as `tokate/v2-...`, are not records. GitHub can delete them when the PR is merged.
 
@@ -188,7 +188,8 @@ Donor PR head branches, such as `tokate/v2-...`, are not records. GitHub can del
    Donor PRs come from forks. The repository setting **Actions > General > Approval for running
    fork pull request workflows from contributors** controls the hold. The GitHub default holds
    runs for first-time contributors. A donor stops being first-time after a merged contribution.
-   The strictest option holds runs for every donor who is not a collaborator.
+   **Require approval for all external contributors** holds runs for every donor who is not a
+   repository or organization member.
    Init does not change this setting. `tokate checks` reports held runs as
    `Workflow runs await owner approval.`
 3. Check the receipt against owner approval and wait for required checks on the current PR head.
