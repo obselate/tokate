@@ -283,14 +283,21 @@ internal class DonorDefaults {
                 let policy = Policy.Load(repo, J.Text(GitHub.Api("repos/" + repo), "default_branch"))
                 let selection = DonorSelection.Resolve(args, policy)
 
-                return PublicOutput.Enabled ? J.Parse(
-                    J.Write(
-                        J.Select(
-                            selection,
-                            "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence"
-                        )
-                    )
-                ): selection
+                if !PublicOutput.Enabled {
+                    return selection
+                }
+
+                let result = J.Select(
+                    selection,
+                    "harness,provider,model,effort,source,policy_hash,policy_eligible,capability,availability,availability_evidence,context_window,max_tokens"
+                )
+                let catalog = J.Get(selection, "endpoint_catalog")
+
+                if catalog.ValueKind == JsonValueKind.Object {
+                    result["endpoint_catalog"] = catalog
+                }
+
+                return J.Parse(J.Write(result))
             }
 
             if args.Subject == "show" || args.Subject == "use" {

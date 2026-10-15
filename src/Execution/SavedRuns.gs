@@ -28,12 +28,26 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         Text("state")
     ) >= 0
 
-    internal prop Next string -> Outcome != "" ? "": (Text("state") == "claim_pending" || Text("state") == "claimed") &&
+    internal prop Next string -> Outcome != "" ||
+        Busy() ? "": (Text("state") == "claim_pending" || Text("state") == "claimed") &&
         Text("source") == "tokate" ? "work":
     J.Number(Value, "pr") > 0 ? "checks":
     Text("state") == "generated" || Text("state") == "incomplete_generated" ? "submit": ""
 
     internal func Text(key string) string -> J.Text(Value, key)
+
+    internal func Busy() bool {
+        if !File.Exists(Path.Combine(Location, ".lock")) {
+            return false
+        }
+
+        try {
+            using let lease = RunStorage.Lock(Location)
+            return false
+        } catch (error IOException) {
+            return true
+        }
+    }
 
     internal func Pull(repo string, pr int32) bool -> J.Number(Value, "pr") == pr && String.Equals(
         Text("repo"),

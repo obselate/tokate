@@ -516,7 +516,8 @@ internal partial class NativeFlow : NativeFixture {
         let failed = Check.Json(claimed)
         failed["state"] = JsonValue.Create("failed")
         File.WriteAllText(Path.Combine(second, "run.json"), failed.ToJsonString())
-        let worked = Check.Envelope(Call([]string{"work", "project#1", "--json"}), "work", "ok")
+        let work = Call([]string{"work", "project#1", "--json"})
+        let worked = Check.Envelope(work, "work", "ok")
         Check.That(Directory.GetDirectories(store).Length == 2, "Bare issue started another attempt")
         Check.That(
             Check.Text(Check.Json(File.ReadAllText(Path.Combine(first, "run.json")))["state"]) == "generated",
@@ -525,6 +526,7 @@ internal partial class NativeFlow : NativeFixture {
         let actions = worked["next_actions"]?.ToJsonString() ?? ""
         Check.Contains(actions, "[\"tokate\",\"submit\",\"owner/project#1-1\",\"--json\"]")
         Check.Contains(actions, "[\"tokate\",\"status\",\"owner/project#1-1\",\"--json\"]")
+        Check.That(!work.Error.Contains("#1-1"), "Terminal hints renamed the only active attempt")
         NoPr()
     }
 

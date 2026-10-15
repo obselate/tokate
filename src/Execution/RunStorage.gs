@@ -2,9 +2,11 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.Diagnostics
 import System.IO
 import System.Text.Json
 import System.Text.RegularExpressions
+import System.Threading
 
 internal class RunStorage {
     shared {
@@ -44,14 +46,23 @@ internal class RunStorage {
 
         internal func Lease(directory string) FileStream {
             ControlPaths(directory)
+            let timer = Stopwatch.StartNew()
 
-            return File.Open(
-                Path.Combine(directory, ".lock"),
-                FileMode.OpenOrCreate,
-                FileAccess.ReadWrite,
-                FileShare.None
-            )
+            while true {
+                try {
+                    return Lock(directory)
+                } catch (error IOException) when timer.ElapsedMilliseconds < 500 {
+                    Thread.Sleep(20)
+                }
+            }
         }
+
+        internal func Lock(directory string) FileStream -> File.Open(
+            Path.Combine(directory, ".lock"),
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None
+        )
 
         private func Reject(path string) {
             throw CliFailure(

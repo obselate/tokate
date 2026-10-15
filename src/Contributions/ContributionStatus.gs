@@ -14,6 +14,7 @@ internal class ContributionStatus {
     internal let Result Dictionary[string, Object?] = map[string, Object?]{}
     private let Work List[Object] = List[Object]()
     private let Requests List[JsonElement] = List[JsonElement]()
+    private let Saved SavedRuns = SavedRuns(RunStorage.Roots())
 
     private suspend func Observe(target Dictionary[string, Object?], part string, read async () -> void) bool {
         try {
@@ -104,7 +105,11 @@ internal class ContributionStatus {
             row["approval_status"] = "absent"
             row["drafts_status"] = "absent"
             row["state"] = "approval_waiting"
-            row["next"] = Next("owner", "Approve the issue under the current policy and target branch.")
+            row["next"] = Next(
+                "owner",
+                "Approve the issue under the current policy and target branch.",
+                []string{"tokate", "approve", Repo + "#" + issue.ToString()}
+            )
             return row
         }
 
@@ -462,10 +467,24 @@ internal class ContributionStatus {
         let latest = GitHub.Api("repos/" + Repo + "/pulls/" + J.Number(pull, "number").ToString())
         draft["remote_status"] = "observed"
 
-        for key in[]string{"number", "base", "head", "state", "draft", "merged", "merged_at", "body"} {
+        for key in[]string{"number", "state", "draft", "merged", "merged_at", "body"} {
             if !RequestData.Same(J.Get(latest, key), J.Get(pull, key)) {
                 draft["remote_status"] = "stale"
             }
+        }
+
+        for side in[]string{"base", "head"} {
+            let now = J.Get(latest, side)
+            let then = J.Get(pull, side)
+            let repo = J.Get(J.Get(now, "repo"), "id").ToString()
+
+            if J.Text(now, "ref") != J.Text(then, "ref") || repo != J.Get(J.Get(then, "repo"), "id").ToString() {
+                draft["remote_status"] = "stale"
+            }
+        }
+
+        if J.Text(J.Get(latest, "head"), "sha") != J.Text(J.Get(pull, "head"), "sha") {
+            draft["remote_status"] = "stale"
         }
     }
 
@@ -611,13 +630,13 @@ internal class ContributionStatus {
                 next = Next(
                     "donor",
                     eligibility == "eligible" ?
-                    "Use tokate claim https://github.com/" +
-                        Repo +
-                        "/issues/" +
-                        issue +
-                        " with your selected profile or model and an explicit time budget. If your claim is pending and the Tokate workflow failed: " +
-                        ApiTransport.MutationRecovery:
-                    "An eligible donor must select the task and prepare a claim request. Inspect access grants if no donor is eligible."
+                    "Start work with tokate work " +
+                        target +
+                        " and your selected profile or model and an explicit time budget.":
+                    "An eligible donor must select the task and start work with tokate work " +
+                        target +
+                        ". Inspect access grants if no donor is eligible.",
+                    []string{"tokate", "work", target}
                 )
             } else {
                 stage = "access_waiting"
@@ -648,20 +667,25 @@ internal class ContributionStatus {
             if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
                 stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
-                next = Next(
+                next = stage == "paused" ? Next(
                     "donor",
-                    stage == "paused" ? "This claim is paused. The donor checks their saved work on their own machine.":
+                    "This claim is paused. The donor checks their saved work on their own machine."
+                ):
+                Next(
+                    "donor",
                     "This claim has been accepted. The donor can start work with tokate work " +
                         target +
-                        " on their own machine."
+                        " on their own machine.",
+                    []string{"tokate", "work", target}
                 )
             } else if reservation.ValueKind == JsonValueKind.Object {
                 stage = "lease_expired_or_released"
                 next = Next(
                     "donor",
-                    "Use tokate claim " +
+                    "Use tokate work " +
                         target +
-                        " for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation."
+                        " for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation.",
+                    []string{"tokate", "work", target}
                 )
             }
 
@@ -792,6 +816,38 @@ internal class ContributionStatus {
 
         row["state"] = stage
         row["next"] = next
+
+        if stage == "reservation_needed" || stage == "claim_accepted" {
+            Local(row, target, stage)
+        }
+    }
+
+    private func Local(row Dictionary[string, Object?], target string, stage string) {
+        let viewer = J.Get(Viewer, "id").ToString()
+        let holder = row["reservation"] is Dictionary[string, Object?]reservation ? Text(reservation, "actor"): ""
+        let run = RunReference.Pick(RunReference.Recent(Saved.For(Repo, Int32.Parse(Text(row, "issue")))))
+
+        if run == nil || viewer == "" || J.Get(run.Value, "donor_id").ToString() != viewer ||
+            (stage == "claim_accepted" ? holder != viewer: run.Text("state") != "claim_pending") {
+            return
+        }
+
+        var next Object?
+
+        if run.Busy() {
+            row["next"] = Next("donor", "Your tokate work for this issue is running on this machine.")
+        } else if run.Text("state") == "claim_pending" {
+            row["next"] = Submission.PendingWorkflow(run.Location, Data.Load(run.Location)) ??
+                Next(
+                "donor",
+                "Your claim is pending. Check the coordinator outcome with tokate work.",
+                []string{"tokate", "work", target}
+            )
+        } else if PublicOutput.RunSummary(run.Location).TryGetValue("next", out next) {
+            row["next"] = next
+        } else if run.Next == "submit" {
+            row["next"] = Next("donor", "Submit your verified saved work.", []string{"tokate", "submit", target})
+        }
     }
 
     private func Requested(issue string) bool {
@@ -1012,12 +1068,18 @@ internal class ContributionStatus {
             }
 
             status.Result["work_observed"] = status.Work.Count
+            let outcomes = Dictionary[string, string]()
 
             for item in status.Work {
                 let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
                 if row.ContainsKey("drafts") && row["drafts"] is List[Object]drafts {
                     for entry in drafts {
                         let draft = entry as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+                        let lifecycle = status.Text(draft, "lifecycle")
+
+                        if lifecycle == "merged" || lifecycle == "closed_unmerged" {
+                            outcomes[status.Text(draft, "pr")] = lifecycle == "merged" ? "merged": "closed"
+                        }
 
                         if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
                             draft["checks_observed"] = checks.Count
@@ -1038,29 +1100,17 @@ internal class ContributionStatus {
             status.Result["truncated"] = status.Truncated
 
             if args.Get("issue") != "" {
-                let attempts = RunReference.Recent(
-                    SavedRuns(RunStorage.Roots()).For(args.Get("repo"), args.Number("issue"))
-                )
-                status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
+                let attempts = RunReference.Recent(status.Saved.For(args.Get("repo"), args.Number("issue")))
 
-                if let latest = RunReference.Pick(attempts) {
-                    let donor = J.Get(latest.Value, "donor_id").ToString()
-                    var next Object?
+                for attempt in attempts {
+                    let pr = J.Number(attempt.Value, "pr").ToString()
 
-                    if status.Failure == nil && donor == J.Get(status.Viewer, "id").ToString() &&
-                        PublicOutput
-                        .RunSummary(latest.Location).TryGetValue("next", out next) {
-                        for item in status.Work {
-                            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
-                            if status.Text(row, "state") == "claim_accepted" &&
-                                row["reservation"] is Dictionary[string, Object?]reservation &&
-                                status.Text(reservation, "actor") == donor {
-                                row["next"] = next
-                                status.Result["next"] = next
-                            }
-                        }
+                    if outcomes.ContainsKey(pr) {
+                        attempt.Outcome = outcomes[pr]
                     }
                 }
+
+                status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
             }
 
             PublicOutput.ResultData = status.Result
@@ -1082,28 +1132,43 @@ internal class ContributionStatus {
             }
         }
 
-        internal func Print(value JsonElement, repository bool = false) {
-            if Console.IsOutputRedirected && !Terminal.Plain && !Terminal.Ascii {
-                Console.WriteLine(J.Write(value))
-                return
+        internal func Attempt(options Args) {
+            let directory = PublicOutput.RunDirectory
+            let summary = PublicOutput.RunSummary(directory)
+            let run = SavedRun(directory, Data.Load(directory).Element(), true)
+            RunReference.Outcomes(List[SavedRun]{run})
+
+            if run.Outcome != "" {
+                summary["outcome"] = run.Outcome
+                summary["finished"] = true
             }
 
+            summary["busy"] = run.Busy()
+            PublicOutput.ResultData = summary
+
+            if !PublicOutput.Enabled {
+                PublicOutput.Next(options, "")
+                Print(J.Parse(J.Write(summary)))
+            }
+        }
+
+        internal func Print(value JsonElement, repository bool = false) {
             let repo = J.Text(value, "repo")
             let work = J.Get(value, "work")
 
             if work.ValueKind != JsonValueKind.Array {
                 var next = Action(J.Get(value, "next"))
 
-                for action in RunReference.Short(PublicOutput.Actions, false) {
+                for action in PublicOutput.Actions {
                     if action.Length > 1 && action[1] != "status" {
-                        next = Terminal.Hint(Array.FindAll(action, word -> word != "--json"))
+                        next = Terminal.Hint(action)
                         break
                     }
                 }
 
                 let issue = J.Get(value, "issue").ToString()
                 let correction = J.Get(value, "correction")
-                var state = J.Text(value, "state")
+                var state = J.Text(value, "outcome") != "" ? J.Text(value, "outcome"): J.Text(value, "state")
                 var reason = J.Text(J.Get(value, "error"), "message")
 
                 if J.Text(correction, "state") != "" {
@@ -1148,44 +1213,51 @@ internal class ContributionStatus {
         }
 
         private func Repository(value JsonElement, work List[JsonElement], observed bool) {
-            if !observed || work.Count <= 1 || J.Count(J.Get(value, "pending_requests")) > 0 {
+            if !observed || work.Count == 0 {
+                Cell("State", observed ? "no_work_observed": J.Text(value, "remote_status"), "yellow")
+            }
+
+            if !observed || work.Count == 0 || J.Count(J.Get(value, "pending_requests")) > 0 {
                 Cell("Next", Action(J.Get(value, "next")), "default")
             }
 
-            if work.Count == 0 {
-                return
+            if work.Count > 0 {
+                let viewer = J.Get(value, "viewer")
+                let me = J.Get(viewer, "actor").ToString()
+                let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU"}}
+
+                for task in work {
+                    let next = J.Get(task, "next")
+                    let role = J.Text(next, "role")
+                    let reservation = J.Get(task, "reservation")
+                    let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
+                    J.Get(reservation, "actor").ToString()
+                    let eligible = J.Text(task, "eligibility_status") == "eligible"
+                    let mine = role == "donor" ? (
+                        holder == "" ? J.Text(viewer, "role") == "donor" || eligible: holder == me
+                    ):
+                    role == J.Text(viewer, "role")
+                    table.Add(
+                        []string{
+                            "#" + J.Number(task, "issue").ToString(),
+                            J.Text(task, "title"),
+                            J.Text(task, "state"),
+                            J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no"
+                        }
+                    )
+                    table.Add([]string{"Next: " + Action(next)})
+                }
+
+                Terminal.Table(table, fit: 1)
             }
 
-            let viewer = J.Get(value, "viewer")
-            let repo = J.Text(value, "repo")
-            let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU", "NEXT"}}
-
-            for task in work {
-                let issue = J.Number(task, "issue").ToString()
-                let next = J.Get(task, "next")
-                let role = J.Text(next, "role")
-                let reservation = J.Get(task, "reservation")
-                let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
-                J.Get(reservation, "actor").ToString()
-                let mine = role == J.Text(viewer, "role") &&
-                    (role != "donor" || holder == "" || holder == J.Get(viewer, "actor").ToString())
-                let command = Terminal.Command(J.Get(next, "command"))
-                table.Add(
-                    []string{
-                        "#" + issue,
-                        J.Text(task, "title"),
-                        J.Text(task, "state"),
-                        J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no",
-                        command != "" ? command: work.Count == 1 ? "-": "tokate status " + repo + "#" + issue
-                    }
-                )
+            if J.Bool(value, "truncated") {
+                Terminal.Message("Bounded snapshot: some data was omitted.", "default")
             }
-
-            Terminal.Table(table, fit: 1)
         }
 
         private func Action(next JsonElement) string {
-            let command = Terminal.Command(J.Get(next, "command"))
+            let command = Terminal.Hint(J.Items(J.Get(next, "command")).ConvertAll(word -> word.ToString()).ToArray())
             return command == "" ? J.Text(next, "action"): command
         }
 

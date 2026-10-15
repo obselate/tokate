@@ -200,7 +200,8 @@ func Dispatch(options Args) int32 {
             if PublicOutput.Enabled {
                 PublicOutput.ResultData = value
             } else {
-                Terminal.Json(value, "Donor defaults")
+                Terminal.Heading("Donor defaults")
+                Terminal.Fields(value)
             }
         }
 
@@ -355,12 +356,10 @@ func Dispatch(options Args) int32 {
             ContributionStatus.Run(options)
         }
 
-        case "status" when !PublicOutput.Enabled {
-            let summary = PublicOutput.RunSummary(Path.GetFullPath(options.Need("run")))
+        case "status" {
+            ContributionStatus.Attempt(options)
 
-            summary["truncated"] = PublicOutput.Truncated
-            PublicOutput.Next(options, "")
-            ContributionStatus.Print(J.Parse(J.Write(summary)))
+            return 0
         }
     }
 
