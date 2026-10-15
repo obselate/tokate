@@ -311,6 +311,15 @@ internal class CheckGates {
                 "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.\nNext: gh pr view 10 --repo owner/project --web"
             )
             Check.That(!human.Contains("merge"), "Pending checks suggested merge")
+            Check.That(!actions.Contains("merge"), "Pending owner actions suggested merge")
+            Read(test, 8, timeout: true, seconds: "30")
+            var polls int32
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                if Check.Text(call["path"]).Contains("/check-runs?") {
+                    polls++
+                }
+            }
+            Check.That(polls == 1, "Watch kept polling while workflow runs await owner approval")
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 let path = Check.Text(call["path"])
                 if path.Contains("/actions/runs?") {

@@ -8,7 +8,11 @@ import System.Text.Json
 internal class Checks {
     shared {
         private let BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
-        private let Review string = "Review implementation scope, acceptance criteria, semantic compatibility and limitations; decide final acceptance and merge. Machine checks do not accept or complete the issue or remove draft status."
+        private func Review(
+            passed bool
+        ) string -> "Review implementation scope, acceptance criteria, semantic compatibility and limitations; decide final acceptance" +
+            (passed ? " and merge": "") +
+            ". Machine checks do not accept or complete the issue or remove draft status."
         private let ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
         private let ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
 
@@ -202,7 +206,7 @@ internal class Checks {
                     )
                         .ValueKind == JsonValueKind.String
                     facts["owner_review"] = isOpen ? "required": (historical ? "historical": "unavailable")
-                    facts["required_owner_actions"] = isOpen ? []string{Review}: (
+                    facts["required_owner_actions"] = isOpen ? []string{Review(false)}: (
                         historical ? []string{}: []string{
                             "Inspect unavailable PR lifecycle evidence before acceptance."
                         }
@@ -424,10 +428,12 @@ internal class Checks {
                     facts["required_check_count"] = names.Count
                     facts["owner_inspection_required"] = inspection || approval
 
+                    facts["required_owner_actions"] = []string{Review(status == "passed")}
+
                     if inspection || approval {
                         facts["required_owner_actions"] = []string{
                             approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
-                            Review
+                            Review(status == "passed")
                         }
                     }
 
@@ -527,8 +533,12 @@ internal class Checks {
                     facts["machine_status"] = status
 
                     if reportFailure != "" {
-                        facts["required_owner_actions"] = approval ? []string{ApprovalAction, ReportAction, Review}:
-                        []string{ReportAction, Review}
+                        facts["required_owner_actions"] = approval ? []string{
+                            ApprovalAction,
+                            ReportAction,
+                            Review(false)
+                        }:
+                        []string{ReportAction, Review(false)}
                     }
 
                     Show(run, observed, facts, directory, args.Get("verbose") == "true", approval, ref previous)
@@ -541,7 +551,7 @@ internal class Checks {
                         return 0
                     }
 
-                    if args.Get("watch") != "true" {
+                    if args.Get("watch") != "true" || approval {
                         return 8
                     }
                 } catch (error Exception) when error is CliFailure ||
@@ -594,7 +604,7 @@ internal class Checks {
                             )
                         )
 
-                        facts["required_owner_actions"] = []string{action, Review}
+                        facts["required_owner_actions"] = []string{action, Review(false)}
 
                         for row in observed {
                             if J.Text(J.Parse(J.Write(row)), "state") == "ACTION_REQUIRED" {
@@ -602,7 +612,7 @@ internal class Checks {
                                 facts["required_owner_actions"] = []string{
                                     "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
                                     action,
-                                    Review
+                                    Review(false)
                                 }
 
                                 break
@@ -611,7 +621,7 @@ internal class Checks {
 
                         if approval {
                             facts["owner_inspection_required"] = true
-                            facts["required_owner_actions"] = []string{ApprovalAction, action, Review}
+                            facts["required_owner_actions"] = []string{ApprovalAction, action, Review(false)}
                         }
                     }
 
