@@ -40,7 +40,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(result.Error == "", "Owner command warned about donor tools")
         Check.Contains(
             result.Output,
-            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1"
+            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1 --harness HARNESS --model MODEL --effort EFFORT --time 1h"
         )
         Check.Contains(
             Call([]string{"work", "owner/project#1", "--model", "model", "--effort", "high"}, 1).Error,
@@ -296,6 +296,7 @@ internal partial class NativeFlow : NativeFixture {
         let prompt = Check.Text(State["prompts"]?[0])
         let marker = "- Time limit: finish by "
         Check.Contains(prompt, marker)
+        Check.Contains(prompt, "no verification reserve, verification gets only the time coding leaves")
         let deadline = DateTimeOffset.ParseExact(
             prompt.Substring(prompt.IndexOf(marker, StringComparison.Ordinal) + marker.Length, 19),
             "yyyy-MM-dd HH:mm:ss",

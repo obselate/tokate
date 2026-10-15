@@ -223,6 +223,11 @@ internal class RuntimeBudget {
                 return "unlimited coding time, independent verification budget " + reserve.ToString() + "s"
             }
 
+            if reserve == 0 {
+                return "total allowance " + total.ToString() +
+                    "s, no verification reserve, verification gets only the time coding leaves"
+            }
+
             return "total allowance " + total.ToString() + "s, coding allowance " + (total - reserve).ToString() +
                 "s, verification reserve " +
                 reserve.ToString() + "s"

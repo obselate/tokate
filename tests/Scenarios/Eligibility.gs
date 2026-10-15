@@ -788,7 +788,7 @@ internal class EligibilityChecks {
                     .Output
                     .Trim()
                     .EndsWith(
-                    "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1\n" +
+                    "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1 --harness HARNESS --model MODEL --effort EFFORT --time 1h\n" +
                         notice
                 ),
                 "First repository approval did not explain state branches"
