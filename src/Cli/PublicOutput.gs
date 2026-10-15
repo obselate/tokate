@@ -232,7 +232,7 @@ internal class PublicOutput {
             if run.Text("state") == "claim_pending" {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
-                    "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
+                    "action": "Your claim is pending. Check the coordinator outcome with tokate work.",
                     "command": []string{"tokate", "work", "--run", directory, "--json"}
                 }
             }
@@ -582,7 +582,9 @@ internal class PublicOutput {
                         Actions.Add(command)
                     }
 
-                    if code != "stale_approval" && code != "invalid_state" {
+                    let finished = ResultData is Dictionary[string, Object?]data && data.ContainsKey("outcome")
+
+                    if code != "stale_approval" && code != "invalid_state" && !finished {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
                         } else if !summary.ContainsKey("coordinator") &&

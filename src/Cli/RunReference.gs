@@ -30,12 +30,17 @@ internal class RunReference {
             return active.Count > 1 ? nil: active.Count == 1 ? active[0]: rows.Count > 0 ? rows[rows.Count - 1]: nil
         }
 
-        internal func Label(row SavedRun, saved SavedRuns, attempt bool = false) string {
+        internal func Label(row SavedRun, saved SavedRuns, pull bool = false) string {
             let repo = row.Text("repo")
             let name = repo.Substring(repo.IndexOf('/') + 1)
             let unique = saved.Rows.TrueForAll(other -> !Named(other, name) || Named(other, repo))
             let prefix = String.Equals(repo, Here, StringComparison.OrdinalIgnoreCase) ? "": (unique ? name: repo) + "#"
-            let picked = !attempt && Pick(saved.For(repo, row.Issue))?.Location == row.Location
+
+            if pull {
+                return prefix + J.Number(row.Value, "pr").ToString()
+            }
+
+            let picked = Pick(saved.For(repo, row.Issue))?.Location == row.Location
             return prefix + row.Issue.ToString() + (picked ? "": "-" + row.Number.ToString())
         }
 
@@ -78,7 +83,7 @@ internal class RunReference {
 
             let words = List[string](action)
             words.RemoveRange(index, 2)
-            words.Insert(2, full ? row.Name: Label(row, saved, action[1] == "status" || action[1] == "checks"))
+            words.Insert(2, full ? row.Name: Label(row, saved, action[1] == "checks"))
             return words.ToArray()
         }
 
@@ -193,7 +198,7 @@ internal class RunReference {
             }
         }
 
-        private func Outcomes(rows List[SavedRun]) {
+        internal func Outcomes(rows List[SavedRun]) {
             let pulls = rows.Where(row -> J.Number(row.Value, "pr") > 0 && !row.Finished).Take(100).ToList()
 
             if pulls.Count == 0 {

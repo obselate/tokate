@@ -232,8 +232,10 @@ internal class Terminal {
             let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                let name = RunReference.Label(row, saved, row.Next == "checks")
-                table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
+                let name = RunReference.Label(row, saved)
+                let next = row.Next
+                let target = next == "checks" ? RunReference.Label(row, saved, true): name
+                table.Add([]string{name, row.State, row.Age(), next == "" ? "-": "tokate " + next + " " + target})
             }
 
             Table(table)
@@ -242,7 +244,7 @@ internal class Terminal {
         internal func Table(rows List[[]string], error bool = false, fit int32 = -1) {
             let widths = List[int32]()
 
-            for row in rows {
+            for row in rows.Where(row -> row.Length > 1) {
                 for i in 0 ... row.Length {
                     row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
 
@@ -260,6 +262,11 @@ internal class Terminal {
             }
 
             for row in rows {
+                if row.Length == 1 {
+                    Line(String(' ', widths[0] + 2) + Clean(row[0]).Replace('\n', ' ').Trim(), "default", error)
+                    continue
+                }
+
                 if fit >= 0 && row[fit].GetCellWidth() > widths[fit] {
                     var text = row[fit]
 
@@ -464,7 +471,7 @@ internal class Terminal {
             return text.Length == 0 ? text: Char.ToUpperInvariant(text[0]).ToString() + text.Substring(1)
         }
 
-        private func Fields(value JsonElement, prefix string = "") {
+        internal func Fields(value JsonElement, prefix string = "") {
             for field in value.EnumerateObject() {
                 let label = prefix + Label(field.Name)
 
