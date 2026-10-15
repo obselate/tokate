@@ -661,6 +661,8 @@ internal class DonorSelectionChecks {
                 flow.Temp.Env
             )
             Check.Envelope(terminal, "defaults", "error", "invalid_arguments")
+            Check.Contains(terminal.Output, "Pass --harness HARNESS")
+            Check.Contains(terminal.Output, "Eligible pairs by harness/provider: codex/openai: ")
             Check.That(!terminal.Output.Contains("Choice number"), "JSON terminal selection prompted")
             flow.NoInference()
         }
