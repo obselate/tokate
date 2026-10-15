@@ -78,6 +78,7 @@ internal class EligibilityChecks {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 Setup(test, mode, version)
+                test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
                 let state = test.State()["state"] ?? throw Exception("Missing state")
                 let approval = state["approval"] ?? throw Exception("Missing approval")
                 Check.That(
@@ -86,13 +87,16 @@ internal class EligibilityChecks {
                 )
                 let initial = Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
                 if mode != "open" {
-                    Check.Contains(initial.Error, "Eligibility mode: trusted. Missing donor trust and issue grant.")
-                    Check.Contains(initial.Error, "The owner must run: tokate access grant donor owner/project#1")
+                    Check.Contains(
+                        initial.Error,
+                        "Eligibility mode: trusted. Missing donor trust and issue approval access."
+                    )
+                    Check.Contains(initial.Error, "The owner must run: tokate approve owner/project#1 donor")
                     Check.Contains(initial.Error, "tokate access trust donor owner/project")
                     for command in[]string{"claim", "work"} {
                         Check.Contains(
                             test.Flow.Call([]string{command, "owner/project#1", "--time", "1s"}, 1).Error,
-                            "The owner must run: tokate access grant donor owner/project#1"
+                            "The owner must run: tokate approve owner/project#1 donor"
                         )
                     }
                     Claim(test, 1)
@@ -102,9 +106,17 @@ internal class EligibilityChecks {
                 using let trusted = FixtureSnapshot(test.Flow.Temp.Root)
                 Claim(test)
                 trusted.Restore()
-                Access(test, "grant", issue: "2")
-                Access(test, "check", issue: "1", owner: false)
-                Access(test, "grant", issue: "1")
+                Access(test, "untrust")
+                test.Flow.Call([]string{"approve", "owner/project#1", "other"}, owner: true)
+                Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
+                test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+                let bound = test.State()["state"] ?? throw Exception("Missing approval state")
+                Check.That(
+                    Check.Text(bound["approval"]?["allowed_actor_ids"]?[0]) == "123" &&
+                        bound["approval"]?["allowed_actor_ids"]
+                        ?.AsArray().Count == 1,
+                    "Approval did not bind the canonical donor ID"
+                )
                 Access(test, "check", issue: "1", owner: false)
                 Access(test, "deny")
                 let denied = Access(test, "check", issue: "1", code: 1, owner: false)
@@ -114,11 +126,10 @@ internal class EligibilityChecks {
                 )
                 Claim(test, 1)
                 Access(test, "restore")
-                Access(test, "remove", issue: "1")
                 Access(test, "check", issue: "1", owner: false)
-                Access(test, "untrust")
+                test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
                 Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
-                Access(test, "grant", donor: "renamed", issue: "1")
+                test.Flow.Call([]string{"approve", "owner/project#1", "renamed"}, owner: true)
                 if mode != "open" {
                     Claim(test, 1, 124)
                 }
@@ -192,21 +203,21 @@ internal class EligibilityChecks {
         }
 
         private func Revocation(binary string) {
-            for operation in[]string{"remove", "untrust", "deny"} {
+            for operation in[]string{"untrust", "deny"} {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 Setup(test, "trusted")
-                Access(test, operation == "untrust" ? "trust": "grant", issue: operation == "untrust" ? "": "1")
+                Access(test, "trust")
                 let claim = Claim(test)
                 let run = test.Prepare("tokate")
                 let saved = File.ReadAllText(Path.Combine(run, "run.json"))
                 let state = Check.Text(test.State()["sha"])
-                Access(test, operation, issue: operation == "remove" ? "1": "")
+                Access(test, operation)
                 let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
                 Check.Contains(
                     refused.Error,
                     operation == "deny" ? "Donor is denied. The owner must run: tokate access restore donor owner/project":
-                    "Missing donor trust and issue grant. The owner must run: tokate access grant donor owner/project#1"
+                    "Missing donor trust and issue approval access. The owner must run: tokate approve owner/project#1 donor"
                 )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == saved,
@@ -221,14 +232,14 @@ internal class EligibilityChecks {
             using let publication = CoordinationFixture(binary)
             publication.Initialize(approve: false)
             Setup(publication, "trusted")
-            Access(publication, "grant", issue: "1")
+            Access(publication, "trust")
             let request = Claim(publication)
             let run = publication.Prepare()
             let commit = publication.Candidate(request)
             publication.Flow.Call([]string{"external", "--run", run, "--commit", commit})
             publication.Flow.Call([]string{"submit", "--run", run}, 8)
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
-            Access(publication, "remove", issue: "1")
+            Access(publication, "untrust")
             publication.Coordinate(publication.Event(publish), 1)
             publication.Flow.NoPr()
             publication.Flow.NoInference()
@@ -243,7 +254,6 @@ internal class EligibilityChecks {
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             for fault in[]string{
-                "missing",
                 "unavailable",
                 "repo",
                 "actor",
@@ -257,9 +267,7 @@ internal class EligibilityChecks {
             } {
                 baseline.Restore()
                 test.Flow.Reload()
-                if fault == "missing" {
-                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
-                } else if fault == "approval_missing" {
+                if fault == "approval_missing" {
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/contributions/1")
                 } else if fault == "revoked" {
                     test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
@@ -304,16 +312,16 @@ internal class EligibilityChecks {
                     test.Flow.Save()
                 }
                 let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
-                if fault == "missing" {
-                    Check.Contains(refused.Error, "Eligibility mode: open. Donor access record is missing.")
-                    Check.Contains(refused.Error, "The owner must run: tokate access init owner/project")
-                } else if fault == "task" {
+                if fault == "task" {
                     Check.Contains(
                         refused.Error,
                         "Issue text changed since approval. The owner must run: tokate approve owner/project#1"
                     )
                 } else if fault == "policy" {
-                    Check.Contains(refused.Error, "Eligibility mode: trusted. Missing donor trust and issue grant.")
+                    Check.Contains(
+                        refused.Error,
+                        "Eligibility mode: trusted. Missing donor trust and issue approval access."
+                    )
                 } else if fault == "approval_missing" {
                     Check.Contains(
                         refused.Error,
@@ -581,6 +589,32 @@ internal class EligibilityChecks {
             }
             Check.That(patches == 1, "Conflicting access write was repeated")
             Access(conflict, "check", issue: "1", code: 1, owner: false)
+            using let creation = CoordinationFixture(binary)
+            creation.Initialize(approve: false)
+            Setup(creation, "trusted")
+            creation.Flow.Git("-C", creation.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            creation.Flow.Mode("access_create_conflict")
+            creation.Flow.ResetTraffic()
+            Access(creation, "trust", donor: "other")
+            creation.Flow.Reload()
+            var creates int32
+            var updates int32
+            for call in creation.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                if Check.Text(call["method"]) == "POST" && Check.Text(call["path"]) == "repos/owner/project/git/refs" {
+                    creates++
+                }
+                if Check.Text(call["method"]) == "PATCH" && Check.Text(
+                    call["path"]
+                ) == "repos/owner/project/git/refs/heads/tokate/access" {
+                    updates++
+                }
+            }
+            Check.That(creates == 1 && updates == 1, "First access write did not retry creation as one update")
+            Access(creation, "check", issue: "1", code: 1, owner: false)
+            let current = Check.Json(
+                creation.Flow.Git("-C", creation.Flow.Upstream, "show", "refs/heads/tokate/access:access.json")
+            )
+            Check.That(current["members"]?.AsArray().Count == 2, "Creation retry lost concurrent donor access")
         }
 
         private func Declarations(binary string) {
@@ -607,13 +641,13 @@ internal class EligibilityChecks {
             File.WriteAllText(path, original)
             test.Flow.Commit("Restore current policy")
             Policy(test, "open")
-            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, 1, true)
+            test.Flow.Call([]string{"approve", "owner/project#1", "donor", "other"}, 1, true)
             test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             for text in[]string{
                 "{\"version\":1,\"repo_id\":99,\"members\":[]}",
-                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false,\"issues\":[]}]}",
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false}]}",
                 "{\"version\":1,\"repo_id\":1,\"members\":[],\"pending\":[]}",
-                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":123,\"trusted\":true,\"denied\":false,\"issues\":[1,1]}]}"
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":123,\"trusted\":false,\"denied\":false}]}"
             } {
                 test.Flow.Reload()
                 test.Flow.State["access_override"] = JsonValue.Create(text)
@@ -624,6 +658,22 @@ internal class EligibilityChecks {
             test.Flow.Reload()
             test.Flow.State["access_override"] = nil
             test.Flow.Save()
+            Policy(test, "trusted")
+            test.Flow.State["access_override"] = JsonValue.Create(
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":123,\"trusted\":false,\"denied\":false,\"issues\":[1]},{\"actor\":124,\"trusted\":true,\"denied\":false,\"issues\":[]},{\"actor\":125,\"trusted\":false,\"denied\":true,\"issues\":[1]}]}"
+            )
+            test.Flow.Save()
+            Access(test, "check", issue: "1", code: 1, owner: false)
+            Access(test, "trust")
+            let migrated = Check.Json(test.Flow.Git("-C", test.Flow.Upstream, "show", "tokate/access:access.json"))
+            Check.That(
+                migrated["members"]?.AsArray().Count == 3 && !migrated.ToJsonString().Contains("\"issues\""),
+                "Access write did not preserve trust and denial while removing old issue grants"
+            )
+            test.Flow.Reload()
+            test.Flow.State["access_override"] = nil
+            test.Flow.Save()
+            Policy(test, "open")
             let state = test.State()["state"] ?? throw Exception("Missing state")
             let approval = state["approval"] ?? throw Exception("Missing approval")
             approval["donor"] = JsonValue.Create("donor")
@@ -860,13 +910,14 @@ internal class EligibilityChecks {
                 "Revocation presentation retained trust"
             )
             test.Flow.Call([]string{"access", "request", "owner/project#1"})
+            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+            let approvedRequests = Check.Envelope(test.Flow.Call(listArgs), "access", "ok")
             Check.That(
-                Access(test, "grant", issue: "1").Output.Trim() == "Granted donor access to issue #1.",
-                "Access grant did not explain the change"
+                approvedRequests["data"]?["pending"]?.AsArray().Count == 1,
+                "Issue approval did not resolve only the issue access request"
             )
             Access(test, "deny", donor: "other")
             let accessText = test.Flow.Call([]string{"access", "list", "owner/project"}).Output
-            Check.Contains(accessText, "Issue grant: donor #1")
             Check.Contains(accessText, "Denied donor: other")
             Check.That(!accessText.Contains("access_sha"), "Human access list exposed raw JSON")
             File.Delete(Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"))
@@ -878,7 +929,7 @@ internal class EligibilityChecks {
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Built-in PR format with literal owner text")
             test.Flow.Git("-C", test.Flow.Upstream, "branch", "release")
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
             Check.That(
                 Check.Text(test.State()["state"]?["approval"]?["base_branch"]) == "release",
                 "Configured target was not used for approval"

@@ -1104,6 +1104,18 @@ internal partial class Fixture {
             return Answer(Check.Map("sha", sha))
         }
         if tail == "git/refs" {
+            if Check.Text(body["ref"]) == "refs/heads/tokate/access" && Check.Text(
+                State["mode"]
+            ) == "access_create_conflict" {
+                Git(
+                    folder,
+                    []string{"update-ref", "refs/heads/tokate/access", Check.Text(body["sha"]), String('0', 40)}
+                )
+                DenyAccess()
+                State["mode"] = JsonValue.Create("")
+                Save()
+                return Response(422)
+            }
             if folder == "fork" && Check.Text(body["ref"]).StartsWith("refs/heads/tokate/") {
                 Git(folder, []string{"fetch", Path.Combine(Root, "upstream"), Check.Text(body["sha"])})
             }
@@ -1307,7 +1319,7 @@ internal partial class Fixture {
         let reference = "refs/heads/tokate/access"
         let previous = Git("upstream", []string{"rev-parse", reference})
         let access = Check.Json(Git("upstream", []string{"show", previous + ":access.json"}))
-        access["members"] = Check.Json("[{\"actor\":123,\"trusted\":true,\"denied\":true,\"issues\":[1]}]")
+        access["members"] = Check.Json("[{\"actor\":123,\"trusted\":true,\"denied\":true}]")
         let blob = Git("upstream", []string{"hash-object", "-w", "--stdin"}, access.ToJsonString())
         let tree = Git("upstream", []string{"mktree"}, "100644 blob " + blob + "\taccess.json\n")
         let next = Git("upstream", []string{"commit-tree", tree, "-p", previous}, "Concurrent owner denial")

@@ -272,7 +272,7 @@ internal class OwnerSetup {
                 )
             }
 
-            let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")), missing: true)
+            let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
             if access.Sha == "" {
                 Change(changes, "Branch tokate/access", "", "empty donor access record")
             }

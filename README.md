@@ -52,7 +52,7 @@ tokate doctor
   tokate approve OWNER/REPO#42
 
   # Optional: let one donor you do not trust yet work that issue
-  tokate access grant LOGIN OWNER/REPO#42
+  tokate approve OWNER/REPO#42 LOGIN
 
   # Check a donated PR, then merge it
   tokate checks OWNER/REPO#PR

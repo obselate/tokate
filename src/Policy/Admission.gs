@@ -193,10 +193,10 @@ internal class Admission {
                 }
             }
 
-            let access = AccessState.Load(repo, repoId, missing: true)
+            let access = AccessState.Load(repo, repoId)
             let mode = policy.Eligibility
 
-            if !bot && access.Allows(actor, mode) {
+            if !bot && access.Allows(actor, mode, JsonElement{}) {
                 return true
             }
 
@@ -243,12 +243,12 @@ internal class Admission {
 
                 actor = RepositoryIdentity.PositiveId(J.Get(binding, "actor"))
                 login = RepositoryIdentity.Login(J.Text(binding, "donor"))
-                if access.Allows(actor, mode) {
+                if access.Allows(actor, mode, JsonElement{}) {
                     return true
                 }
             }
 
-            if !access.Allows(actor, mode, issue) {
+            if !access.Allows(actor, mode, approval) {
                 return false
             }
 

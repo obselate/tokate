@@ -37,14 +37,13 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
 | `init` | `tokate init [OWNER/REPO] [options]` | Preview GitHub settings, the access record and a setup PR with the policy and pinned workflow, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
-| `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
+| `approve` | `tokate approve ISSUE [LOGIN] [--base-branch BRANCH] [--yes]` | Approve an existing issue. `LOGIN` allows one donor without persistent trust. Denial still blocks that donor. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
-| `access init` | `tokate access init [OWNER/REPO]` | Initialize access authority. |
+| `access init` | `tokate access init [OWNER/REPO]` | Optionally create an empty access record. An absent ref is already empty. |
 | `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO]` | Change persistent donor membership. |
-| `access grant`, `remove` | `tokate access OPERATION LOGIN ISSUE` | Change one issue grant. |
 | `access check` | `tokate access check ISSUE` | Check your eligibility. |
-| `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
+| `access request` | `tokate access request ISSUE [--trust]` | Post a plain comment to request issue access or persistent trust. The owner uses `approve ISSUE LOGIN` or `access trust`. |
 | `doctor` | `tokate doctor [repo\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites, or read repository policy and coordinator health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `doctor claude` | `tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]` | Also check the Claude invocation for one owner-permitted model and effort. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |

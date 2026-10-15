@@ -71,6 +71,11 @@ internal class OwnerApproval {
 
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
             let decree = Decree.CaptureTree(repo, RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha")))
+            var allowed = []int64{}
+            if args.Get("donor") != "" {
+                let donor = RepositoryIdentity.Login(args.Get("donor"))
+                allowed = []int64{RepositoryIdentity.PositiveId(J.Get(GitHub.Api("users/" + donor), "id"))}
+            }
 
             Terminal.Step(
                 "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
@@ -83,6 +88,7 @@ internal class OwnerApproval {
                 "issue": J.Number(issue, "number"),
                 "approval_scope": "task",
                 "eligibility": policy.Eligibility,
+                "allowed_actor_ids": allowed,
                 "issue_hash": GitHub.Fingerprint(issue),
                 "policy_hash": policy.Digest,
                 "template_hash": Data.Hash(template),

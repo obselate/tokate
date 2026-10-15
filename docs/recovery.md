@@ -317,14 +317,13 @@ Approve a fork workflow only after diff review. For a stale PR, refresh `tokate 
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Donor access record is missing.` after the eligibility mode | Owner: run the named `tokate access init OWNER/REPO` command, then restore trust or issue grants. |
-| `Missing donor trust and issue grant.` after the eligibility mode | Owner: run the named `tokate access grant DONOR OWNER/REPO#42` command for one issue, or `tokate access trust DONOR OWNER/REPO` for all issues. |
-| `Donor is denied.` after the eligibility mode | Owner: run the named `tokate access restore DONOR OWNER/REPO` command. In trusted mode the donor still needs trust or an issue grant. |
+| `Missing donor trust and issue approval access.` after the eligibility mode | Owner: run the named `tokate approve OWNER/REPO#42 DONOR` command, or `tokate access trust DONOR OWNER/REPO` for all issues. |
+| `Donor is denied.` after the eligibility mode | Owner: run the named `tokate access restore DONOR OWNER/REPO` command. In trusted mode the donor still needs trust or approval with `approve ISSUE DONOR`. |
 | `Donor access authority is unavailable or malformed. Inspect owner-controlled access before proceeding.` followed by the owner command | Owner: run the named `tokate access list OWNER/REPO` command and inspect the access authority. |
 | `Issue is not approved.` or `Issue approval is revoked or its approval label is missing.` | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Issue text changed since approval.` | Owner: review the changed issue, then run the named `tokate approve OWNER/REPO#42` command. |
 
-An access request does not grant eligibility. In `trusted` mode, the owner must trust the donor or grant the issue. In `open` mode, anyone not denied is eligible.
+An access request is a plain comment and grants no eligibility. In `trusted` mode, the owner must trust the donor or use `approve ISSUE DONOR`. In `open` mode, anyone not denied is eligible. An absent access ref is an empty record, not an error.
 
 ### Update
 

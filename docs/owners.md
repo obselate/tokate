@@ -77,10 +77,11 @@ manual setting. Fix it before donors submit requests.
 
 | Who can contribute? | Access |
 | --- | --- |
-| **Trusted people** | Trusted donors or donors with an issue grant. Newcomers request access first. |
-| **Anyone eligible** | Authenticated GitHub users who are not denied. |
+| `trusted` | Trusted donors or donors named in the issue approval with `approve ISSUE LOGIN`. |
+| `open` | Authenticated GitHub users who are not denied. |
 
-With no trusted donors, **Trusted people** requires an issue grant for each donor.
+Denial blocks every donor, including trusted donors and donors named in an approval.
+An absent `tokate/access` ref is an empty record. The first access write creates it.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
@@ -130,14 +131,14 @@ Re-approve open tasks after the setup PR is merged. Old whole-text approvals bec
    tokate access trust DONOR
    ```
 
-3. For access to only one issue, grant that issue instead.
+3. Create an issue with `gh issue create` or the GUI. Include scope and acceptance criteria.
+   To allow one donor without persistent trust, name that donor after the issue.
 
    ```sh
-   tokate access grant DONOR 42
+   tokate approve 42 DONOR
    ```
 
-4. Create an issue with `gh issue create` or the GUI. Include scope and acceptance criteria.
-5. Approve that existing issue.
+4. Or approve the issue for donors who meet the repository eligibility policy.
 
    ```sh
    tokate approve 42
@@ -153,7 +154,9 @@ It keeps the previous non-revoked target branch, or uses the default branch.
 An unauthorized label is removed. An already valid approval is kept.
 Use `tokate approve N --base-branch BRANCH` to change a target. Add `--yes` to replace active authority.
 
-Access requests grant no access. Explicit denial blocks every access mode.
+Access requests are plain comments and grant no access. Use `access trust DONOR`
+or `approve ISSUE DONOR` after review. Re-approval replaces the allowed donor
+list. Old issue grants grant no access in 0.7.0. Re-approve with a donor where needed.
 
 Issue, task-field or PR-template changes need fresh approval. Task fields are
 verification commands, required checks, protected paths, tools and their models,
