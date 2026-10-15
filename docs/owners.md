@@ -171,9 +171,9 @@ Tokate keeps its records in `tokate/` branches of your repository. Init names th
 | `tokate/contributions/N` | Reservation and publication record for issue N |
 | `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch |
 
-Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Verification of an open PR reads its synchronization branches.
+Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Receipt verification reads the synchronization branches of a synchronized PR.
 
-Donor PR head branches, such as `tokate/v2-...`, are not records. GitHub can delete them when the PR is merged.
+Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are not records.
 
 ## Review and merge
 
@@ -191,7 +191,8 @@ Donor PR head branches, such as `tokate/v2-...`, are not records. GitHub can del
    **Require approval for all external contributors** holds runs for every donor who is not a
    repository or organization member.
    Init does not change this setting. `tokate checks` reports held runs as
-   `Workflow runs await owner approval.`
+   `Workflow runs await owner approval.` With `--watch`, it stops at once with exit 8
+   because only the owner can approve the runs.
 3. Check the receipt against owner approval and wait for required checks on the current PR head.
 
    ```sh
