@@ -135,6 +135,7 @@ internal class Donate {
 
         internal func Run(options Args) int32 {
             let repo = options.Need("repo")
+            let named = options.Get("issue") == "" ? 0: options.Number("issue")
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
             let marker = Path.Combine(directory, "stop")
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
@@ -145,6 +146,20 @@ internal class Donate {
                 missing: true
             )
             let gratis = policyFile.ValueKind == JsonValueKind.Undefined
+            if named > 0 && gratis {
+                let issue = GitHub.Api("repos/" + repo + "/issues/" + named.ToString())
+                if J.Text(issue, "state") != "open" || J.Bool(issue, "locked") || J.Get(issue, "pull_request")
+                    .ValueKind != JsonValueKind
+                    .Undefined {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Gratis work requires an open, unlocked issue, not a pull request"
+                    )
+                }
+                if options.Get("unlimited") == "true" {
+                    throw CliFailure("invalid_arguments", "Gratis work uses --time, not --unlimited")
+                }
+            }
             if !gratis && options.Get("prompt") != "" {
                 throw CliFailure("invalid_arguments", "--prompt requires a repository without a Tokate policy")
             }
@@ -170,13 +185,16 @@ internal class Donate {
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
             let selection = DonorSelection.Resolve(options, policy)
-            let limit = Double.IsPositiveInfinity(total) ? "until stopped": total.ToString() + " seconds"
-            var consent = repo + "\nHarness: " + J.Text(selection, "harness") + "\nModel: " + J.Text(
+            let limit = named > 0 ? "one task": Double.IsPositiveInfinity(total) ? "until stopped":
+            total.ToString() + " seconds"
+            var consent = repo + (named > 0 ? "#" + named.ToString(): "") + "\nHarness: " + J.Text(
                 selection,
-                "model"
+                "harness"
             ) +
-                "\nEffort: " +
-                J.Text(selection, "effort") + "\nPer task: " + seconds.ToString() + " seconds\nTotal: " + limit
+                "\nModel: " +
+                J.Text(selection, "model") + "\nEffort: " + J.Text(selection, "effort") +
+                "\nPer task: " +
+                seconds.ToString() + " seconds\nTotal: " + limit
             if J.Text(selection, "harness") == "command" {
                 consent += "\nCommand: " + CommandHarness.Text(selection)
                 options.Values["--consented-command"] = J.Write(J.Get(selection, "command"))
@@ -227,7 +245,7 @@ internal class Donate {
                     }
                     PublicOutput.RunDirectory = ""
                     let pulls = gratis ? Gratis.Snapshot(repo): List[Object]()
-                    let issue = gratis &&
+                    let issue = named > 0 ? named: gratis &&
                         guidance.Count > 0 ? 0: Pick(
                         repo,
                         attempted,
@@ -271,6 +289,10 @@ internal class Donate {
                         }
                     }
                     session.Write(sessionPath)
+                    if named > 0 {
+                        session.Fields["reason"] = "issue_completed"
+                        break
+                    }
                     let refused = task.GetValueOrDefault("reason")?.ToString() == "refused"
                     if gratis && (refused || (issue == 0 && task["pr_url"]?.ToString() == "")) {
                         session.Fields["reason"] = refused ? "refused": "no_pr"

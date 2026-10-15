@@ -289,6 +289,9 @@ internal partial class Fixture {
         } else if mode != "empty" {
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Implemented acceptance criteria\n")
         }
+        if State["gratis_title"] != nil {
+            File.WriteAllText(Path.Combine(checkout, "tokate-title.txt"), Check.Text(State["gratis_title"]))
+        }
         if mode == "staged_whitespace" {
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Copied license with trailing whitespace \t\n")
         }
