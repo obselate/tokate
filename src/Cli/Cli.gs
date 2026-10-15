@@ -209,7 +209,7 @@ internal class Cli {
                 "work donate local_read,local_write,github_read,github_write,inference repo",
                 "[ISSUE|OWNER/REPO|RUN] [NAME] [--time PER_TASK] [--total TOTAL] [--prompt URL|FILE] [options]\nOWNER/REPO stop [--yes]",
                 "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,unlimited,fork,runs,run,continue-from",
-                "Code an approved issue with your harness and verify it. With a repository, donate until stopped. Repositories without a Tokate policy use gratis mode. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Donation consent asks once in a terminal unless --yes is set. Without a terminal, repository work and stop preview without changes and require --yes.",
+                "Code an approved issue with your harness and verify it. With a repository, donate until stopped. Repositories without a Tokate policy use gratis mode. Name one issue to donate only to it. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Donation consent asks once in a terminal unless --yes is set. Without a terminal, gratis work, repository work and stop preview without changes and require --yes.",
                 "work 42 --model MODEL --effort high"
             ),
             CliCommand(

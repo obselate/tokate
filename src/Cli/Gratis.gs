@@ -123,6 +123,11 @@ internal class Gratis {
         }
 
         internal func Outcome(directory string, checkout string, run Data, budget RuntimeBudget) bool {
+            let title = Artifact(checkout, "tokate-title.txt")
+            if title != "" {
+                Require(Regex.IsMatch(title, "^[\\x20-\\x7E]{1,100}\\z"), "Invalid gratis title")
+                run.Fields["gratis_title"] = title
+            }
             let refusal = Artifact(checkout, "tokate-refusal.txt")
             if refusal != "" {
                 run.Fields["state"] = "refused"
@@ -207,7 +212,8 @@ internal class Gratis {
                 let pull = GitHub.Api(
                     "repos/" + repoName + "/pulls",
                     map[string, Object?]{
-                        "title": J.Text(J.Get(context, "issue"), "title"),
+                        "title": run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"):
+                        run.Text("gratis_title"),
                         "body": body,
                         "head": donor + ":" + run.Text("branch"),
                         "base": run.Text("base_branch"),

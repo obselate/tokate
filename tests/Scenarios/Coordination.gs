@@ -1739,5 +1739,78 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
             "Gratis ran repository verification"
         )
+
+        using let namedFlow = NativeFixture(Flow.Binary)
+        namedFlow.Initialize(access: false)
+        namedFlow.Git("-C", namedFlow.Upstream, "rm", ".github/tokate.json")
+        File.WriteAllText(
+            Path.Combine(namedFlow.Upstream, "CONTRIBUTING.md"),
+            "Use Conventional Commit titles: type(scope): summary.\n"
+        )
+        namedFlow.Commit("Welcome named issue donations")
+        let selectedIssue = namedFlow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
+        selectedIssue["number"] = JsonValue.Create(2)
+        namedFlow.State["issues"] = Check.Map("1", namedFlow.State["issue"]?.DeepClone(), "2", selectedIssue)
+        namedFlow.State["gratis_title"] = JsonValue.Create("  fix(fixture): complete the named issue\n")
+        namedFlow.Save()
+        let namedArgs = []string{
+            "work",
+            "owner/project#2",
+            "--harness",
+            "codex",
+            "--model",
+            "gpt-6.1-sol",
+            "--effort",
+            "high",
+            "--time",
+            "30s",
+            "--json"
+        }
+        let preview = namedFlow.Call(namedArgs, 1)
+        Check.Envelope(preview, "work", "error", "confirmation_required")
+        Check.Contains(preview.Error, "owner/project#2")
+        Check.Contains(preview.Error, "Total: one task")
+        namedFlow.NoInference()
+        Check.That(
+            !Directory.Exists(Path.Combine(namedFlow.Temp.Env["HOME"], ".local/state/tokate/donations")),
+            "Named issue preview changed local state"
+        )
+        let namedIssue = namedFlow.State["issues"]?["2"] ?? throw Exception("Missing named issue")
+        for field in[]string{"state", "locked", "pull_request"} {
+            namedIssue[field] = field == "state" ? JsonValue.Create("closed"):
+            field == "locked" ? JsonValue.Create(true): Check.Map("url", "pull")
+            namedFlow.Save()
+            let rejected = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "open, unlocked issue")
+            namedIssue.AsObject().Remove(field)
+            namedIssue["state"] = JsonValue.Create("open")
+        }
+        namedFlow.Save()
+        let acceptedArgs = List[string](namedArgs)
+        acceptedArgs.Add("--yes")
+        let named = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")["data"] ??
+            throw Exception("Missing named issue report")
+        Check.That(Check.Text(named["submitted"]) == "1", "Named gratis issue was not submitted")
+        Check.That(Check.Text(named["reason"]) == "issue_completed", "Named donation did not stop")
+        Check.That(named["tasks"]?.AsArray().Count == 1, "Named donation ran more than one task")
+        Check.That(Check.Text(named["tasks"]?[0]?["issue"]) == "2", "Named donation selected another issue")
+        namedFlow.Reload()
+        Check.That(Check.Text(namedFlow.State["exec_count"]) == "1", "Named donation repeated inference")
+        let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
+        let title = "fix(fixture): complete the named issue"
+        Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR ignored the title artifact")
+        Check.Contains(Check.Text(namedPull["body"]), "Fixes #2")
+        let namedDirectory = Check.Text(named["tasks"]?[0]?["run_directory"])
+        let checkout = Path.Combine(namedDirectory, "checkout")
+        Check.That(
+            namedFlow.Git("-C", checkout, "show", "-s", "--format=%s", "HEAD") == title,
+            "Gratis commit ignored the title artifact"
+        )
+        Check.That(!File.Exists(Path.Combine(checkout, "tokate-title.txt")), "Title artifact was not removed")
+        Check.Contains(Check.Text(namedFlow.State["prompts"]?[0]), "tokate-title.txt")
+        Check.That(
+            (namedFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0,
+            "Named gratis work posted a claim"
+        )
     }
 }

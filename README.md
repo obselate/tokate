@@ -70,6 +70,9 @@ tokate doctor
   # Donate to a repository without a Tokate policy for one hour, or stop early
   tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
   tokate work OWNER/REPO stop
+
+  # Donate to one issue without a Tokate policy and open its PR
+  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
   ```
 
   Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](docs/donors.md#local-inference-with-pi).

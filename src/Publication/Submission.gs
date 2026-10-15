@@ -68,7 +68,11 @@ internal class Submission {
                     "commit.gpgsign=false",
                     "commit",
                     "-m",
-                    (incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title")
+                    (incomplete ? "Incomplete: ": "") +
+                        (
+                        run.Flag("gratis") && run.Text("gratis_title") != "" ?
+                        run.Text("gratis_title"): J.Text(J.Get(record, "issue"), "title")
+                    )
                 )
             }
 

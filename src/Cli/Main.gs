@@ -319,7 +319,14 @@ func Dispatch(options Args) int32 {
         }
 
         case "claim", "work" {
-            if Cli.RepositoryWork(options) {
+            if Cli.RepositoryWork(options) ||
+                (
+                options.Command == "work" && options.Get("run") == "" && GitHub.Api(
+                    "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
+                    missing: true
+                )
+                    .ValueKind == JsonValueKind.Undefined
+            ) {
                 return Donate.Run(options)
             }
             let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):

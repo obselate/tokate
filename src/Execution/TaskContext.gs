@@ -88,7 +88,7 @@ internal class TaskContext {
                 (
                 gratis ?
                 "1. Follow the guidance below first. If it forbids AI-generated contributions, requires approval before work, or automatically closes new contributors' PRs, write tokate-refusal.txt with one sentence and stop. Review the saved open PR snapshot below before choosing work. Drop any task an open PR already covers. Follow the guidance overlap checks too.\n" +
-                    "2. Choose one task from the guidance that no open PR covers, or complete the selected issue. Follow the task instruction below. Write tokate-findings.md only if the guidance explicitly asks for findings in Discussions. Findings must be at most 4096 bytes of ASCII public text without any restricted text listed above. Write tokate-ready.txt with one sentence only if the guidance explicitly authorizes ready PRs. Otherwise Tokate opens a draft.\n":
+                    "2. Choose one task from the guidance that no open PR covers, or complete the selected issue. Follow the task instruction below. Write tokate-findings.md only if the guidance explicitly asks for findings in Discussions. Findings must be at most 4096 bytes of ASCII public text without any restricted text listed above. Write tokate-ready.txt with one sentence only if the guidance explicitly authorizes ready PRs. Otherwise Tokate opens a draft. If guidance sets a commit or PR title format, write tokate-title.txt in the checkout root in that format: one plain ASCII line, at most 100 characters.\n":
                 "1. Read the repository guidance: AGENTS.md, CONTRIBUTING.md and the owner instructions below.\n2. Read the task.\n"
             ) +
                 "3. Make the change. Do only what the task asks.\n" +
