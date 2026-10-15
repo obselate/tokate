@@ -154,6 +154,7 @@ internal class ProgressChecks {
             flow.Save()
             let result = Live(flow, run, "Inference")
             Check.Envelope(result, "work", "ok")
+            Check.Contains(result.Error, "Next: tokate submit --run " + run)
             let samples = Regex.Matches(
                 result.Error,
                 "Inference: ([0-9]+)s elapsed, ([0-9]+)s remaining; total ([0-9]+)s left"
@@ -241,6 +242,9 @@ internal class ProgressChecks {
                 let result = Live(flow, run, "Inference", true)
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(result.Code == (mode == "complete" ? 0: 1), result.Output + result.Error)
+                if mode == "complete" {
+                    Check.Contains(result.Error, "Next: tokate submit --run " + run)
+                }
                 Check.That(
                     Check.Text(saved["state"]) == (mode == "complete" ? "generated": "failed"),
                     "Unlimited work returned the wrong state"

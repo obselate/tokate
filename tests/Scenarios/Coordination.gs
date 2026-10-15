@@ -1099,15 +1099,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
             )
         )
         Flow.Save()
-        let observed = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}, 8).Output)
-        let action = Check.Text(observed["data"]?["next"]?["action"])
+        let observed = Check.Envelope(
+            Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+            "submit",
+            "error",
+            "command_failed"
+        )
+        let action = Check.Text(observed["data"]?["run_state"]?["next"]?["action"])
         Check.Contains(action, "GitHub mutation failed (HTTP 422).")
         Check.Contains(action, "https://example.test/coordinator")
         Check.That(!action.Contains(String('x', 1025)), "Failure annotation exceeded its bound")
         Check.That(
             !(observed["next_actions"]?.ToJsonString() ?? "").Contains("\"submit\""),
-            "Pending workflow offered repeat submit"
+            "Failed workflow offered repeat submit"
         )
+        Check.Contains(Flow.Call([]string{"submit", "--run", run}, 1).Error, "GitHub mutation failed (HTTP 422).")
         baseline.Restore()
         Flow.Reload()
         Flow.State["ref_poll_interval"] = JsonValue.Create("300")

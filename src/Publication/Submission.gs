@@ -338,6 +338,14 @@ internal class Submission {
             }
         }
 
+        internal func FailedWorkflow(directory string, run Data) {
+            if let guidance = PendingWorkflow(directory, run) {
+                if guidance["role"]?.ToString() == "owner" {
+                    throw CliFailure("command_failed", guidance["action"]?.ToString() ?? "")
+                }
+            }
+        }
+
         internal func Request(args Args) {
             try {
                 let path = Path.GetFullPath(args.Need("file"))
@@ -415,11 +423,7 @@ internal class Submission {
             let outcome = RequestData.Recorded(state.Value(), actor, value)
 
             if outcome.ValueKind != JsonValueKind.Undefined {
-                if PublicOutput.Enabled {
-                    Terminal.Json(outcome, "")
-                } else {
-                    Terminal.Message("Recorded request outcome; no comment posted")
-                }
+                Terminal.Json(outcome, "Recorded request outcome; no comment posted", raw: false)
                 return
             }
 

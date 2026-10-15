@@ -189,6 +189,8 @@ func Dispatch(options Args) int32 {
         OwnerHealth.WarnCoordinator(options)
     }
 
+    var pending bool
+
     switch options.Command {
         case "doctor" {
             return Startup.Doctor(options)
@@ -272,12 +274,13 @@ func Dispatch(options Args) int32 {
             let directory = Path.GetFullPath(options.Need("run"))
             var run = Data.Load(directory)
 
-            if PublicOutput.Enabled && !Donate.Active && run.Number("pr") == 0 && !run.Flag("gratis") {
-                PublicOutput.ResultData = PublicOutput.RunSummary(directory)
-                return 8
-            }
+            if PublicOutput.Enabled && !Donate.Active {
+                pending = run.Number("pr") == 0 && !run.Flag("gratis")
 
-            if !PublicOutput.Enabled || Donate.Active {
+                if pending {
+                    Submission.FailedWorkflow(directory, run)
+                }
+            } else {
                 let request = run.Number("pr") == 0 ? RequestData.FileData(
                     Path.Combine(directory, "request.json"),
                     8192
@@ -286,10 +289,8 @@ func Dispatch(options Args) int32 {
                 ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
                 try {
                     while run.Number("pr") == 0 {
+                        Submission.FailedWorkflow(directory, run)
                         if let guidance = Submission.PendingWorkflow(directory, run) {
-                            if Donate.Active && guidance["role"]?.ToString() == "owner" {
-                                throw CliFailure("command_failed", "Owner workflow failed")
-                            }
                             if !Donate.Active {
                                 Terminal.Message(guidance["action"]?.ToString() ?? "")
                                 return 8
@@ -370,5 +371,5 @@ func Dispatch(options Args) int32 {
         PublicOutput.ResultData = PublicOutput.RunSummary(PublicOutput.RunDirectory)
     }
 
-    return 0
+    return pending ? 8: 0
 }

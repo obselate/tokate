@@ -119,7 +119,7 @@ internal class Donate {
                     ApiTransport.BeginDeadline(30)
                     try {
                         while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
-                            ApiTransport.PollWait()
+                            ApiTransport.PollWait("repos/" + options.Need("repo") + "/actions/")
                         }
                     } catch (error Exception) when !(error is CommandInterrupted) {
                         Terminal.Message("Reservation release unconfirmed: " + error.Message, error: true)

@@ -412,11 +412,13 @@ internal class Terminal {
                 Message("Saved artifacts: " + summary, "default", true)
 
                 let actions = RunReference.Short(PublicOutput.Actions, false)
-                let failed = exitCode != 0 && exitCode != 8
-                let index = actions.FindIndex(next -> !failed && next.ElementAtOrDefault(1) != "status")
+                let index = exitCode == 0 || exitCode == 8 ? Math.Max(
+                    actions.FindIndex(next -> next.ElementAtOrDefault(1) != "status"),
+                    0
+                ): 0
 
                 if actions.Count > 0 {
-                    Message("Next: " + Hint(actions[Math.Max(index, 0)]), "default", true)
+                    Message("Next: " + Hint(actions[index]), "default", true)
                 }
             } catch (error Exception) { }
         }
@@ -532,7 +534,7 @@ internal class Terminal {
             }
         }
 
-        internal func Json(value JsonElement, title string) {
+        internal func Json(value JsonElement, title string, raw bool = true) {
             if PublicOutput.Enabled {
                 PublicOutput.ResultData = J.Select(
                     value,
@@ -542,7 +544,7 @@ internal class Terminal {
                 return
             }
 
-            if Console.IsOutputRedirected && !Plain && !Ascii {
+            if raw && Console.IsOutputRedirected && !Plain && !Ascii {
                 Console.WriteLine(J.Write(value))
 
                 return
