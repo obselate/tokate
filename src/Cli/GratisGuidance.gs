@@ -10,9 +10,10 @@ import System.Text.Json
 
 internal class GratisGuidance {
     shared {
-        internal func Prompt(source string) string {
+        internal func Prompt(source string, named bool) string {
             if source == "" {
-                return "Choose one useful task permitted by the repository guidance, or complete the selected issue."
+                return named ? "Complete the selected issue.":
+                "Choose one useful task permitted by the repository guidance, or complete the selected issue."
             }
             var text string
             var uri Uri

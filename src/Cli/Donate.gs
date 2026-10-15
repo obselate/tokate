@@ -165,7 +165,7 @@ internal class Donate {
             }
             let policy = gratis ? Gratis.PolicyFor(options): Policy.Load(repo, revision)
             let guidance = gratis ? GratisGuidance.Find(repo, revision): Dictionary[string, Object?]()
-            let prompt = gratis ? GratisGuidance.Prompt(options.Get("prompt")): ""
+            let prompt = gratis ? GratisGuidance.Prompt(options.Get("prompt"), named > 0): ""
             let context = map[string, Object?]{
                 "policy": policy.Value,
                 "approval": map[string, Object?]{
