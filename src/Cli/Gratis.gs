@@ -198,10 +198,12 @@ internal class Gratis {
             PublicSummary.Attach(receipt, summary)
             let attribution = "Donated with [Tokate](https://github.com/obselate/tokate) by @" +
                 donor +
-                ". No owner approved the task. No repository check ran. Repository CI still applies." +
+                ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
             let marker = "<!-- tokate-receipt:" + J.Write(receipt) + " -->"
-            let report = PrBody.Report(PublicSummary.Report(summary, "No repository check ran."))
+            let report = PrBody.Report(
+                PublicSummary.Report(summary, "Tokate ran no repository checks. Checks below are donor-reported.")
+            )
             let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
                 report +
                 "\n\n" +
@@ -217,7 +219,7 @@ internal class Gratis {
                 "head": donor + ":" + run.Text("branch"),
                 "base": run.Text("base_branch"),
                 "draft": !run.Flag("ready"),
-                "maintainer_can_modify": false
+                "maintainer_can_modify": true
             }
             let findings = run.Text("findings")
             let discussionTitle = "Tokate donation findings"

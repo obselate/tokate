@@ -76,7 +76,9 @@ internal class Contribution {
                 coding.Remaining()
             }
 
-            Terminal.Step("Running independent owner verification...")
+            if !run.Flag("gratis") {
+                Terminal.Step("Running independent owner verification...")
+            }
 
             if run.Flag("unlimited") {
                 total = RuntimeBudget(Stopwatch.StartNew(), reserve)
@@ -131,7 +133,10 @@ internal class Contribution {
             run.Fields["failure_stage"] = "changed_candidate"
             run.Fields["failure_reason"] = "candidate_changed"
 
-            using let progress = TerminalProgress("Verified candidate validation", total)
+            using let progress = TerminalProgress(
+                run.Flag("gratis") ? "Candidate validation": "Verified candidate validation",
+                total
+            )
             let patch = Snapshot(checkout, run, total)
 
             CheckPaths(checkout, record, run, budget: total)

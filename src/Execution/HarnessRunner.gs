@@ -184,7 +184,9 @@ internal class HarnessRunner {
                     )
                 }
 
-                Terminal.Step("Checking owner approval and donor login...")
+                Terminal.Step(
+                    run.Flag("gratis") ? "Checking donor login...": "Checking owner approval and donor login..."
+                )
 
                 let record = ContributionAuthority.Recheck(run)
                 let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))

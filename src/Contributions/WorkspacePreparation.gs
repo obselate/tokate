@@ -225,7 +225,11 @@ internal class WorkspacePreparation {
 
             run.Save(directory)
 
-            Terminal.Step("Approved source " + run.Text("base") + " for target " + run.Text("base_branch"))
+            Terminal.Step(
+                (run.Flag("gratis") ? "Selected source ": "Approved source ") + run.Text("base") +
+                    " for target " +
+                    run.Text("base_branch")
+            )
             if run.Text("source") == "external" {
                 Terminal.Step("External coding checkout: " + checkout + "; independent verification uses DIR/checkout")
                 Terminal.Step(
