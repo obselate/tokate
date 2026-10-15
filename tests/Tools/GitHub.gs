@@ -77,7 +77,11 @@ internal partial class Fixture {
         Console.Write("Date: " + DateTimeOffset.UtcNow.ToString("r", CultureInfo.InvariantCulture) + "\r\n")
         Console.Write(
             "X-Poll-Interval: " +
-                (State["poll_interval"] == nil ? "2": Check.Text(State["poll_interval"])) +
+                (
+                ApiPath.Contains("/git/ref/") && State["ref_poll_interval"] != nil ? Check.Text(
+                    State["ref_poll_interval"]
+                ): (State["poll_interval"] == nil ? "2": Check.Text(State["poll_interval"]))
+            ) +
                 "\r\nX-Synthetic-Ignored: synthetic-response-secret\r\n" +
                 headers +
                 "\r\n"

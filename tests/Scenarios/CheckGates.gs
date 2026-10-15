@@ -285,7 +285,8 @@ internal class CheckGates {
             completed["conclusion"] = JsonValue.Create("success")
             flow.State["workflow_runs"] = JsonArray(stale, completed, waiting)
             flow.Save()
-            let approval = Data(Read(test, 8))
+            let pending = Read(test, 8)
+            let approval = Data(pending)
             Gate(approval, "checks", "pending")
             Check.That(
                 Check.Text(approval["required_checks"]?[0]?["status"]) == "missing" && Check.Text(
@@ -299,6 +300,26 @@ internal class CheckGates {
             Check.Contains(actions, "in GitHub")
             Check.That(approval["ci_hint"] == nil, "CI start hint shown while workflow approval is pending")
             Check.Contains(Read(test, 8, human: true, verbose: true).Output, "Workflow runs await owner approval")
+            Check.That(
+                Check.Json(pending.Output)["next_actions"]?[0]?.ToJsonString() ==
+                "[\"gh\",\"pr\",\"view\",\"10\",\"--repo\",\"owner/project\",\"--web\"]",
+                "Workflow approval was not the next action"
+            )
+            let human = Read(test, 8, human: true).Output
+            Check.Contains(
+                human,
+                "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.\nNext: gh pr view 10 --repo owner/project --web"
+            )
+            Check.That(!human.Contains("merge"), "Pending checks suggested merge")
+            Check.That(!actions.Contains("merge"), "Pending owner actions suggested merge")
+            Read(test, 8, timeout: true, seconds: "30")
+            var polls int32
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                if Check.Text(call["path"]).Contains("/check-runs?") {
+                    polls++
+                }
+            }
+            Check.That(polls == 1, "Watch kept polling while workflow runs await owner approval")
             for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 let path = Check.Text(call["path"])
                 if path.Contains("/actions/runs?") {

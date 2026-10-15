@@ -201,6 +201,8 @@ internal class ApiTransport {
 
         private var NextPoll double
 
+        private let Polls Dictionary[string, double] = Dictionary[string, double]()
+
         private var NextRead double
 
         private func RemoveCached(key string) {
@@ -235,6 +237,7 @@ internal class ApiTransport {
         internal func BeginDeadline(seconds int32) {
             Deadline = Clock.Elapsed.TotalSeconds + seconds
             NextPoll = 0.0
+            Polls.Clear()
         }
 
         internal func EndDeadline() {
@@ -247,8 +250,16 @@ internal class ApiTransport {
             }
         }
 
-        internal func PollWait() {
-            Wait(Math.Max(2.0, NextPoll - Clock.Elapsed.TotalSeconds))
+        internal func PollWait(prefix string = "") {
+            var next = NextPoll
+
+            for poll in Polls {
+                if poll.Key.StartsWith(prefix, StringComparison.Ordinal) {
+                    next = Math.Max(next, poll.Value)
+                }
+            }
+
+            Wait(Math.Max(2.0, next - Clock.Elapsed.TotalSeconds))
         }
 
         internal func Settle() {
@@ -446,7 +457,7 @@ internal class ApiTransport {
                         out poll
                     ) &&
                         Double.IsFinite(poll) && poll >= 0 {
-                        NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + poll)
+                        Polls[path] = Clock.Elapsed.TotalSeconds + poll
                     }
 
                     NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + response.Delay(limited))
