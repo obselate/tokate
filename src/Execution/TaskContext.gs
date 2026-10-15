@@ -81,6 +81,7 @@ internal class TaskContext {
                 "\n" +
                 "## tokate-public-summary.json format\n" +
                 "One JSON object with exactly three arrays: `changes` (1 to 8 items), `verification` (0 to 8) and `limitations` (0 to 4). Write [] for an empty list. Do not include `head` or other keys. Keep it at most 4046 bytes as compact JSON. Each ' and + counts as 6 bytes. Tokate publishes this file in the PR, so do not include private details.\n" +
+                "Verification lists only final results for the final diff, not intermediate failures or fixes.\n" +
                 "Each item is one plain ASCII sentence of 3 to 200 characters, with no leading or trailing space. Use only letters, digits, spaces and these marks: . , ; : ! ? ( ) ' + _ - =\n" +
                 "Tokate rejects the file if an item contains any of these, in any letter case and also inside longer words: a URL, http:, https:, www., a path or slash, four numbers joined by dots, ghp_, gho_, ghu_, ghs_, ghr_, github_pat_, `localhost:`, `tokate-receipt`, `tokate-report`, secret, password, credential, bearer, api key, apikey, api_key, api-key, \"generated a patch\" or \"implemented acceptance criteria\". It also rejects a one-letter word followed by a colon or `sk-` at a word boundary. Name the check or test instead.\n\n" +
                 (imported + handoff == "" ? "": "## Continuation and handoff\n\n" + imported + handoff) +

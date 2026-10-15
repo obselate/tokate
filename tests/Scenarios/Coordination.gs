@@ -1703,6 +1703,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         gratisFlow.Reload()
         let donated = gratisFlow.State["pulls"]?.AsArray() ?? JsonArray()
         Check.That(donated.Count == 1 && Check.Text(donated[0]?["draft"]) == "true", "Gratis did not open one draft")
+        Check.That(Check.Text(donated[0]?["maintainer_can_modify"]) == "true", "Gratis blocked maintainer edits")
         Check.That(
             Check.Text(donated[0]?["head"]?["repo"]?["full_name"]) == "donor/project",
             "Gratis did not use the fork"
@@ -1710,7 +1711,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let body = Check.Text(donated[0]?["body"])
         Check.Contains(body, "https://github.com/obselate/tokate")
         Check.Contains(body, "No owner approved the task.")
-        Check.Contains(body, "No repository check ran.")
+        Check.Contains(body, "Tokate ran no repository checks. Checks below are donor-reported.")
+        Check.That(!body.Contains("No repository check ran."), "Gratis report uses ambiguous verification text")
         Check.Contains(body, "gpt-6.1-sol")
         Check.Contains(body, " | 100 | 10 | 20 |")
         let prefix = "<!-- tokate-receipt:"
@@ -1723,6 +1725,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(Check.Text(gratisFlow.State["exec_count"]) == "1", "Gratis repeated inference")
         Check.That((gratisFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0, "Gratis posted a claim")
         let prompt = Check.Text(gratisFlow.State["prompts"]?[0])
+        Check.Contains(
+            prompt,
+            "Verification lists only final results for the final diff, not intermediate failures or fixes."
+        )
         Check.Contains(prompt, "CONTRIBUTING.md")
         Check.Contains(prompt, "Complete the task named by CONTRIBUTING.md.")
         Check.Contains(prompt, "Add result.txt")
@@ -1894,7 +1900,18 @@ internal partial class CoordinationFlow : CoordinationFixture {
         File.Copy(Path.Combine(namedFlow.Bin, "codex-impl"), repeatHarness)
         let acceptedArgs = List[string](namedArgs)
         acceptedArgs.AddRange([]string{"--yes", "--harness-path", repeatHarness})
-        let reviewed = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")
+        let reviewedResult = namedFlow.Call(acceptedArgs.ToArray())
+        let reviewed = Check.Envelope(reviewedResult, "work", "ok")
+        Check.Contains(reviewedResult.Error, "Selected source ")
+        Check.Contains(reviewedResult.Error, "Checking donor login...")
+        Check.That(
+            !reviewedResult.Error.Contains("Running independent owner verification"),
+            "Gratis claimed owner verification"
+        )
+        Check.That(
+            !reviewedResult.Error.Contains("Verified candidate validation"),
+            "Gratis claimed verified validation"
+        )
         let named = reviewed["data"] ?? throw Exception("Missing issue list report")
         Check.That(Check.Text(named["prepared"]) == "2", "Review did not prepare both issues")
         Check.That(Check.Text(named["reason"]) == "issues_completed", "Issue list did not stop")
@@ -1909,7 +1926,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let namedDirectory = Check.Text(named["tasks"]?[0]?["run_directory"])
         let savedRun = File.ReadAllText(Path.Combine(namedDirectory, "run.json"))
         namedFlow.ResetTraffic()
-        let submit = []string{"submit", "owner/project#2", "--json"}
+        let printedReference = Check.Text(reviewed["next_actions"]?[0]?[2])
+        Check.Contains(printedReference, "owner/project#2")
+        let submit = []string{"submit", printedReference, "--json"}
         let submitPreview = namedFlow.Call(submit)
         let publication = Check.Envelope(submitPreview, "submit", "ok")["data"] ??
             throw Exception("Missing submission preview")

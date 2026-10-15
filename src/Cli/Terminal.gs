@@ -519,6 +519,12 @@ internal class Terminal {
                 } else {
                     var text = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString() ?? "":
                     field.Value.GetRawText()
+                    if text == "" && Array.IndexOf(
+                        []string{"discussion_error", "discussion_url", "pr_url"},
+                        field.Name
+                    ) >= 0 {
+                        continue
+                    }
 
                     if field.Name == "default" && field.Value.ValueKind == JsonValueKind.Null {
                         text = "none. Choose one with tokate defaults use NAME."
