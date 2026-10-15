@@ -1661,6 +1661,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Directory.CreateDirectory(Path.Combine(gratisFlow.Upstream, "nested"))
         File.WriteAllText(Path.Combine(gratisFlow.Upstream, "nested/CONTRIBUTING.md"), "Nested contribution rules.\n")
+        File.CreateSymbolicLink(Path.Combine(gratisFlow.Upstream, "unsafe.md"), "/proc/self/environ")
+        File.AppendAllText(Path.Combine(gratisFlow.Upstream, "AGENTS.md"), "Read [unsafe](unsafe.md).\n")
         gratisFlow.Commit("Welcome donated work without a policy")
         let instruction = Path.Combine(gratisFlow.Temp.Root, "donation.txt")
         File.WriteAllText(instruction, "Complete the task named by CONTRIBUTING.md.")
@@ -1738,6 +1740,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(
             File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
             "Gratis ran repository verification"
+        )
+        let savedGuidance = Check.Json(File.ReadAllText(Path.Combine(gratisDirectory, "run.json")))["gratis_context"]?[
+            "guidance"
+        ]
+        Check.That(
+            !Check.Text(savedGuidance?["Linked documents"]).Contains("unsafe.md"),
+            "Gratis listed a symlinked linked document"
         )
 
         using let namedFlow = NativeFixture(Flow.Binary)
@@ -1862,5 +1871,19 @@ internal partial class CoordinationFlow : CoordinationFixture {
             (namedFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0,
             "Named gratis work posted a claim"
         )
+
+        using let failedFlow = NativeFixture(Flow.Binary)
+        failedFlow.Initialize(access: false)
+        failedFlow.Git("-C", failedFlow.Upstream, "rm", ".github/tokate.json")
+        failedFlow.Commit("Welcome named issue work without a policy")
+        failedFlow.State["mode"] = JsonValue.Create("model_failure")
+        failedFlow.Save()
+        let failedArgs = List[string](namedArgs)
+        failedArgs[1] = "owner/project#1"
+        failedArgs.Add("--yes")
+        let failed = Check.Envelope(failedFlow.Call(failedArgs.ToArray(), 1), "work", "error", "command_failed")["data"]
+        Check.That(Check.Text(failed?["reason"]) == "failed", "Failed named work claimed completion")
+        Check.That(Check.Text(failed?["failed"]) == "1", "Failed named work was not counted")
+        failedFlow.NoPr()
     }
 }

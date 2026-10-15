@@ -93,7 +93,10 @@ internal class GratisGuidance {
                 for token in text.Split(" \t\r\n()<>\"`".ToCharArray(), StringSplitOptions.RemoveEmptyEntries) {
                     let linked = Relative(path, Uri.UnescapeDataString(token.Split('#')[0]))
                     let extension = Path.GetExtension(linked).ToLowerInvariant()
-                    if tree.ContainsKey(linked) && !ordered.Contains(linked) && !linkedDocuments.Contains(linked) &&
+                    if tree.ContainsKey(linked) && J.Text(tree[linked], "mode") != "120000" && !ordered.Contains(
+                        linked
+                    ) &&
+                        !linkedDocuments.Contains(linked) &&
                         (extension == ".md" || extension == ".rst" || extension == ".txt") {
                         linkedDocuments.Add(linked)
                     }

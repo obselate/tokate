@@ -123,22 +123,33 @@ internal class Gratis {
         }
 
         internal func Outcome(directory string, checkout string, run Data, budget RuntimeBudget) bool {
-            let title = Artifact(checkout, "tokate-title.txt")
-            if title != "" {
-                Require(Regex.IsMatch(title, "^[\\x20-\\x7E]{1,100}\\z"), "Invalid gratis title")
-                run.Fields["gratis_title"] = title
-            }
             let refusal = Artifact(checkout, "tokate-refusal.txt")
             if refusal != "" {
                 run.Fields["state"] = "refused"
                 run.Fields["refusal"] = refusal
             } else {
+                let home = Environment.GetEnvironmentVariable("HOME") ?? ""
+                let title = Artifact(checkout, "tokate-title.txt")
+                if title != "" {
+                    Require(
+                        Regex.IsMatch(title, "^[\\x20-\\x7E]{1,100}\\z") && !Regex.IsMatch(
+                            title,
+                            PublicSummary.RestrictedTextPattern
+                        ) &&
+                            !title.Contains(checkout, StringComparison.Ordinal) && !title.Contains(
+                            directory,
+                            StringComparison.Ordinal
+                        ) &&
+                            (home == "" || !title.Contains(home, StringComparison.Ordinal)),
+                        "Invalid gratis title"
+                    )
+                    run.Fields["gratis_title"] = title
+                }
                 let guidance = J.Get(J.Get(run.Element(), "gratis_context"), "guidance").EnumerateObject().MoveNext()
                 run.Fields["ready"] = Artifact(checkout, "tokate-ready.txt") != "" && guidance
                 let findings = Artifact(checkout, "tokate-findings.md")
                 if findings != "" {
                     File.WriteAllText(Path.Combine(directory, "findings.md"), findings)
-                    let home = Environment.GetEnvironmentVariable("HOME") ?? ""
                     let safe = !Regex.IsMatch(findings, PublicSummary.RestrictedTextPattern) && !findings.Contains(
                         checkout,
                         StringComparison.Ordinal
@@ -208,15 +219,23 @@ internal class Gratis {
                 "draft": !run.Flag("ready"),
                 "maintainer_can_modify": false
             }
-            let preview = map[string, Object?]{"repo": repoName, "pull_request": pullRequest, "applied": false}
+            let findings = run.Text("findings")
+            let discussionTitle = "Tokate donation findings"
+            let discussionBody = findings == "" ? "": findings + "\n\n" + attribution + "\n\n" + marker
+            let preview = map[string, Object?]{"repo": repoName, "applied": false}
+            var consent = "Repository: " + repoName
+            if run.Text("state") == "generated" {
+                preview["pull_request"] = pullRequest
+                consent += "\nBase: " + run.Text("base_branch") + "\nFork branch: " + donor + ":" + run.Text("branch") +
+                    "\nTitle: " +
+                    pullRequest["title"]?.ToString() + "\nBody:\n" + body
+            }
+            if findings != "" {
+                preview["discussion"] = map[string, Object?]{"title": discussionTitle, "body": discussionBody}
+                consent += "\nDiscussion title: " + discussionTitle + "\nDiscussion body:\n" + discussionBody
+            }
             PublicOutput.ResultData = preview
-            Console.Error.WriteLine(
-                "Repository: " + repoName + "\nBase: " + run.Text("base_branch") +
-                    "\nFork branch: " +
-                    donor +
-                    ":" +
-                    run.Text("branch") + "\nTitle: " + pullRequest["title"]?.ToString() + "\nBody:\n" + body
-            )
+            Terminal.Message(Terminal.Clean(consent), error: true)
             if !OwnerSetup.Confirm(args, "Publish this contribution?") {
                 if OwnerSetup.Unattended(args) {
                     PublicOutput.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
@@ -236,9 +255,8 @@ internal class Gratis {
                 run.Save(directory)
                 let pull = GitHub.Api("repos/" + repoName + "/pulls", pullRequest)
                 Publication.SavePr(directory, run, pull)
+                preview["applied"] = true
             }
-            preview["applied"] = true
-            let findings = run.Text("findings")
             if findings == "" {
                 return
             }
@@ -261,8 +279,8 @@ internal class Gratis {
                 let input = map[string, Object?]{
                     "repo": J.Text(repo, "id"),
                     "category": category,
-                    "title": "Tokate donation findings",
-                    "body": findings + "\n\n" + attribution + "\n\n" + marker
+                    "title": discussionTitle,
+                    "body": discussionBody
                 }
                 let posted = Query(
                     repoName,
@@ -271,6 +289,7 @@ internal class Gratis {
                 )
                 let url = J.Text(J.Get(J.Get(posted, "createDiscussion"), "discussion"), "url")
                 Require(url != "", "Discussion publication failed")
+                preview["applied"] = true
                 run.Fields["discussion_url"] = url
                 run.Fields["state"] = "published"
             } catch (error Exception) when !(error is CommandInterrupted) {

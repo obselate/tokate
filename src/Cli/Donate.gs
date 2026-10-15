@@ -293,7 +293,8 @@ internal class Donate {
                     }
                     session.Write(sessionPath)
                     if named > 0 {
-                        session.Fields["reason"] = "issue_completed"
+                        session.Fields["reason"] = result == "prepared" ? "issue_completed":
+                        task.GetValueOrDefault("reason") ?? result
                         break
                     }
                     let refused = task.GetValueOrDefault("reason")?.ToString() == "refused"
@@ -310,13 +311,13 @@ internal class Donate {
                 session.Fields["wall_seconds"] = timer.Elapsed.TotalSeconds
                 session.Write(sessionPath)
                 Report(session.Element())
-                if named > 0 && tasks.Count == 1 && session.Number("prepared") == 1 {
+                if named > 0 && session.Number("prepared") == 1 {
                     let next = []string{"tokate", "submit", repo + "#" + named.ToString()}
                     PublicOutput.Actions.Add(next)
                     Terminal.Message("Next: " + Terminal.Command(next), error: true)
                 }
             }
-            return consecutive == 3 ? 1: 0
+            return consecutive == 3 || (named > 0 && session.Number("failed") > 0) ? 1: 0
         }
     }
 }

@@ -274,7 +274,7 @@ func Dispatch(options Args) int32 {
             }
 
             if PublicOutput.Enabled && !Donate.Active {
-                pending = run.Number("pr") == 0 && !run.Flag("gratis")
+                pending = run.Number("pr") == 0
 
                 if pending {
                     Submission.FailedWorkflow(directory, run)
