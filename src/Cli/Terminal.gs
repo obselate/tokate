@@ -232,8 +232,10 @@ internal class Terminal {
             let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                let name = RunReference.Label(row, saved, row.Next == "checks")
-                table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
+                let name = RunReference.Label(row, saved)
+                let next = row.Next
+                let target = next == "checks" ? RunReference.Label(row, saved, true): name
+                table.Add([]string{name, row.State, row.Age(), next == "" ? "-": "tokate " + next + " " + target})
             }
 
             Table(table)
@@ -242,7 +244,7 @@ internal class Terminal {
         internal func Table(rows List[[]string], error bool = false, fit int32 = -1) {
             let widths = List[int32]()
 
-            for row in rows {
+            for row in rows.Where(row -> row.Length > 1) {
                 for i in 0 ... row.Length {
                     row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
 
@@ -260,6 +262,11 @@ internal class Terminal {
             }
 
             for row in rows {
+                if row.Length == 1 {
+                    Line(String(' ', widths[0] + 2) + Clean(row[0]).Replace('\n', ' ').Trim(), "default", error)
+                    continue
+                }
+
                 if fit >= 0 && row[fit].GetCellWidth() > widths[fit] {
                     var text = row[fit]
 
@@ -390,7 +397,8 @@ internal class Terminal {
                     stage = "Inference"
                 } else if code == "verification_failed" {
                     stage = "Verification"
-                } else if run.Text("state") == "generated" && exitCode != 0 {
+                } else if (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") &&
+                    exitCode != 0 {
                     stage = "Publication"
                 }
 
@@ -410,8 +418,14 @@ internal class Terminal {
 
                 Message("Saved artifacts: " + summary, "default", true)
 
-                for action in RunReference.Short(PublicOutput.Actions, false) {
-                    Message("Next: " + Hint(action), "default", true)
+                let actions = RunReference.Short(PublicOutput.Actions, false)
+                let index = exitCode == 0 || exitCode == 8 ? Math.Max(
+                    actions.FindIndex(next -> next.ElementAtOrDefault(1) != "status"),
+                    0
+                ): 0
+
+                if actions.Count > 0 {
+                    Message("Next: " + Hint(actions[index]), "default", true)
                 }
             } catch (error Exception) { }
         }
@@ -464,13 +478,13 @@ internal class Terminal {
             return text.Length == 0 ? text: Char.ToUpperInvariant(text[0]).ToString() + text.Substring(1)
         }
 
-        private func Fields(value JsonElement, prefix string = "") {
+        internal func Fields(value JsonElement, prefix string = "", names bool = false) {
             for field in value.EnumerateObject() {
-                let label = prefix + Label(field.Name)
+                let label = prefix + (names ? field.Name: Label(field.Name))
 
                 if field.Value.ValueKind == JsonValueKind.Object {
                     Message(label + ":", "default")
-                    Fields(field.Value, "  ")
+                    Fields(field.Value, prefix + "  ", prefix == "" && field.Name == "profiles")
                 } else if field.Value.ValueKind == JsonValueKind.Array {
                     let items = J.Items(field.Value)
 
@@ -527,7 +541,7 @@ internal class Terminal {
             }
         }
 
-        internal func Json(value JsonElement, title string) {
+        internal func Json(value JsonElement, title string, raw bool = true) {
             if PublicOutput.Enabled {
                 PublicOutput.ResultData = J.Select(
                     value,
@@ -537,7 +551,7 @@ internal class Terminal {
                 return
             }
 
-            if Console.IsOutputRedirected && !Plain && !Ascii {
+            if raw && Console.IsOutputRedirected && !Plain && !Ascii {
                 Console.WriteLine(J.Write(value))
 
                 return

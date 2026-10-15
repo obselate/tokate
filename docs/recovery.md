@@ -43,49 +43,46 @@ It uses the completed work without new inference. Do not start another run.
 1. Archive the completed evidence before editing.
 
    ```sh
-   tokate amend 42-1
+   tokate amend 42
    ```
 
-2. Edit the run's `checkout` directory.
-3. Commit the corrected files in that checkout.
+2. Edit and commit the files in the checkout. `tokate status 42` shows its path.
+3. Verify and request publication of the corrected commit with a separate budget.
 
    ```sh
-   git add FILES
-   git commit -m "Correct donated work"
-   git rev-parse HEAD
+   tokate amend 42 --time 5m
    ```
 
-4. Declare the actual correction tools in `TOOLS_FILE` and the public summary in `SUMMARY_FILE`.
-5. Verify and request publication of the exact corrected commit with a separate budget.
+4. After the coordinator publishes the draft, record its result.
 
    ```sh
-   tokate amend 42-1 --commit SHA --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
+   tokate submit 42
    ```
 
-6. After the coordinator publishes the draft, record its result.
-
-   ```sh
-   tokate submit 42-1
-   ```
-
-`--commit` defaults to HEAD of the saved checkout. A call with no budget or commit archives the original evidence. This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
+`--commit` defaults to HEAD of the saved checkout. This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
 
 ## Amend a published PR
 
-1. Edit and commit the saved checkout.
-2. Describe the complete final diff in `SUMMARY_FILE`.
-3. Declare the actual editing tools in `TOOLS_FILE`.
-4. Verify and publish the exact commit.
+1. Edit and commit the files in the checkout. `tokate status 42` shows its path.
+2. Verify and publish the commit.
 
    ```sh
-   tokate amend 42-1 --commit SHA --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
+   tokate amend 42 --time 5m
    ```
 
-5. Request fresh CI and owner review.
+3. Request fresh CI and owner review.
 
    ```sh
    tokate checks PR --watch
    ```
+
+Optional amendment inputs:
+
+| Option | Use |
+| --- | --- |
+| `--summary FILE` | Replace the public PR summary with one that describes the final diff. Without it, the PR shows no summary. See the summary format in [AGENTS.md](../AGENTS.md#write-public-pr-summaries). |
+| `--tools FILE` | Declare the AI tools that made the edits. Omit it for hand edits. |
+| `--commit SHA` | Publish a commit other than the checkout HEAD. |
 
 ## Synchronize a published PR
 
@@ -296,7 +293,7 @@ Open the private verification artifact listed by status. Correct completed or pu
 
 | Symptom (message text) | Do (exact command) |
 | --- | --- |
-| `Submit pending. Run the same command again: tokate submit --run DIR` | No workflow result was available. Inspect `tokate status --run DIR` before `tokate submit --run DIR`. |
+| `Publication pending.` with `submit --run DIR` | No coordinator outcome was available. Inspect `tokate status --run DIR` before `tokate submit --run DIR`. |
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
 | `Tokate workflow failed. MESSAGE RUN_URL` or `GitHub could not start the Tokate workflow.` with Actions settings guidance and recovery text | Owner: use the pending request recovery above. |
 | `GitHub mutation failed (HTTP STATUS). GitHub reason: MESSAGE.` followed by uncertain-outcome guidance | Inspect remote state, then use `tokate submit --run DIR`. `STATUS` and `MESSAGE` contain the HTTP status and bounded GitHub message fields when present. No automatic retry is made. |

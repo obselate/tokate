@@ -40,7 +40,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(result.Error == "", "Owner command warned about donor tools")
         Check.Contains(
             result.Output,
-            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1"
+            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1 "
         )
         Check.Contains(
             Call([]string{"work", "owner/project#1", "--model", "model", "--effort", "high"}, 1).Error,
@@ -154,8 +154,8 @@ internal partial class NativeFlow : NativeFixture {
             !work.Output.Contains("synthetic-raw") && !work.Output.Contains("synthetic-usage-secret"),
             "Inference output leaked"
         )
-        let submit = Call([]string{"submit", "--run", run, "--json"})
-        Check.Envelope(submit, "submit", "ok")
+        let submit = Call([]string{"submit", "--run", run, "--json"}, 8)
+        Check.Envelope(submit, "submit", "pending")
         Check.Contains(submit.Error, warning)
         Check.Contains(submit.Error, update)
         CoordinatePosted()
@@ -516,7 +516,8 @@ internal partial class NativeFlow : NativeFixture {
         let failed = Check.Json(claimed)
         failed["state"] = JsonValue.Create("failed")
         File.WriteAllText(Path.Combine(second, "run.json"), failed.ToJsonString())
-        let worked = Check.Envelope(Call([]string{"work", "project#1", "--json"}), "work", "ok")
+        let work = Call([]string{"work", "project#1", "--json"})
+        let worked = Check.Envelope(work, "work", "ok")
         Check.That(Directory.GetDirectories(store).Length == 2, "Bare issue started another attempt")
         Check.That(
             Check.Text(Check.Json(File.ReadAllText(Path.Combine(first, "run.json")))["state"]) == "generated",
@@ -525,6 +526,7 @@ internal partial class NativeFlow : NativeFixture {
         let actions = worked["next_actions"]?.ToJsonString() ?? ""
         Check.Contains(actions, "[\"tokate\",\"submit\",\"owner/project#1-1\",\"--json\"]")
         Check.Contains(actions, "[\"tokate\",\"status\",\"owner/project#1-1\",\"--json\"]")
+        Check.That(!work.Error.Contains("#1-1"), "Terminal hints renamed the only active attempt")
         NoPr()
     }
 

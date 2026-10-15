@@ -33,6 +33,7 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 ## Start here
 
 ```sh
+# Install Tokate, log in to GitHub and check the machine
 curl -qfsSL https://tokate.dev/install.sh | sh
 gh auth login
 tokate doctor
@@ -41,11 +42,18 @@ tokate doctor
 - **Owners:** [Set up the repository, approve tasks and review donations](docs/owners.md).
 
   ```sh
+  # Set up once: preview the changes, apply them, then merge the setup PR
   tokate init OWNER/REPO
   tokate init OWNER/REPO --yes
   gh pr merge tokate-setup -R OWNER/REPO
+
+  # Approve an issue for donors
   tokate approve OWNER/REPO#42
+
+  # Optional: let one donor you do not trust yet work that issue
   tokate access grant LOGIN OWNER/REPO#42
+
+  # Check a donated PR, then merge it
   tokate checks OWNER/REPO#PR
   gh pr ready PR -R OWNER/REPO
   gh pr merge PR -R OWNER/REPO
@@ -54,29 +62,34 @@ tokate doctor
 - **Donors:** [Choose a tool, claim an issue and donate work](docs/donors.md).
 
   ```sh
+  # Work one approved issue, then open its PR
   tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
   tokate submit OWNER/REPO#42
-  ```
 
-  Gratis work on a repository without a Tokate policy:
-
-  ```sh
+  # Donate to a repository without a Tokate policy for one hour, or stop early
   tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
+  tokate work OWNER/REPO stop
   ```
+
+  Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](docs/donors.md#local-inference-with-pi).
 
 - **Existing work:** [Recover a run or update a PR](docs/recovery.md).
 
   ```sh
+  # List your saved work, or show one run with its checkout path
   tokate status
   tokate status OWNER/REPO#42
-  tokate amend OWNER/REPO#42
-  tokate amend OWNER/REPO#42 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
-  tokate submit OWNER/REPO#42
+
+  # Fix a published PR: edit and commit in the checkout, then verify and publish
+  tokate amend OWNER/REPO#42 --time 5m
   ```
+
+  Add `--summary FILE` to replace the PR summary. Add `--tools FILE` only when an AI tool made the edits.
 
 - **Before running:** [Understand data access and isolation](docs/security.md).
 
   ```sh
+  # Check a repository's policy and coordinator, and your harness
   tokate doctor repo OWNER/REPO
   tokate doctor HARNESS
   ```
@@ -84,6 +97,7 @@ tokate doctor
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
   ```sh
+  # Build and run the fast gate
   git clone https://github.com/obselate/tokate.git
   cd tokate
   bash scripts/build.sh

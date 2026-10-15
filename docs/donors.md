@@ -126,7 +126,7 @@ Stop waits for the current task and prints wall time, submitted, skipped and fai
    tokate submit N
    ```
 
-Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positional arguments](arguments.md) for issue and run references.
+Use `--verify-time 20m` to reserve 20 minutes within the total time. Without `--verify-time`, coding can use the total time and verification gets only the time coding leaves. Use [positional arguments](arguments.md) for issue and run references.
 
 ## Save a profile
 
@@ -192,7 +192,7 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 | Pi setting | Requirement |
 | --- | --- |
 | Effort | Use a supported reasoning level. Use `absent` only for a model without reasoning. |
-| Endpoint | HTTP loopback URL ending in `/v1`. Remote endpoints and authentication are not supported. |
+| Endpoint | Required. Pass `--endpoint` or use a saved profile. Use `http://127.0.0.1:PORT/v1` or `http://[::1]:PORT/v1`. `localhost` and remote endpoints are rejected. Authentication is not supported. |
 | Model limits | Pi SDK metadata must provide valid context and output limits. |
 | Custom installation | Supply absolute `--pi-root` and `--node` paths. `--pi-root` names the installed `node_modules` directory. |
 

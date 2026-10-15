@@ -162,7 +162,7 @@ internal class TargetBranches {
                 "V2 prepared the moving target instead of approved base"
             )
             RunBase(run, base, branch)
-            flow.Call([]string{"submit", "--run", run, "--json"})
+            flow.Call([]string{"submit", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(request))
             Receipt(flow, branch, base)

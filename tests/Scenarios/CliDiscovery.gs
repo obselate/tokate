@@ -810,11 +810,8 @@ internal class CliDiscovery {
             Check.That(Check.Text(status["next_actions"]?[0]?[3]) == saved, "Action path shortened")
             let legacy = TestProcess.Run(binary, []string{"status", "--run", saved}, temp.Env)
             Check.Success(legacy)
-            Check.That(Check.Json(legacy.Output)["schema_version"] == nil, "Legacy status was enveloped")
-            Check.That(
-                Check.Json(legacy.Output)["verification"]?[0]?.AsObject().Count == 2,
-                "Legacy verification exposes logs"
-            )
+            Check.Contains(legacy.Output, "State  " + Check.Text(status["data"]?["state"]))
+            Check.That(!legacy.Output.TrimStart().StartsWith("{"), "Status without --json printed JSON")
             for marker in[]string{
                 "synthetic-verifier-output-marker",
                 "synthetic-verifier-error-marker",

@@ -484,16 +484,28 @@ internal class ClaudeCode {
         internal func Gate(args Args, runtime JsonElement) Object {
             let model = args.Need("model")
             let effort = args.Need("effort")
-            let policy = Policy(
-                File.ReadAllText(
-                    args.Get(
-                        "policy",
-                        Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
-                    )
-                )
+            let path = args.Get(
+                "policy",
+                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
             )
+            var text string
+            var policy Policy
 
-            policy.Validate("claude", "anthropic", model, effort, 1)
+            try {
+                text = File.ReadAllText(path)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot read the policy at " + path + ". Pass --policy FILE or run in a checkout."
+                )
+            }
+
+            try {
+                policy = Policy(text)
+                policy.Validate("claude", "anthropic", model, effort, 1)
+            } catch (error Exception) {
+                throw CliFailure("verification_failed", error.Message)
+            }
 
             let environment = List[string]()
 
@@ -529,11 +541,15 @@ internal class ClaudeCode {
             }
 
             if args.Get("file") != "" {
-                result["native_reports"] = Reports(
-                    Report(args.Need("file"), args.Need("claude-profile")),
-                    model,
-                    effort
-                )
+                try {
+                    result["native_reports"] = Reports(
+                        Report(args.Need("file"), args.Need("claude-profile")),
+                        model,
+                        effort
+                    )
+                } catch (error Exception) {
+                    throw CliFailure("verification_failed", error.Message)
+                }
             }
 
             return result

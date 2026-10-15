@@ -1750,7 +1750,7 @@ internal class AmendmentFlow {
                 Check.Text(Read(run, "correction.json")["verification"]) == results,
                 "Repeated v2 correction reran checks"
             )
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--run", run}, 8)
             let request = Read(run, "request.json")
             Check.That(Check.Text(request["metadata"]?["source"]) == "tokate", "Correction replaced v2 source")
             Check.That(
@@ -1765,7 +1765,7 @@ internal class AmendmentFlow {
                 ),
                 "Publication changed correction tools"
             )
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--run", run}, 8)
             flow.Flow.Reload()
             Check.That(
                 Check.Text(flow.Flow.State["request_count"]) == "1",
@@ -1841,7 +1841,7 @@ internal class AmendmentFlow {
                 Check.Text(comment["id"])
             ] = comment.DeepClone()
             flow.Flow.Save()
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--run", run}, 8)
             flow.Flow.Reload()
             Check.That(Check.Text(flow.Flow.State["request_count"]) == "1", "Response recovery duplicated POST")
             Check.That(Check.Text(Read(run)["verification"]) == results, "Response recovery reran verification")
@@ -1929,7 +1929,7 @@ internal class AmendmentFlow {
                 let intent = Check.Text(Read(run, "correction.json")["publication"]?["request"])
                 let checks = Check.Text(Read(run, "correction.json")["verification"])
                 flow.Flow.Mode("")
-                flow.Flow.Call([]string{"submit", "--run", run}, mode == "request_fail_before_write" ? 1: 0)
+                flow.Flow.Call([]string{"submit", "--run", run}, mode == "request_fail_before_write" ? 1: 8)
                 flow.Flow.Reload()
                 Check.That(
                     Check.Text(flow.Flow.State["request_count"]) == (mode == "request_fail_before_write" ? "": "1"),
@@ -2107,7 +2107,7 @@ internal class AmendmentFlow {
             commit = Correct(test.Flow, run)
             Rework(test.Flow, run, commit)
             let coordinator = test.Coordination
-            test.Flow.Call([]string{"submit", "--run", run})
+            test.Flow.Call([]string{"submit", "--run", run}, 8)
             test.Flow.Reload()
             let request = Check.PostedRequest(test.Flow.State)
             coordinator.Coordinate(coordinator.Event(request))

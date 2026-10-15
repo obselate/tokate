@@ -142,10 +142,18 @@ internal class PiChecks {
             let hiddenCodex = Path.Combine(flow.Bin, "unused-codex")
             File.Move(codex, hiddenCodex)
             try {
+                File.WriteAllText(
+                    Path.Combine(agent, "settings.json"),
+                    "{\"defaultProvider\":\"local\",\"defaultModel\":\"fixture-model\",\"defaultThinkingLevel\":\"off\"}"
+                )
                 let diagnosis = Check.Envelope(
                     flow.Call([]string{"doctor", "managed", "pi", "--pi-root", root, "--node", node, "--json"}),
                     "doctor",
                     "ok"
+                )
+                Check.Contains(
+                    diagnosis["data"]?["tools"]?.ToJsonString() ?? "",
+                    "Pi settings: model fixture-model, effort off, provider local, endpoint " + catalog.Endpoint + "."
                 )
                 for tool in diagnosis["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Pi diagnostics required Codex")
@@ -155,8 +163,18 @@ internal class PiChecks {
                 for tool in inherited["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Managed diagnostics ignored the chosen Pi default")
                 }
+                let stale = Path.Combine(flow.Temp.Root, "missing-node")
+                flow.Call([]string{"defaults", "set", "--harness", "pi", "--pi-root", root, "--node", stale})
+                let refused = Check.Envelope(
+                    flow.Call([]string{"defaults", "check", "owner/project", "--json"}, 1),
+                    "defaults",
+                    "error",
+                    "invalid_state"
+                )
+                Check.Contains(Check.Text(refused["error"]?["message"]), "field node names a missing path")
                 flow.Call([]string{"defaults", "remove"})
             } finally {
+                File.Delete(Path.Combine(agent, "settings.json"))
                 File.Move(hiddenCodex, codex)
             }
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")
@@ -185,10 +203,10 @@ internal class PiChecks {
             )
             Check.That(!File.Exists(installMarker), "Failed Pi probe triggered installation of an existing runtime")
             File.Delete(curl)
-            let explicitSelection = Check.Json(flow.Call(args.ToArray()).Output)
+            let explicitSelection = Selection(flow, args)
             for fields in[]string{",\"context_length\":7", ",\"context_window\":7,\"context_length\":7"} {
                 catalog.Metadata = fields
-                let selected = Check.Json(flow.Call(args.ToArray()).Output)
+                let selected = Selection(flow, args)
                 Check.That(
                     Check.Text(selected["endpoint_catalog"]?["context_window"]) == "7" && Check.Text(
                         selected["context_window"]
@@ -225,12 +243,12 @@ internal class PiChecks {
             entrypoint["type"] = JsonValue.Create("script")
             File.WriteAllText(markerPath, marker.ToJsonString())
             Check.That(
-                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                JsonNode.DeepEquals(explicitSelection, Selection(flow, args)),
                 "Managed Pi script in a separate bin directory lost its SDK"
             )
             let providerIndex = args.IndexOf("--provider")
             args.RemoveRange(providerIndex, 2)
-            let inferredSelection = Check.Json(flow.Call(args.ToArray()).Output)
+            let inferredSelection = Selection(flow, args)
             Check.That(
                 JsonNode.DeepEquals(explicitSelection, inferredSelection),
                 "Omitted Pi provider changed the explicit selection"
@@ -251,7 +269,7 @@ internal class PiChecks {
             let defaultPath = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
             let savedDefault = File.ReadAllText(defaultPath)
             Check.That(
-                JsonNode.DeepEquals(explicitSelection, Check.Json(flow.Call(args.ToArray()).Output)),
+                JsonNode.DeepEquals(explicitSelection, Selection(flow, args)),
                 "Saved Codex default changed the explicit Pi selection with an omitted provider"
             )
             Check.That(File.ReadAllText(defaultPath) == savedDefault, "Pi selection changed the saved Codex default")
@@ -270,7 +288,7 @@ internal class PiChecks {
                     catalog.Endpoint
                 }
             )
-            let profiled = Check.Json(flow.Call([]string{"defaults", "check", "owner/project", "local"}).Output)
+            let profiled = Selection(flow, List[string]{"defaults", "check", "owner/project", "local"})
             let expectedProfile = explicitSelection.DeepClone()
             expectedProfile["source"] = JsonValue.Create("saved donor profile local")
             Check.That(JsonNode.DeepEquals(expectedProfile, profiled), "Saved Pi profile lost selection precedence")
@@ -297,7 +315,7 @@ internal class PiChecks {
             args.Add("local")
             expectedProfile["source"] = JsonValue.Create("saved donor profile local with explicit overrides")
             Check.That(
-                JsonNode.DeepEquals(expectedProfile, Check.Json(flow.Call(args.ToArray()).Output)),
+                JsonNode.DeepEquals(expectedProfile, Selection(flow, args)),
                 "Omitted Pi provider changed the explicit model, effort or endpoint overrides"
             )
             Check.That(File.ReadAllText(profilePath) == savedProfile, "Pi selection changed the named profile")
@@ -710,7 +728,7 @@ internal class PiChecks {
                     "Pi tool changes were lost"
                 )
                 if mode == "on" {
-                    flow.Flow.Call([]string{"submit", "--run", run})
+                    flow.Flow.Call([]string{"submit", "--run", run}, 8)
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
                     flow.Flow.Receipt("owner/project#10", owner: true)
@@ -739,6 +757,13 @@ internal class PiChecks {
             Check.That(File.ReadAllText(gitPath) == git, "Pi changed Git metadata")
             flow.Flow.NoInference()
             Console.WriteLine("PASS native Pi workflow " + mode)
+        }
+
+        private func Selection(flow NativeFixture, args List[string]) JsonNode {
+            let json = List[string](args)
+            json.Add("--json")
+            return Check.Envelope(flow.Call(json.ToArray()), "defaults", "ok")["data"] ??
+                throw Exception("Missing defaults data")
         }
 
         private func PrivateCatalog(output string, endpoint string) {

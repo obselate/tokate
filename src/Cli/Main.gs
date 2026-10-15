@@ -189,6 +189,8 @@ func Dispatch(options Args) int32 {
         OwnerHealth.WarnCoordinator(options)
     }
 
+    var pending bool
+
     switch options.Command {
         case "doctor" {
             return Startup.Doctor(options)
@@ -200,7 +202,8 @@ func Dispatch(options Args) int32 {
             if PublicOutput.Enabled {
                 PublicOutput.ResultData = value
             } else {
-                Terminal.Json(value, "Donor defaults")
+                Terminal.Heading("Donor defaults")
+                Terminal.Fields(value)
             }
         }
 
@@ -269,9 +272,16 @@ func Dispatch(options Args) int32 {
         case "submit" {
             Submission.Submit(options)
 
-            if !PublicOutput.Enabled || Donate.Active {
-                let directory = Path.GetFullPath(options.Need("run"))
-                var run = Data.Load(directory)
+            let directory = Path.GetFullPath(options.Need("run"))
+            var run = Data.Load(directory)
+
+            if PublicOutput.Enabled && !Donate.Active {
+                pending = run.Number("pr") == 0 && !run.Flag("gratis")
+
+                if pending {
+                    Submission.FailedWorkflow(directory, run)
+                }
+            } else {
                 let request = run.Number("pr") == 0 ? RequestData.FileData(
                     Path.Combine(directory, "request.json"),
                     8192
@@ -280,31 +290,25 @@ func Dispatch(options Args) int32 {
                 ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
                 try {
                     while run.Number("pr") == 0 {
+                        Submission.FailedWorkflow(directory, run)
                         if let guidance = Submission.PendingWorkflow(directory, run) {
-                            if Donate.Active && guidance["role"]?.ToString() == "owner" {
-                                throw CliFailure("command_failed", "Owner workflow failed")
-                            }
                             if !Donate.Active {
                                 Terminal.Message(guidance["action"]?.ToString() ?? "")
-                                return 0
+                                return 8
                             }
                         }
                         let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
                         if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
                             .ValueKind == JsonValueKind.Undefined {
-                            ApiTransport.PollWait()
+                            ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
+                            Submission.ResetWorkflow()
+                        } else {
+                            Submission.Submit(options)
+                            run = Data.Load(directory)
                         }
-                        Submission.ResetWorkflow()
-                        Submission.Submit(options)
-                        run = Data.Load(directory)
                     }
                 } catch (error ApiDeadlineException) when !Donate.Active {
-                    Terminal.Message(
-                        "Submit pending. Run the same command again: " + Terminal.Command(
-                            []string{"tokate", "submit", "--run", directory}
-                        )
-                    )
-                    return 0
+                    return 8
                 } finally {
                     ApiTransport.EndDeadline()
                 }
@@ -355,12 +359,10 @@ func Dispatch(options Args) int32 {
             ContributionStatus.Run(options)
         }
 
-        case "status" when !PublicOutput.Enabled {
-            let summary = PublicOutput.RunSummary(Path.GetFullPath(options.Need("run")))
+        case "status" {
+            ContributionStatus.Attempt(options)
 
-            summary["truncated"] = PublicOutput.Truncated
-            PublicOutput.Next(options, "")
-            ContributionStatus.Print(J.Parse(J.Write(summary)))
+            return 0
         }
     }
 
@@ -368,5 +370,5 @@ func Dispatch(options Args) int32 {
         PublicOutput.ResultData = PublicOutput.RunSummary(PublicOutput.RunDirectory)
     }
 
-    return 0
+    return pending ? 8: 0
 }

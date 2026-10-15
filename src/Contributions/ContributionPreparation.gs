@@ -487,7 +487,7 @@ internal class ContributionPreparation {
                         )
                     }
 
-                    ApiTransport.PollWait()
+                    ApiTransport.PollWait("repos/" + repo + "/actions/")
                 }
             } catch (error ApiDeadlineException) when !Donate.Active { } finally {
                 ApiTransport.EndDeadline()

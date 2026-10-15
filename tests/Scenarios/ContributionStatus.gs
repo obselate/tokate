@@ -68,12 +68,14 @@ internal class ContributionStatusChecks {
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
-            Check.Contains(
-                Check.Text(Row(eligible)["next"]?["action"]),
-                "owner must update the coordinator, then re-process the request"
+            Check.That(
+                !Check.Text(Row(eligible)["next"]?["action"]).Contains("re-process the request"),
+                "Status added unrelated workflow recovery text"
             )
-            Check.Contains(Check.Text(Row(eligible)["next"]?["action"]), "donor runs the same saved command again")
-            Check.That(Row(eligible)["next"]?["command"]?.AsArray().Count == 0, "Status invented a request file")
+            Check.That(
+                Row(eligible)["next"]?["command"]?.ToJsonString() == "[\"tokate\",\"work\",\"owner/project#1\"]",
+                "Status omitted the donor work command"
+            )
             let owner = Row(Read(test, owner: true))
             Check.That(
                 Check.Text(owner["state"]) == "reservation_needed" && Check.Text(
@@ -255,6 +257,15 @@ internal class ContributionStatusChecks {
             let fresh = test.Flow.Call(args)
             let accepted = Read(test)
             Check.Contains(Check.Text(Row(accepted)["next"]?["action"]), "The donor can start work")
+            let freshRun = fresh.Output.Substring(fresh.Output.LastIndexOf("Run: ") + 5).Trim()
+            let lease = File.Open(Path.Combine(freshRun, ".lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+            let busy = Read(test)
+            lease.Dispose()
+            Check.Contains(Check.Text(Row(busy)["next"]?["action"]), "running on this machine")
+            Check.That(
+                busy["next_actions"]?.AsArray().Count == 0 && Row(busy)["next"]?["command"]?.AsArray().Count == 0,
+                "Status recommended a second run of active work"
+            )
             Check.That(!fresh.Output.Contains(run), "Fresh preparation reused the invalidated attempt")
             test.Flow.NoInference()
             test.Flow.Mode("inference_exit_failure")
@@ -440,6 +451,16 @@ internal class ContributionStatusChecks {
                 "Owner receipt verification command omitted"
             )
             Check.Contains(Check.Text(published["drafts"]?[0]?["receipt"]), "unverified")
+            test.Flow.Reload()
+            let target = test.Flow.State["pulls"]?[0]?["base"]?.DeepClone() ?? throw Exception("Missing PR base")
+            let repository = target["repo"] ?? throw Exception("Missing PR base repository")
+            repository["pushed_at"] = JsonValue.Create("2026-10-01T00:00:00Z")
+            test.Flow.State["pull_read_effect"] = Check.Map("base", target)
+            test.Flow.Save()
+            Check.That(
+                Check.Text(Row(Read(test, owner: true))["state"]) == "owner_review",
+                "Repository activity made a fresh PR stale"
+            )
             test.Flow.Reload()
             test.Flow.State["reviews"] = Check.Map(
                 "10",
@@ -822,9 +843,9 @@ internal class ContributionStatusChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let structured = Read(test)
-            let legacy = test.Flow.Call([]string{"status", "owner/project#1"})
-            let raw = Check.Json(legacy.Output)
-            Check.That(raw.ToJsonString() == structured["data"]?.ToJsonString(), "Terminal and structured facts differ")
+            let redirected = test.Flow.Call([]string{"status", "owner/project#1"})
+            Check.Contains(redirected.Output, "State  " + Check.Text(Row(structured)["state"]))
+            Check.That(!redirected.Output.TrimStart().StartsWith("{"), "Status without --json printed JSON")
             test.Flow.Temp.Env["TERM"] = "xterm-256color"
             let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
@@ -882,6 +903,9 @@ internal class ContributionStatusChecks {
             let healthy = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-healthy", healthy)
             Check.Contains(healthy, "reservation_needed  yes")
+            let narrow = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 50))
+            Check.Contains(narrow, "#1     " + title)
+            Check.Contains(narrow, "Next: tokate work owner/project#1")
             Check.That(
                 !healthy.Contains("unavailable") && !healthy.Contains("tokate access list") && !healthy.Contains(
                     "Oversized title"

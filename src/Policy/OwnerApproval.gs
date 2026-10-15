@@ -45,7 +45,7 @@ internal class OwnerApproval {
                     ". Donors start with: tokate work " +
                     repo +
                     "#" +
-                    number.ToString()
+                    number.ToString() + " --harness HARNESS --model MODEL --effort EFFORT --time TIME"
             )
 
             if firstApproval {

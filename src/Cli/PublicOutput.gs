@@ -232,7 +232,8 @@ internal class PublicOutput {
             if run.Text("state") == "claim_pending" {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
-                    "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
+                    "action": "Your claim is pending. Check the coordinator outcome with tokate work. If the Tokate workflow failed: " +
+                        ApiTransport.MutationRecovery,
                     "command": []string{"tokate", "work", "--run", directory, "--json"}
                 }
             }
@@ -582,10 +583,12 @@ internal class PublicOutput {
                         Actions.Add(command)
                     }
 
-                    if code != "stale_approval" && code != "invalid_state" {
+                    if Flag("busy") {
+                        Actions.RemoveAll(action -> action[1] != "status")
+                    } else if code != "stale_approval" && code != "invalid_state" && !Flag("finished") {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
-                        } else if !summary.ContainsKey("coordinator") &&
+                        } else if (next as Dictionary[string, Object?])?["role"]?.ToString() != "owner" &&
                             (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") {
                             Actions.Add([]string{"tokate", "submit", "--run", RunDirectory, "--json"})
                         }
@@ -615,6 +618,13 @@ internal class PublicOutput {
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
                 Actions.Add([]string{"tokate", "checks", options.Get("repo") + "#" + options.Get("pr"), "--json"})
             }
+        }
+
+        private func Flag(name string) bool {
+            var value Object?
+            return ResultData is Dictionary[string, Object?]data && data.TryGetValue(name, out value) &&
+                value is bool flag &&
+                flag
         }
 
         internal func Emit(exitCode int32, code string = "", message string = "") int32 {
