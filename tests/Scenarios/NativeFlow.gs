@@ -40,7 +40,7 @@ internal partial class NativeFlow : NativeFixture {
         Check.That(result.Error == "", "Owner command warned about donor tools")
         Check.Contains(
             result.Output,
-            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1"
+            "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1 "
         )
         Check.Contains(
             Call([]string{"work", "owner/project#1", "--model", "model", "--effort", "high"}, 1).Error,

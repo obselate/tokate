@@ -126,7 +126,7 @@ Stop waits for the current task and prints wall time, submitted, skipped and fai
    tokate submit N
    ```
 
-Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positional arguments](arguments.md) for issue and run references.
+Use `--verify-time 20m` to reserve 20 minutes within the total time. Without `--verify-time`, coding can use the total time and verification gets only the time coding leaves. Use [positional arguments](arguments.md) for issue and run references.
 
 ## Save a profile
 

@@ -219,6 +219,7 @@ internal class DonorSelection {
                 !Console.IsOutputRedirected &&
                 !Console
                 .IsErrorRedirected {
+                let reserve = args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString())
                 Terminal.Message(
                     "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
                         "issue",
@@ -237,8 +238,10 @@ internal class DonorSelection {
                         args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
                     ) +
                         "; " +
-                        args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString()) +
-                        " seconds reserved for verification" +
+                        (
+                        reserve == "0" ? "no verification reserve, verification gets only the time coding leaves":
+                        reserve + " seconds reserved for verification"
+                    ) +
                         (
                         J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""
                     ),
