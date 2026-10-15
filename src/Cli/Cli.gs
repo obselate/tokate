@@ -30,7 +30,7 @@ internal class CliOption(spec string) {
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
         case "commit" when command == "amend": "Exact commit; default: HEAD of the saved run checkout"
-        case "time" when command == "work": "Total budget for coding and verification per task; default: the lower of 1h and the owner limit"
+        case "time" when command == "work": "Total budget for coding and verification per task; required for an issue; repository work default: the lower of 1h and the owner limit"
         case "time" when command == "claim": "Total budget for coding and verification such as 30m or 2h, at most 24h"
         case "time" when command == "amend": "Separate verification budget; required for a new amendment, at most the owner limit"
         case "resume" when command == "amend": "Use the current same-donor reservation for this new amendment; retain the original execution identity"
