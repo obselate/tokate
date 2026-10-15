@@ -1183,6 +1183,10 @@ internal class ContributionStatus {
                     J.Text(value, "pr_url"),
                     next
                 )
+                let checkout = J.Text(J.Get(value, "artifacts"), "checkout")
+                if checkout != "" {
+                    Cell("Path", checkout, "default")
+                }
                 return
             }
 
