@@ -568,6 +568,7 @@ internal class CommandTrafficChecks {
             flow.State["check_state_path"] = JsonValue.Create(path)
             flow.State["check_sequence"] = Check.Json("[[],[],[{\"name\":\"verify\",\"bucket\":\"pass\"}]]")
             flow.State["check_polls"] = JsonValue.Create(0)
+            flow.State["ref_poll_interval"] = JsonValue.Create("300")
             flow.Save()
             flow.ResetTraffic()
             let result = Watch(flow, run, "10", 0)

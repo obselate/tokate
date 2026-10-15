@@ -608,7 +608,7 @@ internal class Checks {
                     throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
                 }
 
-                ApiTransport.PollWait()
+                ApiTransport.PollWait("repos/" + run.Text("repo") + "/commits/" + run.Text("commit") + "/")
             }
         }
     }
