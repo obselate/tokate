@@ -42,7 +42,7 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         }
 
         try {
-            using let lease = RunStorage.Lease(Location)
+            using let lease = RunStorage.Lock(Location)
             return false
         } catch (error IOException) {
             return true

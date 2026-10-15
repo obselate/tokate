@@ -582,9 +582,9 @@ internal class PublicOutput {
                         Actions.Add(command)
                     }
 
-                    let finished = ResultData is Dictionary[string, Object?]data && data.ContainsKey("outcome")
-
-                    if code != "stale_approval" && code != "invalid_state" && !finished {
+                    if Flag("busy") {
+                        Actions.RemoveAll(action -> action[1] != "status")
+                    } else if code != "stale_approval" && code != "invalid_state" && !Flag("finished") {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
                         } else if !summary.ContainsKey("coordinator") &&
@@ -617,6 +617,13 @@ internal class PublicOutput {
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
                 Actions.Add([]string{"tokate", "checks", options.Get("repo") + "#" + options.Get("pr"), "--json"})
             }
+        }
+
+        private func Flag(name string) bool {
+            var value Object?
+            return ResultData is Dictionary[string, Object?]data && data.TryGetValue(name, out value) &&
+                value is bool flag &&
+                flag
         }
 
         internal func Emit(exitCode int32, code string = "", message string = "") int32 {

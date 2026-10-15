@@ -105,7 +105,11 @@ internal class ContributionStatus {
             row["approval_status"] = "absent"
             row["drafts_status"] = "absent"
             row["state"] = "approval_waiting"
-            row["next"] = Next("owner", "Approve the issue under the current policy and target branch.")
+            row["next"] = Next(
+                "owner",
+                "Approve the issue under the current policy and target branch.",
+                []string{"tokate", "approve", Repo + "#" + issue.ToString()}
+            )
             return row
         }
 
@@ -830,8 +834,15 @@ internal class ContributionStatus {
 
         var next Object?
 
-        if run.Busy() || run.Text("state") == "running" {
+        if run.Busy() {
             row["next"] = Next("donor", "Your tokate work for this issue is running on this machine.")
+        } else if run.Text("state") == "claim_pending" {
+            row["next"] = Submission.PendingWorkflow(run.Location, Data.Load(run.Location)) ??
+                Next(
+                "donor",
+                "Your claim is pending. Check the coordinator outcome with tokate work.",
+                []string{"tokate", "work", target}
+            )
         } else if PublicOutput.RunSummary(run.Location).TryGetValue("next", out next) {
             row["next"] = next
         } else if run.Next == "submit" {
@@ -1057,12 +1068,18 @@ internal class ContributionStatus {
             }
 
             status.Result["work_observed"] = status.Work.Count
+            let outcomes = Dictionary[string, string]()
 
             for item in status.Work {
                 let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
                 if row.ContainsKey("drafts") && row["drafts"] is List[Object]drafts {
                     for entry in drafts {
                         let draft = entry as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+                        let lifecycle = status.Text(draft, "lifecycle")
+
+                        if lifecycle == "merged" || lifecycle == "closed_unmerged" {
+                            outcomes[status.Text(draft, "pr")] = lifecycle == "merged" ? "merged": "closed"
+                        }
 
                         if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
                             draft["checks_observed"] = checks.Count
@@ -1083,10 +1100,17 @@ internal class ContributionStatus {
             status.Result["truncated"] = status.Truncated
 
             if args.Get("issue") != "" {
-                status.Result["attempts"] = SavedRuns.Summary(
-                    RunReference.Recent(status.Saved.For(args.Get("repo"), args.Number("issue"))),
-                    0
-                )["runs"]
+                let attempts = RunReference.Recent(status.Saved.For(args.Get("repo"), args.Number("issue")))
+
+                for attempt in attempts {
+                    let pr = J.Number(attempt.Value, "pr").ToString()
+
+                    if outcomes.ContainsKey(pr) {
+                        attempt.Outcome = outcomes[pr]
+                    }
+                }
+
+                status.Result["attempts"] = SavedRuns.Summary(attempts, 0)["runs"]
             }
 
             PublicOutput.ResultData = status.Result
@@ -1117,24 +1141,12 @@ internal class ContributionStatus {
             if run.Outcome != "" {
                 summary["outcome"] = run.Outcome
                 summary["finished"] = true
-            } else if J.Number(run.Value, "pr") == 0 && run.Text("publication_uuid") != "" {
-                try {
-                    let pulls = GitHub.Api(
-                        "repos/" + run.Text("repo") + "/pulls?state=open&head=" + Uri.EscapeDataString(
-                            run.Text("donor") + ":" + run.Text("branch")
-                        ) +
-                            "&per_page=1&page=1"
-                    )
-                    if J.Count(pulls) == 1 {
-                        summary["pr_url"] = J.Text(J.Items(pulls)[0], "html_url")
-                    }
-                } catch (error Exception) when error is CliFailure || error is ApiDeadlineException { }
             }
 
+            summary["busy"] = run.Busy()
             PublicOutput.ResultData = summary
 
             if !PublicOutput.Enabled {
-                summary["truncated"] = PublicOutput.Truncated
                 PublicOutput.Next(options, "")
                 Print(J.Parse(J.Write(summary)))
             }
@@ -1220,9 +1232,11 @@ internal class ContributionStatus {
                     let reservation = J.Get(task, "reservation")
                     let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
                     J.Get(reservation, "actor").ToString()
-                    let eligible = role == "donor" && J.Text(task, "eligibility_status") == "eligible"
-                    let mine = (holder != "" && holder == me) ||
-                        ((holder == "" || role != "donor") && (role == J.Text(viewer, "role") || eligible))
+                    let eligible = J.Text(task, "eligibility_status") == "eligible"
+                    let mine = role == "donor" ? (
+                        holder == "" ? J.Text(viewer, "role") == "donor" || eligible: holder == me
+                    ):
+                    role == J.Text(viewer, "role")
                     table.Add(
                         []string{
                             "#" + J.Number(task, "issue").ToString(),

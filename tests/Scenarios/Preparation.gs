@@ -490,7 +490,8 @@ internal class PreparationChecks {
                 test.Coordinate(
                     PostedEvent(test, comments[comments.Count - 1] ?? throw Exception("Missing reservation request"))
                 )
-                flow.Call(reservation)
+                let accepted = Check.Envelope(flow.Call([]string{action, "--run", run, "--json"}), action, "ok")
+                Check.Contains(accepted["next_actions"]?.ToJsonString() ?? "", "\"checks\"")
             }
             File.AppendAllText(Path.Combine(checkout, "result.txt"), "Resumed work\n")
             flow.Git("-C", checkout, "add", "result.txt")
