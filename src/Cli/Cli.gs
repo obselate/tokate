@@ -279,10 +279,10 @@ internal class Cli {
             ),
             CliCommand(
                 "approve own local_read,github_read,github_write repo,issue",
-                "ISSUE [--base-branch BRANCH] [--yes]",
+                "ISSUE [LOGIN] [--base-branch BRANCH] [--yes]",
                 "base-branch,yes,non-interactive",
-                "Approve an existing issue for donors with a GitHub record and label; create issues with gh issue create or the GUI.",
-                "approve 42"
+                "Approve an existing issue with a bound record and label. LOGIN allows one donor without persistent trust. Create issues with gh issue create or the GUI.",
+                "approve 42 donor"
             ),
             CliCommand(
                 "revoke own local_read,github_read,github_write repo,issue",
@@ -293,9 +293,9 @@ internal class Cli {
             ),
             CliCommand(
                 "access own local_read,github_read,github_write repo",
-                "[list|history] [LOGIN] [OWNER/REPO]\ninit [OWNER/REPO]\ntrust|untrust|deny|restore LOGIN [OWNER/REPO]\ngrant|remove LOGIN ISSUE\ncheck ISSUE\nrequest ISSUE [--trust]",
+                "[list|history] [LOGIN] [OWNER/REPO]\ninit [OWNER/REPO]\ntrust|untrust|deny|restore LOGIN [OWNER/REPO]\ncheck ISSUE\nrequest ISSUE [--trust]",
                 "trust",
-                "Request or manage donor access; inspect pending requests and history; no scoring.",
+                "Request access in a plain comment or manage trusted and denied donors. Owners can use approve ISSUE LOGIN for issue access.",
                 "access trust donor"
             ),
             CliCommand(

@@ -171,13 +171,13 @@ internal class ContributionStatus {
                     throw CliFailure("stale_approval", "Task repository numeric identity changed")
                 }
 
-                if Access == nil || Access?.Sha == "" {
+                if Access == nil {
                     throw CliFailure("invalid_state", "Task-scoped donor access is unavailable")
                 }
 
                 let actor = RepositoryIdentity.PositiveId(J.Get(Viewer, "id"))
                 let mode = AccessState.Mode(policy)
-                let eligible = Access?.Allows(actor, mode, issue) == true
+                let eligible = Access?.Allows(actor, mode, approval) == true
                 row["eligibility_status"] = eligible ? "eligible": "access_waiting"
                 row["eligibility_scope"] = "viewer"
                 row["eligibility"] = map[string, Object?]{
@@ -196,7 +196,7 @@ internal class ContributionStatus {
                 let reservation = J.Get(state.Value(), "reservation")
                 if reservation.ValueKind == JsonValueKind.Object {
                     let holder = RepositoryIdentity.PositiveId(J.Get(reservation, "actor"))
-                    row["holder_eligible"] = Access?.Allows(holder, mode, issue) == true
+                    row["holder_eligible"] = Access?.Allows(holder, mode, approval) == true
                 }
             } catch (error Exception) when Expected(error) {
                 Unavailable(row, "eligibility", error)
@@ -655,7 +655,7 @@ internal class ContributionStatus {
                         " and your selected profile or model and an explicit time budget.":
                     "An eligible donor must select the task and start work with tokate work " +
                         target +
-                        ". Inspect access grants if no donor is eligible.",
+                        ". Inspect donor access if no donor is eligible.",
                     []string{"tokate", "work", target}
                 )
             } else {
@@ -928,7 +928,7 @@ internal class ContributionStatus {
             Result,
             "access",
             async () -> {
-                Access = AccessState.Load(Repo, RepositoryIdentity.PositiveId(J.Get(Info, "id")), missing: true)
+                Access = AccessState.Load(Repo, RepositoryIdentity.PositiveId(J.Get(Info, "id")))
                 Result["access_status"] = Access?.Sha == "" ? "absent": "observed"
                 Result["access_sha"] = Access?.Sha
             }
@@ -948,15 +948,10 @@ internal class ContributionStatus {
         }
 
         let displayed = List[Object]()
-        let review = Access?.Sha != "" ? Next(
+        let review = Next(
             "owner",
-            "Review donor access and grant eligibility if appropriate.",
+            "Review donor access and use approve ISSUE LOGIN or grant trust if appropriate.",
             []string{"tokate", "access", "list", Repo}
-        ): Next(
-            "owner",
-            "Initialize the absent access authority before reviewing requests; requests grant no eligibility.",
-            J.Bool(J.Get(Info, "permissions"), "push") &&
-                Text(Result, "viewer_status") == "observed" ? []string{"tokate", "access", "init", Repo}: []string{}
         )
 
         for request in Requests {

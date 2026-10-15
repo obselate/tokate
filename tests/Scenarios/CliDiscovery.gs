@@ -594,6 +594,8 @@ internal class CliDiscovery {
                 []string{"approve", "0", "--json"},
                 []string{"approve", "owner/project", "--json"},
                 []string{"approve", "owner/project#1", "--title", "Removed", "--json"},
+                []string{"access", "grant", "donor", "owner/project#1", "--json"},
+                []string{"access", "remove", "donor", "owner/project#1", "--json"},
                 []string{"doctor", "--set-default", "--json"}
             } {
                 Check.Envelope(Call(binary, argv, temp, 1), argv[0], "error", "invalid_arguments")

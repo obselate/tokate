@@ -80,6 +80,10 @@ internal class Coordinator {
                 args.Values["--base-branch"] = J.Text(previous, "base_branch")
             }
             let approval = OwnerApproval.Capture(args, info, issue)
+            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") {
+                approval["allowed_actor_ids"] = J.Get(previous, "allowed_actor_ids").ValueKind == JsonValueKind.Array ?
+                J.Get(previous, "allowed_actor_ids"): J.Parse("[]")
+            }
             approval["nonce"] = J.Text(previous, "nonce")
             if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && RequestData.Canonical(
                 J.Parse(J.Write(approval))

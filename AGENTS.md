@@ -75,13 +75,12 @@ It never writes branch protection or creates access state. In a terminal without
 The coordinator follows `v0` releases. Use `init --pin` for an exact release commit.
 Existing setup repositories run init once and merge the setup PR. Policies require version 3.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
-Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
+Approve existing issues with `tokate approve N [LOGIN] [--base-branch BRANCH]`.
 Use `--yes` to replace active reservation or published PR authority.
-Then trust the donor or grant that issue.
-Never grant access merely because someone requested it. In `trusted` eligibility,
-trusted donors and donors granted the issue may claim. With no trusted donors,
-grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
-may claim.
+In `trusted` eligibility, trust the donor or name the donor in the approval with
+`tokate approve N LOGIN`. In `open`, anyone not denied may claim. Deny always wins.
+Access requests are plain comments and grant no access.
+An absent `tokate/access` ref is an empty record. The first access write creates it.
 
 A change to task fields or the PR template revokes existing approvals. Task fields
 cover verification, required checks, protected paths, tool models, runtime,
@@ -94,7 +93,7 @@ pin change, confirm that Actions permits
 `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
 Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
-open PRs from them. Deleting `tokate/access` removes all trust and grants.
+open PRs from them. Deleting `tokate/access` removes all trust and denials.
 
 Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing

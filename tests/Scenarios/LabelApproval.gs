@@ -153,7 +153,15 @@ internal partial class CoordinationFlow {
             test.Claim()
             test.Flow.Git("-C", test.Flow.Upstream, "branch", "release/next")
             test.Flow.Call(
-                []string{"approve", "owner/project#1", "--base-branch", "release/next", "--yes", "--non-interactive"},
+                []string{
+                    "approve",
+                    "owner/project#1",
+                    "donor",
+                    "--base-branch",
+                    "release/next",
+                    "--yes",
+                    "--non-interactive"
+                },
                 owner: true
             )
             let selected = test.State()
@@ -166,6 +174,10 @@ internal partial class CoordinationFlow {
             Check.That(
                 Check.Text(labeled["state"]?["approval"]?["base_branch"]) == "release/next",
                 "Label event replaced the selected base branch"
+            )
+            Check.That(
+                Check.Text(labeled["state"]?["approval"]?["allowed_actor_ids"]?[0]) == "123",
+                "Label event removed the donor bound by CLI approval"
             )
             test.Flow.NoPr()
             test.Flow.NoInference()
@@ -194,7 +206,6 @@ internal partial class CoordinationFlow {
                 "sender-login",
                 "closed",
                 "permission-api",
-                "missing-access",
                 "missing-label"
             } {
                 baseline.Restore()
@@ -241,9 +252,6 @@ internal partial class CoordinationFlow {
                     case "closed" {
                         issue["state"] = JsonValue.Create("closed")
                     }
-                    case "missing-access" {
-                        test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
-                    }
                     case "missing-label" {
                         issue["labels"] = Check.Json("[{\"name\":\"existing\"}]")
                     }
@@ -269,6 +277,10 @@ internal partial class CoordinationFlow {
                 test.Flow.NoPr()
                 test.Flow.NoInference()
             }
+            baseline.Restore()
+            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            test.Coordinate(test.LabelEvent())
+            Check.That(test.State()["state"]?["approval"] != nil, "Missing access ref blocked label approval")
         }
     }
 }
