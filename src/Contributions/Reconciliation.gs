@@ -230,8 +230,9 @@ internal class Reconciliation {
 
             let authorization = List[string]{
                 "tokate",
-                "authorize-sync",
+                "sync",
                 run.Text("repo") + "#" + J.Number(intent, "pr").ToString(),
+                "authorize",
                 "--commit",
                 candidate,
                 "--upstream",
@@ -246,7 +247,7 @@ internal class Reconciliation {
 
             Terminal.Message(
                 "Local, unverified candidate C: " + candidate + "; target U: " + J.Text(intent, "upstream") +
-                    ". Owner: authorize-sync for exact C/U" +
+                    ". Owner: sync PR authorize for exact C/U" +
                     (J.Text(intent, "pending") == "" ? "": " with --sync " + J.Text(intent, "pending")) +
                     ", then donor: amend --run DIR --commit C --sync G --time TIME for independent verification and publication."
             )
@@ -487,7 +488,7 @@ internal class Reconciliation {
                     "-c",
                     "user.name=" + run.Text("donor"),
                     "-c",
-                    "user.email=tokate@users.noreply.github.com",
+                    "user.email=" + RepositoryIdentity.Email(J.Get(run.Element(), "donor_id"), run.Text("donor")),
                     "-c",
                     "commit.gpgsign=false",
                     "merge",

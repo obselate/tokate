@@ -7,7 +7,7 @@ PRs. Donors use their own accounts and tools. Owners review and merge.
 
 1. Infer whether the user is an owner or donor. Confirm the repository, issue and
    active account with `gh api user --jq .login`. Ask only for missing choices.
-2. Read the issue, repository instructions and `tokate policy OWNER/REPO`.
+2. Read the issue, repository instructions and `tokate doctor repo OWNER/REPO`.
 3. Explain the next action briefly, perform authorized work, and report actual
    results and the responsible person's next action.
 
@@ -16,6 +16,8 @@ Use [installation](README.md), the [owner guide](docs/owners.md) or the
 and public GitHub repositories. `tokate help COMMAND` supplies installed syntax.
 In a checkout, `42` names issue or PR 42 of its GitHub remote. Elsewhere use `OWNER/REPO#42` or a GitHub URL.
 Do not infer support for another platform, forge or harness.
+Use CLI flags or the GUI. Bare `tokate` prints help. Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful.
+A missing choice fails with `invalid_arguments` and names the required flag.
 
 ## Install Tokate and its dependencies
 
@@ -54,23 +56,33 @@ Install only the harness you will use. Owners need no harness.
 
 See [harness installation](docs/linux-harnesses.md) and
 [Pi endpoint setup](docs/donors.md#local-inference-with-pi) for paths and model selection.
-Finish with `tokate doctor`. Owners also run `tokate doctor owner --auth` and
-`tokate doctor owner OWNER/REPO` after repository setup.
+Finish with `tokate doctor`. Owners also run `tokate doctor external --auth` and
+`tokate doctor repo OWNER/REPO` after repository setup.
 
 ## Guide an owner
 
-Run `tokate doctor owner --auth`, then `tokate init OWNER/REPO` inside the
-repository. Preserve existing checks and customization. Review the generated policy
-and pinned workflow, verify configuration, and commit it before approving tasks.
-Setup writes version 3 with models and efforts inside each allowed tool. A tool
-without models allows any model. Version 2 remains readable with its original
-model permissions. Update the coordinator pin before committing a version 3 policy.
-Older coordinators reject version 3. Use per-tool model choices in owner setup.
-Initialize access once, approve the issue, then trust the donor or grant that issue.
+1. `gh auth login`
+2. `tokate init OWNER/REPO` previews the setup.
+3. `tokate init OWNER/REPO --yes` applies it and opens the setup PR.
+4. Review and merge the setup PR before approving tasks.
+
+Add `--verification JSON` and `--required-checks JSON` for a new policy. No checkout
+is necessary. Defaults: the default branch, `trusted` access and codex, claude and pi
+with any model. Use `--allowed-tools JSON` for per-tool models. Init checks GitHub
+authentication and write access. It lists each Actions setting, event policy,
+allowlist entry and required check with its current and proposed value, the
+`tokate/access` record, the files and the `tokate-setup` branch and PR. In a terminal
+without `--yes`, init asks once. Non-terminal preview returns `applied=false`.
+Run init again after `tokate update` to update the coordinator pin. Init migrates a
+version 2 policy to version 3 in the setup PR.
+A tool without models allows any model. Create issues with `gh issue create` or the GUI.
+Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
+Use `--yes` to replace active reservation or published PR authority.
+Then trust the donor or grant that issue.
 Never grant access merely because someone requested it. In `trusted` eligibility,
 trusted donors and donors granted the issue may claim. With no trusted donors,
 grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
-may claim. Version 2 `manual` is read as `trusted`. Version 3 has no `manual` mode.
+may claim.
 
 A change to task fields or the PR template revokes existing approvals. Task fields
 cover verification, required checks, protected paths, tool models, runtime and
@@ -85,7 +97,7 @@ Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
 open PRs from them. Deleting `tokate/access` removes all trust and grants.
 
-Before acceptance, inspect the diff and run `tokate verify PR` and `tokate checks PR`.
+Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
 workflow execution. The owner decides acceptance and merge.
 
@@ -93,24 +105,26 @@ workflow execution. The owner decides acceptance and merge.
 
 Use the donor's account and selected harness. Check project tools and access first.
 Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
-Use `defaults` and `select` to reuse a permitted model choice without inference.
+Save choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
+Use `defaults` and `defaults check` to reuse a permitted model choice without inference.
+Machine doctor explains installations with `--fix`, asks once in a terminal, and applies with `--fix --yes`.
+Use `--harness-path FILE` for an existing harness and `--harness HARNESS --set-default` to save it.
 Never inspect credential files or mixed harness settings to discover defaults.
 
 Use `tokate claim ISSUE [NAME]` with a selected profile or model/effort and an
 explicit budget, such as `--time 1h`. It creates the request without inference and
-saves the run as an attempt such as `42-1`. `tokate runs` lists saved runs offline.
+saves the run under the issue number, such as `42`. `tokate status` lists your unfinished saved work.
 After coordinator acceptance, use `tokate work 42`, then `tokate submit 42`.
-A bare issue number selects its newest attempt only. If its state does not fit, the
-command fails, writes nothing and lists the attempts. Name one as `42-1`.
+The issue number names its active attempt. If the issue has two active attempts, a
+command that takes a run fails, writes nothing and lists them. Name one as `42-1`.
 The commands construct request data and select the applicable workflow. Normal donors
 must not be asked to write claim JSON or manage coordination revisions.
 
-Use `tokate work OWNER/REPO [--time PER_TASK] [--total TOTAL]` with
+Use `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL]` with
 `--harness`, `--model`, `--effort` or the default donor profile to donate successive tasks.
-One confirmation names the repository, tool, model, effort and time limits. It
-consents to every task claimed in that repository within those limits.
-Noninteractive and JSON use require `--yes`. Without `--total`, it runs until stopped.
-`tokate work OWNER/REPO stop` waits for the current task and prints the report.
+`--yes` consents to every task claimed in that repository with the selected tool,
+model, effort and time limits. Without `--yes`, repository work asks once in a terminal. Non-terminal work previews and requires `--yes`. Without `--total`, it runs until stopped.
+`tokate work OWNER/REPO stop --yes` waits for the current task and prints the report.
 The loop submits drafts, rechecks idle repositories every ten minutes, releases failed tasks and stops after three consecutive failures.
 
 Before inference, obtain consent for the task, harness/model and time allocation.
@@ -134,7 +148,8 @@ Exit 0 means the read or operation succeeded, 8 means pending, and 1 means failu
 A successful status read may describe failed work. Pending CI is not success.
 
 `next_actions` contains argument arrays for separate authorized invocations. They
-name saved runs exactly with `--run DIR`. Never execute them as automatic retries.
+name saved runs exactly, such as `OWNER/REPO#42-1`. Scripts can use `--run DIR`.
+Never execute them as automatic retries.
 Truncation means some summaries were omitted.
 An output error can occur after effects, so inspect state before repeating a command.
 Logs and raw reports stay private. Usage and model declarations are not identity

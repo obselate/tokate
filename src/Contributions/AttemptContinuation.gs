@@ -10,11 +10,10 @@ internal class AttemptContinuation {
     shared {
         internal func Has(run Data) bool -> run.Text("continuation_source") != ""
 
-        internal func TimeLimited(run Data) bool -> run.Text("source") == "tokate" && run.Text("state") == "failed" &&
-            run.Number("preparation_version") == 1 && !run.Flag("unlimited") &&
-            (run.Text("harness") == "codex" || run.Text("harness") == "pi" || run.Text("harness") == "omp") &&
-            run.Text("failure_stage") == "inference" && !run.Flag("turn_completed") && run.Text("commit") == "" &&
-            run.Number("pr") == 0 &&
+        internal func TimeLimited(run Data) bool -> Harness.Resumes(run.Text("harness"), run.Text("provider")) &&
+            run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Number("preparation_version") == 1 &&
+            !run.Flag("unlimited") && run.Text("failure_stage") == "inference" && !run.Flag("turn_completed") &&
+            run.Text("commit") == "" && run.Number("pr") == 0 &&
             (
             run.Text("error").StartsWith("Runtime limit reached", StringComparison.Ordinal) || run.Text(
                 "error"
@@ -49,12 +48,8 @@ internal class AttemptContinuation {
                 )
                 let command = List[string]{
                     "tokate",
-                    "prepare",
+                    "work",
                     target,
-                    "--state",
-                    state.Sha,
-                    "--source",
-                    "tokate",
                     "--continue-from",
                     directory,
                     "--time",
@@ -85,7 +80,7 @@ internal class AttemptContinuation {
                 next["command"] = command.ToArray()
                 next[
                     "action"
-                ] = "Review the new time budget, then prepare a fresh attempt with the stopped run's partial changes."
+                ] = "Review the new time budget, then work on a fresh attempt with the stopped run's partial changes."
                 let reservation = J.Get(state.Value(), "reservation")
                 if J.Text(reservation, "attempt") == run.Text("attempt") || J.Text(reservation, "status") == "paused" {
                     next["action"] = "First " +
@@ -94,7 +89,7 @@ internal class AttemptContinuation {
                         Terminal.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
                     ) +
                         Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
-                        ". Wait for each coordinator acceptance, then read status again for the new state SHA. Review the new time budget before preparation."
+                        ". Wait for each coordinator acceptance, then read status again. Review the new time budget before work."
                 }
             } catch (error Exception) when error is CliFailure ||
                 error is JsonException ||
@@ -102,18 +97,6 @@ internal class AttemptContinuation {
                 error.GetType() == typeof(Exception) { }
 
             return next
-        }
-
-        internal func Confirm(args Args, selection JsonElement) {
-            let confirmed = map[string, Object?]{}
-
-            for field in selection.EnumerateObject() {
-                confirmed[field.Name] = field.Value.Clone()
-            }
-
-            confirmed["source"] = "explicit continuation import"
-
-            DonorSelection.Confirm(args, J.Parse(J.Write(confirmed)))
         }
 
         private func Id(value string) {
@@ -186,15 +169,10 @@ internal class AttemptContinuation {
             ) ||
                 (J.Text(prior, "state") != "failed" && J.Text(prior, "state") != "running") ||
                 declared.Count != 1 ||
-                Array.IndexOf(
+                !Harness.Resumes(J.Text(prior, "harness"), J.Text(prior, "provider")) || Array.IndexOf(
                 []string{"inference_failed", "inference_interrupted", "incomplete_turn"},
                 J.Text(prior, "failure_reason")
-            ) < 0 ||
-                (
-                (J.Text(prior, "harness") != "codex" || J.Text(prior, "provider") != "openai") &&
-                    (J.Text(prior, "harness") != "pi" || J.Text(prior, "provider") != "local-chat-completions") &&
-                    J.Text(prior, "harness") != "omp"
-            ) {
+            ) < 0 {
                 throw CliFailure("invalid_state", "Invalid stopped managed v2 predecessor or destination attempt")
             }
 
@@ -355,12 +333,7 @@ internal class AttemptContinuation {
                 source.Flag("turn_completed") || (state != "failed" && state != "running") || source.Text(
                 "failure_stage"
             ) != "inference" ||
-                (
-                source.Text("harness") == "codex" ? source.Text("codex_version") == "":
-                source.Text("harness") == "claude" ? source.Text("claude_version") == "":
-                source.Text("harness") == "omp" ? source.Text("omp_version") == "":
-                source.Text("harness") != "pi" || source.Text("pi_version") == ""
-            ) ||
+                Harness.Find(source.Text("harness")) == nil || source.Text(source.Text("harness") + "_version") == "" ||
                 source.Text("commit") != "" || source.Number("pr") != 0 || source.Text("pr_url") != "" || source.Text(
                 "publication_uuid"
             ) != "" ||

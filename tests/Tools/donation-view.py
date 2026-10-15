@@ -12,7 +12,7 @@ import time
 binary, run, mode = sys.argv[1:]
 pid, fd = pty.fork()
 if pid == 0:
-    os.execv(binary, [binary, "work", "--run", run])
+    os.execv(binary, [binary, "work", "--run", run, "--yes"])
 
 output = bytearray()
 

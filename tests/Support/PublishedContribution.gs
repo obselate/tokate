@@ -40,7 +40,7 @@ internal class PublishedContribution : IDisposable {
                     synchronization: synchronization,
                     baseBranch: baseBranch
                 )
-                coordination.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                coordination.Flow.Receipt("owner/project#10", owner: true)
                 return PublishedContribution(coordination, run)
             } catch (error Exception) {
                 coordination.Dispose()

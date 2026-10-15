@@ -223,11 +223,11 @@ internal partial class Fixture {
             Console.Error.WriteLine("Synthetic model unavailable")
             return 1
         }
-        if mode == "timeout" || mode == "completed_timeout" || mode == "background" {
+        if mode == "timeout" || mode == "background" {
             let sleep = TestProcess.SystemPath("/usr/bin/sleep")
             using let child = Process.Start(sleep, "120") ?? throw Exception("Cannot start timeout fixture")
             File.WriteAllText(Path.Combine(Root, "child.pid"), TestProcess.ChildIdentity(child))
-            if mode == "timeout" || mode == "completed_timeout" {
+            if mode == "timeout" {
                 let partialCheckout = args[Array.IndexOf(args, "--cd") + 1]
                 File.WriteAllText(Path.Combine(partialCheckout, "partial.txt"), "partial-edit")
                 if Check.Text(State["continuation_timeout"]) == "true" {
@@ -297,7 +297,7 @@ internal partial class Fixture {
             File.WriteAllText(Path.Combine(checkout, ".github/workflows/verify.yml"), "tampered")
         }
         if mode == "protected_entrypoint" {
-            File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "exit 0\n")
+            File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "test -s result.txt\n")
         }
         if mode == "index_assume" || mode == "index_skip" || mode == "replacement" {
             let template = ".github/tokate-pr.md"

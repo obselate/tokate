@@ -47,10 +47,6 @@ internal partial class Fixture {
     }
 
     internal func RunGit(args[]string) int32 {
-        let treeTrace = Path.Combine(Root, "local-tree-heads.txt")
-        if File.Exists(treeTrace) && Array.IndexOf(args, "ls-tree") >= 0 && Array.IndexOf(args, "--full-tree") >= 0 {
-            File.AppendAllText(treeTrace, args[args.Length - 1] + "\n")
-        }
         if Array.IndexOf(args, "ls-tree") >= 0 && Array.IndexOf(args, "--full-tree") >= 0 {
             let fault = Check.Text(State["local_tree_fault"])
             if fault == "truncated" || fault == "malformed" {

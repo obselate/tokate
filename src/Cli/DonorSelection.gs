@@ -7,27 +7,16 @@ import System.Text.Json
 
 internal class DonorSelection {
     shared {
-        internal func Interactive(args Args) bool -> !PublicOutput.Enabled && args.Get("non-interactive") != "true" &&
-            !Console.IsInputRedirected &&
-            !Console.IsOutputRedirected &&
-            !Console.IsErrorRedirected
+        internal func Supported(value JsonElement) bool -> Managed(value) && J.Text(value, "provider") != ""
 
-        internal func Supported(value JsonElement) bool ->
-        (J.Text(value, "harness") == "codex" && J.Text(value, "provider") == "openai") ||
-            (J.Text(value, "harness") == "pi" && J.Text(value, "provider") == "local-chat-completions") ||
-            (J.Text(value, "harness") == "claude" && J.Text(value, "provider") == "anthropic") ||
-            (J.Text(value, "harness") == "omp" && J.Text(value, "provider") != "")
-
-        internal func Managed(saved JsonElement) bool -> Supported(saved) || J.Text(saved, "harness") == "omp"
+        internal func Managed(saved JsonElement) bool -> Harness.Accepts(
+            J.Text(saved, "harness"),
+            J.Text(saved, "provider")
+        )
 
         internal func ApplyDefaults(args Args) {
             if args.Get("run") != "" || args.Get("source") == "external" ||
-                (
-                args.Command != "select" &&
-                    args.Command != "claim" &&
-                    args.Command != "work" &&
-                    (args.Command != "prepare" || args.Get("source") != "tokate")
-            ) {
+                (args.Command != "defaults" && args.Command != "claim" && args.Command != "work") {
                 return
             }
 
@@ -70,19 +59,7 @@ internal class DonorSelection {
                 return
             }
 
-            for key in[]string{
-                "harness",
-                "provider",
-                "endpoint",
-                "pi-root",
-                "node",
-                "harness-path",
-                "claude-profile",
-            } {
-                if args.Get(key) == "" && J.Text(saved, key) != "" {
-                    args.Values["--" + key] = J.Text(saved, key)
-                }
-            }
+            DonorDefaults.Fill(args, saved)
         }
 
         internal func Resolve(args Args, policy Policy) JsonElement {
@@ -90,13 +67,17 @@ internal class DonorSelection {
 
             let harness = args.Get("harness", "codex")
 
-            if harness == "omp" && args.Get("provider") == "" {
-                let allowed = policy.Providers("omp")
+            if (Harness.Find(harness)?.Provider == "" || harness == "command") && args.Get("provider") == "" {
+                let allowed = policy.Providers(harness)
+                let name = Harness.Find(harness)?.Title ?? "the command harness"
 
                 if allowed.Count != 1 {
-                    throw Exception(
-                        "Choose --provider for OMP: the owner policy allows " +
-                            (allowed.Count == 0 ? "no OMP provider": String.Join(", ", allowed)) +
+                    throw CliFailure(
+                        "invalid_arguments",
+                        "Choose --provider for " +
+                            name +
+                            ": the owner policy allows " +
+                            (allowed.Count == 0 ? "no " + name + " provider": String.Join(", ", allowed)) +
                             ". No inference started."
                     )
                 }
@@ -106,11 +87,12 @@ internal class DonorSelection {
 
             let provider = args.Get("provider", "openai")
 
-            if harness != "claude" && (args.Get("claude-profile") != "") {
+            if !Harness.Owns(harness, "claude-profile") && (args.Get("claude-profile") != "") {
                 throw Exception("Claude profile options require the claude harness")
             }
 
-            if harness != "pi" && (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
+            if !Harness.Owns(harness, "endpoint") &&
+                (args.Get("endpoint") != "" || args.Get("pi-root") != "" || args.Get("node") != "") {
                 throw Exception("Pi runtime options require the pi harness")
             }
 
@@ -131,19 +113,16 @@ internal class DonorSelection {
                 explicitPair ? "explicit invocation": "saved donor default"
             )
 
-            if harness != "codex" {
+            let adapter = policy.Adapter(harness, args.Get("provider")) ??
+                throw Exception("Unsupported managed harness/provider")
+            if let choose = adapter.Select {
                 if model != "" {
                     args.Values["--model"] = model
                 }
                 if effort != "" {
                     args.Values["--effort"] = effort
                 }
-                return switch harness {
-                    case "claude": ClaudeHarness.Select(args, policy, source)
-                    case "pi": PiHarness.Select(args, policy, source)
-                    case "omp": OmpHarness.Select(args, policy, source)
-                    default: throw Exception("Unsupported managed harness/provider")
-                }
+                return choose(args, policy, source)
             }
 
             let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))
@@ -197,28 +176,7 @@ internal class DonorSelection {
                     "Saved default harness/provider does not match the selected codex/openai harness."
                 }
 
-                if !Interactive(args) {
-                    throw Exception(reason + guidance)
-                }
-
-                Terminal.Message(reason + " Choose an eligible pair (availability unknown):", "yellow", true)
-
-                let eligible = List[JsonElement](choices.Values)
-                var selected int32
-
-                try {
-                    selected = ModelChecklist.Pick(
-                        List[string](choices.Keys).ToArray(),
-                        help: "Choose a model and effort allowed by the project and supported by your tool. Availability is not checked before you start."
-                    )
-                } catch (error OperationCanceledException) {
-                    throw Exception("Explicit donor choice was not supplied. No inference started.")
-                }
-
-                model = J.Text(eligible[selected], "model")
-                effort = J.Text(eligible[selected], "effort")
-                source = "interactive donor choice"
-                availability = "unknown"
+                throw CliFailure("invalid_arguments", reason + guidance)
             }
 
             args.Values["--model"] = model
@@ -253,41 +211,51 @@ internal class DonorSelection {
             }
         }
 
-        internal func Confirm(args Args, selection JsonElement) {
-            if args.Guided && args.Get("yes") != "true" {
-                Terminal.Heading(args.Command == "claim" ? "Confirm reservation request": "Confirm donation")
-                Terminal.Row("Task", args.Need("repo") + " #" + args.Need("issue"))
-                Terminal.Row("Tool", J.Text(selection, "harness") + " / " + J.Text(selection, "provider"))
-                Terminal.Row("Model", J.Text(selection, "model") + " / " + J.Text(selection, "effort"))
-                Terminal.Row(
-                    "Budget",
-                    (
-                        args.Get("unlimited") == "true" ? "Unlimited coding; ": args.Need("seconds") +
-                            " seconds total; "
+        internal func Confirm(args Args, selection JsonElement, run Data? = nil) {
+            if args.Get("yes") != "true" && !PublicOutput.Enabled && args.Get("json") != "true" && args.Get(
+                "non-interactive"
+            ) != "true" &&
+                !Console.IsInputRedirected &&
+                !Console.IsOutputRedirected &&
+                !Console
+                .IsErrorRedirected {
+                Terminal.Message(
+                    "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
+                        "issue",
+                        (run?.Number("issue") ?? 0).ToString()
                     ) +
-                        args.Get("verification-reserve", "0") + " reserved for verification"
+                        "\nTool: " +
+                        J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
+                        selection,
+                        "model"
+                    ) +
+                        "\nEffort: " +
+                        J.Text(selection, "effort") +
+                        "\nBudget: " +
+                        (
+                        args.Get("unlimited") == "true" || run?.Flag("unlimited") == true ? "Unlimited coding":
+                        args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
+                    ) +
+                        "; " +
+                        args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString()) +
+                        " seconds reserved for verification" +
+                        (
+                        J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""
+                    ),
+                    error: true
                 )
-                Terminal.Row("Configuration", "Your configured tools and subagents remain enabled")
-                Terminal.Row("Availability", J.Text(selection, "availability"))
-
-                if WizardScreen.Choose(
-                    "Confirm donation",
-                    args.Command == "claim" ? "Post this claim without inference?": "Post this claim and start this donation when accepted?",
-                    []string{"Post", "Cancel"},
-                    "Post the reservation request without running the tool, or cancel. A donation starts only after the owner accepts it.",
-                    selected: 2
-                ) != 1 {
-                    throw Exception("Donation was not confirmed. No claim or inference was started.")
+                let posting = run?.Text("state") == "claim_pending"
+                let question = args.Command != "claim" ? "Start this donation?":
+                posting ? "Post this claim?": "Prepare this attempt?"
+                if !OwnerSetup.Confirm(args, question) {
+                    throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
                 }
-
-                if args.Command == "work" {
-                    args.Values["--yes"] = "true"
-                }
-
+                args.Values["--yes"] = "true"
                 return
             }
 
-            let source = J.Text(selection, "source")
+            let source = (run?.Text("continuation_source") ?? "") == "" ? J.Text(selection, "source"):
+            "explicit continuation import"
 
             if args.Get("yes") == "true" ||
                 source == "explicit invocation" ||
@@ -298,27 +266,10 @@ internal class DonorSelection {
 
             let pair = J.Text(selection, "model") + " / " + J.Text(selection, "effort")
 
-            if !Interactive(args) {
-                throw Exception(
-                    "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
-                )
-            }
-
-            if WizardScreen.Choose(
-                "Confirm inference",
-                "Use your allowance with " + J.Text(selection, "harness") + "/" + J.Text(selection, "provider") +
-                    ": " +
-                    pair +
-                    " (" +
-                    J.Text(selection, "availability") + ")?",
-                []string{"Use", "Cancel"},
-                "Choose Use to run the selected model with your configured account or local server. Choose Cancel to start nothing.",
-                selected: 2
-            ) != 1 {
-                throw Exception("Inference was not confirmed. No inference started.")
-            }
-
-            args.Values["--yes"] = "true"
+            throw CliFailure(
+                "confirmation_required",
+                "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
+            )
         }
 
         internal func Revalidate(run Data, policy Policy) {
@@ -342,18 +293,11 @@ internal class DonorSelection {
             }
 
             policy.Validate(harness, provider, run.Text("model"), run.Text("effort"), run.Number("seconds"))
-            switch harness {
-                case "claude" {
-                    ClaudeHarness.ValidateSaved(run)
-                }
-                case "pi" {
-                    PiHarness.ValidateSaved(run)
-                }
-                case "omp" {
-                    OmpHarness.ValidateSaved(run)
-                }
+            let adapter = policy.Adapter(harness, provider)
+            if let validate = adapter?.ValidateSaved {
+                validate(run)
             }
-            if harness != "codex" {
+            if adapter?.Select != nil {
                 return
             }
 

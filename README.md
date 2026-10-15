@@ -32,17 +32,62 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 
 ## Start here
 
+```sh
+curl -qfsSL https://tokate.dev/install.sh | sh
+gh auth login
+tokate doctor
+```
+
 - **Owners:** [Set up the repository, approve tasks and review donations](docs/owners.md).
+
+  ```sh
+  tokate init OWNER/REPO
+  tokate init OWNER/REPO --yes
+  gh pr merge tokate-setup -R OWNER/REPO
+  tokate approve OWNER/REPO#42
+  tokate access grant LOGIN OWNER/REPO#42
+  tokate checks OWNER/REPO#PR
+  gh pr ready PR -R OWNER/REPO
+  gh pr merge PR -R OWNER/REPO
+  ```
+
 - **Donors:** [Choose a tool, claim an issue and donate work](docs/donors.md).
+
+  ```sh
+  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
+  tokate submit OWNER/REPO#42
+  ```
+
+  Gratis work on a repository without a Tokate policy:
+
+  ```sh
+  tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
+  ```
+
 - **Existing work:** [Recover a run or update a PR](docs/recovery.md).
+
+  ```sh
+  tokate status
+  tokate status OWNER/REPO#42
+  tokate amend OWNER/REPO#42
+  tokate amend OWNER/REPO#42 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
+  tokate submit OWNER/REPO#42
+  ```
+
 - **Before running:** [Understand data access and isolation](docs/security.md).
+
+  ```sh
+  tokate doctor repo OWNER/REPO
+  tokate doctor HARNESS
+  ```
+
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
-Run `tokate` for guided donation, owner setup, repository status and saved work.
-`tokate work OWNER/REPO` runs approved issues until stopped. Add `--total` to cap the session.
-Use `tokate work OWNER/REPO stop` to stop. Bare `tokate work` uses the local GitHub remote.
-For one issue, use `tokate work 42` in a checkout or `tokate work OWNER/REPO#42` elsewhere. A repository link selects the loop. An issue link names one issue.
-See the [positional arguments guide](docs/arguments.md) for references and command forms.
-Use `tokate help COMMAND` for exact options. Scripts can use `--json` without prompts.
+  ```sh
+  git clone https://github.com/obselate/tokate.git
+  cd tokate
+  bash scripts/build.sh
+  bash scripts/verify.sh
+  ```
 
 [Website](https://tokate.dev/) · [Releases](https://github.com/obselate/tokate/releases) · [Issues](https://github.com/obselate/tokate/issues) · [MIT license](LICENSE)

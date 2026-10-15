@@ -196,10 +196,8 @@ internal class ContributionStatusChecks {
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
             )
             let args = []string{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(test.State()["sha"]),
                 "--source",
                 "tokate",
                 "--tools",
@@ -240,8 +238,8 @@ internal class ContributionStatusChecks {
             )
             Check.PrepareGuidance(offline)
             let local = test.Flow.Call([]string{"status", "owner/project#1-1", "--plain"})
-            Check.Contains(local.Output, "explicit new time budget")
-            Check.That(!local.Output.Contains("Next: tokate work"), "Terminal status recommends stale work")
+            Check.Contains(local.Output, "Next   tokate help work")
+            Check.That(!local.Output.Contains("tokate work"), "Terminal status recommends stale work")
             let remote = Read(test)
             Check.PrepareGuidance(remote)
             Check.That(
@@ -252,7 +250,6 @@ internal class ContributionStatusChecks {
                 File.ReadAllText(Path.Combine(run, "run.json")) == invalidated,
                 "Status changed the invalidated attempt"
             )
-            args[Array.IndexOf(args, "--state") + 1] = Check.Text(test.State()["sha"])
             args[Array.IndexOf(args, "--time") + 1] = "40s"
             args[Array.IndexOf(args, "--verify-time") + 1] = "12s"
             let fresh = test.Flow.Call(args)
@@ -439,7 +436,7 @@ internal class ContributionStatusChecks {
             let published = Row(Read(test, owner: true))
             Check.That(Check.Text(published["state"]) == "owner_review", "Recorded contribution omitted owner review")
             Check.That(
-                Check.Text(published["next"]?["command"]?[1]) == "verify",
+                Check.Text(published["next"]?["command"]?[1]) == "checks",
                 "Owner receipt verification command omitted"
             )
             Check.Contains(Check.Text(published["drafts"]?[0]?["receipt"]), "unverified")
@@ -468,7 +465,7 @@ internal class ContributionStatusChecks {
             Check.That(
                 Check.Text(expired["state"]) == "owner_review" && expired["drafts"]?.AsArray().Count == 1 && Check.Text(
                     expired["next"]?["command"]?[1]
-                ) == "verify" &&
+                ) == "checks" &&
                     Check.Text(expired["reservation"]?["expired"]) == "true",
                 "Expired lease replaced canonical published PR review"
             )
@@ -527,9 +524,45 @@ internal class ContributionStatusChecks {
                         )
                     }
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
-                    Check.Contains(human.Output, "State: " + (lifecycle + "_contribution").Replace('_', ' '))
-                    Check.Contains(human.Output, "Contribution: " + lifecycle.Replace('_', ' '))
-                    Check.Contains(human.Output, Check.Text(row["next"]?["action"]))
+                    Check.Contains(human.Output, "State  " + lifecycle + "_contribution")
+                    Check.Contains(human.Output, "Next   gh issue view 1 --repo owner/project")
+                    if !deleted {
+                        let copy = Path.Combine(test.Flow.Temp.Env["HOME"], ".local/state/tokate/runs/published")
+                        let record = Check.Json(File.ReadAllText(Path.Combine(published.Run, "run.json")))
+                        record["pr"] = test.Flow.State["pulls"]?[0]?["number"]?.DeepClone()
+                        Directory.CreateDirectory(copy)
+                        File.WriteAllText(Path.Combine(copy, "run.json"), record.ToJsonString())
+                        let saved = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        let all = Check.Json(
+                            Check.Success(
+                                TestProcess.Run(
+                                    binary,
+                                    []string{"status", "--all", "--json"},
+                                    test.Flow.Temp.Env,
+                                    cwd: test.Flow.Temp.Root
+                                )
+                            )
+                        )
+                        var outcome = ""
+                        for item in all["data"]?["runs"]?.AsArray() ?? JsonArray() {
+                            if Check.Text(item["run"]) == copy {
+                                outcome = Check.Text(item["outcome"])
+                            }
+                        }
+                        Check.That(
+                            !saved.ToJsonString().Contains(copy) && outcome == (merged ? "merged": "closed"),
+                            "Saved status did not hide a merged or closed PR run and show it with --all"
+                        )
+                    }
                     let owner = Row(Read(test, owner: true))
                     Check.That(
                         Check.Text(owner["state"]) == Check.Text(row["state"]) && owner["next"]?.ToJsonString() == row[
@@ -795,9 +828,8 @@ internal class ContributionStatusChecks {
             test.Flow.Temp.Env["TERM"] = "xterm-256color"
             let narrow = TestTerminal.Pty(binary, []string{"status", "owner/project#1", "--plain"}, test.Flow.Temp, 40)
             Check.Success(narrow)
-            Check.Contains(narrow.Output, "Issue: #1 Implement fixture")
-            Check.Contains(narrow.Output, "State: reservation needed")
-            Check.Contains(narrow.Output, "Role: donor")
+            Check.Contains(narrow.Output, "Issue  owner/project#1")
+            Check.Contains(narrow.Output, "State  reservation_needed")
             Check.That(!narrow.Output.Contains('\u001b'), "Narrow plain status contains escapes")
         }
 
@@ -827,9 +859,7 @@ internal class ContributionStatusChecks {
             let args = []string{"status", "owner/project", "--plain"}
             let truncated = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-truncated", truncated)
-            Check.Contains(truncated, "Bounded snapshot: some data was omitted.")
-            Check.Contains(truncated, "Review donor access and grant eligibility if appropriate.")
-            Check.Contains(truncated, "Command: tokate access list owner/project\r\n")
+            Check.Contains(truncated, "Next   tokate access list owner/project")
             test.Flow.Reload()
             let current = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             current["title"] = JsonValue.Create(title)
@@ -841,23 +871,21 @@ internal class ContributionStatusChecks {
             Check.That(failure.Code == 1, "Failed status read did not report failure")
             let failed = failure.Output
             TestTerminal.Save("status-failed", failed)
-            Check.Contains(failed, "unavailable; partial facts only")
+            Check.Contains(failed, "Next   Inspect unavailable required remote records")
             Check.Contains(failed, "GitHub read failed (HTTP 403).")
-            Check.Contains(failed, "Issue: #1 " + title)
-            Check.That(!failed.Contains("Bounded snapshot:"), "Failed status read retained earlier truncation")
+            Check.Contains(failed, "#1     " + title)
+            Check.That(!failed.Contains("tokate access list"), "Failed status read retained earlier actions")
             test.Flow.Reload()
             test.Flow.State["fault_path"] = nil
             test.Flow.State["comments"] = Check.Json("{}")
             test.Flow.Save()
             let healthy = Check.Success(TestTerminal.Pty(binary, args, test.Flow.Temp, 120))
             TestTerminal.Save("status-healthy", healthy)
-            Check.Contains(healthy, "State: reservation needed")
-            Check.Contains(healthy, "Role: donor")
+            Check.Contains(healthy, "reservation_needed  yes")
             Check.That(
-                !healthy.Contains("unavailable") && !healthy.Contains("Bounded snapshot:") && !healthy.Contains(
-                    "Review donor access"
-                ) &&
-                    !healthy.Contains("Oversized title"),
+                !healthy.Contains("unavailable") && !healthy.Contains("tokate access list") && !healthy.Contains(
+                    "Oversized title"
+                ),
                 "Healthy status read retained failed or truncated facts or actions"
             )
             test.Flow.Reload()

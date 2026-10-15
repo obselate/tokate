@@ -154,6 +154,10 @@ internal class Policy {
             if models.ValueKind != JsonValueKind.Undefined {
                 ValidateModels(models)
             }
+
+            if J.Text(tool, "harness") == "command" {
+                CommandHarness.Validate(tool)
+            }
         }
 
         Tools = J.Get(Value, "allowed_tools")
@@ -203,9 +207,12 @@ internal class Policy {
         }
     }
 
-    private func Tool(harness string, provider string) JsonElement -> J.Items(Tools).Find(
+    internal func Tool(harness string, provider string) JsonElement -> J.Items(Tools).Find(
         tool -> J.Text(tool, "harness") == harness && J.Text(tool, "provider") == provider
     )
+
+    internal func Adapter(harness string, provider string) Harness? -> harness == "command" ?
+    CommandHarness.Adapter(Tool(harness, provider)): Harness.Find(harness)
 
     internal func ToolModels(harness string, provider string) JsonElement -> J.Get(Tool(harness, provider), "models")
 
@@ -272,7 +279,8 @@ internal class Policy {
         }
 
         if !external {
-            let catalog = harness == "pi" || harness == "omp"
+            let adapter = Adapter(harness, provider)
+            let catalog = adapter?.Catalog == true
             if model == "unknown" ||
                 effort == "unknown" ||
                 (
@@ -283,13 +291,12 @@ internal class Policy {
                 )
             }
 
-            if harness == "claude" && (provider != "anthropic" || !ClaudeCode.Pair(model, effort)) {
+            if adapter?.Pair is Func[string, string, bool]pair &&
+                (!Harness.Accepts(harness, provider) || !pair(model, effort)) {
                 throw Exception("Unsupported native Claude model/effort pair. No inference started.")
             }
 
-            if (harness == "codex" && provider != "openai") ||
-                (harness == "pi" && provider != "local-chat-completions") ||
-                (harness != "codex" && harness != "claude" && harness != "pi" && harness != "omp") {
+            if adapter == nil || (adapter.Provider != "" && adapter.Provider != provider) {
                 throw Exception("Unsupported managed harness/provider pair. No inference started.")
             }
         }

@@ -9,6 +9,7 @@ import System.Text.RegularExpressions
 internal class OwnerHealth {
     private let Checks List[Object] = List[Object]()
     private var Failure Exception? = nil
+    private var Parsed Policy? = nil
 
     private func Add(
         name string,
@@ -48,20 +49,15 @@ internal class OwnerHealth {
         let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
         let version = ApplicationInfo.Version()
         var pin = ""
-        var policyParsed bool
         Read(
             "coordinator",
             async () -> {
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
                 let pinnedVersion = MemberVersion(yaml)
-                let uses = Regex.Matches(
-                    yaml,
-                    "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
-                )
-                let configured = pinnedVersion != "" && uses.Count == 1
-                pin = uses.Count == 1 ? uses[0].Groups[1].Value: ""
+                pin = CoordinatorSetup.Pin(yaml)
+                let configured = pinnedVersion != "" && pin != ""
                 let matches = configured && pinnedVersion == version
-                let command = []string{"tokate", "coordinator-setup", repo, "--output", "tokate-coordinator.yml"}
+                let command = []string{"tokate", "init", repo}
                 Add(
                     "coordinator",
                     !configured ? "problem": matches ? "ok": "warning",
@@ -69,14 +65,7 @@ internal class OwnerHealth {
                         (pinnedVersion == "" ? "missing or malformed": pinnedVersion) +
                         ", CLI " +
                         version +
-                        "." +
-                        (
-                        matches ? " Versions match.": " Review and install the entry from: " + String.Join(
-                            " ",
-                            command
-                        ) +
-                            "."
-                    ),
+                        (matches ? ".": ". Update it with: " + String.Join(" ", command) + "."),
                     map[string, Object?]{
                         "version": pinnedVersion,
                         "cli_version": version,
@@ -87,102 +76,52 @@ internal class OwnerHealth {
                 )
             }
         )
-        Read(
-            "release",
-            async () -> {
-                let release = GitHub.Api("repos/obselate/tokate/releases/latest", missing: true)
-                if release.ValueKind == JsonValueKind.Undefined {
-                    Add("release", "warning", "No stable release is available.")
-                    return
-                }
-                let tag = J.Text(release, "tag_name")
-                if !tag.StartsWith("v") {
-                    throw Exception("Invalid stable release version")
-                }
-                let newer = Older(version, tag.Substring(1))
-                Add(
-                    "release",
-                    newer ? "warning": "ok",
-                    "Latest stable release " +
-                        tag +
-                        "." +
-                        (
-                        newer ? " Update the CLI with: tokate update. Then update the coordinator with tokate coordinator-setup " +
-                            repo +
-                            " --output tokate-coordinator.yml.": " No newer release exists."
-                    ),
-                    map[string, Object?]{"latest_version": tag.Substring(1), "newer_release": newer},
-                    newer ? []string{"tokate", "update"}: []string{}
-                )
-            }
-        )
         let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
-        InspectActions(repo, pin)
-        Read(
-            "workflow_permissions",
-            async () -> {
-                let permissions = GitHub.Api("repos/" + repo + "/actions/permissions/workflow")
-                let defaults = J.Text(permissions, "default_workflow_permissions")
-                let create = J.Bool(permissions, "can_approve_pull_request_reviews")
-                Add(
-                    "workflow_permissions",
-                    !create ? "problem": "ok",
-                    "Default workflow permissions: " +
-                        defaults +
-                        ". Actions may create pull requests: " +
-                        (create ? "yes.": "no.") +
-                        (
-                        !create ? " In " +
-                            settings +
-                            " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
-                    ),
-                    J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
-                    !create ? openSettings: []string{}
-                )
-            }
-        )
+        if J.Bool(J.Get(info, "permissions"), "admin") {
+            InspectActions(repo, pin)
+            Read(
+                "workflow_permissions",
+                async () -> {
+                    let permissions = GitHub.Api("repos/" + repo + "/actions/permissions/workflow")
+                    let defaults = J.Text(permissions, "default_workflow_permissions")
+                    let create = J.Bool(permissions, "can_approve_pull_request_reviews")
+                    Add(
+                        "workflow_permissions",
+                        !create ? "problem": "ok",
+                        "Default workflow permissions: " +
+                            defaults +
+                            ". Actions may create pull requests: " +
+                            (create ? "yes.": "no.") +
+                            (
+                            !create ? " In " +
+                                settings +
+                                " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
+                        ),
+                        J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
+                        !create ? openSettings: []string{}
+                    )
+                }
+            )
+        } else {
+            Add("actions", "warning", "Requires repository admin access.")
+        }
         Read(
             "policy",
             async () -> {
                 let text = GitHub.FileAt(repo, ".github/tokate.json", revision, missing: true)
                 try {
                     let policy = Policy(text)
-                    policyParsed = true
-                    Add(
-                        "policy",
-                        "ok",
-                        "Version " + J.Number(policy.Value, "version").ToString() +
-                            ", eligibility " +
-                            policy.Eligibility +
-                            ", parses.",
-                        map[string, Object?]{
-                            "version": J.Get(policy.Value, "version"),
-                            "eligibility": policy.Eligibility,
-                            "parses": true
-                        }
-                    )
+                    Parsed = policy
+                    let policyVersion = J.Number(policy.Value, "version").ToString()
+                    Add("policy", "ok", "Version " + policyVersion + ", eligibility " + policy.Eligibility + ".")
                 } catch (error Exception) {
-                    var value JsonElement
-                    try {
-                        value = J.Parse(text)
-                    } catch (invalid Exception) { }
-                    let fields = J.Select(value, "version,eligibility")
-                    fields["parses"] = false
+                    let command = []string{"tokate", "init", repo}
                     Add(
                         "policy",
                         "problem",
-                        "Version " +
-                            (J.Number(value, "version") == 0 ? "unknown": J.Number(value, "version").ToString()) +
-                            ", eligibility " +
-                            (J.Text(value, "eligibility") == "" ? "unknown": J.Text(value, "eligibility")) +
-                            ". " +
-                            error.Message +
-                            " Review the policy with tokate init " +
-                            repo +
-                            ".",
-                        fields,
-                        []string{"tokate", "init", repo}
+                        error.Message + " Review the policy with: " + String.Join(" ", command) + ".",
+                        command: command
                     )
                 }
             }
@@ -221,7 +160,7 @@ internal class OwnerHealth {
         Read(
             "approvals",
             async () -> {
-                if !policyParsed {
+                if Parsed == nil {
                     Add("approvals", "warning", "Approval freshness cannot be checked until the policy parses.")
                     return
                 }
@@ -310,7 +249,7 @@ internal class OwnerHealth {
         )
     }
 
-    internal func InspectActions(repo string, pin string) List[Object] {
+    private func InspectActions(repo string, pin string) {
         let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
         Read(
@@ -334,31 +273,12 @@ internal class OwnerHealth {
                 if !enabled {
                     return
                 }
-                var permitted = allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
-                var blocked bool
-                let patterns = List[string]()
-                if allowed == "selected" {
-                    let selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
-                    let values = J.Get(selected, "patterns_allowed")
-                    if values.ValueKind != JsonValueKind.Array {
-                        throw Exception("Invalid selected Actions patterns")
-                    }
-                    for pattern in J.Items(values) {
-                        if pattern.ValueKind != JsonValueKind.String {
-                            throw Exception("Invalid selected Actions pattern")
-                        }
-                        let value = pattern.GetString() ?? ""
-                        patterns.Add(value)
-                        let deny = value.StartsWith("!")
-                        let matches = pin != "" && CoordinatorSetup.WorkflowMatches(
-                            deny ? value.Substring(1): value,
-                            "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
-                        )
-                        blocked = blocked || (deny && matches)
-                        permitted = permitted || (!deny && matches)
-                    }
-                }
-                permitted = permitted && !blocked
+                let allowlist = CoordinatorSetup.Allowlist(
+                    repo,
+                    allowed,
+                    "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
+                )
+                let permitted = allowlist.Permitted
                 Add(
                     "workflow_allowlist",
                     pin == "" ? "warning": permitted ? "ok": "problem",
@@ -372,14 +292,13 @@ internal class OwnerHealth {
                     ),
                     map[string, Object?]{
                         "pin": pin,
-                        "patterns_allowed": patterns,
+                        "patterns_allowed": allowlist.Patterns,
                         "permitted": pin == "" ? nil: permitted
                     },
                     pin != "" && !permitted ? openSettings: []string{}
                 )
             }
         )
-        return Checks
     }
 
     shared {
@@ -416,9 +335,9 @@ internal class OwnerHealth {
                             pinned +
                             " is older than CLI " +
                             version +
-                            ". Owner: review and install the entry from: tokate coordinator-setup " +
+                            ". Owner: update it with: tokate init " +
                             repo +
-                            " --output tokate-coordinator.yml.",
+                            ".",
                         "yellow",
                         true
                     )
@@ -431,22 +350,21 @@ internal class OwnerHealth {
         internal func Run(args Args) int32 {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let health = OwnerHealth()
-            PublicOutput.ResultData = map[string, Object?]{"scope": "owner", "repo": repo, "checks": health.Checks}
+            let data = map[string, Object?]{"scope": "repo", "repo": repo, "checks": health.Checks}
+            PublicOutput.ResultData = data
             health.Inspect(repo, GitHub.Api("repos/" + repo))
+            if let policy = health.Parsed {
+                data["policy"] = PublicOutput.Policy(policy.Value)
+                if !PublicOutput.Enabled {
+                    Terminal.Json(policy.Value, "Repository policy")
+                }
+            }
             if !PublicOutput.Enabled {
                 for check in health.Checks {
-                    guard let row = check as Dictionary[string, Object?] else {
-                        continue
+                    if check is Dictionary[string, Object?]row {
+                        let text = (row["status"] as string ?? "") + " - " + (row["message"] as string ?? "")
+                        Terminal.Row(row["check"] as string ?? "", text)
                     }
-                    Console.WriteLine(
-                        Terminal.Clean(
-                            (row["check"] as string ?? "") +
-                                ": " +
-                                (row["status"] as string ?? "") +
-                                " - " +
-                                (row["message"] as string ?? "").Replace('\n', ' ')
-                        )
-                    )
                 }
             }
             if let failure = health.Failure {

@@ -504,7 +504,11 @@ internal class ExternalContribution {
                     throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }
 
-                Terminal.Message("Exact external commit passed independent verification. Use submit --run " + directory)
+                Terminal.Message(
+                    "Exact external commit passed independent verification. Use " + Terminal.Command(
+                        []string{"tokate", "submit", "--run", directory}
+                    )
+                )
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {

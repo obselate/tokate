@@ -35,47 +35,6 @@ internal class OmpChecks {
                 File.Delete(Path.Combine(flow.Bin, "codex"))
                 File.Delete(Path.Combine(flow.Bin, "codex-impl"))
                 if mode == "normal" {
-                    flow.Temp.Env["TERM"] = "dumb"
-                    flow.Temp.Env["NO_COLOR"] = "1"
-                    let cancelled = TestTerminal.Pty(
-                        binary,
-                        []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
-                        flow.Temp,
-                        100,
-                        "1\n1\nq\n"
-                    )
-                    Check.That(cancelled.Code == 1, cancelled.Output + cancelled.Error)
-                    Check.Contains(cancelled.Output, "OMP | Your OMP providers")
-                    Check.Contains(cancelled.Output, "openrouter | OMP | " + OmpTool.Model + " / low")
-                    Check.Contains(cancelled.Output.Replace("\r\n", " "), "Review donation")
-                    Check.That(
-                        !cancelled.Output.Contains("Uses your selected harness subscription"),
-                        "OMP wizard claimed subscription billing"
-                    )
-                    Check.That(!cancelled.Output.Contains("/ high"), "Wizard offered an effort the policy forbids")
-                    let unrestricted = Check.Json(policy.ToJsonString())
-                    Check.SetModels(unrestricted, nil)
-                    Check.SaveJson(policyPath, unrestricted)
-                    flow.Commit("Unrestricted OMP picker fixture")
-                    flow.Approve()
-                    for modelChoice in[]string{"1\n", "2\nopenrouter/" + OmpTool.Model + "\n"} {
-                        let guided = TestTerminal.Pty(
-                            binary,
-                            []string{"work", "owner/project#1", "--time", "60s", "--verify-time", "20s"},
-                            flow.Temp,
-                            100,
-                            "1\n" + modelChoice + "2\nq\n"
-                        )
-                        Check.That(guided.Code == 1, guided.Output + guided.Error)
-                        Check.Contains(guided.Output, "Enter another model ID")
-                        Check.Contains(guided.Output, "Review donation")
-                        Check.Contains(guided.Output, OmpTool.Model + " / low")
-                        flow.NoInference()
-                        flow.NoPr()
-                    }
-                    Check.SaveJson(policyPath, policy)
-                    flow.Commit("Restore OMP picker fixture policy")
-                    flow.Approve()
                     flow.Call(
                         []string{
                             "defaults",
@@ -179,17 +138,83 @@ internal class OmpChecks {
                 }
                 flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"}, 1)
             }
-            Console.WriteLine("PASS OMP managed wizard, profile, claim, work, verification, publication and refusals")
+            {
+                using let test = CoordinationFixture(binary)
+                test.Initialize(approve: false)
+                let flow = test.Flow
+                flow.Temp.Tool("omp")
+                let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
+                let policy = Check.Json(File.ReadAllText(policyPath))
+                let selector = "\"openrouter/{model}\""
+                policy["allowed_tools"] = Check.Json(
+                    "[{\"harness\":\"command\",\"provider\":\"openrouter\",\"output\":\"session\",\"command\":[\"omp\",\"--mode\",\"json\",\"--no-session\",\"--approval-mode\",\"yolo\",\"--model\"," +
+                        selector +
+                        ",\"--smol\"," +
+                        selector +
+                        ",\"--slow\"," +
+                        selector +
+                        ",\"--plan\"," +
+                        selector +
+                        ",\"--thinking\",\"{effort}\",\"--prompt-file\",\"{prompt_file}\",\"--cwd\",\"{checkout}\"]}]"
+                )
+                Check.SetModels(policy, Check.Json("{\"" + OmpTool.Model + "\":[\"low\"]}"))
+                Check.SaveJson(policyPath, policy)
+                flow.Commit("Command harness fixture")
+                flow.Approve()
+                Directory.CreateDirectory(Path.Combine(flow.Temp.Env["HOME"], ".omp"))
+                File.Delete(Path.Combine(flow.Bin, "codex"))
+                File.Delete(Path.Combine(flow.Bin, "codex-impl"))
+                let prepared = flow.Acquire(
+                    []string{
+                        "claim",
+                        "owner/project#1",
+                        "--harness",
+                        "command",
+                        "--model",
+                        OmpTool.Model,
+                        "--effort",
+                        "low",
+                        "--time",
+                        "60s",
+                        "--verify-time",
+                        "20s",
+                        "--runs",
+                        Path.Combine(flow.Temp.Root, "runs")
+                    }
+                )
+                let run = prepared.Output.Substring(prepared.Output.LastIndexOf("Run: ") + 5).Trim()
+                let worked = flow.Call([]string{"work", "--run", run, "--yes", "--non-interactive"})
+                Check.Contains(worked.Output + worked.Error, "Running omp --mode json")
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(
+                    Check.Text(saved["state"]) == "generated" && Check.Text(
+                        saved["verification"]?[0]?["exit_code"]
+                    ) == "0" &&
+                        Check.Text(saved["usage"]?["output_tokens"]) == "7",
+                    "Command harness did not reach a verified candidate: " + Check.Text(saved["error"])
+                )
+                Check.Contains(
+                    saved["observed_invocation"]?["arguments"]?.ToJsonString() ?? "",
+                    "\"openrouter/" +
+                        OmpTool.Model +
+                        "\",\"--thinking\",\"low\",\"--prompt-file\"," +
+                        Check
+                        .Map("path", Path.Combine(run, "prompt.md"))["path"]
+                        ?.ToJsonString()
+                )
+                Check.Contains(File.ReadAllText(Path.Combine(run, "prompt.md")), "Acceptance criteria")
+            }
+            Console.WriteLine("PASS OMP managed profile, claim, work, verification, publication and refusals")
         }
 
         private func Pick(extra[]string)[]string {
-            let words = List[string]{"select", "owner/project", "--harness", "omp", "--json"}
+            let words = List[string]{"defaults", "check", "owner/project", "--harness", "omp", "--json"}
             words.AddRange(extra)
             return words.ToArray()
         }
 
         private func Refused(flow NativeFixture, extra[]string, reason string) {
-            let words = List[string]{"select", "owner/project", "--harness", "omp"}
+            let words = List[string]{"defaults", "check", "owner/project", "--harness", "omp"}
             words.AddRange(extra)
             Check.Contains(flow.Call(words.ToArray(), 1).Error, reason)
         }
@@ -215,7 +240,7 @@ internal class OmpChecks {
             Directory.CreateDirectory(settings)
             let chosen = Check.Envelope(
                 flow.Call(Pick([]string{"--provider", "openrouter", "--model", OmpTool.Model, "--effort", "low"})),
-                "select",
+                "defaults",
                 "ok"
             )
             Check.That(
@@ -226,7 +251,7 @@ internal class OmpChecks {
             )
             let plain = Check.Envelope(
                 flow.Call(Pick([]string{"--provider", "llama.cpp", "--model", "plain", "--effort", "absent"})),
-                "select",
+                "defaults",
                 "ok"
             )
             Check.That(Check.Text(plain["data"]?["effort"]) == "absent", "Non-reasoning OMP model was refused")

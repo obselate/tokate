@@ -167,8 +167,8 @@ internal class Diagnostics {
             File.CreateSymbolicLink(Path.Combine(temp.Root, "bin/setsid"), "/usr/bin/setsid")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\nexit 1\n")
             for words in[]([]string){
-                []string{"doctor", "owner", "managed", "--auth"},
-                []string{"doctor", "owner", "external"},
+                []string{"doctor", "repo", "managed", "--auth"},
+                []string{"doctor", "repo", "external"},
                 []string{"doctor", "managed", "external", "--non-interactive"}
             } {
                 Call(binary, temp, words, "error", "invalid_arguments")
@@ -185,19 +185,18 @@ internal class Diagnostics {
             )
             Call(binary, temp, []string{"status", "--run", saved})
             Check.That(!File.Exists(calls), "Offline commands started prerequisite probes")
-            Call(binary, temp, []string{"work", "--run", saved}, "error", "invalid_state")
-            Check.That(!File.Exists(calls), "Rejected external saved work probed managed tools")
-            let incomplete = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
-            Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Owner accepted missing Git")
+            let resumed = Call(binary, temp, []string{"work", "--run", saved}, "error", "missing_tools")
+            Check.That(
+                resumed["data"]?["tools"]?.AsArray().Count == 1 && !File.ReadAllText(calls).Contains("codex"),
+                "External saved work probed managed tools"
+            )
+            let incomplete = Call(binary, temp, []string{"doctor", "external"}, "error", "missing_tools")
+            Check.That(Check.Text(Row(incomplete, "git")["status"]) == "missing", "Doctor accepted missing Git")
             for name in[]string{"git", "curl", "tar"} {
                 Tool(temp, name, "exit 0\n")
             }
-            let owner = Call(binary, temp, []string{"doctor", "owner"})
-            Check.That(
-                Check.Text(owner["data"]?["scope"]) == "owner" && owner["data"]?["tools"]?.AsArray().Count == 8,
-                "Owner checked donor tools"
-            )
-            Check.That(Check.Text(owner["data"]?["authentication_requested"]) == "false", "Implicit authentication")
+            let ready = Call(binary, temp, []string{"doctor", "external"})
+            Check.That(Check.Text(ready["data"]?["authentication_requested"]) == "false", "Implicit authentication")
             Check.That(!File.ReadAllText(calls).Contains("status"), "No-auth doctor checked authentication")
             var longTools = temp.Root
             for i in 0 ... 24 {
@@ -210,14 +209,14 @@ internal class Diagnostics {
                 File.CreateSymbolicLink(Path.Combine(longTools, name), Path.Combine(temp.Root, "bin", name))
             }
             temp.Env["PATH"] = longTools
-            let longPath = Call(binary, temp, []string{"doctor", "owner"})
+            let longPath = Call(binary, temp, []string{"doctor", "external"})
             Check.That(
                 Check.Text(Row(longPath, "gh")["path"]) == Path.Combine(longTools, "gh"),
                 "Diagnostic tool path was shortened"
             )
             temp.Env["PATH"] = Path.Combine(temp.Root, "bin")
             Tool(temp, "gh", "test \"$1\" = --version && exit 0\n" + "test \"$1\" = auth && exit 0\nexit 4\n")
-            let auth = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "authentication_required")
+            let auth = Call(binary, temp, []string{"doctor", "external", "--auth"}, "error", "authentication_required")
             Check.That(
                 Check.Text(Row(auth, "gh-auth")["status"]) == "authentication_required",
                 "Missing auth not distinguished"
@@ -229,7 +228,7 @@ internal class Diagnostics {
                 "#!/bin/sh\ntest \"$1\" = --version && exit 0\n" +
                     "printf '%s\\n' '123'\nprintf '%s\\n' synthetic-auth-secret >&2\n"
             )
-            let authenticated = Call(binary, temp, []string{"doctor", "owner", "--auth"})
+            let authenticated = Call(binary, temp, []string{"doctor", "external", "--auth"})
             Check.That(Check.Text(Row(authenticated, "gh-auth")["status"]) == "ready", "Verified identity was rejected")
             let missing = Call(binary, temp, []string{"doctor", "managed"}, "error", "missing_tools")
             Check.That(Check.Text(Row(missing, "codex")["status"]) == "missing", "Missing Codex not distinguished")
@@ -272,45 +271,30 @@ internal class Diagnostics {
             let external = Call(
                 binary,
                 temp,
-                []string{
-                    "prepare",
-                    "owner/project#1",
-                    "--state",
-                    String('a', 40),
-                    "--source",
-                    "external",
-                    "--tools",
-                    tools
-                },
+                []string{"claim", "owner/project#1", "--source", "external", "--tools", tools},
                 "error",
                 "missing_tools"
             )
             Check.That(Check.Text(Row(external, "git")["status"]) == "missing", "External preparation omitted Git")
             Check.That(!File.ReadAllText(calls).Contains("codex"), "External preparation needed Codex")
-            let managed = Call(
-                binary,
-                temp,
-                []string{"prepare", "owner/project#1", "--state", String('a', 40), "--source", "tokate"},
-                "error",
-                "missing_tools"
-            )
-            Check.That(Check.Text(Row(managed, "codex")["status"]) == "missing", "Managed catalog route omitted Codex")
-            for command in[]string{"claim", "select"} {
-                let words = List[string]{command, command == "claim" ? "owner/project#1": "owner/project"}
-                let selection = Call(binary, temp, words.ToArray(), "error", "missing_tools")
+            for words in[][]string{
+                []string{"claim", "owner/project#1"},
+                []string{"defaults", "check", "owner/project"}
+            } {
+                let selection = Call(binary, temp, words, "error", "missing_tools")
                 Check.That(
                     Check.Text(Row(selection, "codex")["status"]) == "missing",
                     "Offline catalog route omitted Codex"
                 )
             }
             Tool(temp, "gh", "exit 17\n")
-            let failedOwner = Call(binary, temp, []string{"doctor", "owner", "--auth"}, "error", "missing_tools")
+            let failedAuth = Call(binary, temp, []string{"doctor", "external", "--auth"}, "error", "missing_tools")
             Check.That(
-                Check.Text(Row(failedOwner, "gh-auth")["status"]) == "skipped",
+                Check.Text(Row(failedAuth, "gh-auth")["status"]) == "skipped",
                 "Failed authentication status passed"
             )
             File.Delete(Path.Combine(temp.Root, "bin/setsid"))
-            let noRunner = Call(binary, temp, []string{"doctor", "owner"}, "error", "missing_tools")
+            let noRunner = Call(binary, temp, []string{"doctor", "external"}, "error", "missing_tools")
             Check.That(Check.Text(Row(noRunner, "gh")["status"]) == "skipped", "PATH discovery proved readiness")
             Console.WriteLine(
                 "PASS scoped diagnostics, conflicts, missing/broken tools, explicit sanitized authentication and offline routes; no inference"
@@ -358,7 +342,7 @@ internal class Diagnostics {
             } {
                 let cleanup = helper == "/usr/bin/env" || helper == "/usr/bin/setpriv" || helper == "/usr/bin/unshare"
                 let owner = Check.Envelope(
-                    FixedCall(binary, flow, helper, []string{"doctor", "owner"}),
+                    FixedCall(binary, flow, helper, []string{"doctor", "repo", "owner/project"}),
                     "doctor",
                     cleanup ? "error": "ok",
                     cleanup ? "missing_tools": ""
@@ -368,11 +352,11 @@ internal class Diagnostics {
                         Check.Text(Row(owner, helper)["status"]) == "failed" && Check.Text(
                             Row(owner, "setsid")["status"]
                         ) == "skipped",
-                        "Owner diagnostics misattributed a failed cleanup helper"
+                        "Repository diagnostics misattributed a failed cleanup helper"
                     )
                     let discovery = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"policy"}),
-                        "policy",
+                        FixedCall(binary, flow, helper, []string{"doctor", "repo"}),
+                        "doctor",
                         "error",
                         "missing_tools"
                     )
@@ -380,8 +364,8 @@ internal class Diagnostics {
                 }
                 if helper != "/usr/bin/cp" {
                     let selection = Check.Envelope(
-                        FixedCall(binary, flow, helper, []string{"select", "owner/project", "--non-interactive"}),
-                        "select",
+                        FixedCall(binary, flow, helper, []string{"defaults", "check", "owner/project"}),
+                        "defaults",
                         "error",
                         "missing_tools"
                     )
@@ -517,8 +501,9 @@ internal class Diagnostics {
             )
             Check.Envelope(external, "doctor", "ok")
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")
+            let installer = "printf called > '" + installMarker + "'\nexit 17\n"
             let curl = Path.Combine(flow.Bin, "curl")
-            File.WriteAllText(curl, "#!/bin/sh\nprintf called > '" + installMarker + "'\nexit 17\n")
+            File.WriteAllText(curl, "#!/bin/sh\ntest \"$1\" = --version && exit 0\n" + installer)
             File.SetUnixFileMode(curl, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let common = Check.Envelope(flow.Call([]string{"doctor", "--fix", "--yes", "--json"}), "doctor", "ok")
             Check.That(Check.Text(common["data"]?["scope"]) == "external", "Default doctor selected a harness")
@@ -552,7 +537,7 @@ internal class Diagnostics {
             Check.That(File.Exists(installMarker), "Explicit Codex choice did not reach installation")
             File.Delete(installMarker)
             for name in[]string{"codex", "pi", "claude", "omp"} {
-                File.Copy(curl, Path.Combine(flow.Bin, name))
+                File.WriteAllText(Path.Combine(flow.Bin, name), "#!/bin/sh\n" + installer)
                 File.SetUnixFileMode(
                     Path.Combine(flow.Bin, name),
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
@@ -658,7 +643,19 @@ internal class Diagnostics {
                 if (Directory.ResolveLinkTarget("/sbin", true)?.FullName ?? "/sbin") != "/usr/bin" {
                     args.AddRange([]string{"--tmpfs", "/sbin"})
                 }
-                for name in[]string{"sh", "env", "setsid", "setpriv", "unshare", "git", "curl", "tar", "chmod"} {
+                for name in[]string{
+                    "sh",
+                    "env",
+                    "setsid",
+                    "setpriv",
+                    "unshare",
+                    "git",
+                    "curl",
+                    "tar",
+                    "cp",
+                    "find",
+                    "chmod"
+                } {
                     args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/" + name), "/usr/bin/" + name})
                 }
                 args.AddRange([]string{"--ro-bind", TestProcess.SystemPath("/usr/bin/sh"), "/bin/sh"})
@@ -666,18 +663,31 @@ internal class Diagnostics {
                     args.AddRange([]string{"--ro-bind", privilege, "/usr/bin/" + name})
                 }
                 args.AddRange(
-                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "owner", "--fix", "--json"}
+                    []string{"--ro-bind", installer, manager, "--", binary, "doctor", "external", "--fix", "--json"}
                 )
                 Check.Envelope(
                     TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env),
                     "doctor",
                     "error",
-                    "missing_tools"
+                    "confirmation_required"
                 )
                 Check.That(!File.Exists(calls), "Unconfirmed setup ran " + distro + " installer")
+                args.Remove("--json")
+                let declined = TestTerminal.Pty("/usr/bin/bwrap", args.ToArray(), temp, 80, "\n")
+                Check.That(declined.Code == 1, declined.Output + declined.Error)
+                Check.Contains(declined.Output, "Install requirements? [y/N]")
+                Check.That(!File.Exists(calls), "Declined setup ran an installer")
+                let accepted = TestTerminal.Pty("/usr/bin/bwrap", args.ToArray(), temp, 80, "y\n")
+                Check.Success(accepted)
+                Check.Contains(accepted.Output, "Install requirements? [y/N]")
+                Check.That(File.ReadAllText(calls) == expected, "Confirmed setup changed unrelated packages")
+                args.Add("--json")
                 args.Add("--yes")
                 Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
                 Check.That(File.ReadAllText(calls) == expected, "Setup changed unrelated packages: " + distro)
+                if distro != "debian" && distro != "alpine" {
+                    continue
+                }
                 Check.Envelope(TestProcess.Run("/usr/bin/bwrap", args.ToArray(), temp.Env), "doctor", "ok")
                 Check.That(File.ReadAllText(calls) == expected, "Setup reinstalled available tools: " + distro)
                 File.Delete(gh)

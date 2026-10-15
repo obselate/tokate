@@ -1032,10 +1032,9 @@ internal class Amendment {
             }
 
             try {
-                return CodexEvidence.CompletedUsage(
-                    directory,
-                    File.ReadAllText(Path.Combine(directory, "events.jsonl"))
-                )
+                let evidence = CodexEvidence.Completed(File.ReadAllText(Path.Combine(directory, "events.jsonl")))
+                File.WriteAllText(Path.Combine(directory, "report.md"), evidence.Report)
+                return evidence.Usage
             } catch (error Exception) when error is CliFailure ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||

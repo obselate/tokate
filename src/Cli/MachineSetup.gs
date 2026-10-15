@@ -29,24 +29,10 @@ internal class MachineSetup {
 
         private func Confirm(options Args, message string) bool {
             Terminal.Message(message, "yellow", true)
-
-            if options.Command == "doctor" && options.Get("yes") == "true" {
-                return true
+            if !OwnerSetup.Confirm(options, "Install requirements?") {
+                throw CliFailure("confirmation_required", "Installation requires --fix --yes. Nothing installed.")
             }
-
-            if !DonorSelection.Interactive(options) {
-                Terminal.Message("Preview only. Use doctor --fix --yes to confirm installation.", error: true)
-
-                return false
-            }
-
-            return WizardScreen.Choose(
-                "Install requirements",
-                message,
-                []string{"Install", "Cancel"},
-                "Choose Install to add the listed requirements. Choose Cancel to keep the computer unchanged.",
-                selected: 2
-            ) == 1
+            return true
         }
 
         private func PackageManager() string {
@@ -176,18 +162,17 @@ internal class MachineSetup {
         }
 
         internal func TryFix(options Args, tools List[ToolCheck]) bool {
-            if !DonorSelection.Interactive(options) && !(options.Command == "doctor" && options.Get("fix") == "true") {
+            if options.Command != "doctor" || options.Get("fix") != "true" {
                 return false
             }
-
-            WizardScreen.Close()
 
             let manager = PackageManager()
             let packages = List[string]()
             let missing = List[string]()
 
             for tool in tools {
-                if (tool.Path != "" && !(manager.EndsWith("apk") && tool.Status == "failed")) || tool.Name == "codex" {
+                if Harness.Find(tool.Name) != nil ||
+                    (tool.Path != "" && !(manager.EndsWith("apk") && tool.Status == "failed")) {
                     continue
                 }
 
@@ -277,7 +262,7 @@ internal class MachineSetup {
             }
 
             for tool in tools {
-                if tool.Name == "codex" && tool.Path == "" {
+                if Harness.Find(tool.Name) != nil && tool.Path == "" {
                     return Harness(options)
                 }
             }
@@ -293,74 +278,37 @@ internal class MachineSetup {
             }
 
             let name = options.Get("harness", "codex")
+            let adapter = Harness.Find(name)
 
-            if name != "codex" && name != "pi" {
+            if adapter == nil || adapter.Nix == "" {
                 return false
             }
 
-            if !DonorSelection.Interactive(options) && !(options.Command == "doctor" && options.Get("fix") == "true") {
+            if options.Command != "doctor" || options.Get("fix") != "true" {
                 return false
             }
-
-            WizardScreen.Close()
 
             if NixManaged() || NixHost() {
-                Terminal.Message(
-                    "Install through Nix: nix profile add " +
-                        (name == "pi" ? "github:earendil-works/pi/stable": "nixpkgs#codex"),
-                    error: true
-                )
+                Terminal.Message("Install through Nix: nix profile add " + adapter.Nix, error: true)
 
                 return false
             }
 
             Terminal.Message("Could not use " + name + ". It may be installed at a custom location.", "yellow", true)
 
-            if name == "pi" {
+            if Harness.Owns(name, "pi-root") {
                 Terminal.Message("For an SDK installation, use --pi-root DIR --node FILE.", error: true)
             }
 
-            var choice = 2
-
-            if !(options.Command == "doctor" && options.Get("yes") == "true") {
-                if !DonorSelection.Interactive(options) {
-                    Terminal.Message(
-                        "Supply --harness-path FILE, or confirm installation with --fix --yes.",
-                        error: true
-                    )
-
-                    return false
-                }
-
-                choice = WizardScreen.Choose(
-                    "Set up " + name,
-                    "Use an existing installation or install the coding tool.",
-                    []string{"Use an existing path", "Install " + name, "Cancel"},
-                    "Use an existing installation if you have one. Otherwise install the tool, or cancel setup.",
-                    selected: 3
+            Terminal.Message(
+                "Install " + name + " with its official installer. Existing configuration is kept.",
+                error: true
+            )
+            if !OwnerSetup.Confirm(options, "Install " + name + "?") {
+                throw CliFailure(
+                    "confirmation_required",
+                    "Supply --harness-path FILE, or confirm installation with --fix --yes."
                 )
-            }
-
-            if choice == 1 {
-                let path = WizardScreen.Read(
-                    "Existing executable path",
-                    "",
-                    "Executable path",
-                    help: "Enter the full path to the existing executable. Example: /usr/local/bin/codex."
-                )
-
-                if path == "" {
-                    return false
-                }
-
-                options.Values["--harness-path"] = LocalPaths.RuntimePath(path)
-                Terminal.Message("Using --harness-path " + options.Need("harness-path"), error: true)
-
-                return true
-            }
-
-            if choice != 2 {
-                return false
             }
 
             if LocalPaths.Find("curl") == "" && !TryFix(options, List[ToolCheck]{ToolCheck{Name: "curl"}}) {
@@ -376,12 +324,12 @@ internal class MachineSetup {
             )
 
             try {
-                if name == "codex" {
+                if adapter.Installer == "" {
                     options.Values["--harness-path"] = InstallCodex(temporary)
                 } else {
                     let script = Path.Combine(temporary, "install.sh")
 
-                    Download("https://pi.dev/install.sh", script)
+                    Download(adapter.Installer, script)
 
                     let code = PublicOutput.Enabled || Console.IsInputRedirected ?
                     Installation.Execute(
@@ -400,11 +348,11 @@ internal class MachineSetup {
                     if code != 0 {
                         throw CliFailure(
                             "missing_tools",
-                            "The official Pi installer did not complete. Run interactive doctor pi --fix for its Node setup prompts; existing configuration was kept."
+                            "The official Pi installer did not complete. Run the official Pi installer for its Node setup prompts; existing configuration was kept."
                         )
                     }
 
-                    let path = LocalPaths.Harness("pi")
+                    let path = LocalPaths.Harness(name)
 
                     if path == "" {
                         throw CliFailure(

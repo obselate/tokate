@@ -57,9 +57,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let current = State()
         if Check.Text(current["state"]?["reservation"]?["status"]) == "paused" {
             Check.That(current["state"]?["contribution"] == nil, "Paused worker acquired publication authority")
-            Flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true)
+            Flow.Receipt("owner/project#10", false, true)
         } else {
-            Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            Flow.Receipt("owner/project#10", owner: true)
         }
         Flow.NoInference()
     }
@@ -176,7 +176,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let amendments = published["state"]?["amendments"]?.ToJsonString() ?? ""
         for action in[]string{"renew", "pause", "resume", "release"} {
             Lifecycle(action)
-            Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            Flow.Receipt("owner/project#10", owner: true)
             Check.That(
                 (State()["state"]?["contribution"]?.ToJsonString() ?? "") == original,
                 "Lease transition lost publication evidence"
@@ -189,7 +189,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Coordinate(Event(ClaimRequest()))
         Prepare(code: 1)
         Expire()
-        Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+        Flow.Receipt("owner/project#10", owner: true)
         Coordinate(Event(ClaimRequest()))
         Check.That(
             (State()["state"]?["contribution"]?.ToJsonString() ?? "") == original,

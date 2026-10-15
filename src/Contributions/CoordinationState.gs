@@ -33,7 +33,8 @@ internal class CoordinationState {
             GitHub.AutomationCommit(
                 "Tokate coordination #" + issue.ToString(),
                 J.Text(tree, "sha"),
-                []string{expected}
+                []string{expected},
+                GitHub.Bot()
             ),
             expires: expires
         )
@@ -191,7 +192,7 @@ internal class CoordinationState {
             return result
         }
 
-        internal func Approve(repo string, issue int32, approval Object, yes bool) {
+        internal func Approve(repo string, issue int32, approval Object, yes bool, options Args? = nil) {
             let state = Load(repo, issue, true)
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
@@ -207,21 +208,9 @@ internal class CoordinationState {
                     warning += (active ? " ": "") + "Re-approval ends the authority of published PR " + pr + "."
                 }
 
-                if !yes {
-                    if PublicOutput.Enabled || Console.IsInputRedirected {
-                        throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
-                    }
-                    if WizardScreen.Choose(
-                        "Replace approval",
-                        warning,
-                        []string{"Re-approve", "Cancel"},
-                        "Re-approving replaces the issue's approval. The existing donor must return to you before continuing.",
-                        2
-                    ) != 1 {
-                        throw CliFailure("confirmation_required", "Re-approval was not confirmed. Approval unchanged.")
-                    }
-                } else {
-                    Terminal.Message(warning, error: true)
+                Terminal.Message(warning, error: true)
+                if !yes && !OwnerSetup.Confirm(options ?? Args([]string{"approve"}), "Replace approval?") {
+                    throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
                 }
             }
 

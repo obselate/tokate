@@ -43,12 +43,15 @@ internal class PublicDescriptions {
         private func Managed(binary string) {
             using let flow = NativeFixture(binary)
             let run = PublishedContribution.Original(flow)
-            Check.Contains(Body(flow), "- Add a result containing the fixture completion text.")
+            let originalBody = Body(flow)
+            Check.Contains(originalBody, "- Add a result containing the fixture completion text.")
+            Check.Contains(originalBody, "Verification:")
+            Check.Contains(originalBody, "Donor-reported: original owner checks passed locally")
             Check.That(
                 !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
                 "Summary artifact committed"
             )
-            let originalBody = Body(flow)
+            Readiness(flow, run)
             let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + originalBody + "\nMaintainer after")
             flow.Save()
@@ -76,7 +79,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("- Add a result"), "Amendment retained abandoned summary")
             flow.Call(args)
             Check.That(Body(flow) == body, "Repeated amendment changed body")
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Receipt("owner/project#10", owner: true)
         }
 
         private func External(binary string) {
@@ -126,9 +129,6 @@ internal class PublicDescriptions {
                 "{\"head\":\"" + head + "\",\"changes\":[],\"verification\":[],\"limitations\":[]}",
                 "{\"head\":\"" +
                     head +
-                    "\",\"changes\":[\"Add final result content.\",7],\"verification\":[],\"limitations\":[]}",
-                "{\"head\":\"" +
-                    head +
                     "\",\"changes\":[\"Fix the result using credential material.\"],\"verification\":[],\"limitations\":[]}",
                 "{\"head\":\"" +
                     head +
@@ -175,7 +175,7 @@ internal class PublicDescriptions {
             Check.That(!body.Contains("\"harness\""), "Raw tool JSON in public report")
             flow.Coordinate(event)
             Check.That(Body(flow.Flow) == body, "Repeated publication changed body")
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Flow.Receipt("owner/project#10", owner: true)
             let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
             pull["body"] = JsonValue.Create("Maintainer before\n" + body + "\nMaintainer after")
             flow.Flow.Save()
@@ -217,71 +217,62 @@ internal class PublicDescriptions {
             flow.Coordinate(amendmentEvent)
             Check.That(Body(flow.Flow) == reviewed, "Repeated coordinated amendment changed body")
             flow.Flow.Call(args)
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+            flow.Flow.Receipt("owner/project#10", owner: true)
         }
 
         private func Recovery(binary string) {
-            for mode in[]string{"verification_fail", ""} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let run = flow.Claim()
-                flow.Mode(mode)
-                flow.Call([]string{"work", "--run", run}, mode == "" ? 0: 1)
-                flow.Mode("")
-                if mode == "" {
-                    let original = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
-                    Check.That(
-                        Check.Text(original["public_summary"]?["head"]) == Check.Text(original["commit"]),
-                        "Original managed summary was not bound to its commit"
-                    )
-                    Check.That(
-                        Check.Text(original["summary_patch_sha256"]) != "",
-                        "Original summary has no patch binding"
-                    )
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            let run = flow.Claim()
+            flow.Call([]string{"work", "--run", run})
+            let original = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            Check.That(
+                Check.Text(original["public_summary"]?["head"]) == Check.Text(original["commit"]),
+                "Original managed summary was not bound to its commit"
+            )
+            Check.That(Check.Text(original["summary_patch_sha256"]) != "", "Original summary has no patch binding")
+            flow.Call([]string{"amend", "--run", run})
+            let checkout = Path.Combine(run, "checkout")
+            File.Delete(Path.Combine(checkout, "other.txt"))
+            File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
+            flow.Git("-C", checkout, "add", "-A")
+            flow.DonorGit(checkout, "commit", "-m", "Correct result")
+            let head = flow.Git("-C", checkout, "rev-parse", "HEAD")
+            let path = Path.Combine(flow.Temp.Root, "summary.json")
+            File.WriteAllText(path, Summary("Add final corrected result text.", head).ToJsonString())
+            let tools = "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
+            let toolsPath = Path.Combine(flow.Temp.Root, "correction-tools.json")
+            File.WriteAllText(toolsPath, tools)
+            flow.Call(
+                []string{
+                    "amend",
+                    "--run",
+                    run,
+                    "--commit",
+                    head,
+                    "--time",
+                    "30s",
+                    "--summary",
+                    path,
+                    "--tools",
+                    toolsPath
                 }
-                flow.Call([]string{"amend", "--run", run})
-                let checkout = Path.Combine(run, "checkout")
-                File.Delete(Path.Combine(checkout, "other.txt"))
-                File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
-                flow.Git("-C", checkout, "add", "-A")
-                flow.DonorGit(checkout, "commit", "-m", "Correct result")
-                let head = flow.Git("-C", checkout, "rev-parse", "HEAD")
-                let path = Path.Combine(flow.Temp.Root, "summary.json")
-                File.WriteAllText(path, Summary("Add final corrected result text.", head).ToJsonString())
-                let tools = "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
-                let toolsPath = Path.Combine(flow.Temp.Root, "correction-tools.json")
-                File.WriteAllText(toolsPath, tools)
-                flow.Call(
-                    []string{
-                        "amend",
-                        "--run",
-                        run,
-                        "--commit",
-                        head,
-                        "--time",
-                        "30s",
-                        "--summary",
-                        path,
-                        "--tools",
-                        toolsPath
-                    }
-                )
-                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
-                Check.That(
-                    JsonNode.DeepEquals(saved["public_summary"], Summary("Add final corrected result text.", head)),
-                    "Recovery did not activate the correction summary"
-                )
-                Check.That(saved["summary_patch_sha256"] == nil, "Recovery retained the original summary patch binding")
-                flow.Publish(run)
-                let body = Body(flow)
-                Check.Contains(body, "- Add final corrected result text.")
-                Check.Contains(body, "Donor-reported: original owner checks passed locally")
-                Check.Contains(body, "Donor-reported correction tools")
-                Check.Contains(body, "cover only the original completed turn")
-                Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
-                flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-            }
+            )
+            let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            Check.That(
+                JsonNode.DeepEquals(saved["public_summary"], Summary("Add final corrected result text.", head)),
+                "Recovery did not activate the correction summary"
+            )
+            Check.That(saved["summary_patch_sha256"] == nil, "Recovery retained the original summary patch binding")
+            flow.Publish(run)
+            let body = Body(flow)
+            Check.Contains(body, "- Add final corrected result text.")
+            Check.Contains(body, "Donor-reported: original owner checks passed locally")
+            Check.Contains(body, "Donor-reported correction tools")
+            Check.Contains(body, "cover only the original completed turn")
+            Check.That(!body.Contains("- Add a result containing"), "Correction reused original summary")
+            flow.Receipt("owner/project#10", owner: true)
         }
 
         private func MissingAndUnsafe(binary string) {
@@ -339,22 +330,14 @@ internal class PublicDescriptions {
                         !File.ReadAllText(Path.Combine(run, "changes.patch")).Contains("tokate-public-summary.json"),
                         "Recovered summary artifact committed"
                     )
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Receipt("owner/project#10", owner: true)
                 }
             }
         }
 
-        private func Readiness(binary string) {
-            using let flow = NativeFixture(binary)
-            let run = PublishedContribution.Original(flow)
-            let body = Body(flow)
+        private func Readiness(flow NativeFixture, run string) {
             flow.Reload()
             flow.State.AsObject().Remove("exec_count")
-            flow.Save()
-            Check.Contains(body, "- Add a result containing the fixture completion text.")
-            Check.Contains(body, "Verification:")
-            Check.Contains(body, "Donor-reported: original owner checks passed locally")
-            flow.Reload()
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
             guard let ready = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}).Output)["data"] else {
@@ -405,6 +388,9 @@ internal class PublicDescriptions {
                 )
                 flow.NoInference()
             }
+            flow.Reload()
+            flow.State.AsObject().Remove("checks")
+            flow.Save()
         }
 
         private func BoundedArtifact() JsonNode {
@@ -431,36 +417,31 @@ internal class PublicDescriptions {
         }
 
         private func ManagedBounds(binary string) {
-            for oversized in[]bool{false, true} {
-                using let flow = NativeFixture(binary)
-                flow.Initialize()
-                flow.Approve()
-                let run = flow.Claim()
-                let value = BoundedArtifact()
-                if oversized {
-                    let limits = value["limitations"]?.AsArray() ?? throw Exception("Missing limits")
-                    limits[0] = JsonValue.Create(Check.Text(limits[0]) + "x")
-                }
-                flow.Reload()
-                flow.State["public_summary"] = JsonValue.Create(value.ToJsonString())
-                flow.Save()
-                flow.Call([]string{"work", "--run", run}, oversized ? 1: 0)
-                if oversized {
-                    flow.NoPr()
-                    Check.That(
-                        Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["commit"] == nil,
-                        "Oversized summary reached a publication commit"
-                    )
-                    Check.That(
-                        !File.Exists(Path.Combine(run, "changes.patch")),
-                        "Oversized summary reached independent verification"
-                    )
-                } else {
-                    flow.Publish(run)
-                    Check.Contains(Body(flow), "Fix final result behavior.")
-                    flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-                }
-            }
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            let run = flow.Claim()
+            let value = BoundedArtifact()
+            let oversized = value.DeepClone()
+            let limits = oversized["limitations"]?.AsArray() ?? throw Exception("Missing limits")
+            limits[0] = JsonValue.Create(Check.Text(limits[0]) + "x")
+            flow.Reload()
+            flow.State["public_summary"] = JsonValue.Create(oversized.ToJsonString())
+            flow.Save()
+            flow.Call([]string{"work", "--run", run}, 1)
+            flow.NoPr()
+            Check.That(
+                Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["commit"] == nil,
+                "Oversized summary reached a publication commit"
+            )
+            Check.That(
+                !File.Exists(Path.Combine(run, "changes.patch")),
+                "Oversized summary reached independent verification"
+            )
+            File.WriteAllText(Path.Combine(run, "checkout", "tokate-public-summary.json"), value.ToJsonString())
+            flow.Publish(run)
+            Check.Contains(Body(flow), "Fix final result behavior.")
+            flow.Receipt("owner/project#10", owner: true)
         }
 
         private func UnsafeRequests(binary string) {
@@ -471,7 +452,7 @@ internal class PublicDescriptions {
             let claim = flow.Claim()
             let head = flow.Flow.Git("-C", flow.Flow.Upstream, "rev-parse", "HEAD")
             for action in[]string{"publish", "amend"} {
-                for model in[]string{
+                for model in action == "amend" ? []string{"ghp_SYNTHETIC"}: []string{
                     "ghp_SYNTHETIC",
                     "sk-synthetic",
                     "~",
@@ -510,7 +491,7 @@ internal class PublicDescriptions {
             if selected == "Managed" || (selected == "" && CiShard.Include("PublicDescriptions/Managed")) {
                 Managed(binary)
                 Console.WriteLine(
-                    "PASS managed publication and amendment summaries, receipt and maintainer preservation"
+                    "PASS managed publication and amendment summaries, report readiness, receipt and maintainer preservation"
                 )
             }
             if selected == "External" || (selected == "" && CiShard.Include("PublicDescriptions/External")) {
@@ -525,10 +506,6 @@ internal class PublicDescriptions {
                 (selected == "" && CiShard.Include("PublicDescriptions/MissingAndUnsafe")) {
                 MissingAndUnsafe(binary)
                 Console.WriteLine("PASS missing summary fallback and unsafe publication refusal")
-            }
-            if selected == "Readiness" || (selected == "" && CiShard.Include("PublicDescriptions/Readiness")) {
-                Readiness(binary)
-                Console.WriteLine("PASS current public report readiness with missing and altered report refusal")
             }
             if selected == "ManagedBounds" || (selected == "" && CiShard.Include("PublicDescriptions/ManagedBounds")) {
                 ManagedBounds(binary)

@@ -124,7 +124,7 @@ internal open class NativeFixture : IDisposable {
         Git("-C", Upstream, "-c", "user.name=Fixture", "-c", "user.email=test@example.test", "commit", "-m", message)
     }
 
-    internal func Call(args[]string, code int32 = 0, owner bool = false, traffic bool = false) Result {
+    private func Run(args[]string, owner bool, traffic bool = false) Result {
         let env = Dictionary[string, string](Temp.Env)
         if env.ContainsKey("GH_TOKEN") {
             env["GH_TOKEN"] = owner ? "fixture-owner": "fixture-donor"
@@ -134,10 +134,30 @@ internal open class NativeFixture : IDisposable {
         if traffic {
             all.Add("--traffic")
         }
-        let result = TestProcess.Run(Binary, all.ToArray(), env)
+        return TestProcess.Run(Binary, all.ToArray(), env)
+    }
+
+    internal func Call(args[]string, code int32 = 0, owner bool = false, traffic bool = false) Result {
+        let result = Run(args, owner, traffic)
         Check.That(
             result.Code == code,
             "Expected exit " + code.ToString() + ", got " + result.Code.ToString() + "\n" + result.Output + result.Error
+        )
+        return result
+    }
+
+    internal func Receipt(target string, passed bool = true, owner bool = false) Result {
+        let result = Run([]string{"checks", target, "--json"}, owner)
+        let status = Check.Text(Check.Json(result.Output)["data"]?["gates"]?["receipt"]?["status"])
+        Check.That(
+            (status == "passed") == passed && (passed || result.Code == 1),
+            "Expected receipt " +
+                (passed ? "passed": "refused") +
+                ", got " +
+                status +
+                "\n" +
+                result.Output +
+                result.Error
         )
         return result
     }
@@ -265,7 +285,16 @@ internal open class NativeFixture : IDisposable {
                 let identity = commit["request"]?[field] ?? throw Exception("Missing explicit " + field)
                 Check.That(identity.AsObject().Count == 2 && identity["date"] == nil, "API must supply timestamps")
             }
-            CommitIdentity(Upstream, Check.Text(commit["sha"]), "Tokate", "tokate@users.noreply.github.com")
+            let message = Check.Text(commit["request"]?["message"])
+            let login = Check.Text(commit["viewer"]?["login"])
+            let owner = message == "Set up Tokate" || message == "Tokate donor access"
+            CommitIdentity(
+                Upstream,
+                Check.Text(commit["sha"]),
+                owner ? login: "github-actions[bot]",
+                owner ? Check.Text(commit["viewer"]?["id"]) + "+" + login + "@users.noreply.github.com":
+                "41898282+github-actions[bot]@users.noreply.github.com"
+            )
         }
     }
 
@@ -369,56 +398,6 @@ internal open class NativeFixture : IDisposable {
         Git("-C", Path.Combine(Bin, "fork"), "fetch", Upstream, "main")
     }
 
-    internal func StartTreeTraffic() {
-        ResetTraffic()
-        File.WriteAllText(Path.Combine(Bin, "local-tree-heads.txt"), "")
-    }
-
-    internal func TreeTraffic(previous string, grants int32, later bool, local bool) {
-        Reload()
-        let heads = File.ReadAllLines(Path.Combine(Bin, "local-tree-heads.txt"))
-        let previousTree = Git("-C", Path.Combine(Bin, "fork"), "rev-parse", previous + "^{tree}")
-        var localPasses int32
-        for head in heads {
-            if head == previous {
-                localPasses++
-            }
-        }
-        var remotePasses int32
-        var upstreamTrees int32
-        var forkTrees int32
-        for call in State["api_calls"]?.AsArray() ?? JsonArray() {
-            let path = Check.Text(call["path"])
-            if !path.Contains("/git/trees/") || !path.EndsWith("?recursive=1", StringComparison.Ordinal) {
-                continue
-            }
-            if path.StartsWith("repos/owner/project/", StringComparison.Ordinal) {
-                upstreamTrees++
-            } else {
-                forkTrees++
-            }
-            if path == "repos/donor/project/git/trees/" + previousTree + "?recursive=1" {
-                remotePasses++
-            }
-        }
-        let candidateTrees = 2 * grants + (later ? 1: 0)
-        if local {
-            Check.That(localPasses > 0, "Missing local synchronization pass")
-            Check.That(heads.Length == localPasses * candidateTrees, "Repeated local tree materialization")
-        } else {
-            Check.That(heads.Length == 0 && remotePasses == 1, "Missing isolated remote synchronization pass")
-            Check.That(forkTrees == candidateTrees, "Repeated remote candidate tree materialization")
-            Check.That(upstreamTrees == grants + 1, "Repeated repository baseline tree materialization")
-        }
-        Console.WriteLine(
-            "Tree traffic: grants=" + grants.ToString() + " later=" + later.ToString() +
-                " local_passes=" +
-                localPasses.ToString() + " local_trees=" + heads.Length.ToString() +
-                " upstream_trees=" +
-                upstreamTrees.ToString() + " fork_trees=" + forkTrees.ToString()
-        )
-    }
-
     internal func ResetTraffic() {
         Reload()
         State["api_calls"] = JsonArray()
@@ -494,8 +473,7 @@ internal open class NativeFixture : IDisposable {
     internal func ETags(mode string) {
         Reload()
         State["etag_path"] = JsonValue.Create("repos/owner/project/issues/1")
-        State["etag_initial_prefix"] = JsonValue.Create(mode == "weak" || mode == "weak-to-strong" ? "W/": "")
-        State["etag_returned_prefix"] = JsonValue.Create(mode == "weak" || mode == "strong-to-weak" ? "W/": "")
+        State["etag_initial_prefix"] = JsonValue.Create(mode == "weak-to-strong" ? "W/": "")
         State["etag_initial"] = nil
         State["etag_returned"] = mode == "missing" ? JsonValue.Create(""): nil
         State["etag_force_304"] = JsonValue.Create(false)

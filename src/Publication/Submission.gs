@@ -63,7 +63,7 @@ internal class Submission {
                     "-c",
                     "user.name=" + run.Text("donor"),
                     "-c",
-                    "user.email=tokate@users.noreply.github.com",
+                    "user.email=" + RepositoryIdentity.Email(J.Get(run.Element(), "donor_id"), run.Text("donor")),
                     "-c",
                     "commit.gpgsign=false",
                     "commit",
@@ -98,7 +98,9 @@ internal class Submission {
             run.Save(directory)
 
             Terminal.Message(
-                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use submit --run " + directory
+                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Terminal.Command(
+                    []string{"tokate", "submit", "--run", directory}
+                )
             )
         }
 
@@ -111,12 +113,13 @@ internal class Submission {
                 return
             }
 
+            var started = false
+            for name in Harness.Table.Keys {
+                started = started || run.Text(name + "_version") != ""
+            }
             if run.Text("source") != "tokate" ||
                 (run.Text("state") != "failed" && run.Text("state") != "running") ||
-                (
-                run.Text("codex_version") == "" && run.Text("pi_version") == "" && run.Text("claude_version") == "" &&
-                    run.Text("omp_version") == ""
-            ) ||
+                !started ||
                 run.Text("commit") != "" || run.Number("pr") != 0 {
                 throw CliFailure("invalid_state", "Incomplete publication requires stopped, unpublished managed work")
             }

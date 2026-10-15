@@ -7,13 +7,16 @@ import System.Security.Cryptography
 import System.Text.Json
 import System.Text.RegularExpressions
 
+internal class ActionsAllowlist {
+    internal var Selected JsonElement
+    internal let Patterns List[string] = List[string]()
+    internal var Permitted bool
+    internal var Blocked bool
+}
+
 internal class CoordinatorSetup {
     shared {
-        internal func EventPolicy(
-            repo string,
-            workflow string = ".github/workflows/tokate-coordinator.yml",
-            required bool = true
-        ) bool {
+        internal func EventPolicy(repo string, workflow string) bool {
             let policies = GitHub.Api("repos/" + repo + "/actions/policies?has_parents=true&per_page=100")
             let rows = J.Get(policies, "policies")
 
@@ -105,12 +108,6 @@ internal class CoordinatorSetup {
                 }
             }
 
-            if !configured && required {
-                throw Exception(
-                    "Explicit Actions event policy required before admission setup. Allow issues, issue_comment, pull_request_target and workflow_call in Settings > Actions > Policies; the default public-repository block is enforced November 2, 2026"
-                )
-            }
-
             if configured {
                 Terminal.Message(
                     "Actions event policy permits Tokate events. Review actor rules so external PR events can run admission."
@@ -162,162 +159,50 @@ internal class CoordinatorSetup {
             return Regex.IsMatch(workflow, "^" + expression + "$")
         }
 
-        internal func WorkflowMatches(pattern string, workflow string) bool -> Regex.IsMatch(
+        internal func Pin(yaml string) string {
+            let uses = Regex.Matches(
+                yaml,
+                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+            )
+            return uses.Count == 1 ? uses[0].Groups[1].Value: ""
+        }
+
+        internal func Allowlist(repo string, allowed string, workflow string) ActionsAllowlist {
+            let result = ActionsAllowlist{
+                Permitted: allowed == "all" || repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
+            }
+            if allowed != "selected" {
+                return result
+            }
+
+            result.Selected = GitHub.Api("repos/" + repo + "/actions/permissions/selected-actions")
+            let values = J.Get(result.Selected, "patterns_allowed")
+            if values.ValueKind != JsonValueKind.Array {
+                throw Exception("Invalid selected Actions patterns")
+            }
+
+            for pattern in J.Items(values) {
+                if pattern.ValueKind != JsonValueKind.String {
+                    throw Exception("Invalid selected Actions pattern")
+                }
+                let entry = pattern.GetString() ?? ""
+                let deny = entry.StartsWith("!")
+                if WorkflowMatches(deny ? entry.Substring(1): entry, workflow) {
+                    result.Blocked = result.Blocked || deny
+                    result.Permitted = result.Permitted || !deny
+                }
+                result.Patterns.Add(entry)
+            }
+
+            result.Permitted = result.Permitted && !result.Blocked
+            return result
+        }
+
+        private func WorkflowMatches(pattern string, workflow string) bool -> Regex.IsMatch(
             workflow,
             "^" + Regex.Escape(pattern).Replace("\\*", ".*") + "$",
             RegexOptions.IgnoreCase
         )
-
-        private func AllowWorkflow(repo string, pin string) string {
-            let workflow = "obselate/tokate/.github/workflows/tokate-shared.yml@"
-            let value = workflow + pin
-            let manual = "In " +
-                repo +
-                " > Settings > Actions > General > Actions permissions, select Allow select actions and reusable workflows, and add " +
-                value +
-                " to the allowed actions and reusable workflows. Preserve other entries."
-            try {
-                let path = "repos/" + repo + "/actions/permissions"
-                let permissions = GitHub.Api(path)
-                if !J.Bool(permissions, "enabled") {
-                    return "Actions is disabled. Enable Actions. " + manual
-                }
-                let allowed = J.Text(permissions, "allowed_actions")
-                let local = repo.StartsWith("obselate/", StringComparison.OrdinalIgnoreCase)
-                if allowed == "all" || (allowed == "local_only" && local) {
-                    return "Actions permits " + value + "."
-                }
-                if allowed != "selected" {
-                    return manual
-                }
-                let selected = GitHub.Api(path + "/selected-actions")
-                let values = J.Get(selected, "patterns_allowed")
-                if values.ValueKind != JsonValueKind.Array {
-                    throw Exception("Invalid selected Actions patterns")
-                }
-                var permitted = local
-                let patterns = List[string]()
-                for pattern in J.Items(values) {
-                    if pattern.ValueKind != JsonValueKind.String {
-                        throw Exception("Invalid selected Actions pattern")
-                    }
-                    let entry = pattern.GetString() ?? ""
-                    let deny = entry.StartsWith("!")
-                    if WorkflowMatches(deny ? entry.Substring(1): entry, value) {
-                        if deny {
-                            return "Actions blocks " +
-                                value +
-                                ". Remove the blocking exclusion " +
-                                entry +
-                                ". " +
-                                manual
-                        }
-                        permitted = true
-                    }
-                    patterns.Add(entry)
-                }
-                if permitted {
-                    return "Actions permits " + value + "."
-                }
-                patterns.Add(value)
-                GitHub.Api(
-                    path + "/selected-actions",
-                    map[string, Object?]{
-                        "github_owned_allowed": J.Get(selected, "github_owned_allowed"),
-                        "verified_allowed": J.Get(selected, "verified_allowed"),
-                        "patterns_allowed": patterns
-                    },
-                    method: "PUT"
-                )
-                return "Updated the Actions allowlist to permit " + value + "."
-            } catch {
-                return "Could not update the Actions allowlist. " + manual
-            }
-        }
-
-        internal func Run(args Args) {
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let requested = Path.GetFullPath(args.Need("output"))
-            let output = Path.Combine(
-                LocalPaths.CanonicalPath(
-                    Path.GetDirectoryName(requested) ?? throw Exception("Output needs a parent directory")
-                ),
-                Path.GetFileName(requested)
-            )
-
-            if output.Contains("/.github/") || File.Exists(output) || Directory.Exists(output) || FileInfo(
-                output
-            ).LinkTarget != nil {
-                throw Exception(
-                    "Generate to a new file outside protected .github paths; installation is an owner action after release"
-                )
-            }
-
-            let info = RepositoryAccess.RequireOwner(repo)
-            EventPolicy(repo)
-
-            let yaml = Resolve()
-            let pattern = "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
-            let newCommit = Regex.Match(yaml, pattern).Groups[1].Value
-            let current = GitHub.FileAt(
-                repo,
-                ".github/workflows/tokate-coordinator.yml",
-                GitHub.Branch(repo, J.Text(info, "default_branch")),
-                missing: true
-            )
-
-            if current != "" {
-                let members = Regex.Matches(
-                    current,
-                    "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
-                )
-                let pins = Regex.Matches(current, pattern)
-
-                if members.Count != 1 || pins.Count != 1 {
-                    throw Exception("Current coordinator version or shared workflow pin is missing or malformed")
-                }
-
-                let oldVersion = members[0].Groups[1].Value
-                let newVersion = ApplicationInfo.Version()
-                let oldCommit = pins[0].Groups[1].Value
-                let compareUrl = "https://github.com/obselate/tokate/compare/" + oldCommit + "..." + newCommit
-                let releaseUrl = "https://github.com/obselate/tokate/releases/tag/v" + newVersion
-                PublicOutput.ResultData = map[string, Object?]{
-                    "repo": repo,
-                    "output": requested,
-                    "current_version": oldVersion,
-                    "new_version": newVersion,
-                    "current_commit": oldCommit,
-                    "new_commit": newCommit,
-                    "compare_url": compareUrl,
-                    "release_url": releaseUrl
-                }
-                Console.Error.WriteLine(
-                    "Current Tokate version: " + oldVersion + ", shared workflow commit: " + oldCommit
-                )
-                Console.Error.WriteLine("New Tokate version: " + newVersion + ", shared workflow commit: " + newCommit)
-                Console.Error.WriteLine("Compare shared workflows: " + compareUrl)
-                Console.Error.WriteLine("New release: " + releaseUrl)
-            }
-
-            OwnerSetup.Preview(output, File.Exists(output) ? File.ReadAllText(output): "", yaml)
-            Terminal.Message(
-                "Applying this entry also checks Actions and updates its allowlist for the new commit.",
-                "cyan",
-                true
-            )
-
-            if OwnerSetup.Confirm(args) {
-                File.WriteAllText(output, yaml)
-                let allowlist = AllowWorkflow(repo, newCommit)
-                let data = PublicOutput.ResultData as Dictionary[string, Object?] ??
-                    map[string, Object?]{"repo": repo, "output": requested, "new_commit": newCommit}
-                data["actions_allowlist"] = allowlist
-                PublicOutput.ResultData = data
-                Terminal.Message(allowlist)
-                Terminal.Message("Generated a pinned shared workflow entry. Owner: review and install it separately.")
-            }
-        }
 
         internal func Resolve() string {
             let version = ApplicationInfo.Version()

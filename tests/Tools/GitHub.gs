@@ -9,6 +9,7 @@ import System.IO
 import System.Security.Cryptography
 import System.Text
 import System.Text.Json.Nodes
+import System.Text.RegularExpressions
 
 internal partial class Fixture {
     private func CommentPage(rows JsonArray) JsonArray {
@@ -34,8 +35,7 @@ internal partial class Fixture {
         let custom = Check.Text(State["etag_path"]) == "" || Check.Text(State["etag_path"]) == ApiPath
         let initial = !custom ? etag: State["etag_initial"] == nil ? Check.Text(State["etag_initial_prefix"]) + etag:
         Check.Text(State["etag_initial"])
-        let returned = !custom ? etag: State["etag_returned"] == nil ? Check.Text(State["etag_returned_prefix"]) + etag:
-        Check.Text(State["etag_returned"])
+        let returned = !custom ? etag: State["etag_returned"] == nil ? etag: Check.Text(State["etag_returned"])
         let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic records")
         var reads int32
         for call in calls {
@@ -196,6 +196,22 @@ internal partial class Fixture {
                     )
                 }
             }
+        }
+        if path == "graphql" && Check.Text(body["query"]).Contains("pullRequest(number:") {
+            let data = JsonObject()
+            for match in Regex.Matches(
+                Check.Text(body["query"]),
+                "(p[0-9]+):repository[^{]*\\{pullRequest\\(number:([0-9]+)\\)"
+            ) {
+                for pull in State["pulls"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(pull["number"]) == match.Groups[2].Value {
+                        let state = Check.Text(pull["merged"]) == "true" ? "MERGED": Check.Text(pull["state"])
+                            .ToUpperInvariant()
+                        data[match.Groups[1].Value] = Check.Map("pullRequest", Check.Map("state", state))
+                    }
+                }
+            }
+            return Answer(Check.Map("data", data))
         }
         if path == "graphql" {
             Check.Contains(Check.Text(body["query"]), "pullRequests(states:OPEN")
@@ -439,7 +455,9 @@ internal partial class Fixture {
                         "push",
                         State["fork_push"] ?? JsonValue.Create(
                             String.Equals(actor, parts[1], StringComparison.OrdinalIgnoreCase)
-                        ) as JsonNode
+                        ) as JsonNode,
+                        "admin",
+                        String.Equals(actor, parts[1], StringComparison.OrdinalIgnoreCase)
                     ),
                     "parent",
                     Check.Map(
@@ -1069,7 +1087,16 @@ internal partial class Fixture {
                 State["api_commits"] = JsonArray()
             }
             let commits = State["api_commits"]?.AsArray() ?? throw Exception("Missing API commits")
-            commits.Add(Check.Map("sha", sha, "request", body))
+            commits.Add(
+                Check.Map(
+                    "sha",
+                    sha,
+                    "request",
+                    body,
+                    "viewer",
+                    Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
+                )
+            )
             return Answer(Check.Map("sha", sha))
         }
         if tail == "git/refs" {

@@ -2,8 +2,8 @@
 
 Set up a repository for current main. Approve tasks, then review donated work before merge.
 
-Check an existing repository with `tokate doctor owner OWNER/REPO` or add `--json` for structured results.
-It reads the coordinator pin, latest release, Actions settings, policy, access record,
+Check an existing repository with `tokate doctor repo OWNER/REPO` or add `--json` for structured results.
+It shows the policy and reads the coordinator pin, Actions settings, access record,
 approvals and last Tokate workflow run. Each problem names a fix command or setting.
 It changes nothing. Exit 0 means the read succeeded, even when problems are found.
 
@@ -21,72 +21,59 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    gh auth login
    ```
 
-3. Check the owner tools and authentication.
+3. Preview the setup. No checkout is necessary.
 
    ```sh
-   tokate doctor owner --auth
+   tokate init OWNER/REPO --verification '[["bash","scripts/verify.sh"]]' --required-checks '["verify"]'
    ```
 
-4. Check that Actions permits the `obselate/tokate` reusable workflow.
+   Use the project's real test command and CI check names. Verification takes JSON argv arrays.
+   Defaults: the default branch as target, `trusted` access, and codex, claude and pi with any model.
+   Use `--eligibility open`, `--base-branch BRANCH`, `--max-time TIME`,
+   `--reservation-time TIME` and `--allowed-tools JSON` to change choices.
+   Existing policy values are kept unless a flag changes them.
+
+   Init checks GitHub authentication and write access. Before a change, it lists:
+
+   | Item | Change |
+   | --- | --- |
+   | Actions workflow permissions | Allow GitHub Actions to create and approve pull requests. Default permissions stay. |
+   | Actions event policy | Allow `issues`, `issue_comment`, `pull_request_target` and `workflow_call` for the coordinator workflow. |
+   | Actions allowlist | Add the pinned `obselate/tokate` shared workflow. Other entries stay. |
+   | Branch protection | Require the policy checks on the target branch. |
+   | `tokate/access` | Create the empty donor access record. |
+   | `tokate-setup` | Create or advance a branch with `.github/tokate.json` and `.github/workflows/tokate-coordinator.yml`. |
+   | Setup PR | Open a PR from `tokate-setup` into the default branch, or reuse the open one. |
+
+   Each setting shows its current and proposed value. Steps that init cannot apply
+   are printed as `Manual:` and listed in `data.manual`. Init asks once in a terminal.
+   With `--json`, `--non-interactive` or no terminal and no `--yes`, it changes nothing
+   and exits 0 with `applied=false`.
+
+4. Apply the setup. Init opens the setup PR.
 
    ```sh
-   gh api repos/OWNER/REPO/actions/permissions
+   tokate init OWNER/REPO --yes
    ```
 
-5. Open your repository checkout.
+5. Review and merge the setup PR before task approval.
 
    ```sh
-   cd /path/to/repo
-   ```
-
-6. Start setup.
-
-   ```sh
-   tokate init OWNER/REPO
-   ```
-
-7. On **Target branch**, press Enter to keep the default branch.
-8. On **GitHub Actions settings**, review the listed changes. Select **Apply** to make them or **Cancel** to stop setup.
-9. On **Who can contribute?**, select one access mode from the table below.
-10. On **Allowed models**, select a tool if asked, then **Any supported model** or **Choose allowed models**.
-11. In the model checklist, select the exact models and reasoning levels for that tool. Use Space to select, Enter to accept, or F2 to add a model.
-12. On **Verification commands**, enter one test command at a time. Press Enter on a blank prompt to finish.
-13. Use repository-relative paths in each command. Tokate runs each command with `/bin/sh -c` from the repository root.
-14. On **Required GitHub checks**, select a check or enter exact CI check names separated by commas. Use real names from CI that already ran on the target branch.
-15. On **Review project setup**, review the rules. Use **Change checks, times or PR settings**, **Review allowed models**, or **Change tools** to change them.
-16. Select **Create policy files**.
-17. On **GitHub branch protection**, select **Apply** to require the listed checks or **Skip** to leave protection unchanged.
-18. Commit the generated files.
-
-   ```sh
-   git add .github
-   git commit -m "Set up Tokate"
-   ```
-
-19. Push them to the default branch before task approval.
-
-   ```sh
-   git push
-   ```
-
-20. Initialize donor access.
-
-   ```sh
-   tokate access init
+   gh pr merge tokate-setup
    ```
 
 | Requirement | Check |
 | --- | --- |
 | Public GitHub repository | Repository visibility is public. |
-| Git, GitHub CLI and repository admin rights | `tokate doctor owner --auth` |
-| Actions permits the `obselate/tokate` reusable workflow | `gh api repos/OWNER/REPO/actions/permissions` |
+| GitHub CLI and repository admin rights | `tokate init` checks them. |
+| Actions is enabled | `gh api repos/OWNER/REPO/actions/permissions` |
 | CI already ran on `main` | `gh run list --repo OWNER/REPO --branch main` |
 | Test command works on Linux from a clean clone | Run your test command from the repository root. |
 | No tracked build output | Keep generated build files out of Git. |
 
-Init checks the pinned shared workflow against Actions settings. A problem or an
-unavailable settings read produces a warning with a repair step. It does not block
-local file generation. Fix the setting before donors submit requests.
+Init stops when Actions is disabled or an event policy blocks Tokate events. When
+`local_only` or a blocking exclusion prevents the pinned workflow, init prints the
+manual setting. Fix it before donors submit requests.
 
 | Who can contribute? | Access |
 | --- | --- |
@@ -94,7 +81,6 @@ local file generation. Fix the setting before donors submit requests.
 | **Anyone eligible** | Authenticated GitHub users who are not denied. |
 
 With no trusted donors, **Trusted people** requires an issue grant for each donor.
-Version 2 `manual` eligibility is read as `trusted`. Version 3 accepts only `trusted` and `open`.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
@@ -108,23 +94,27 @@ that harness/provider pair. Version 3 has no top-level `models` or `model_policy
 {"harness": "claude", "provider": "anthropic", "models": {"claude-sonnet-5-5": ["high"]}}
 ```
 
-Use **Review allowed models** to edit one tool. For noninteractive setup, pass the
-complete tool array with `--allowed-tools JSON`. The `--model-policy whitelist --models JSON` shortcut copies the same map to each selected tool.
+Pass the complete tool array with `--allowed-tools JSON` to edit per-tool models.
 
-Version 2 remains readable. Its whitelist applies to every tool. Unrestricted
-version 2 allows any model for each tool. Existing receipts and saved runs keep
-these rules.
+To allow a harness that Tokate does not ship, declare a `command` tool. Tokate runs
+the argv without a shell or a sandbox. It sends the prompt on standard input.
 
-Update the coordinator pin before committing a version 3 policy. An older
-coordinator rejects version 3. Follow the update steps below, then run `tokate init`
-to migrate and re-approve open tasks after the policy is merged.
+```json
+{"harness": "command", "provider": "openrouter", "output": "session",
+ "command": ["mytool", "--model", "{model}", "--effort", "{effort}", "--prompt", "{prompt_file}", "--cwd", "{checkout}"],
+ "models": {"vendor/model": ["low"]}}
+```
 
-## Approval compatibility
+| Field | Rule |
+| --- | --- |
+| `command` | Text words. The first word is the executable. It cannot start with `-` or contain `=`. One word must contain `{model}`. Other words can contain only `{prompt_file}`, `{model}`, `{effort}` and `{checkout}` placeholders. |
+| `output` | `codex`, `claude` or `session` JSONL. Tokate reads it with the parser of that format. |
+| `models` | Required. Session output must report this provider and model. |
 
-Main binds approvals to canonical task fields after version 2 conversion.
-Old whole-text approvals become stale once. Re-approve open tasks.
-Version 2 policy remains readable. Old receipts and saved runs must still match
-current approval authority. Re-approval does not restore an old approval identity.
+Tokate reads only version 3. Init migrates a version 2 policy to version 3 and
+updates the coordinator pin in the same setup PR. The version 2 model whitelist
+becomes the `models` map of each tool. `manual` eligibility becomes `trusted`.
+Re-approve open tasks after the setup PR is merged. Old whole-text approvals become stale once.
 
 ## Approve an issue and donor
 
@@ -146,29 +136,22 @@ current approval authority. Re-approval does not restore an old approval identit
    tokate access grant DONOR 42
    ```
 
-4. Create and approve a new issue.
-
-   ```sh
-   tokate approve
-   ```
-
-5. On **Write an issue**, enter a short title.
-6. On **Describe the issue**, enter scope, acceptance criteria and failure cases. Press Enter on a blank line to finish.
-7. On **Review issue**, select **Create and approve** or **Cancel**.
-8. On **Target branch**, select the branch that receives the work.
-9. To approve an existing issue, use its number instead.
+4. Create an issue with `gh issue create` or the GUI. Include scope and acceptance criteria.
+5. Approve that existing issue.
 
    ```sh
    tokate approve 42
    ```
 
-10. If **Replace approval** appears, select **Re-approve** only to replace the current approval. Select **Cancel** to keep it.
+   Use `--base-branch BRANCH` to change its target. The policy target or default branch
+   is used when this flag is absent. Replacing an active reservation or published PR
+   asks once in a terminal, or requires `--yes` in non-terminal use.
 
 You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
 that the label sender has write, maintain or admin permission, then records approval.
 It keeps the previous non-revoked target branch, or uses the default branch.
 An unauthorized label is removed. An already valid approval is kept.
-Use `tokate approve` to choose another target or explicitly replace a reservation.
+Use `tokate approve N --base-branch BRANCH` to change a target. Add `--yes` to replace active authority.
 
 Access requests grant no access. Explicit denial blocks every access mode.
 
@@ -180,7 +163,7 @@ Current eligibility still controls claims, work and publication. `tokate init`
 lists affected approved issues and the commands to run after the change is merged.
 `tokate status 42` reports stale task fields and the owner approval command.
 
-Tokate keeps its records in `tokate/` branches of your repository. Keep them.
+Tokate keeps its records in `tokate/` branches of your repository. Init names them. Keep them.
 
 | Branch | Holds |
 | --- | --- |
@@ -200,26 +183,20 @@ Do not delete these branches, open PRs from them or merge them. Exclude them fro
    ```
 
 2. Approve first-time fork workflows in the PR's linked GitHub Actions runs after diff review.
-3. Verify the receipt against owner approval.
-
-   ```sh
-   tokate verify 10
-   ```
-
-4. Wait for required checks on the current PR head.
+3. Check the receipt against owner approval and wait for required checks on the current PR head.
 
    ```sh
    tokate checks 10 --watch
    ```
 
-5. Review scope, acceptance criteria, limitations and conflicts.
-6. Mark the accepted draft ready.
+4. Review scope, acceptance criteria, limitations and conflicts.
+5. Mark the accepted draft ready.
 
    ```sh
    gh pr ready 10
    ```
 
-7. Merge with your repository's required merge method.
+6. Merge with your repository's required merge method.
 
    ```sh
    gh pr merge 10
@@ -235,27 +212,19 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
    tokate update
    ```
 
-2. Generate a matching pinned workflow entry outside `.github` and update its Actions allowlist entry.
+2. Preview the new pin, then apply it. Init opens a setup PR.
 
    ```sh
-   tokate coordinator-setup OWNER/REPO --output tokate-coordinator.yml --yes
+   tokate init OWNER/REPO
+   tokate init OWNER/REPO --yes
    ```
 
-   The command prints the old and new versions and pins, a comparison URL, a release URL and the proposed file. Review them before applying. With `--yes`, it checks Actions permissions, adds the new exact commit and keeps existing entries. Remove the old exact entry after the new workflow runs. Other entries and selected-action options stay unchanged. If the token cannot change the setting, it prints the exact setting and value to change. Complete that manual change before installing the workflow. Noninteractive preview without `--yes` changes no files or settings. Interactive setup asks before applying.
+   Init shows the current and proposed workflow and a comparison URL for the shared
+   workflow commits. It adds the new exact commit to a selected-actions allowlist and
+   keeps other entries. Remove the old exact entry after the new workflow runs.
+   A custom workflow with the current pin stays unchanged.
 
-   In Settings > Actions > General > Actions permissions, the pattern `obselate/tokate/.github/workflows/tokate-shared.yml@*` survives pin updates. The workflow itself stays pinned to an exact commit. An exact allowlist commit needs an update with each pin. Blocking exclusions, disabled Actions and organization restrictions need owner review. Setup does not remove exclusions or enable Actions.
-
-   Setup also needs an Actions event policy for the coordinator workflow in Settings > Actions > Policies. It must allow `issues`, `issue_comment`, `pull_request_target` and `workflow_call`. Label approval needs `issues`, which setups before 0.5.0 did not require. Add it before you run setup.
-
-3. Review the generated file against the existing coordinator workflow.
-4. Replace the existing workflow entry with the new pin. Keep required custom settings and use only one coordinator.
-5. Commit and push the workflow.
-
-   ```sh
-   git add .github
-   git commit -m "Update Tokate coordinator"
-   git push
-   ```
+3. Review and merge the setup PR.
 
 The local update does not change the repository pin. See [donors](donors.md), [arguments](arguments.md) and [recovery](recovery.md).
 
@@ -263,7 +232,7 @@ The local update does not change the repository pin. See [donors](donors.md), [a
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `GitHub settings were not changed` | `tokate init OWNER/REPO` |
+| `Pass --yes to apply the previewed setup. Nothing changed.` | Review the preview, then use the same `tokate init` flags with `--yes`. |
 | `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by a task-field or template reason and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks 10 --watch` |

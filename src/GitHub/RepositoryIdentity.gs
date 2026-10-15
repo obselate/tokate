@@ -72,5 +72,8 @@ internal class RepositoryIdentity {
             "id"
         )
             .ToString() == J.Get(run.Element(), "donor_id").ToString()
+
+        internal func Email(id JsonElement, login string) string ->
+        PositiveId(id).ToString() + "+" + Login(login) + "@users.noreply.github.com"
     }
 }

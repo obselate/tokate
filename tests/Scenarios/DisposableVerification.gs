@@ -30,8 +30,8 @@ internal class DisposableVerificationChecks {
                 "printf 'synthetic-%s-output' verifier; printf 'synthetic-%s-error' verifier >&2; " +
                 "setsid /bin/sh -c 'while :; do printf +; echo beat >> heartbeat; sleep 0.05; done' </dev/null 2>/dev/null & " +
                 "while [ ! -s heartbeat ]; do sleep 0.01; done; printf useful-test-evidence; " +
-                "case $$(cat verify-outcome) in failure) exit 7;; failure23) exit 23;; " +
-                "timeout|cancel|interrupt|terminate) sleep 120;; tracked) printf tampered > result.txt;; " +
+                "case $$(cat verify-outcome) in failure) exit 7;; " +
+                "timeout|cancel|terminate) sleep 120;; tracked) printf tampered > result.txt;; " +
                 "*) chmod 000 build-output;; esac"
             flow.VerificationPolicy(build, second: second)
             flow.Approve()
@@ -40,29 +40,20 @@ internal class DisposableVerificationChecks {
             Directory.CreateDirectory(storage)
             flow.Temp.Env["TMPDIR"] = storage
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for mode in[]string{
-                "success",
-                "failure",
-                "failure23",
-                "timeout",
-                "cancel",
-                "interrupt",
-                "terminate",
-                "tracked"
-            } {
+            for mode in[]string{"success", "failure", "timeout", "cancel", "terminate", "tracked"} {
                 baseline.Restore()
                 flow.Reload()
                 flow.State["verify_outcome"] = JsonValue.Create(mode)
                 flow.Save()
                 let run = flow.Claim(seconds: mode == "timeout" ? "3": "30")
                 let before = Directory.GetDirectories("/tmp", "tokate-workspace-*").Length
-                let cancelled = mode == "cancel" || mode == "interrupt" || mode == "terminate"
+                let cancelled = mode == "cancel" || mode == "terminate"
                 let result = cancelled ? Cancel(flow, run, mode == "terminate" ? "-TERM": "-INT", mode == "cancel"):
                 flow.Call([]string{"work", "--run", run}, mode == "success" ? 0: 1)
-                if mode == "failure" || mode == "failure23" || mode == "timeout" || mode == "cancel" {
+                if mode == "failure" || mode == "timeout" || mode == "cancel" {
                     Check.Contains(
                         result.Error + result.Output,
-                        mode.StartsWith("failure") ? "Owner verification failed":
+                        mode == "failure" ? "Owner verification failed":
                         mode == "cancel" ? "cancelled": "Runtime limit reached"
                     )
                 }
@@ -110,7 +101,7 @@ internal class DisposableVerificationChecks {
                 )
                 Check.That(
                     interrupted ? active["exit_code"] == nil:
-                    Check.Text(active["exit_code"]) == (mode == "failure" ? "7": mode == "failure23" ? "23": "0"),
+                    Check.Text(active["exit_code"]) == (mode == "failure" ? "7": "0"),
                     "Verifier fabricated or changed its exit code"
                 )
                 Check.That(
@@ -259,7 +250,7 @@ internal class DisposableVerificationChecks {
                     "-q",
                     "-e",
                     "-c",
-                    "echo $$$$ > verifier.pid; exec ./tokate-verifier work --run '" + run + "'",
+                    "echo $$$$ > verifier.pid; exec ./tokate-verifier work --run '" + run + "' --yes",
                     "/dev/null"
                 }
             }

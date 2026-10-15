@@ -1,8 +1,11 @@
 package Tokate
 
 import Gsharp.Concurrency
+import Spectre.Console
+import Spectre.Console.Rendering
 import System
 import System.Collections.Generic
+import System.Globalization
 import System.Runtime.InteropServices
 import System.Text
 
@@ -51,7 +54,7 @@ internal class DonationView {
                 }
 
                 while remaining != "" {
-                    var part = WizardScreen.Clip(remaining, Math.Max(1, width - 1))
+                    var part = Clip(remaining, Math.Max(1, width - 1))
 
                     if part.Length < remaining.Length && !Char.IsWhiteSpace(remaining[part.Length]) {
                         let boundary = part.LastIndexOf(' ')
@@ -81,28 +84,22 @@ internal class DonationView {
 
         let start = Math.Max(0, Content.Count - page - Scroll)
 
-        rows.Add(WizardScreen.Color("gold") + WizardScreen.Clip("tokate / Donation", width - 1))
+        rows.Add(Color("gold") + Clip("tokate / Donation", width - 1))
 
         for i in 0 ... page {
-            rows.Add(WizardScreen.Color("ink") + (start + i < Content.Count ? Content[start + i]: ""))
+            rows.Add(Color("ink") + (start + i < Content.Count ? Content[start + i]: ""))
         }
 
-        rows.Add(
-            WizardScreen.Color("muted") + WizardScreen.Clip("PgUp/PgDn scroll   End follow   Ctrl+C stop", width - 1)
-        )
-        rows.Add(WizardScreen.Color("sage") + WizardScreen.Clip(Footer, width - 1))
+        rows.Add(Color("muted") + Clip("PgUp/PgDn scroll   End follow   Ctrl+C stop", width - 1))
+        rows.Add(Color("sage") + Clip(Footer, width - 1))
 
-        let output = StringBuilder(full ? WizardScreen.Color("paper") + "\x1b[H\x1b[2J": "")
+        let output = StringBuilder(full ? Color("paper") + "\x1b[H\x1b[2J": "")
 
         for i in 0 ... Math.Min(height, rows.Count) {
             let row = rows[i]
 
             if full || i >= Previous.Length || row != Previous[i] {
-                output.Append(
-                    "\x1b[" + (i + 1).ToString() + ";1H" + WizardScreen.Color("paper") + WizardScreen.Color("ink") +
-                        row +
-                        "\x1b[K"
-                )
+                output.Append("\x1b[" + (i + 1).ToString() + ";1H" + Color("paper") + Color("ink") + row + "\x1b[K")
             }
         }
 
@@ -163,15 +160,62 @@ internal class DonationView {
     shared {
         private var Current DonationView?
 
+        private func Available() bool -> !PublicOutput.Enabled &&
+            !Console.IsInputRedirected &&
+            !Console.IsOutputRedirected &&
+            !Console.IsErrorRedirected &&
+            !Terminal.Plain &&
+            Environment.GetEnvironmentVariable("TERM") != "dumb"
+
+        private func Color(name string) string {
+            if Terminal.Plain || Environment.GetEnvironmentVariable("NO_COLOR") != nil ||
+                Environment.GetEnvironmentVariable("TERM") == "dumb" {
+                return ""
+            }
+
+            let rich = Terminal.Output(true).Profile.Supports(ColorSystem.TrueColor)
+            let code = switch name {
+                case "gold": rich ? "38;2;226;187;128": "93"
+                case "sage": rich ? "38;2;176;191;166": "92"
+                case "muted": rich ? "38;2;193;198;203": "37"
+                case "paper": rich ? "48;2;35;50;75": "44"
+                default: rich ? "38;2;238;229;207": "97"
+            }
+
+            return "\x1b[" + code + "m"
+        }
+
+        private func Clip(value string, width int32) string {
+            let text = StringBuilder()
+            let measurement = RenderOptions(Terminal.Output(true).Profile.Capabilities, Size(int32.MaxValue, 1))
+            let elements = StringInfo.GetTextElementEnumerator(value)
+            var used int32
+
+            while elements.MoveNext() {
+                let item = elements.GetTextElement()
+                let rendered IRenderable = Text(item)
+                let cells = rendered.Measure(measurement, int32.MaxValue).Max
+
+                if used + cells > width {
+                    break
+                }
+
+                text.Append(item)
+                used += cells
+            }
+
+            return text.ToString()
+        }
+
         internal func Active() bool -> Current != nil
 
         internal func Start() bool {
-            if Donate.Active || !WizardScreen.Available() {
+            if Donate.Active || !Available() {
                 return false
             }
 
             if Current == nil {
-                WizardScreen.Open()
+                Console.Error.Write("\x1b[?1049h")
 
                 let view = DonationView()
 
@@ -219,7 +263,7 @@ internal class DonationView {
                 }
 
                 Current = nil
-                WizardScreen.Close()
+                Console.Error.Write("\x1b[0m\x1b[?1049l")
             }
         }
     }

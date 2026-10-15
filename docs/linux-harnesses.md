@@ -14,7 +14,7 @@ Install a coding tool before you donate work. Tokate itself does not need npm, B
 5. Use `--fix` to install missing prerequisites or select an existing installation.
 
    ```sh
-   tokate doctor codex --fix
+   tokate doctor codex --fix --yes
    ```
 
 6. Use an absolute path for a custom executable.
@@ -50,7 +50,7 @@ Tokate skips automatic discovery inside the checkout, including symlinks into it
 | Claude login | `tokate doctor claude --auth` |
 | Custom Claude configuration | `tokate doctor managed claude --claude-profile /absolute/profile` |
 | Custom Pi layout | `tokate doctor pi --pi-root /absolute/node_modules --node /absolute/bin/node` |
-| Default harness | `tokate doctor --set-default` |
+| Default harness | `tokate doctor codex --set-default` |
 
 Pi's installation metadata must identify the selected launcher. A wrapper needs its matching SDK, not an unrelated global npm package.
 
@@ -58,8 +58,8 @@ Pi's installation metadata must identify the selected launcher. A wrapper needs 
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix` |
-| `The selected default harness was not found. Install it first, or supply --harness-path.` | `tokate doctor codex --fix` |
+| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix --yes` |
+| `The selected default harness was not found. Install it first, or supply --harness-path.` | `tokate doctor codex --fix --yes` |
 | `Cannot locate the Pi SDK from this launcher. Select its installed node_modules directory with --pi-root.` | `tokate doctor pi --pi-root /absolute/node_modules --node /absolute/bin/node` |
 | `OMP lists no models. Sign in with omp login or configure a provider.` | `omp login` |
 

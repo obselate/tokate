@@ -354,7 +354,7 @@ internal class CommandTrafficChecks {
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 31, 0, 0)
             flow.Expire()
-            flow.Flow.Call([]string{"verify", "owner/project#10"}, 1)
+            flow.Flow.Receipt("owner/project#10", false)
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, 1, traffic: true), 4, 0, 0)
             flow.Flow.Reload()

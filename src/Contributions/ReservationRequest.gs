@@ -80,7 +80,7 @@ internal class ReservationRequest {
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
             PublicOutput.RunDirectory = directory
-            let action = args.Need("operation")
+            let action = args.Command
 
             if !LeaseLifecycle.Transition(action) || run.Number("version") != 2 || run.Text("id") == "" {
                 throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")

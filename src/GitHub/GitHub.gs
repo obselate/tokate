@@ -7,8 +7,22 @@ import System.Text.Json
 
 internal class GitHub {
     shared {
-        internal func AutomationCommit(message string, tree string, parents IEnumerable[string]) Object {
-            let identity = map[string, Object?]{"name": "Tokate", "email": "tokate@users.noreply.github.com"}
+        internal func Bot() Object -> map[string, Object?]{
+            "name": "github-actions[bot]",
+            "email": "41898282+github-actions[bot]@users.noreply.github.com"
+        }
+
+        internal func Author(viewer JsonElement) Object -> map[string, Object?]{
+            "name": RepositoryIdentity.Login(J.Text(viewer, "login")),
+            "email": RepositoryIdentity.Email(J.Get(viewer, "id"), J.Text(viewer, "login"))
+        }
+
+        internal func AutomationCommit(
+            message string,
+            tree string,
+            parents IEnumerable[string],
+            identity Object
+        ) Object {
             return map[string, Object?]{
                 "message": message,
                 "tree": tree,

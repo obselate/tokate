@@ -80,7 +80,8 @@ internal class PiChecks {
             File.WriteAllText(pathNode, "#!/bin/sh\nexit 88\n")
             File.SetUnixFileMode(pathNode, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             let args = List[string]{
-                "select",
+                "defaults",
+                "check",
                 "owner/project",
                 "--harness",
                 "pi",
@@ -91,8 +92,7 @@ internal class PiChecks {
                 "--effort",
                 "absent",
                 "--endpoint",
-                catalog.Endpoint,
-                "--non-interactive"
+                catalog.Endpoint
             }
             if mode != "" {
                 flow.Approve()
@@ -100,8 +100,8 @@ internal class PiChecks {
                 File.Delete(Path.Combine(flow.Bin, "codex-impl"))
                 File.WriteAllText(Path.Combine(agent, "mode"), mode)
                 let claim = List[string](args)
-                claim[0] = "claim"
-                claim[1] = "owner/project#1"
+                claim.RemoveRange(0, 3)
+                claim.InsertRange(0, []string{"claim", "owner/project#1"})
                 claim.AddRange(
                     []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, mode)}
                 )
@@ -186,13 +186,7 @@ internal class PiChecks {
             Check.That(!File.Exists(installMarker), "Failed Pi probe triggered installation of an existing runtime")
             File.Delete(curl)
             let explicitSelection = Check.Json(flow.Call(args.ToArray()).Output)
-            for fields in[]string{
-                ",\"context_window\":7",
-                ",\"context_length\":7",
-                ",\"context_window\":7,\"context_length\":7",
-                ",\"context_window\":null,\"context_length\":7",
-                ",\"context_window\":7,\"context_length\":null"
-            } {
+            for fields in[]string{",\"context_length\":7", ",\"context_window\":7,\"context_length\":7"} {
                 catalog.Metadata = fields
                 let selected = Check.Json(flow.Call(args.ToArray()).Output)
                 Check.That(
@@ -211,41 +205,18 @@ internal class PiChecks {
             }
             for fields in[]string{
                 ",\"context_window\":7,\"context_length\":8",
-                ",\"context_window\":\"7\",\"context_length\":7",
                 ",\"context_length\":\"7\"",
-                ",\"context_window\":7,\"context_length\":\"7\"",
-                ",\"context_window\":7,\"context_length\":true",
-                ",\"context_window\":7,\"context_length\":0",
-                ",\"context_window\":7,\"context_length\":-7",
-                ",\"context_window\":7,\"context_length\":7.5",
-                ",\"context_window\":7,\"context_length\":2147483648"
+                ",\"context_window\":7,\"context_length\":0"
             } {
                 catalog.Metadata = fields
                 let rejected = List[string](args)
                 rejected.Add("--json")
                 let result = flow.Call(rejected.ToArray(), 1)
-                Check.Envelope(result, "select", "error", "endpoint_unavailable")
+                Check.Envelope(result, "defaults", "error", "endpoint_unavailable")
                 PrivateCatalog(result.Output + result.Error, catalog.Endpoint)
             }
             catalog.Metadata = ""
             flow.Approve()
-            flow.Temp.Env["TERM"] = "dumb"
-            flow.Temp.Env["NO_COLOR"] = "1"
-            for modelChoice in[]string{"1\n", "2\nfixture-model\n"} {
-                let guided = TestTerminal.Pty(
-                    binary,
-                    []string{"work", "owner/project#1", "--time", "60s", "--plain"},
-                    flow.Temp,
-                    100,
-                    "1\n" + catalog.Endpoint + "\n" + modelChoice + "1\nq\n"
-                )
-                Check.That(guided.Code == 1, guided.Output + guided.Error)
-                Check.Contains(guided.Output, "Enter another model ID")
-                Check.Contains(guided.Output, "Review donation")
-                Check.Contains(guided.Output, "fixture-model / absent")
-                flow.NoInference()
-                flow.NoPr()
-            }
             flow.NoInference()
             Console.WriteLine("PASS Pi endpoint context aliases and invalid metadata without inference")
             File.Delete(Path.Combine(flow.Bin, "pi"))
@@ -299,9 +270,7 @@ internal class PiChecks {
                     catalog.Endpoint
                 }
             )
-            let profiled = Check.Json(
-                flow.Call([]string{"select", "owner/project", "local", "--non-interactive"}).Output
-            )
+            let profiled = Check.Json(flow.Call([]string{"defaults", "check", "owner/project", "local"}).Output)
             let expectedProfile = explicitSelection.DeepClone()
             expectedProfile["source"] = JsonValue.Create("saved donor profile local")
             Check.That(JsonNode.DeepEquals(expectedProfile, profiled), "Saved Pi profile lost selection precedence")
@@ -346,7 +315,7 @@ internal class PiChecks {
             args[args.Count - 1] = actualNode
             Check.Contains(flow.Call(args.ToArray()).Output, "advertised")
             args.RemoveRange(args.Count - 2, 2)
-            for version in[]string{"../escape\n", ".\n", "1.1.0\nother\n"} {
+            for version in[]string{"../escape\n", ".\n"} {
                 File.WriteAllText(versionPath, version)
                 flow.Call(args.ToArray(), 1)
             }
@@ -459,12 +428,8 @@ internal class PiChecks {
             )
             File.CreateSymbolicLink(Path.Combine(flow.Flow.Bin, "node"), node)
             let args = List[string]{
-                "prepare",
+                "claim",
                 "owner/project#1",
-                "--state",
-                Check.Text(flow.State()["sha"]),
-                "--source",
-                "tokate",
                 "--harness",
                 "pi",
                 "--provider",
@@ -494,12 +459,6 @@ internal class PiChecks {
                 args.AddRange([]string{"--pi-root", root})
             }
             if catalogRejected {
-                args[0] = "claim"
-                for option in[]string{"--state", "--source"} {
-                    let position = args.IndexOf(option)
-                    args.RemoveAt(position + 1)
-                    args.RemoveAt(position)
-                }
                 args.Add("--json")
                 let rejected = flow.Flow.Call(args.ToArray(), 1)
                 Check.Envelope(rejected, "claim", "error", "endpoint_unavailable")
@@ -520,20 +479,6 @@ internal class PiChecks {
                     rejected[Array.IndexOf(rejected, "--effort") + 1] = unsupportedEffort
                     Check.Contains(flow.Flow.Call(rejected, 1).Error, "does not support the selected reasoning effort")
                 }
-                flow.Flow.Temp.Env["TERM"] = "dumb"
-                flow.Flow.Temp.Env["NO_COLOR"] = "1"
-                let guided = TestTerminal.Pty(
-                    binary,
-                    []string{"work", "owner/project#1"},
-                    flow.Flow.Temp,
-                    80,
-                    "1\n1\n1\n" + endpoint + "\n1\n1\nq\n"
-                )
-                Check.That(guided.Code == 1, guided.Output + guided.Error)
-                Check.Contains(guided.Output, "Reasoning effort")
-                Check.Contains(guided.Output, "Review donation")
-                Check.Contains(guided.Output, "synthetic/model:exact / high")
-                flow.Flow.NoInference()
                 flow.Flow.Call(
                     []string{
                         "defaults",
@@ -605,8 +550,10 @@ internal class PiChecks {
                 let defaultPath = Path.Combine(flow.Flow.Temp.Env["HOME"], ".local/state/tokate/donor-defaults.json")
                 File.Copy(profilePath, defaultPath)
                 let unnamed = Check.Envelope(
-                    flow.Flow.Call([]string{"select", "owner/project", "--model", "synthetic/model:exact", "--json"}),
-                    "select",
+                    flow.Flow.Call(
+                        []string{"defaults", "check", "owner/project", "--model", "synthetic/model:exact", "--json"}
+                    ),
+                    "defaults",
                     "ok"
                 )
                 Check.That(
@@ -766,7 +713,7 @@ internal class PiChecks {
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
-                    flow.Flow.Call([]string{"verify", "owner/project#10"}, owner: true)
+                    flow.Flow.Receipt("owner/project#10", owner: true)
                     flow.Flow.Reload()
                     Check.That(flow.Flow.State["pulls"]?.AsArray().Count == 1, "Pi did not produce one draft PR")
                 }

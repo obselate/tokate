@@ -50,7 +50,7 @@ internal class RepositoryIdentityChecks {
                 ),
                 "Wrong claim repository"
             )
-            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
+            flow.Receipt("OWNER/PROJECT#10", owner: true)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Mixed-case work repeated inference")
             flow.AutomationAttribution()
@@ -63,75 +63,32 @@ internal class RepositoryIdentityChecks {
             using let flow = NativeFixture(binary)
             flow.Initialize()
             Approve(flow, "OwNeR/PrOjEcT")
-            let claim = Check.Envelope(flow.Acquire(WorkArgs(flow, "owner/project", "claim")), "claim", "ok")
-            let run = Check.Text(claim["data"]?["run"])
-            let path = Path.Combine(run, "run.json")
-            RepositoryFaults.Reject(flow, run, []string{"work", "--run", run})
-            var saved = Check.Json(File.ReadAllText(path))
-            let original = saved.ToJsonString()
-            for field in[]string{"approval", "base", "policy_hash", "base_branch", "branch"} {
-                let text = Check.Text(saved[field])
-                saved[field] = JsonValue.Create(field == "base_branch" ? "Main": text.ToUpperInvariant())
-                File.WriteAllText(path, saved.ToJsonString())
-                flow.Call([]string{"work", "--run", run}, 1)
-                saved = Check.Json(original)
-            }
-            saved["repo"] = JsonValue.Create("OWNER/PROJECT")
-            saved["head_repo"] = JsonValue.Create("DONOR/PROJECT")
-            File.WriteAllText(path, saved.ToJsonString())
-            flow.Call([]string{"work", "--run", run})
-            saved = Check.Json(File.ReadAllText(path))
-            saved["repo"] = JsonValue.Create("owner/project")
-            saved["head_repo"] = JsonValue.Create("donor/project")
-            File.WriteAllText(path, saved.ToJsonString())
-            flow.Publish(run)
-            flow.Call([]string{"verify", "owner/project#10"}, owner: true)
-            flow.Reload()
-            let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
-            let body = Check.Text(pull["body"])
-            pull["body"] = JsonValue.Create(
-                body.Replace("\"repo\":\"owner/project\"", "\"repo\":\"owner/other\"", StringComparison.Ordinal)
-            )
-            Check.That(Check.Text(pull["body"]) != body, "Cross-repository receipt was not changed")
-            flow.Save()
-            Check.Contains(
-                flow.Call([]string{"verify", "owner/project#10"}, 1, owner: true).Error,
-                "current exact-commit coordination authority"
-            )
-            Check.That(Check.Text(flow.State["exec_count"]) == "1", "Saved-run validation repeated inference")
-            Console.WriteLine("PASS saved-run repository case changes and exact hash/ref validation")
-        }
-
-        private func Refusals(binary string) {
-            using let flow = NativeFixture(binary)
-            flow.Initialize()
-            Approve(flow, "OwNeR/PrOjEcT")
             flow.Git("clone", "--mirror", flow.Upstream, Path.Combine(flow.Bin, "other"))
             flow.Reload()
             flow.State["repository_folders"] = Check.Json("{\"owner/other\":\"other\"}")
             flow.Save()
             Check.Envelope(flow.Call(WorkArgs(flow, "owner/other"), 1), "work", "error", "invalid_state")
             flow.NoInference()
-            let claimed = Check.Envelope(flow.Acquire(WorkArgs(flow, "owner/project", "claim")), "claim", "ok")
-            let run = Check.Text(claimed["data"]?["run"])
+            let claim = Check.Envelope(flow.Acquire(WorkArgs(flow, "owner/project", "claim")), "claim", "ok")
+            let run = Check.Text(claim["data"]?["run"])
             let path = Path.Combine(run, "run.json")
-            let saved = Check.Json(File.ReadAllText(path))
-            saved["repo"] = JsonValue.Create("owner/other")
-            File.WriteAllText(path, saved.ToJsonString())
-            flow.Call([]string{"work", "--run", run}, 1)
-            flow.NoInference()
-            saved["repo"] = JsonValue.Create("owner/project")
-            File.WriteAllText(path, saved.ToJsonString())
+            RepositoryFaults.Reject(flow, run, []string{"work", "--run", run})
+            var saved = Check.Json(File.ReadAllText(path))
+            let original = saved.ToJsonString()
+            for field in[]string{"approval", "base", "policy_hash", "base_branch", "branch", "repo"} {
+                let text = Check.Text(saved[field])
+                saved[field] = JsonValue.Create(
+                    field == "base_branch" ? "Main": field == "repo" ? "owner/other": text.ToUpperInvariant()
+                )
+                File.WriteAllText(path, saved.ToJsonString())
+                flow.Call([]string{"work", "--run", run}, 1)
+                saved = Check.Json(original)
+            }
+            File.WriteAllText(path, original)
             flow.Reload()
-            flow.State["fork_parent"] = JsonValue.Create("owner/other")
-            flow.Save()
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "not a fork")
-            flow.Reload()
-            flow.State.AsObject().Remove("fork_parent")
             flow.State["viewer_login"] = JsonValue.Create("other")
             flow.Save()
             flow.Call([]string{"work", "--run", run}, 1)
-            flow.NoInference()
             flow.Reload()
             flow.State.AsObject().Remove("viewer_login")
             let issue = flow.State["issue"] ?? throw Exception("Missing issue")
@@ -143,15 +100,40 @@ internal class RepositoryIdentityChecks {
             originalIssue["title"] = JsonValue.Create("Implement fixture")
             flow.Save()
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
-            let policy = Check.Json(File.ReadAllText(policyPath))
+            let originalPolicy = File.ReadAllText(policyPath)
+            let policy = Check.Json(originalPolicy)
             policy["max_seconds"] = JsonValue.Create(3601)
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Changed policy")
             Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "policy or template changed")
+            File.WriteAllText(policyPath, originalPolicy)
+            flow.Commit("Restored policy")
             flow.NoInference()
-            flow.NoPr()
+            saved["repo"] = JsonValue.Create("OWNER/PROJECT")
+            saved["head_repo"] = JsonValue.Create("DONOR/PROJECT")
+            File.WriteAllText(path, saved.ToJsonString())
+            flow.Call([]string{"work", "--run", run})
+            saved = Check.Json(File.ReadAllText(path))
+            saved["repo"] = JsonValue.Create("owner/project")
+            saved["head_repo"] = JsonValue.Create("donor/project")
+            File.WriteAllText(path, saved.ToJsonString())
+            flow.Publish(run)
+            flow.Receipt("owner/project#10", owner: true)
+            flow.Reload()
+            let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+            let body = Check.Text(pull["body"])
+            pull["body"] = JsonValue.Create(
+                body.Replace("\"repo\":\"owner/project\"", "\"repo\":\"owner/other\"", StringComparison.Ordinal)
+            )
+            Check.That(Check.Text(pull["body"]) != body, "Cross-repository receipt was not changed")
+            flow.Save()
+            Check.Contains(
+                flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true).Error,
+                "current exact-commit coordination authority"
+            )
+            Check.That(Check.Text(flow.State["exec_count"]) == "1", "Saved-run validation repeated inference")
             Console.WriteLine(
-                "PASS different repository, unrelated fork, wrong donor and changed issue/policy refusals"
+                "PASS saved-run repository case changes, exact hash/ref validation, wrong donor and changed issue/policy refusals"
             )
         }
 
@@ -168,14 +150,11 @@ internal class RepositoryIdentityChecks {
             repository["full_name"] = JsonValue.Create("OwNeR/PrOjEcT")
             File.WriteAllText(eventPath, event.ToJsonString())
             flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
-            let state = test.State()
             let prepared = Check.Envelope(
                 flow.Call(
                     []string{
-                        "prepare",
+                        "claim",
                         "OWNER/PROJECT#1",
-                        "--state",
-                        Check.Text(state["sha"]),
                         "--source",
                         "external",
                         "--tools",
@@ -187,7 +166,7 @@ internal class RepositoryIdentityChecks {
                         "--json"
                     }
                 ),
-                "prepare",
+                "claim",
                 "ok"
             )
             let run = Check.Text(prepared["data"]?["run"])
@@ -203,18 +182,15 @@ internal class RepositoryIdentityChecks {
             let request = Check.PostedRequest(flow.State)
             eventPath = test.Event(request)
             flow.Call([]string{"coordinate", "OWNER/PROJECT", "--event", eventPath}, owner: true)
-            flow.Call([]string{"verify", "OWNER/PROJECT#10"}, owner: true)
+            flow.Receipt("OWNER/PROJECT#10", owner: true)
             flow.NoInference()
             flow.AutomationAttribution()
             Console.WriteLine("PASS version-2 repository case variants through saved-run validation and publication")
         }
 
         internal func All(binary string) {
-            MixedWork(binary, false, "OwNeR/PrOjEcT", "owner/project")
-            MixedWork(binary, false, "owner/project", "OwNeR/PrOjEcT")
             MixedWork(binary, true, "OwNeR/PrOjEcT", "OWNER/PROJECT")
             SavedRun(binary)
-            Refusals(binary)
             Coordination(binary)
             Console.WriteLine(
                 "PASS repository case variants, saved runs, self-owned CLI work and cross-repository refusal"

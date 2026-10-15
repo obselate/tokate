@@ -11,7 +11,6 @@ internal class PublicOutput {
         internal var Enabled bool
         internal var Command string = "help"
         internal var RunDirectory string = ""
-        internal var RunName string = ""
         internal var FailureCode string = "command_failed"
         internal var ResultData Object? = nil
         internal var Truncated bool
@@ -21,7 +20,6 @@ internal class PublicOutput {
             Submission.ResetWorkflow()
             Command = command
             RunDirectory = ""
-            RunName = ""
             FailureCode = "command_failed"
             ResultData = nil
             Truncated = false
@@ -235,13 +233,7 @@ internal class PublicOutput {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
                     "action": "If the Tokate workflow failed: " + ApiTransport.MutationRecovery,
-                    "command": []string{
-                        "tokate",
-                        run.Text("source") == "tokate" ? "work": "prepare",
-                        "--run",
-                        directory,
-                        "--json"
-                    }
+                    "command": []string{"tokate", "work", "--run", directory, "--json"}
                 }
             }
 
@@ -355,8 +347,8 @@ internal class PublicOutput {
                     (code == "stale_approval" || code == "inference_failed") {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
-                        "action": "Inspect saved work, then use tokate prepare for a fresh attempt under current authority with an explicit new time budget.",
-                        "command": []string{"tokate", "help", "prepare", "--json"}
+                        "action": "Inspect saved work, then use tokate work for a fresh attempt under current authority with an explicit new time budget.",
+                        "command": []string{"tokate", "help", "work", "--json"}
                     }
                     if AttemptContinuation.TimeLimited(run) {
                         result["error"] = map[string, Object?]{
@@ -561,20 +553,6 @@ internal class PublicOutput {
 
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
 
-                    if code == "invalid_state" &&
-                        options != nil &&
-                        options
-                        .Attempts
-                        .Count > 1 &&
-                        ResultData is Dictionary[string, Object?]fields {
-                        fields["attempts"] = SavedRuns.Summary(RunReference.Recent(options.Attempts), 0)["runs"]
-                        for row in RunReference.Recent(options.Attempts) {
-                            if row.Next != "" && row.Location != RunDirectory {
-                                Actions.Add([]string{"tokate", row.Next, "--run", row.Location, "--json"})
-                            }
-                        }
-                    }
-
                     if Command == "reconcile" {
                         let intent = J.Get(run.Element(), "reconciliation")
 
@@ -589,7 +567,7 @@ internal class PublicOutput {
 
                     if run.Text("state") == "preparing" && run.Number("preparation_version") == 1 &&
                         code != "stale_approval" {
-                        Actions.Add([]string{"tokate", "prepare", "--run", RunDirectory, "--json"})
+                        Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
 
                     if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {
@@ -623,13 +601,15 @@ internal class PublicOutput {
                 }
 
                 Actions.Add(known ? []string{"tokate", "help", Command, "--json"}: []string{"tokate", "help", "--json"})
-            } else if code == "missing_tools" {
-                if Command != "doctor" {
-                    let diagnostic = Startup.NeedsCatalog(Command, options) ? "managed": (
-                        Command == "external" || Command == "amend" || Command == "submit" ? "external": "owner"
-                    )
-                    Actions.Add([]string{"tokate", "doctor", diagnostic, "--json"})
-                }
+            } else if code == "missing_tools" && Command != "doctor" {
+                Actions.Add(
+                    []string{
+                        "tokate",
+                        "doctor",
+                        Startup.NeedsCatalog(Command, options) ? "managed": "external",
+                        "--json"
+                    }
+                )
             }
 
             if options != nil && code == "" && Command == "checks" && RunDirectory == "" {
@@ -652,7 +632,7 @@ internal class PublicOutput {
                 "exit_code": exitCode,
                 "data": ResultData ?? map[string, Object?]{},
                 "error": failure,
-                "next_actions": Actions,
+                "next_actions": RunReference.Short(Actions, true),
                 "truncated": Truncated
             }
 

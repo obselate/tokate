@@ -17,13 +17,13 @@ Use the `linux-musl-x64` release on Alpine 3.24 x86_64. Tokate does not need an 
 3. Check the base tools and install missing packages.
 
    ```sh
-   tokate doctor external --fix
+   tokate doctor external --fix --yes
    ```
 
 4. Check your harness. For Codex:
 
    ```sh
-   tokate doctor codex --fix
+   tokate doctor codex --fix --yes
    ```
 
 5. For Pi, install Node and npm first.
@@ -35,7 +35,7 @@ Use the `linux-musl-x64` release on Alpine 3.24 x86_64. Tokate does not need an 
 6. Install and check Pi.
 
    ```sh
-   tokate doctor pi --fix
+   tokate doctor pi --fix --yes
    ```
 
 7. Follow the [donor guide](donors.md) to configure the model and start work.
@@ -60,6 +60,6 @@ Use the `linux-musl-x64` release on Alpine 3.24 x86_64. Tokate does not need an 
 | `Install tar first.` | `doas apk add tar` |
 | `Install sha256sum first.` | `doas apk add coreutils` |
 | `sudo or doas was not found. Install the listed packages with an administrator, then rerun doctor.` | As root: `apk add git github-cli curl tar coreutils findutils util-linux-misc setpriv` |
-| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix` |
+| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix --yes` |
 
 Use [recovery](recovery.md) for saved-run failures.

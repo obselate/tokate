@@ -547,7 +547,8 @@ internal class Synchronization {
                 GitHub.AutomationCommit(
                     "Authorize Tokate synchronization for PR #" + pr.ToString(),
                     J.Text(tree, "sha"),
-                    []string{upstream}
+                    []string{upstream},
+                    GitHub.Bot()
                 )
             )
 
@@ -583,6 +584,10 @@ internal class Synchronization {
             let grant = RepositoryIdentity.CommitSha(args.Need("grant"))
             let value = Load(repo, grant)
 
+            if J.Number(value, "pr") != args.Number("pr") {
+                throw CliFailure("invalid_state", "Synchronization grant belongs to another PR")
+            }
+
             let tree = GitHub.Api(
                 "repos/" + repo + "/git/trees",
                 map[string, Object?]{
@@ -599,7 +604,12 @@ internal class Synchronization {
 
             let commit = GitHub.Api(
                 "repos/" + repo + "/git/commits",
-                GitHub.AutomationCommit("Revoke Tokate synchronization " + grant, J.Text(tree, "sha"), []string{grant})
+                GitHub.AutomationCommit(
+                    "Revoke Tokate synchronization " + grant,
+                    J.Text(tree, "sha"),
+                    []string{grant},
+                    GitHub.Bot()
+                )
             )
 
             let revoked = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))

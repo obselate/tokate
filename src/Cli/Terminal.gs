@@ -7,6 +7,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.Globalization
 import System.IO
+import System.Linq
 import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
@@ -167,7 +168,7 @@ internal class Terminal {
             }
         }
 
-        private func Line(value string, color string, error bool) {
+        internal func Line(value string, color string, error bool) {
             if Rich(error) {
                 let console = Output(error)
 
@@ -191,11 +192,6 @@ internal class Terminal {
         internal func Message(text string, color string = "green", error bool = false) {
             if DonationView.Active() {
                 DonationView.Append(text)
-
-                return
-            }
-
-            if WizardScreen.Pending(text) {
                 return
             }
 
@@ -232,68 +228,75 @@ internal class Terminal {
 
         internal func Step(text string) -> Message(text, "cyan", Foreground())
 
-        internal func Runs(args Args, rows List[SavedRun], error bool = false) {
-            var width int32 = 3
+        internal func Runs(rows List[SavedRun], saved SavedRuns) {
+            let table = List[[]string]{[]string{"WORK", "STATE", "AGE", "NEXT"}}
 
             for row in rows {
-                width = Math.Max(width, RunReference.Label(args, row).Length)
+                let name = RunReference.Label(row, saved, row.Next == "checks")
+                table.Add([]string{name, row.State, row.Age(), row.Next == "" ? "-": "tokate " + row.Next + " " + name})
             }
 
-            Line("  " + "RUN".PadRight(width) + "  " + "STATE".PadRight(20) + "  AGE   MODEL", "default", error)
+            Table(table)
+        }
+
+        internal func Table(rows List[[]string], error bool = false, fit int32 = -1) {
+            let widths = List[int32]()
 
             for row in rows {
-                Line(
-                    Clean(
-                        "  " + RunReference.Label(args, row).PadRight(width) + "  " + row.Text("state").PadRight(20) +
-                            "  " +
-                            row
-                            .Age().PadRight(4) + "  " + row.Text("model")
-                    ),
-                    "default",
-                    error
-                )
+                for i in 0 ... row.Length {
+                    row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
 
-                if row.Next != "" {
-                    Line(Clean("    Next: tokate " + row.Next + " " + RunReference.Label(args, row)), "default", error)
+                    if widths.Count == i {
+                        widths.Add(0)
+                    }
+
+                    widths[i] = Math.Max(widths[i], row[i].GetCellWidth())
                 }
             }
-        }
 
-        private func Hint(action[]string) string {
-            let index = Array.IndexOf(action, "--run")
-
-            if PublicOutput.RunName == "" || index < 0 || action[index + 1] != PublicOutput.RunDirectory || !Cli.Find(
-                action[1]
-            )
-                .Runs {
-                return Command(action)
+            if fit >= 0 && !(error ? Console.IsErrorRedirected: Console.IsOutputRedirected) {
+                let room = Width(error) - widths.Sum() + widths[fit] - 2 * widths.Count + 2
+                widths[fit] = Math.Min(widths[fit], Math.Max(8, room))
             }
 
-            let words = List[string](action)
+            for row in rows {
+                if fit >= 0 && row[fit].GetCellWidth() > widths[fit] {
+                    var text = row[fit]
 
-            words.RemoveRange(index, 2)
-            words.Remove("--json")
-            words.Insert(2, PublicOutput.RunName)
+                    while text.Length > 0 &&
+                        (text.GetCellWidth() > widths[fit] - 3 || Char.IsHighSurrogate(text[text.Length - 1])) {
+                        text = text.Substring(0, text.Length - 1)
+                    }
 
-            return Command(words.ToArray())
+                    row[fit] = text + "..."
+                }
+
+                for i in 0 ... row.Length - 1 {
+                    row[i] += String(' ', widths[i] - row[i].GetCellWidth())
+                }
+
+                Line(String.Join("  ", row), "default", error)
+            }
         }
 
+        internal func Hint(action[]string) string -> Command(Array.FindAll(action, word -> word != "--json"))
+
         internal func Command(command JsonElement, flatten bool = true) string {
-            let words = StringBuilder()
+            let words = List[string]()
 
             if command.ValueKind == JsonValueKind.Array {
                 for item in command.EnumerateArray() {
-                    AppendWord(words, item.ToString())
+                    words.Add(item.ToString())
                 }
             }
 
-            return CommandText(words, flatten)
+            return Command(words.ToArray(), flatten)
         }
 
         internal func Command(command[]string, flatten bool = true) string {
             let words = StringBuilder()
 
-            for word in command {
+            for word in RunReference.Short(List[[]string]{command}, false)[0] {
                 AppendWord(words, word)
             }
 
@@ -378,6 +381,8 @@ internal class Terminal {
                 return
             }
 
+            RunReference.Locate()
+
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
                 var stage = "Run"
@@ -405,7 +410,7 @@ internal class Terminal {
 
                 Message("Saved artifacts: " + summary, "default", true)
 
-                for action in PublicOutput.Actions {
+                for action in RunReference.Short(PublicOutput.Actions, false) {
                     Message("Next: " + Hint(action), "default", true)
                 }
             } catch (error Exception) { }
@@ -436,217 +441,6 @@ internal class Terminal {
         internal func Help(command string = "") {
             Heading(command == "" ? "Commands": "Command: " + command)
             Message(Cli.Help(command, Width()), "default")
-        }
-
-        internal func InteractiveHeading() {
-            if Rich() && Width() >= 40 {
-                Message("--< tokate", "green")
-            } else {
-                Message("tokate", "default")
-            }
-        }
-
-        private func StatusAction(next JsonElement) {
-            Message("Next action: " + J.Text(next, "action"), "default")
-            Row("Role", J.Text(next, "role"))
-
-            let command = Command(J.Get(next, "command"))
-
-            if command != "" {
-                Row("Command", command)
-            }
-        }
-
-        internal func SavedRun(value JsonElement) {
-            if Console.IsOutputRedirected && !Plain && !Ascii {
-                Json(value, "Donor run")
-
-                return
-            }
-
-            Heading("Donor run")
-
-            var details = ""
-            for action in PublicOutput.Actions {
-                if action.Length > 1 {
-                    if action[1] == "status" {
-                        details = Command(action)
-                    } else {
-                        Row("Next", Hint(Array.FindAll(action, word -> word != "--json")))
-                    }
-                }
-            }
-
-            let state = J.Text(value, "state")
-
-            if state != "" {
-                Row("State", state, state == "failed" ? "red": "yellow")
-            }
-
-            let repo = J.Text(value, "repo")
-            let issue = J.Get(value, "issue").ToString()
-
-            if repo != "" {
-                Row("Task", repo + (issue == "" ? "": " #" + issue))
-            }
-
-            let checks = J.Items(J.Get(value, "verification"))
-
-            if checks.Count == 0 {
-                Row("Verification", "no result recorded")
-            } else {
-                let check = checks[checks.Count - 1]
-                let checkState = J.Text(check, "state")
-
-                Row("Verification", J.Number(value, "verification_count").ToString() + " recorded")
-
-                if checkState != "" {
-                    Row("Recorded check", checkState)
-                }
-
-                let exitCode = J.Get(check, "exit_code").ToString()
-
-                if exitCode != "" {
-                    Row("Exit code", exitCode)
-                }
-
-                let command = Command(J.Get(check, "command"))
-
-                if command != "" && exitCode != "0" {
-                    Row("Command", command)
-                }
-            }
-
-            for key in[]string{"run", "donor", "model", "effort", "pr_url"} {
-                let text = J.Text(value, key)
-
-                if text != "" {
-                    Row(key == "pr_url" ? "PR": Label(key), text)
-                }
-            }
-
-            if J.Text(value, "model") == "" {
-                for tool in J.Items(J.Get(value, "tools")) {
-                    let model = J.Text(tool, "model")
-                    let effort = J.Text(tool, "effort")
-
-                    if model != "" {
-                        Row("Reported model", model + (effort == "" ? "": " / " + effort))
-                    }
-                }
-            }
-
-            let failure = J.Text(J.Get(value, "error"), "message")
-
-            if failure != "" {
-                Row("Error", failure, "red")
-            }
-
-            let next = J.Get(value, "next")
-            let amendment = J.Get(value, "amendment")
-
-            if J.Text(amendment, "state") == "requested" {
-                Row("Amendment", "requested")
-                Row("Previous commit", J.Text(amendment, "previous"))
-                Row("Candidate commit", J.Text(amendment, "commit"))
-            }
-
-            if next.ValueKind == System.Text.Json.JsonValueKind.Object {
-                StatusAction(next)
-            }
-
-            let correction = J.Get(value, "correction")
-            let correctionState = J.Text(correction, "state")
-
-            if correctionState != "" {
-                Row("Correction", correctionState, correctionState == "failed" ? "red": "yellow")
-            }
-
-            let correctionFailure = J.Text(J.Get(correction, "error"), "message")
-
-            if correctionFailure != "" {
-                Row("Correction error", correctionFailure, "red")
-            }
-
-            if J.Bool(value, "truncated") {
-                Message("Bounded snapshot: some data was omitted.", "yellow")
-            }
-
-            if details != "" {
-                Row("Details", details)
-            }
-        }
-
-        internal func ContributionStatus(value JsonElement) {
-            if PublicOutput.Enabled {
-                return
-            }
-
-            if Console.IsOutputRedirected && !Plain && !Ascii {
-                Console.WriteLine(J.Write(value))
-
-                return
-            }
-
-            let remote = J.Text(value, "remote_status")
-
-            if remote != "observed" {
-                Row("Status", remote == "unavailable" ? "unavailable; partial facts only": remote, "yellow")
-            }
-
-            if J.Bool(value, "truncated") {
-                Message("Bounded snapshot: some data was omitted.", "yellow")
-            }
-
-            let work = J.Items(J.Get(value, "work"))
-            let pending = J.Count(J.Get(value, "pending_requests"))
-
-            if remote != "observed" || work.Count == 0 || pending > 0 {
-                StatusAction(J.Get(value, "next"))
-            }
-
-            Row("Repository", J.Text(value, "repo"))
-
-            if pending > 0 {
-                Row("Pending access requests", pending.ToString(), "yellow")
-            }
-
-            if work.Count == 0 {
-                Row("Issue", "none observed")
-
-                if remote == "observed" {
-                    Row(
-                        "State",
-                        pending > 0 ?
-                        "access review needed": "no approved work observed"
-                    )
-                }
-            }
-
-            for task in work {
-                if remote == "observed" {
-                    StatusAction(J.Get(task, "next"))
-                }
-
-                let title = Clean(J.Text(task, "title")).Replace('\n', ' ').Trim()
-                let prefix = "Issue: #" + J.Number(task, "issue").ToString() + " "
-                let limit = Math.Max(4, Math.Min(80, Width() - prefix.Length))
-                var length = Math.Min(limit - 3, title.Length)
-
-                if length > 0 && Char.IsHighSurrogate(title[length - 1]) {
-                    length--
-                }
-
-                Message(prefix + (title.Length > limit ? title.Substring(0, length) + "...": title), "default")
-                Message("State: " + J.Text(task, "state").Replace('_', ' '), "yellow")
-                Row("Issue URL", J.Text(task, "url"))
-
-                for draft in J.Items(J.Get(task, "drafts")) {
-                    Row("PR", J.Text(draft, "url"))
-                    Row("Contribution", J.Text(draft, "lifecycle").Replace('_', ' '))
-                    Row("Receipt", J.Text(draft, "receipt"))
-                }
-            }
         }
 
         internal func Row(label string, value string, color string = "default", error bool = false) {

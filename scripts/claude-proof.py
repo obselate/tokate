@@ -15,6 +15,10 @@ import time
 MODEL = ''
 EFFORT = ''
 POLICY = None
+FIXTURE_POLICY = {'version': 3, 'approval_scope': 'task', 'eligibility': 'trusted', 'max_seconds': 3600,
+                  'verification': [['true']], 'required_checks': ['verify'],
+                  'allowed_tools': [{'harness': 'claude', 'provider': 'anthropic',
+                                     'models': {'claude-opus-5-5': ['medium', 'high', 'xhigh']}}]}
 
 
 def require(condition, message):
@@ -39,7 +43,7 @@ def run(command, seconds=30):
 
 
 def gate(root, extra=(), success=True, profile=None, default_profile=False):
-    command = ['/tokate-control/tokate', 'claude-capabilities', '--claude', '/tokate-control/claude',
+    command = ['/tokate-control/tokate', 'doctor', 'claude', '--harness-path', '/tokate-control/claude',
                '--model', MODEL, '--effort', EFFORT,
                '--policy', str(POLICY), '--json', *extra]
     if not default_profile:
@@ -48,7 +52,7 @@ def gate(root, extra=(), success=True, profile=None, default_profile=False):
     require((result.returncode == 0) == success, 'Native capability gate gave an unexpected result: ' + result.stderr[:1000])
     envelope = json.loads(result.stdout)
     require('synthetic-organization' not in result.stdout, 'Native organization fields were retained')
-    return envelope.get('data') if success else envelope
+    return envelope['data']['claude'] if success else envelope
 
 
 class Fixture(http.server.ThreadingHTTPServer):
@@ -256,14 +260,19 @@ def main():
     parser = argparse.ArgumentParser(description='Native Claude ordinary synthetic protocol checks without external service access or inference')
     parser.add_argument('--claude', required=True, type=Path)
     parser.add_argument('--binary', type=Path, default=Path('artifacts/linux-x64/tokate'))
-    parser.add_argument('--policy', type=Path, default=Path('.github/tokate.json'))
+    parser.add_argument('--policy', type=Path)
     parser.add_argument('--inside', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.policy is None:
+        fixture = tempfile.NamedTemporaryFile('w', prefix='tokate-claude-policy-', suffix='.json')
+        json.dump(FIXTURE_POLICY, fixture)
+        fixture.flush()
+        args.policy = Path(fixture.name)
     POLICY = args.policy.resolve(strict=True)
     policy = json.loads(POLICY.read_text())
-    selections = [(model, effort) for model, efforts in policy.get('models', {}).items()
-                  if model.startswith('claude-') for effort in efforts]
-    require(selections, 'Native proof requires an explicit Claude model/effort in the repository policy')
+    selections = [(model, effort) for tool in policy.get('allowed_tools', []) if tool.get('harness') == 'claude'
+                  for model, efforts in tool.get('models', {}).items() for effort in efforts]
+    require(selections, 'Native proof requires an explicit Claude model/effort in the policy')
     MODEL, EFFORT = selections[0]
     if args.inside:
         inside()

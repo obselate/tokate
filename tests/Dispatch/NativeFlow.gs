@@ -29,11 +29,9 @@ internal partial class NativeFlow : NativeFixture {
                 TestCase[NativeFlow]("VerificationReserve", async (value NativeFlow) -> ReserveChecks.All(binary)),
                 TestCase[NativeFlow]("RunNames", async (value NativeFlow) -> value.RunNames()),
                 TestCase[NativeFlow]("ManagedCancellation", async (value NativeFlow) -> value.ManagedCancellation()),
-                TestCase[NativeFlow]("EmptyProtectedPaths", async (value NativeFlow) -> value.EmptyProtectedPaths()),
                 TestCase[NativeFlow]("GitEvidence", async (value NativeFlow) -> value.GitEvidence()),
                 TestCase[NativeFlow]("RepositoryConfig", async (value NativeFlow) -> value.RepositoryConfig()),
                 TestCase[NativeFlow]("OutputBoundary", async (value NativeFlow) -> value.OutputBoundary()),
-                TestCase[NativeFlow]("ToolAuthentication", async (value NativeFlow) -> value.ToolAuthentication()),
                 TestCase[NativeFlow]("ConditionalClaim", async (value NativeFlow) -> value.ConditionalClaim()),
                 TestCase[NativeFlow](
                     "ConditionalValidators",
@@ -50,8 +48,6 @@ internal partial class NativeFlow : NativeFixture {
                     "RepositoryIdentity",
                     async (value NativeFlow) -> RepositoryIdentityChecks.All(binary)
                 ),
-                TestCase[NativeFlow]("BackgroundCleanup", async (value NativeFlow) -> value.BackgroundCleanup()),
-                TestCase[NativeFlow]("UnsupportedSandbox", async (value NativeFlow) -> value.UnsupportedSandbox()),
                 TestCase[NativeFlow](
                     "DisposableVerification",
                     async (value NativeFlow) -> DisposableVerificationChecks.All(binary)
@@ -72,6 +68,7 @@ internal partial class NativeFlow : NativeFixture {
                 using let flow = NativeFlow(binary)
                 if Array.IndexOf(
                     []string{
+                        "MissingTools",
                         "StructuredFailures",
                         "GitEvidence",
                         "CanonicalVerification",

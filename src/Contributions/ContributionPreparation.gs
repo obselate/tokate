@@ -8,38 +8,25 @@ import System.Text.Json
 
 internal class ContributionPreparation {
     shared {
-        internal func Prepare(args Args) string {
-            if args.Get("run") != "" {
-                return ResumePending(Path.GetFullPath(args.Need("run")), args)
-            }
-
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let issue = args.Number("issue")
-            let viewer = GitHub.Api("user")
-            let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
-            let state = CoordinationState.Load(repo, issue)
-
-            if state.Sha != RepositoryIdentity.CommitSha(args.Need("state")) {
-                throw CliFailure("stale_approval", "Stale coordination revision")
-            }
-
+        private func Prepare(
+            args Args,
+            repo string,
+            issue int32,
+            viewer JsonElement,
+            state CoordinationState,
+            record JsonElement
+        ) string {
             state.Reservation(J.Get(viewer, "id"))
-            let record = state.Check(repo, issue, donor, J.Get(viewer, "id"))
-
             Overlaps.RequireDependencies(repo, issue)
 
-            let run = Plan(args, repo, issue, viewer, state, record, args.Need("source"))
+            let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
             Bind(run, state)
 
-            let directory = RunStorage.Allocate(
+            let directory = Allocate(
                 args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
-                repo,
-                issue,
+                run,
                 run.Text("attempt")
             )
-
-            PublicOutput.RunDirectory = directory
-            run.Fields["name"] = Path.GetFileName(directory)
 
             WorkspacePreparation.Select(run, args.Get("fork"))
 
@@ -56,23 +43,26 @@ internal class ContributionPreparation {
                 run.Fields["continuation_source_metadata_sha256"] = Data.Hash(
                     ContinuationImport.Metadata(sourceDirectory)
                 )
-
-                AttemptContinuation.Confirm(args, J.Get(run.Element(), "selection"))
             }
 
-            Directory.CreateDirectory(
-                directory,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
+            if run.Text("source") == "tokate" {
+                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
+            }
 
+            Create(directory)
+            using let lease = RunStorage.Lease(directory)
+
+            WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
+
+            return Complete(directory, run)
+        }
+
+        private func Complete(directory string, run Data) string {
             if run.Text("source") == "tokate" {
                 Terminal.Step(RuntimeBudget.Description(run))
             }
 
-            using let lease = RunStorage.Lease(directory)
-
             Terminal.Step("Preparing contribution. Run: " + directory)
-            WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
             WorkspacePreparation.Complete(directory, run)
             Terminal.Message("Prepared contribution. Run: " + directory)
 
@@ -90,10 +80,6 @@ internal class ContributionPreparation {
         ) Data {
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
             let policy = Policy(J.Write(J.Get(record, "policy")), gratis: state == nil)
-
-            if source != "external" && source != "tokate" {
-                throw CliFailure("invalid_state", "source must be external or tokate")
-            }
 
             var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(args.Need("tools"), 8192)
             var selection = JsonElement{}
@@ -164,14 +150,11 @@ internal class ContributionPreparation {
                 )
             }
 
-            if (args.Command == "work" || args.Command == "claim") && args.Get("unlimited") != "true" {
+            if args.Get("unlimited") != "true" {
                 args.Need("seconds")
             }
 
-            run.Fields["seconds"] = RuntimeBudget.ReadSeconds(
-                args,
-                Math.Min(3600, J.Number(J.Get(record, "policy"), "max_seconds")).ToString()
-            )
+            run.Fields["seconds"] = RuntimeBudget.ReadSeconds(args)
 
             if args.Get("unlimited") == "true" {
                 run.Fields["unlimited"] = true
@@ -197,11 +180,11 @@ internal class ContributionPreparation {
                     run.Fields["harness_path"] = LocalPaths.RuntimePath(args.Need("harness-path"))
                 }
 
-                if J.Text(selection, "harness") == "claude" {
+                if Harness.Owns(J.Text(selection, "harness"), "claude-profile") {
                     run.Fields["claude_profile"] = args.Need("claude-profile")
                 }
 
-                if J.Text(selection, "harness") == "pi" {
+                if Harness.Owns(J.Text(selection, "harness"), "endpoint") {
                     run.Fields["pi_endpoint"] = PiBoundary.Endpoint(args.Need("endpoint"))
                     run.Fields["pi_root"] = args.Need("pi-root")
                     run.Fields["pi_node"] = args.Need("node")
@@ -212,6 +195,18 @@ internal class ContributionPreparation {
 
             return run
         }
+
+        private func Allocate(store string, run Data, id string) string {
+            let directory = RunStorage.Allocate(store, run.Text("repo"), run.Number("issue"), id)
+            PublicOutput.RunDirectory = directory
+            run.Fields["name"] = Path.GetFileName(directory)
+            return directory
+        }
+
+        private func Create(directory string) -> Directory.CreateDirectory(
+            directory,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+        )
 
         private func Bind(run Data, state CoordinationState) {
             let reservation = J.Get(state.Value(), "reservation")
@@ -236,14 +231,9 @@ internal class ContributionPreparation {
                 run.Fields["id"] = id
                 run.Fields["attempt"] = id
                 run.Fields["branch"] = "tokate/gratis-" + id
-                let directory = RunStorage.Allocate(RunStorage.Store(args), repo, issue, id)
-                PublicOutput.RunDirectory = directory
-                run.Fields["name"] = Path.GetFileName(directory)
+                let directory = Allocate(RunStorage.Store(args), run, id)
                 WorkspacePreparation.Select(run, args.Get("fork"))
-                Directory.CreateDirectory(
-                    directory,
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                )
+                Create(directory)
                 using let lease = RunStorage.Lease(directory)
                 WorkspacePreparation.Initialize(directory, run, args.Get("fork"))
                 WorkspacePreparation.Complete(directory, run)
@@ -256,13 +246,6 @@ internal class ContributionPreparation {
             let revision = GitHub.Branch(repo, branch)
             let policy = Policy.Load(repo, revision)
 
-            if args.Get("continue-from") != "" {
-                throw CliFailure(
-                    "invalid_state",
-                    "For stopped v2 work, explicitly acquire a fresh attempt then use prepare --continue-from with its current --state; no claim was posted"
-                )
-            }
-
             let issue = args.Number("issue")
             let viewer = GitHub.Api("user")
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
@@ -273,7 +256,21 @@ internal class ContributionPreparation {
 
             if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                if !Donate.Active && RepositoryIdentity.PositiveId(
+                    J.Get(reservation, "actor")
+                ) == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && J.Get(state.Value(), "contribution")
+                    .ValueKind != JsonValueKind.Object {
+                    return Prepare(args, repo, issue, viewer, state, record)
+                }
+
                 throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
+            }
+
+            if args.Get("continue-from") != "" {
+                throw CliFailure(
+                    "invalid_state",
+                    "Continuation requires your active fresh attempt; pause and resume the stopped run first. No claim was posted"
+                )
             }
 
             if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
@@ -284,8 +281,10 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
-            if args.Command == "work" || args.Guided {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"))
+            run.Fields["state"] = "claim_pending"
+
+            if run.Text("source") != "external" {
+                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
             }
 
             let request = J.Parse(
@@ -304,18 +303,9 @@ internal class ContributionPreparation {
 
             run.Fields["claim_request"] = request
             run.Fields["requested_fork"] = args.Get("fork")
-            run.Fields["state"] = "claim_pending"
 
-            let directory = RunStorage.Allocate(RunStorage.Store(args), repo, issue, J.Text(request, "uuid"))
-
-            PublicOutput.RunDirectory = directory
-            run.Fields["name"] = Path.GetFileName(directory)
-
-            Directory.CreateDirectory(
-                directory,
-                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-            )
-
+            let directory = Allocate(RunStorage.Store(args), run, J.Text(request, "uuid"))
+            Create(directory)
             using let lease = RunStorage.Lease(directory)
 
             WorkspacePreparation.Pending(directory, run)
@@ -323,21 +313,20 @@ internal class ContributionPreparation {
             return Pending(directory, run, args)
         }
 
-        internal func ResumePending(directory string, args Args) string {
+        internal func Resume(directory string, args Args) string {
             PublicOutput.RunDirectory = directory
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
 
-            if run.Text("state") != "claim_pending" {
-                if args.Command == "prepare" {
-                    WorkspacePreparation.Complete(directory, run)
-                    Terminal.Message("Prepared contribution. Run: " + directory)
-                }
-
+            if args.Command == "work" && run.Flag("preparation_complete") {
                 return directory
             }
 
-            return Pending(directory, run, args)
+            if run.Text("source") == "tokate" {
+                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
+            }
+
+            return run.Text("state") == "claim_pending" ? Pending(directory, run, args): Complete(directory, run)
         }
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
@@ -453,10 +442,6 @@ internal class ContributionPreparation {
                 CheckPending(run, viewer, CoordinationState.Load(repo, issue))
             }
 
-            if args.Command == "work" && args.Get("run") != "" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"))
-            }
-
             Submission.Request(
                 repo,
                 issue,
@@ -516,14 +501,7 @@ internal class ContributionPreparation {
 
                 WorkspacePreparation.Select(run, run.Text("requested_fork"))
                 WorkspacePreparation.Promote(directory, run)
-
-                if run.Text("source") == "tokate" {
-                    Terminal.Step(RuntimeBudget.Description(run))
-                }
-
-                Terminal.Step("Preparing contribution. Run: " + directory)
-                WorkspacePreparation.Complete(directory, run)
-                Terminal.Message("Prepared contribution. Run: " + directory)
+                Complete(directory, run)
             } else {
                 PublicOutput.ResultData = PublicOutput.RunSummary(directory)
                 if let guidance = Submission.PendingWorkflow(directory, run) {
@@ -533,16 +511,10 @@ internal class ContributionPreparation {
                 Terminal.Message(
                     "Claim pending. Run: " +
                         directory +
-                        "; resume explicitly with " +
-                        (run.Text("source") == "tokate" ? "work --run DIR or ": "") +
-                        "prepare --run DIR. If the Tokate workflow failed: " +
+                        "; resume explicitly with work --run DIR. If the Tokate workflow failed: " +
                         ApiTransport.MutationRecovery
                 )
-                if run.Text("source") == "tokate" {
-                    PublicOutput.Actions.Add([]string{"tokate", "work", "--run", directory, "--json"})
-                }
-
-                PublicOutput.Actions.Add([]string{"tokate", "prepare", "--run", directory, "--json"})
+                PublicOutput.Actions.Add([]string{"tokate", "work", "--run", directory, "--json"})
             }
 
             return directory

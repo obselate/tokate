@@ -26,7 +26,7 @@ Use your GitHub account and coding tool to work on an approved issue. Current ma
 5. Install missing tools when doctor reports them.
 
    ```sh
-   tokate doctor codex --fix
+   tokate doctor codex --fix --yes
    ```
 
 6. Sign in to the coding tool before you start a donation.
@@ -45,42 +45,31 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
 ## Start a donation
 
-1. Open a terminal in the project checkout.
-2. Start the guided donation for issue 42.
+1. Open a terminal in the project checkout and choose an allowed harness, model and effort.
+2. Start issue 42 with an explicit total budget and verification reserve.
 
    ```sh
-   tokate work 42
+   tokate work 42 --harness codex --model MODEL --effort EFFORT --time 1h --verify-time 20m
    ```
 
-3. At **Set your limit**, enter the coding minutes.
-4. At **Verification time**, enter the minutes for the owner's checks. The coding and verification minutes must fit the owner's limit.
-5. If saved profiles appear, choose one or choose **Set up another coding tool**.
-6. At **Your coding tool**, choose an allowed tool.
-7. Choose the model and effort offered for that tool.
-8. At **Review donation**, check the issue, tool, model, coding time and check time.
-9. Choose **Start donation** to start work.
-10. Keep the run identifier printed by Tokate, such as `42-1`.
-11. Wait for coding and independent verification to finish.
-12. Submit the saved run. It prints `Draft PR: URL`.
+   Or save these choices with `tokate defaults set NAME --harness codex --model MODEL --effort EFFORT`
+   and use `tokate work 42 NAME --time 1h --verify-time 20m`.
+3. Keep the printed run name, such as `42`. Wait for coding and verification.
+4. Submit the saved run.
 
-    ```sh
-    tokate submit 42-1
-    ```
+   ```sh
+   tokate submit 42
+   ```
 
-13. If submission is pending, inspect `tokate status 42-1` before repeating the same submit command.
+5. If submission is pending, inspect `tokate status 42-1` before repeating submit.
 
-Outside a checkout, use `tokate work OWNER/REPO#42` for one issue. `tokate work OWNER/REPO` runs successive approved tasks.
-
-| Screen control | Action |
-| --- | --- |
-| Arrow keys, then Enter | Select a picker item. |
-| Type in a picker | Filter its items. |
-| `?` | Explain the current choice. At a text prompt, enter `?` and press Enter. |
-| `h` | Return home. At a text prompt, enter `h` and press Enter. Clear picker search first. |
-| `q` | Quit. At a text prompt, enter `q` and press Enter. Clear picker search first. |
-| Esc | Return home in the full-screen interface. |
-| **Change tool or time limit** | Change the selection before starting. |
-| **Reserve for later, without starting AI** | Save a claim without inference. |
+Use CLI flags or the GUI. Claim and work show the task, tool, model, effort and budget and ask once in a terminal unless `--yes` is set. Missing choices fail with
+`invalid_arguments` and name the required flag. Bare `tokate` prints help.
+Outside a checkout, use `tokate work OWNER/REPO#42` for one issue.
+Use `tokate claim 42 NAME --time 1h` to reserve without inference.
+Doctor explains installations with `--fix`, asks once in a terminal, applies with `--fix --yes`, and
+accepts `--harness-path FILE` for an existing installation.
+Use `tokate doctor --harness codex --harness-path FILE --set-default` to save the harness.
 
 | During the run | Result |
 | --- | --- |
@@ -97,19 +86,19 @@ Outside a checkout, use `tokate work OWNER/REPO#42` for one issue. `tokate work 
 ## Work until stopped
 
 ```sh
-tokate work OWNER/REPO
-tokate work OWNER/REPO stop
+tokate work OWNER/REPO --yes
+tokate work OWNER/REPO stop --yes
 ```
 
 Use the default donor profile or override it with `--harness`, `--model` and `--effort`.
 Save one with `tokate defaults set NAME --harness codex --model MODEL --effort high`,
-then `tokate defaults use NAME`. Check it with `tokate select OWNER/REPO NAME --non-interactive`.
+then `tokate defaults use NAME`. Check it with `tokate defaults check OWNER/REPO NAME`.
 Repository links, such as release or tree links, select the loop.
 `--time` covers coding and verification per task, defaulting to the lower of one hour
 and the owner limit. Without `--total`, it runs until stopped. A task starts only
 while `--time` fits in the remaining total. Claim and submission waits can run past it.
-One confirmation names the repository, harness, model, effort and both budgets.
-It covers every task claimed with those tools and limits. Noninteractive and JSON use require `--yes`.
+`--yes` consents to every task claimed with the selected repository, harness, model, effort and budgets.
+Repository work and stop ask once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, they preview without changes and fail with `confirmation_required` naming `--yes`.
 Approved issues are selected oldest first across pages. Reserved, stale, inaccessible,
 dependency-blocked and already attempted issues are skipped. Each task uses claim, work and submit.
 Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.
@@ -125,16 +114,16 @@ Stop waits for the current task and prints wall time, submitted, skipped and fai
    ```
 
 3. Wait for coordinator acceptance.
-4. Use the exact saved attempt printed by claim. For the first attempt:
+4. Work on the saved run printed by claim.
 
    ```sh
-   tokate work N-1
+   tokate work N
    ```
 
-5. Submit that attempt after successful verification.
+5. Submit that run after successful verification.
 
    ```sh
-   tokate submit N-1
+   tokate submit N
    ```
 
 Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positional arguments](arguments.md) for issue and run references.
@@ -156,15 +145,15 @@ Use `--verify-time 20m` to reserve 20 minutes within the total time. Use [positi
 3. Use it for a donation.
 
    ```sh
-   tokate work 42 my-codex
+   tokate work 42 my-codex --time 1h
    ```
 
 | Command | Action |
 | --- | --- |
 | `tokate defaults` | List profiles. |
 | `tokate defaults use my-codex` | Make the profile your default. |
-| `tokate doctor --set-default` | Choose an installed default harness. |
-| `tokate select OWNER/REPO my-codex` | Choose a permitted model without inference. |
+| `tokate doctor codex --set-default` | Save the named installed harness as the default. |
+| `tokate defaults check OWNER/REPO my-codex` | Check a permitted model without inference. |
 
 Profiles save tool settings, not time budgets. The owner must allow your tool, provider, model and effort.
 
@@ -188,10 +177,10 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
      --effort high --endpoint http://127.0.0.1:8080/v1
    ```
 
-8. Select an allowed model choice.
+8. Check the profile under owner policy.
 
    ```sh
-   tokate select OWNER/REPO local
+   tokate defaults check OWNER/REPO local
    ```
 
 9. Start the donation.
@@ -239,12 +228,26 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 | Provider error | Work stops and prints OMP's reason. Tokate does not retry it. |
 | Charges | Charges are unknown to Tokate. |
 
+## Use an owner-declared command
+
+The owner can allow a `command` tool. It runs the owner's command from the policy
+on your computer, without a sandbox. Read the command in `tokate doctor repo OWNER/REPO`
+or in the `defaults check --json` output before you claim. Confirmation screens show the
+command. Work prints it before it starts. `work OWNER/REPO` refuses a claim when
+the owner changed the command after your consent.
+
+```sh
+tokate claim OWNER/REPO#42 --harness command --model MODEL --effort EFFORT --time 1h
+```
+
+Add `--provider PROVIDER` when the policy allows more than one command tool.
+
 ## Check or control a run
 
-1. List saved runs offline.
+1. List your unfinished saved runs.
 
    ```sh
-   tokate runs
+   tokate status
    ```
 
 2. Inspect the exact attempt.
@@ -257,11 +260,11 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 
 | Command | Action |
 | --- | --- |
-| `tokate pause 42-1` | Pause your reservation. |
-| `tokate resume 42-1` | Resume a paused reservation without inference. |
-| `tokate renew 42-1` | Renew before the reservation expires. |
-| `tokate release 42-1` | Release the reservation for other donors. |
-| `tokate work 42-1` | Start work on an accepted saved claim. |
+| `tokate pause 42` | Pause your reservation. |
+| `tokate resume 42` | Resume a paused reservation without inference. |
+| `tokate renew 42` | Renew before the reservation expires. |
+| `tokate release 42` | Release the reservation for other donors. |
+| `tokate work 42` | Start work on an accepted saved claim. |
 | `tokate checks 10 --watch` | Watch PR 10 checks. The number is a PR number. |
 
 Keep the saved run directory. Use [recovery](recovery.md) for stopped work, external work and PR changes.
@@ -270,8 +273,7 @@ Keep the saved run directory. Use [recovery](recovery.md) for stopped work, exte
 
 | Symptom (exact message text) | Do (exact command) |
 | --- | --- |
-| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix` |
-| `The owner policy allows no supported managed coding tools` | `tokate policy OWNER/REPO` |
+| `Install or repair the tools needed for this command, then run the relevant tokate doctor scope.` | `tokate doctor codex --fix --yes` |
 | `OMP lists no models. Sign in with omp login or configure a provider.` | `omp login` |
 
 For other failures, use the exact-message tables in [recovery](recovery.md) and [Linux security](linux-security.md).

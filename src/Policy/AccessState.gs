@@ -42,7 +42,7 @@ internal class AccessState {
         J.Write(map[string, Object?]{"version": 1, "repo_id": RepoId, "members": Members})
     )
 
-    internal func Write(repo string, expected string) {
+    internal func Write(repo string, expected string, identity Object) {
         let text = J.Write(Value())
         RequestData.Parse(text, 65536)
 
@@ -57,7 +57,7 @@ internal class AccessState {
 
         let commit = GitHub.Api(
             "repos/" + repo + "/git/commits",
-            GitHub.AutomationCommit("Tokate donor access", J.Text(tree, "sha"), []string{expected})
+            GitHub.AutomationCommit("Tokate donor access", J.Text(tree, "sha"), []string{expected}, identity)
         )
         let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
 
@@ -325,7 +325,7 @@ internal class AccessState {
             GitHub.Issue(repo, issue)
             let viewer = GitHub.Api("user")
             let actor = RepositoryIdentity.PositiveId(J.Get(viewer, "id"))
-            let requestScope = args.Get("scope", "issue")
+            let requestScope = args.Get("trust") == "true" ? "trust": "issue"
 
             let comments = Pages("repos/" + repo + "/issues/" + issue.ToString() + "/comments?")
 
@@ -488,7 +488,7 @@ internal class AccessState {
 
             let history = List[Object]()
 
-            if args.Get("operation") == "history" {
+            if args.Subject == "history" {
                 for pull in Pages("repos/" + repo + "/pulls?state=all&") {
                     try {
                         let receipt = PrBody.Receipt(J.Text(pull, "body"))
@@ -520,7 +520,7 @@ internal class AccessState {
             }
 
             let pending = List[JsonElement]()
-            if args.Get("operation") == "list" {
+            if args.Subject == "list" {
                 Pending(repo, access, pending, args.Get("issue") == "" ? 0: args.Number("issue"), actor)
             }
 
@@ -534,7 +534,7 @@ internal class AccessState {
             }
 
             if !PublicOutput.Enabled {
-                if args.Get("operation") == "history" {
+                if args.Subject == "history" {
                     Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor access and owner review")
                 } else {
                     Terminal.Heading("Donor access")
@@ -574,9 +574,9 @@ internal class AccessState {
 
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let operation = args.Need("operation")
+            let operation = args.Subject
 
-            if operation != "request" && args.Get("scope") != "" {
+            if operation != "request" && args.Get("trust") != "" {
                 throw Exception("Only access request takes --trust")
             }
 
@@ -615,7 +615,7 @@ internal class AccessState {
                 throw Exception("Unknown access operation")
             }
 
-            RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
+            let owner = GitHub.Author(GitHub.Api("user"))
             let info = RepositoryAccess.RequireOwner(repo)
             let repoId = RepositoryIdentity.PositiveId(J.Get(info, "id"))
             let single = operation == "grant" || operation == "remove"
@@ -699,7 +699,7 @@ internal class AccessState {
                 }
             }
 
-            access.Write(repo, expected)
+            access.Write(repo, expected, owner)
 
             Terminal.Message(
                 "Eligibility changes do not alter task scope approval. Revoked access blocks new work and publication; every PR requires owner review.",

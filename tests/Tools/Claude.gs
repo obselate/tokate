@@ -98,12 +98,7 @@ internal class ClaudeTool {
                         .ToJsonString()
                 )
                 Console.WriteLine(
-                    Check.Map(
-                        "type",
-                        "assistant",
-                        "message",
-                        Check.Map("model", mode == "conflict" ? "claude-sonnet-4-6": model, "stop_reason", "end_turn")
-                    )
+                    Check.Map("type", "assistant", "message", Check.Map("model", model, "stop_reason", "end_turn"))
                         .ToJsonString()
                 )
                 if mode != "incomplete" {
