@@ -57,9 +57,8 @@ internal class ContributionStatus {
     private func Issue(task JsonElement) Dictionary[string, Object?] {
         let issue = J.Number(task, "number")
 
-        if issue < 1 || J.Text(task, "state") != "open" || J.Get(task, "pull_request")
-            .ValueKind != JsonValueKind.Undefined {
-            throw CliFailure("invalid_state", "Expected an open issue in the approved-work index")
+        if issue < 1 || J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined {
+            throw CliFailure("invalid_state", "Choose an issue, not a pull request")
         }
 
         let row = map[string, Object?]{
@@ -118,7 +117,8 @@ internal class ContributionStatus {
             "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
         )
 
-        let valid = Observe(
+        let valid = J.Text(task, "state") == "open" &&
+            Observe(
             row,
             "approval",
             async () -> {
@@ -971,7 +971,12 @@ internal class ContributionStatus {
             "discovery",
             async () -> {
                 if issue != 0 {
-                    Issue(GitHub.Issue(Repo, issue))
+                    let task = GitHub.Api("repos/" + Repo + "/issues/" + issue.ToString())
+                    let row = Issue(task)
+                    if J.Text(task, "state") != "open" {
+                        row["state"] = "closed"
+                        row["next"] = Next("owner", "The issue is closed. Reopen it to accept more work.")
+                    }
                 } else {
                     let issues = GitHub.Api(
                         "repos/" +
