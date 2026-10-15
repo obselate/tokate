@@ -522,6 +522,62 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     Require(donation.Current.Session.Tasks.Length == 2, "Final session report was not decoded")
 }
 
+func SubmitFlow(host TestHost, desktop DesktopApp) {
+    let fixture = Path.Combine(Path.GetTempPath(), "tokate-submit-" + Guid.NewGuid().ToString("N"))
+    let previous = Environment.GetEnvironmentVariable("PATH")
+    Directory.CreateDirectory(fixture)
+    try {
+        Script(fixture, "gh", "printf '{}'\n")
+        Script(
+            fixture,
+            "tokate",
+            "cd '" + fixture + "'\n" +
+                "n=0; [ ! -f calls ] || n=$$(cat calls)\n" +
+                "if [ \"$1\" = submit ]; then n=$$((n+1)); echo $$n > calls; fi\n" +
+                "state=generated; pr=0; code=0; status=ok; error=null\n" +
+                "if [ \"$1\" = submit ]; then\n" +
+                "if [ $$n -lt 3 ]; then code=8; status=pending\n" +
+                "elif [ -f fail ]; then code=1; status=error; error='{\"code\":\"command_failed\",\"message\":\"Owner must update the coordinator and re-process the request.\"}'\n" +
+                "fi\nfi\n" +
+                "if [ $$n -ge 3 ] && [ ! -f fail ]; then state=published; pr=42; fi\n" +
+                "printf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"%s\",\"exit_code\":%s,\"data\":{\"run\":\"%s\",\"repo\":\"owner/repo\",\"issue\":7,\"state\":\"%s\",\"pr\":%s,\"commit\":\"head\"},\"error\":%s,\"next_actions\":[]}' \"$1\" \"$$status\" \"$$code\" \"$3\" \"$$state\" \"$$pr\" \"$$error\"\n" +
+                "exit $$code\n"
+        )
+        Environment.SetEnvironmentVariable("PATH", fixture + Path.PathSeparator.ToString() + previous)
+        desktop.Navigation.Go(Destination.Saved)
+        for fail in []bool{false, true} {
+            File.WriteAllText(Path.Combine(fixture, "calls"), fail ? "1": "0")
+            if fail {
+                File.WriteAllText(Path.Combine(fixture, "fail"), "")
+            }
+            let path = Path.Combine(fixture, fail ? "failed": "done")
+            Directory.CreateDirectory(path)
+            desktop.Saved.Select(SavedRun.Pending(path) with{Run = Run.Empty with{Path = path, Repo = "owner/repo", Issue = 7, State = "generated", Commit = "head"}, Refreshed = true})
+            desktop.Saved.Act(RunAction.Submit)
+            desktop.Dialogs.Confirm()
+            let clock = Stopwatch.StartNew()
+            var pending = false
+            while clock.Elapsed.TotalSeconds < 140 {
+                Settle(host)
+                pending = pending || desktop.Saved.Current.Waiting
+                if !desktop.Activity.Busy && !desktop.Saved.Current.Waiting && File.ReadAllText(Path.Combine(fixture, "calls")).Trim() == "3" {
+                    break
+                }
+                System.Threading.Thread.Sleep(10)
+            }
+            Require(pending && clock.Elapsed.TotalSeconds < 140, "Submit exit 8 did not keep polling and repeat submit")
+            if fail {
+                Require(desktop.Feedback.Current.Message.Contains("Owner must update the coordinator"), "Submit failure hid owner guidance")
+            } else {
+                Require(desktop.Saved.Current.Run.Pr == 42 && !desktop.Saved.Current.Waiting, "Submit exit 0 did not finish with its PR")
+            }
+        }
+    } finally {
+        Environment.SetEnvironmentVariable("PATH", previous)
+        Directory.Delete(fixture, true)
+    }
+}
+
 func TestDesktop() {
     using let body = FontSource("Newsreader", 400, false, File.ReadAllBytes(Asset("newsreader.ttf")))
     using let heading = FontSource("Cormorant", 500, false, File.ReadAllBytes(Asset("cormorant.ttf")))
@@ -601,6 +657,7 @@ func TestDesktop() {
     Settle(host)
     Require(Find(adapter.Root, AccessibilityRole.TextInput)?.Value == "", "The empty input was not retained")
     DonateFlow(host, window, adapter, desktop.Donation)
+    SubmitFlow(host, desktop)
 }
 
 func AwaitChildStopped(pid int32) {

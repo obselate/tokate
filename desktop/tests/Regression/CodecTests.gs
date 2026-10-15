@@ -17,8 +17,8 @@ func CodecTests() {
     Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/home/xaz/.local/state/tokate/runs/foxholt-tokate-demo-5-1", "run path")
     Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("Do not repost"), "pending claim preserves recovery guidance")
     let published = CliCodec.Envelope(Regression.Fixture("run-published.json"))
-    Regression.Check(published.NextActions[1].NamesRun && published.NextActions[1].Command == "checks", "published action names the exact saved attempt")
-    Regression.Check(RunActions.From(published.NextActions, "published")[0] == RunAction.Checks, "real next action becomes the saved checks action")
+    Regression.Check(published.NextActions.Length == 1 && published.NextActions[0].NamesRun, "finished run retains only exact saved status")
+    Regression.Check(RunActions.From(published.NextActions, "published").Length == 0, "finished run offers no work or checks actions")
 
     let failed = Regression.Fixture("envelope-error.json")
     let envelope = CliCodec.Envelope(failed)

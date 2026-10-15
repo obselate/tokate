@@ -373,7 +373,7 @@ class SavedWorkService {
                     let started = commands.Cli(
                         arguments,
                         (outcome CommandOutcome) -> {
-                            if outcome.Failure != "" || commands.Failed(outcome) {
+                            if outcome.Failure != "" || (!(RunActions.Requests(action) && outcome.Pending) && commands.Failed(outcome)) {
                                 Discard(files)
                                 let reason = action == RunAction.Amend ? RunStore.AmendmentFailure(path, amendment.Commit, since): ""
                                 if reason != "" {
@@ -381,7 +381,7 @@ class SavedWorkService {
                                 }
                                 return
                             }
-                            if RunActions.Requests(action) {
+                            if RunActions.Requests(action) && (action != RunAction.Submit || outcome.Pending) {
                                 Await(
                                     CoordinatorRequest{
                                         Action: action,
@@ -419,12 +419,14 @@ class SavedWorkService {
         }
     }
 
-    /// Waits for the coordinator to record `sent`, then repeats its command, which saves the result.
+    /// Repeats pending submit commands, or waits for a recorded amendment before saving its result.
     private func Await(sent CoordinatorRequest) {
         request = sent
         Set(Current with{Waiting = true, Note = Feedback{Message: RunActions.Requested(sent.Action), Report: "", Tone: Tone.Wait}})
         requestTimer = window.Every(60000, () -> CheckRequest())
-        CheckRequest()
+        if sent.Action != RunAction.Submit {
+            CheckRequest()
+        }
     }
 
     /// Stops the wait and shows `message`. The request stays with the coordinator.
@@ -450,7 +452,11 @@ class SavedWorkService {
         } else if !activity.Busy && requestCheck == nil {
             let client = CliClient()
             requestCheck = client
-            go ReadRequest(client, sent)
+            if sent.Action == RunAction.Submit {
+                RequestChecked(client, true)
+            } else {
+                go ReadRequest(client, sent)
+            }
         }
     }
 
@@ -476,6 +482,10 @@ class SavedWorkService {
         let started = commands.Cli(
             sent.Arguments,
             (outcome CommandOutcome) -> {
+                if outcome.Failure == "" && outcome.Pending {
+                    Await(sent)
+                    return
+                }
                 let failed = outcome.Failure != "" || commands.Failed(outcome)
                 StopWaiting(failed ? "": RunActions.Recorded(sent.Action), Tone.Done)
                 if !failed {
