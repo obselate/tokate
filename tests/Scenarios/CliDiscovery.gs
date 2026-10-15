@@ -497,7 +497,7 @@ internal class CliDiscovery {
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
-            let expected = "work claim submit status checks pause resume renew release init approve revoke access doctor defaults update uninstall overlaps amend external reconcile sync completion help --version request admit coordinate"
+            let expected = "work claim submit status checks pause resume renew release init approve revoke access doctor defaults update uninstall overlaps amend external completion help --version request admit coordinate"
             Check.That(
                 String.Join(
                     " ",

@@ -37,8 +37,8 @@ internal class GitHubPathEvidence {
             Decree.CheckCurrent(repo, head, approval)
         }
 
-        internal func LocalBase(checkout string, repo string, approval JsonElement, head string) string {
-            var baseline = J.Text(approval, "base")
+        internal func LocalBase(checkout string, repo string, approval JsonElement, head string, base string) string {
+            var baseline = base
             for merge in Commands.Git(
                 checkout,
                 "rev-list",
@@ -61,8 +61,8 @@ internal class GitHubPathEvidence {
 
         internal func Amendment(repo string, record JsonElement, metadata JsonElement) {
             let approval = J.Get(record, "approval")
-            let baseline = J.Text(metadata, "base") == "" ? J.Text(approval, "base"): J.Text(metadata, "base")
-            if baseline != J.Text(approval, "base") {
+            let baseline = J.Text(metadata, "base") == "" ? J.Text(record, "base"): J.Text(metadata, "base")
+            if baseline != J.Text(record, "base") {
                 Target(repo, approval, baseline)
             }
             Ancestor(repo, J.Text(metadata, "previous"), J.Text(metadata, "fork"), J.Text(metadata, "head"))

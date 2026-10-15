@@ -457,7 +457,8 @@ internal class Amendment {
                         source,
                         run.Text("repo"),
                         J.Get(record, "approval"),
-                        commit
+                        commit,
+                        J.Text(record, "base")
                     )
                     Snapshot(source, run, commit, published, record, baseline)
                     Commands.Git(
@@ -478,7 +479,8 @@ internal class Amendment {
                     checkout,
                     run.Text("repo"),
                     J.Get(record, "approval"),
-                    commit
+                    commit,
+                    J.Text(record, "base")
                 )
                 let accepted = correcting ? "": Snapshot(checkout, run, commit, run.Text("commit"), record, baseline)
                 let archive = OriginalEvidence.Capture(directory, run)
