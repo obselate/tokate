@@ -83,7 +83,7 @@ internal class ContributionAuthority {
                 AttemptContinuation.Recheck(run, state)
             }
 
-            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
+            let policy = Policy(J.Write(J.Get(record, "policy")))
             let declaredTools = J.Get(saved, "tools")
 
             RequestData.Tools(declaredTools)

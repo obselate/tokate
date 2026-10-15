@@ -22,7 +22,7 @@ internal class Gratis {
                     "provider": args.Get("provider", "openai")
                 }
             }
-            return Policy(J.Write(policy.Fields), gratis: true)
+            return Policy(J.Write(policy.Fields))
         }
 
         private func Require(valid bool, message string) {

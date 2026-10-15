@@ -75,14 +75,18 @@ See [Linux security](linux-security.md) for file access and diagnostic commands.
 
 ## Coordinator pin
 
-The generated caller pins the shared workflow to a full commit SHA. It also fixes the release asset URL and SHA256 checksum.
+The generated caller follows the stable-major shared workflow at `v0`. This tag moves
+with each stable 0.x release. Owners trust Tokate's release account to update executable code.
+Use `tokate init OWNER/REPO --pin` to select an exact release commit instead.
 
-The shared workflow checks the archive with `sha256sum -c -` before it extracts the binary. Changes in `obselate/tokate` do not reach your repository until you commit a new pin.
+The shared workflow reads its exact executed workflow commit from the Actions run.
+It reads that commit's version, requires the version tag to resolve to the same commit,
+and checks the archive against its release checksum asset before extraction.
 
 | Control | Effect |
 | --- | --- |
 | Caller `permissions: {}` | No default token permissions. |
-| Caller job permissions | Cap access at `contents: write`, `issues: write` and `pull-requests: write`. |
+| Caller job permissions | Cap access at `actions: read`, `contents: write`, `issues: write` and `pull-requests: write`. |
 | Coordinator and admission | Do not check out or execute donor code. |
 | Ordinary fork CI | Keep it read-only and free of secrets. |
 | Installer checksum and version checks | Detect corruption, not a compromised release account. |

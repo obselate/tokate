@@ -57,6 +57,7 @@ internal open class NativeFixture : IDisposable {
         let policy = Check.Json(File.ReadAllText(path))
         Check.That(Check.Text(policy["max_seconds"]) == "3600", "New policy budget must be 3600 seconds")
         policy["verification"] = Check.Json("[[\"/bin/sh\",\"-c\",\"test -f result.txt\"]]")
+        policy["required_checks"] = Check.Json("[\"verify\"]")
         File.WriteAllText(path, policy.ToJsonString())
         Commit("Initial")
         Git("clone", "--bare", Upstream, Path.Combine(Bin, "fork"))

@@ -79,7 +79,7 @@ internal class ContributionPreparation {
             source string
         ) Data {
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
-            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: state == nil)
+            let policy = Policy(J.Write(J.Get(record, "policy")))
 
             var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(args.Need("tools"), 8192)
             var selection = JsonElement{}
@@ -226,7 +226,7 @@ internal class ContributionPreparation {
                 let context = Data.From(gratis)
                 context.Fields.Remove("pulls")
                 run.Fields["gratis_context"] = context.Element()
-                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy")), gratis: true).Digest
+                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy"))).Digest
                 let id = Guid.NewGuid().ToString("N")
                 run.Fields["id"] = id
                 run.Fields["attempt"] = id

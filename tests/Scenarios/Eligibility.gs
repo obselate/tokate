@@ -678,13 +678,12 @@ internal class EligibilityChecks {
                 Path.Combine(workflows, "tokate-coordinator.yml"),
                 "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
                     String('a', 40) +
-                    "\n    with:\n      member: 'tokate-" +
-                    version +
-                    "-linux-x64/tokate'\n"
+                    "\n"
             )
             health.Flow.Commit("Add owner workflow")
             health.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
             health.Flow.Reload()
+            health.Flow.State["release_version"] = JsonValue.Create(version)
             health.Flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
             health.Flow.State["workflow_runs"] = Check.Json(
                 "[{\"status\":\"completed\",\"conclusion\":\"startup_failure\",\"html_url\":\"https://example.test/coordinator\"}]"
@@ -717,6 +716,29 @@ internal class EligibilityChecks {
                     "Owner doctor misread the pinned workflow allowlist"
                 )
             }
+            for reference in[]string{String('a', 40), "v0"} {
+                if reference == "v0" {
+                    File.WriteAllText(
+                        Path.Combine(workflows, "tokate-coordinator.yml"),
+                        "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                            reference +
+                            "\n"
+                    )
+                    health.Flow.Commit("Select coordinator reference")
+                }
+                health.Flow.Reload()
+                health.Flow.State["release_version"] = JsonValue.Create("0.0.1")
+                health.Flow.Save()
+                let result = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
+                for row in result["data"]?["checks"]?.AsArray() ?? JsonArray() {
+                    if Check.Text(row["check"]) == "coordinator" {
+                        Check.That(
+                            Check.Text(row["status"]) == (reference == "v0" ? "ok": "warning"),
+                            "Owner doctor must warn about versions only in pin mode"
+                        )
+                    }
+                }
+            }
             let policyPath = Path.Combine(health.Flow.Upstream, ".github/tokate.json")
             let changedPolicy = Check.Json(File.ReadAllText(policyPath))
             changedPolicy["max_seconds"] = JsonValue.Create(3601)
@@ -739,7 +761,7 @@ internal class EligibilityChecks {
             for row in broken["data"]?["checks"]?.AsArray() ?? JsonArray() {
                 missing = missing ||
                     (
-                    Check.Text(row["check"]) == "access" && Check.Text(row["status"]) == "problem" && Check.Text(
+                    Check.Text(row["check"]) == "access" && Check.Text(row["status"]) == "ok" && Check.Text(
                         row["present"]
                     ) == "false"
                 )
@@ -750,12 +772,12 @@ internal class EligibilityChecks {
                     ) == "1"
                 )
             }
-            Check.That(missing && stale, "Owner doctor omitted missing access or stale approval")
+            Check.That(missing && stale, "Owner doctor omitted empty access or stale approval")
             let next = broken["next_actions"]?.ToJsonString() ?? ""
-            Check.Contains(next, "[\"tokate\",\"access\",\"init\",\"owner/project\"]")
+            Check.That(!next.Contains("[\"tokate\",\"access\",\"init\""), "Empty access needs no initialization")
             Check.Contains(next, "[\"tokate\",\"approve\",\"owner/project#1\"]")
             let human = health.Flow.Call([]string{"doctor", "repo", "owner/project"}, owner: true).Output
-            Check.Contains(human, "tokate access init owner/project")
+            Check.Contains(human, "Empty access record")
             Check.Contains(human, "tokate approve owner/project#1")
             Check.Contains(human, "Settings > Actions > General")
             health.Flow.State["actions_permissions"] = Check.Map("enabled", false)

@@ -1321,7 +1321,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func SetupRelease() {
-        let args = []string{"init", "owner/project", "--yes"}
+        let args = []string{"init", "owner/project", "--pin", "--yes"}
         let proposed = ".github/workflows/tokate-coordinator.yml"
         Flow.Call(args, 1, owner: true)
         Flow.ReleaseReady(hosted: false)
@@ -1350,16 +1350,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Reload()
         Flow.State["actions_policy"] = nil
         Flow.Save()
-        let version = Flow.Call([]string{"--version"}).Output.Trim().Substring(7)
-        let bundle = "tokate-" + version + "-linux-x64"
-        let archive = Path.Combine(Flow.Bin, "release.tar.gz")
         Flow.Call(args, owner: true)
         let yaml = Flow.Git("-C", Flow.Upstream, "show", "tokate-setup:" + proposed)
         Check.Contains(yaml, "issues:\n    types: [labeled]\n")
         Check.Contains(yaml, "issues: write\n")
-        Check.Contains(yaml, "https://api.github.com/repos/obselate/tokate/releases/assets/41")
-        Check.Contains(yaml, Check.Hash(archive))
-        Check.Contains(yaml, bundle + "/tokate")
+        Check.That(
+            !yaml.Contains("archive_url") && !yaml.Contains("archive_sha256") && !yaml.Contains("member:"),
+            "Pinned caller retained release archive inputs"
+        )
         Check.Contains(yaml, "uses: obselate/tokate/.github/workflows/tokate-shared.yml@" + String('a', 40))
         Check.That(!yaml.Contains("run:") && yaml.Split('\n').Length < 25, "Adopter received copied runtime code")
         Check.That(

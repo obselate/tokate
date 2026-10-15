@@ -20,7 +20,7 @@ internal class CliOption(spec string) {
     internal prop Choices string -> String.Join(" ", Words.Skip(2))
 
     internal func Describe(command string) string -> switch Name {
-        case "yes" when command == "init": "Apply the listed GitHub settings, access record and setup PR"
+        case "yes" when command == "init": "Apply the listed required GitHub settings and setup PR"
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
@@ -124,8 +124,9 @@ internal class Cli {
             "fix: Preview missing prerequisite installations; --yes applies them; use --harness-path for an existing harness",
             "allowed-tools TOOLS: Tool names, harness/provider pairs or a JSON array with per-tool models; replaces the list; default: codex, claude and pi with any model",
             "eligibility MODE trusted open: Task eligibility; new repositories default to trusted",
-            "verification JSON: Existing project verification commands as JSON argv arrays",
-            "required-checks JSON: Required GitHub check names as a JSON array",
+            "pin: Pin the coordinator to the exact release commit instead of stable-major v0",
+            "verification JSON: Optional project verification commands as JSON argv arrays; default: none",
+            "required-checks JSON: Optional GitHub check names as a JSON array; default: none",
             "reservation-time TIME: Reservation lifetime from 5m to 7d",
             "pr-text TEXT: Optional literal owner text appended to PRs; no template expressions",
             "close-message TEXT: Optional literal admission message reserved for later admission integration",
@@ -272,9 +273,9 @@ internal class Cli {
             CliCommand(
                 "init own local_read,github_read,github_write repo",
                 "[OWNER/REPO] [options]",
-                "allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive,yes",
-                "Set up or update a repository: Actions settings, access record and a setup PR with the policy and pinned workflow; options change only what they name.",
-                "init owner/project --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'"
+                "allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,pin,non-interactive,yes",
+                "Set up or update a repository: required Actions settings and one setup PR with the policy and coordinator workflow.",
+                "init owner/project"
             ),
             CliCommand(
                 "approve own local_read,github_read,github_write repo,issue",

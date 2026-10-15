@@ -316,6 +316,16 @@ internal partial class Fixture {
         if path.StartsWith("repos/obselate/tokate/git/tags/") {
             return Answer(Check.Map("object", Check.Map("type", "commit", "sha", String('a', 40))))
         }
+        if path.StartsWith("repos/obselate/tokate/contents/VERSION?ref=") {
+            return Answer(
+                Check.Map(
+                    "encoding",
+                    "base64",
+                    "content",
+                    Convert.ToBase64String(Encoding.UTF8.GetBytes(Check.Text(State["release_version"])))
+                )
+            )
+        }
         if path.StartsWith("repos/obselate/tokate/contents/.github/workflows/tokate-shared.yml?ref=") {
             if Check.Text(State["hosted_workflow"]) != "true" {
                 return Response(404)

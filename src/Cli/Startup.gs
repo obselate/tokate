@@ -155,7 +155,7 @@ internal class Startup {
                 }
             }
 
-            if command == "init" {
+            if command == "init" && options.Get("pin") == "true" {
                 names.Add("curl")
                 names.Add("tar")
             }

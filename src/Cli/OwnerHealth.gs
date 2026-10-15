@@ -53,16 +53,18 @@ internal class OwnerHealth {
             "coordinator",
             async () -> {
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
-                let pinnedVersion = MemberVersion(yaml)
                 pin = CoordinatorSetup.Pin(yaml)
-                let configured = pinnedVersion != "" && pin != ""
-                let matches = configured && pinnedVersion == version
-                let command = []string{"tokate", "init", repo}
+                let pinnedVersion = pin == "" || pin == "v0" ? "": PinnedVersion(pin)
+                let configured = pin != ""
+                let matches = configured && (pin == "v0" || pinnedVersion == version)
+                let command = []string{"tokate", "init", repo, "--pin"}
                 Add(
                     "coordinator",
                     !configured ? "problem": matches ? "ok": "warning",
-                    "Member version " +
-                        (pinnedVersion == "" ? "missing or malformed": pinnedVersion) +
+                    !configured ? "Coordinator workflow is missing or malformed. Run tokate init " + repo + ".":
+                    pin == "v0" ? "Coordinator follows stable-major releases at v0.":
+                    "Pinned version " +
+                        pinnedVersion +
                         ", CLI " +
                         version +
                         (matches ? ".": ". Update it with: " + String.Join(" ", command) + "."),
@@ -80,6 +82,13 @@ internal class OwnerHealth {
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
         if J.Bool(J.Get(info, "permissions"), "admin") {
             InspectActions(repo, pin)
+            Read(
+                "event_policy",
+                async () -> {
+                    CoordinatorSetup.EventPolicy(repo, ".github/workflows/tokate-coordinator.yml")
+                    Add("event_policy", "ok", "No blocking Actions event policy found.")
+                }
+            )
             Read(
                 "workflow_permissions",
                 async () -> {
@@ -139,8 +148,8 @@ internal class OwnerHealth {
                 let present = access.Sha != ""
                 Add(
                     "access",
-                    present ? "ok": "problem",
-                    (present ? "Present": "Missing. Run: tokate access init " + repo) +
+                    "ok",
+                    (present ? "Present": "Empty access record") +
                         ". Members " +
                         access
                         .Members
@@ -153,7 +162,7 @@ internal class OwnerHealth {
                         "member_count": access.Members.Count,
                         "trusted_count": trusted
                     },
-                    present ? []string{}: []string{"tokate", "access", "init", repo}
+                    []string{}
                 )
             }
         )
@@ -302,13 +311,8 @@ internal class OwnerHealth {
     }
 
     shared {
-        private func MemberVersion(yaml string) string {
-            let members = Regex.Matches(
-                yaml,
-                "(?m)^\\s*member:\\s*['\"]?tokate-([0-9]+\\.[0-9]+\\.[0-9]+)-linux-x64/tokate['\"]?\\s*$"
-            )
-            return members.Count == 1 ? members[0].Groups[1].Value: ""
-        }
+        private func PinnedVersion(pin string) string ->
+        GitHub.FileAt("obselate/tokate", "VERSION", pin).Trim()
 
         private func Older(version string, other string) bool {
             var current Version
@@ -325,9 +329,12 @@ internal class OwnerHealth {
                     args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Text("repo"):
                     args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
                 )
-                let pinned = MemberVersion(
-                    GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)
-                )
+                let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)
+                let pin = CoordinatorSetup.Pin(yaml)
+                if pin == "" || pin == "v0" {
+                    return
+                }
+                let pinned = PinnedVersion(pin)
                 let version = ApplicationInfo.Version()
                 if pinned != "" && Older(pinned, version) {
                     Terminal.Message(
@@ -335,7 +342,7 @@ internal class OwnerHealth {
                             pinned +
                             " is older than CLI " +
                             version +
-                            ". Owner: update it with: tokate init " +
+                            ". Owner: update it with: tokate init --pin " +
                             repo +
                             ".",
                         "yellow",
