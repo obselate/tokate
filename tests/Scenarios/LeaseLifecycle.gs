@@ -291,7 +291,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = LifecycleRequest("release")
         let path = Event(request)
         Flow.Mode("lost_state_response")
-        Check.Contains(Coordinate(path, 1).Error, "exact UUID outcome is recorded")
+        Coordinate(path)
         let applied = State()
         Coordinate(path)
         Check.That(Check.Text(State()["sha"]) == Check.Text(applied["sha"]), "Lost response replay wrote state")

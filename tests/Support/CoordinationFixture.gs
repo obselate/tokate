@@ -78,6 +78,8 @@ internal open class CoordinationFixture : IDisposable {
         let comment = Check.Map(
             "id",
             Comment,
+            "created_at",
+            DateTimeOffset.UtcNow.ToString("O"),
             "body",
             body,
             "user",

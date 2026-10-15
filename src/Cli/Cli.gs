@@ -334,13 +334,6 @@ internal class Cli {
                 "overlaps owner/project#12 owner/project#34"
             ),
             CliCommand(
-                "recover-request more local_read,github_read,github_write repo,issue",
-                "ISSUE",
-                "",
-                "Owner: process the latest unprocessed request with the installed coordinator and current login.",
-                "recover-request 42"
-            ),
-            CliCommand(
                 "amend more local_read,local_write,github_read,github_write run",
                 "RUN\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
                 "run,commit,time,tools,sync,summary,resume",

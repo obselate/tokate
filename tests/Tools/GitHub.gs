@@ -17,6 +17,19 @@ internal partial class Fixture {
         let pageField = Array.Find(query, field -> field.StartsWith("page=", StringComparison.Ordinal)) ?? "page=1"
         let sizeField = Array.Find(query, field -> field.StartsWith("per_page=", StringComparison.Ordinal)) ??
             "per_page=30"
+        let sinceField = Array.Find(query, field -> field.StartsWith("since=", StringComparison.Ordinal)) ?? "since="
+        let since = Uri.UnescapeDataString(sinceField.Substring(6))
+        if since != "" {
+            let threshold = DateTimeOffset.Parse(since)
+            var index = rows.Count - 1
+            while index >= 0 {
+                let updated = Check.Text(rows[index]?["updated_at"] ?? rows[index]?["created_at"])
+                if updated != "" && DateTimeOffset.Parse(updated) <= threshold {
+                    rows.RemoveAt(index)
+                }
+                index--
+            }
+        }
         let page = Int32.Parse(pageField.Substring(5))
         let size = Int32.Parse(sizeField.Substring(9))
         let result = JsonArray()
@@ -157,7 +170,18 @@ internal partial class Fixture {
         let header = Array.IndexOf(args, "-H")
         Conditional = header >= 0 ? args[header + 1]: ""
         let calls = State["api_calls"]?.AsArray() ?? JsonArray()
-        let call = Check.Map("method", method, "path", path, "conditional", Conditional != "", "validator", Conditional)
+        let call = Check.Map(
+            "method",
+            method,
+            "path",
+            path,
+            "conditional",
+            Conditional != "",
+            "validator",
+            Conditional,
+            "sha",
+            Check.Text(body["sha"])
+        )
         call["start"] = JsonValue.Create(Stopwatch.GetTimestamp())
         calls.Add(call)
         State["api_calls"] = calls
@@ -1356,12 +1380,12 @@ internal partial class Fixture {
         )
         let proposed = Check.Json(Git("upstream", []string{"show", sha + ":state.json"}))
         let outcomes = proposed["outcomes"]?.AsArray() ?? throw Exception("Missing mutation outcomes")
-        let participant = Check.Text(outcomes[outcomes.Count - 1]?["uuid"])
+        let request = Check.Text(outcomes[outcomes.Count - 1]?["uuid"])
         let first = Check.Text(rendezvous["first"])
         let second = Check.Text(rendezvous["second"])
-        Check.That(participant == first || participant == second, "Unexpected claim rendezvous participant")
+        Check.That(request == first || request == second, "Unexpected claim rendezvous request")
+        var participant = request
         let directory = Check.Text(rendezvous["directory"])
-        let peer = Path.Combine(directory, (participant == first ? second: first) + ".arrived")
         let changed = Chan[bool](1)
         using let watcher = FileSystemWatcher(directory, "*.arrived")
         watcher.Created += (sender Object?, event FileSystemEventArgs) -> {
@@ -1372,7 +1396,16 @@ internal partial class Fixture {
         }
         watcher.EnableRaisingEvents = true
         let deadline = after(TimeSpan.FromMilliseconds(Int32.Parse(Check.Text(rendezvous["timeout_ms"]))))
-        File.WriteAllText(Path.Combine(directory, participant + ".arrived"), "")
+        try {
+            File.Open(Path.Combine(directory, participant + ".arrived"), FileMode.CreateNew).Dispose()
+        } catch (error IOException) {
+            if !File.Exists(Path.Combine(directory, participant + ".arrived")) {
+                throw error
+            }
+            participant = participant == first ? second: first
+            File.WriteAllText(Path.Combine(directory, participant + ".arrived"), "")
+        }
+        let peer = Path.Combine(directory, (participant == first ? second: first) + ".arrived")
         while !File.Exists(peer) {
             select {
                 case <- changed { }

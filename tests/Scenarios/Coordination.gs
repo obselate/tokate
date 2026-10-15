@@ -383,7 +383,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = ClaimRequest()
         let path = Event(request)
         Flow.Mode("lost_state_response")
-        Coordinate(path, 1)
+        Coordinate(path)
         let state = State()
         Check.That(
             Check.Text(state["state"]?["reservation"]?["reservation"]) == Check.Text(request["uuid"]),
@@ -391,7 +391,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let replay = Coordinate(path, traffic: true)
-        Flow.Traffic(12, 0, 0, replay)
+        Flow.Traffic(13, 0, 0, replay)
         Check.That(Check.Text(State()["sha"]) == Check.Text(state["sha"]), "Replay wrote state")
         let changed = request.DeepClone()
         changed["metadata"] = Check.Map("command", "touch /tmp/unsafe")
@@ -463,7 +463,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             ClearRendezvous(directory)
         }
         Check.That(!Directory.Exists(directory), "Timed-out rendezvous markers were not cleaned up")
-        Claim()
+        Coordinate(path)
         Flow.NoInference()
     }
 
@@ -502,21 +502,27 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         let state = State()
         Check.That(state["state"]?["outcomes"]?.AsArray().Count == 1, "Two outcomes acquired authority")
+        Check.That(
+            Check.Text(state["state"]?["reservation"]?["reservation"]) == Check.Text(first["uuid"]),
+            "Concurrent events did not process the earliest request first"
+        )
         Flow.Reload()
         var attempts int32
         var rejected int32
+        let proposed = HashSet[string](StringComparer.Ordinal)
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
             if Check.Text(call["method"]) == "PATCH" && Check.Text(
                 call["path"]
             ) == "repos/owner/project/git/refs/heads/tokate/contributions/1" {
                 attempts++
+                proposed.Add(Check.Text(call["sha"]))
                 if Check.Text(call["status"]) == "422" {
                     rejected++
                 }
             }
         }
         Check.That(
-            attempts == 2 && rejected == 1,
+            attempts == 2 && rejected == proposed.Count - 1,
             "Concurrent claims did not exercise the non-forced competing ref updates: PATCH attempts=" +
                 attempts.ToString() + ", 422 rejections=" + rejected.ToString()
         )
@@ -1187,23 +1193,42 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func InterruptedWrite() {
-        let recovery = []string{"recover-request", "owner/project#1"}
-        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "recorded requests cannot be recovered")
-        Event(ClaimRequest())
+        let initial = State()["state"] ?? throw Exception("Missing state")
+        (initial["outcomes"]?.AsArray() ?? throw Exception("Missing outcomes")).Add(
+            Check.Map(
+                "uuid",
+                Guid.NewGuid().ToString("D"),
+                "binding",
+                "",
+                "outcome",
+                Check.Json("{}"),
+                "comment_created_at",
+                DateTimeOffset.UtcNow.AddDays(1).ToString("O")
+            )
+        )
+        RewriteState(initial)
+        let request = ClaimRequest()
+        let path = Event(request)
         Flow.Reload()
         let comments = Flow.State["comments"] ?? throw Exception("Missing comments")
         for index in 0 ... 100 {
             Comment++
-            comments[Comment.ToString()] = Check.Map("id", Comment, "body", "Ordinary issue comment")
+            comments[Comment.ToString()] = Check.Map(
+                "id",
+                Comment,
+                "body",
+                "Ordinary issue comment",
+                "created_at",
+                DateTimeOffset.UtcNow.ToString("O")
+            )
         }
         Flow.Save()
-        let request = ClaimRequest()
-        let path = Event(request)
+        let later = Event(request)
         Flow.Mode("interrupted_state_write")
         Flow.ResetTraffic()
         let failure = Coordinate(path, 1)
         Check.Contains(failure.Error, "One conditional ref retry was made")
-        Check.Contains(failure.Error, "owner must update the coordinator, then re-process the request")
+        Check.Contains(failure.Error, "trigger a new coordinator event")
         Check.Contains(failure.Error, "donor runs the same saved command again")
         Flow.Reload()
         var attempts int32
@@ -1215,25 +1240,22 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(attempts == 2, "Failed ref update did not stop after one retry")
         Check.That(State()["state"]?["reservation"] == nil, "Interrupted write acquired a claim")
         Flow.Mode("")
-        Check.Contains(Flow.Call(recovery, 1).Error, "Repository write permission is required")
-        Flow.Reload()
         let changed = Check.Json(File.ReadAllText(path))["comment"] ?? throw Exception("Missing comment")
         changed["body"] = JsonValue.Create("/tokate {}")
+        Flow.Reload()
         Flow.State["canonical_comment_override"] = changed.DeepClone()
         Flow.Save()
-        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "identity changed")
-        Check.That(State()["state"]?["reservation"] == nil, "Refused recovery acquired a claim")
+        Check.Contains(Coordinate(later, 1).Error, "identity changed")
+        Check.That(State()["state"]?["reservation"] == nil, "Changed canonical comment acquired a claim")
         Flow.Reload()
         Flow.State.AsObject().Remove("canonical_comment_override")
         Flow.Save()
         Flow.Faults("repos/owner/project/git/refs/heads/tokate/contributions/1", Check.Json("[{\"status\":500}]"))
-        Flow.Temp.Env.Remove("GITHUB_EVENT_NAME")
-        let recovered = Flow.Call([]string{"recover-request", "owner/project#1", "--json"}, owner: true)
+        let recovered = Coordinate(later)
         Check.That(
-            Check.Text(Check.Json(recovered.Output)["data"]?["reservation"]) == Check.Text(request["uuid"]),
-            "Recovery did not return the latest request outcome"
+            recovered.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 2,
+            "Later event did not process the earlier request before returning its recorded outcome"
         )
-        Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
         Flow.Reload()
         attempts = 0
         var inspected bool
@@ -1255,18 +1277,50 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let revision = Check.Text(State()["sha"])
         Coordinate(path)
         Check.That(Check.Text(State()["sha"]) == revision, "Interrupted-write replay repeated its effect")
-        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "Stale state or approval")
-        Flow.Reload()
-        Flow.State["comments"] = Check.Map(Comment.ToString(), Check.Json(File.ReadAllText(path))["comment"])
-        Flow.Save()
-        Event(request)
+        let stale = ClaimRequest()
+        stale["expected"] = JsonValue.Create(String('0', 40))
+        Event(stale)
+        let fresh = ClaimRequest()
+        fresh["action"] = JsonValue.Create("release")
         Flow.ResetTraffic()
-        Check.Contains(Flow.Call(recovery, 1, owner: true).Error, "recorded requests cannot be recovered")
+        Coordinate(Event(request))
         Flow.Reload()
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
-            Check.That(Check.Text(call["method"]) == "GET", "Recorded recovery repeated a write")
+            Check.That(Check.Text(call["method"]) == "GET", "Recorded request repeated a write")
         }
-        Check.That(Check.Text(State()["sha"]) == revision, "Recovery changed a recorded request")
+        Check.That(Check.Text(State()["sha"]) == revision, "Replay changed a recorded request")
+        Check.That(
+            (Flow.State["api_calls"]?.ToJsonString() ?? "").Contains("since="),
+            "Replay did not bound comment inspection by the current approval time"
+        )
+        Coordinate(Event(fresh))
+        Check.That(
+            Check.Text(State()["state"]?["reservation"]?["status"]) == "released",
+            "Stale earlier request blocked a later valid request"
+        )
+        Flow.Reload()
+        let busy = Flow.State["comments"] ?? throw Exception("Missing comments")
+        for index in 0 ... 1000 {
+            Comment++
+            busy[Comment.ToString()] = Check.Map(
+                "id",
+                Comment,
+                "body",
+                "Ordinary issue comment",
+                "created_at",
+                DateTimeOffset.UtcNow.ToString("O")
+            )
+        }
+        Flow.Save()
+        let bounded = ClaimRequest()
+        Event(bounded)
+        let overflow = Coordinate(Event(bounded))
+        Check.Contains(overflow.Output, "1000-comment limit")
+        let boundedOutcomes = State()["state"]?["outcomes"]?.AsArray() ?? throw Exception("Missing outcomes")
+        Check.That(
+            Check.Text(boundedOutcomes[boundedOutcomes.Count - 1]?["uuid"]) == Check.Text(bounded["uuid"]),
+            "Comment inspection limit blocked the triggering request"
+        )
         Flow.NoInference()
         Flow.NoPr()
     }

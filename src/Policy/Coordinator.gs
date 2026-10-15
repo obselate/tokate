@@ -103,27 +103,31 @@ internal class Coordinator {
             let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
             if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
                 ApproveLabel(repo, event)
+                Pending(
+                    repo,
+                    event,
+                    Int64.MaxValue,
+                    CoordinationState.Load(repo, J.Number(J.Get(event, "issue"), "number"), true)
+                )
                 return
             }
 
             Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
         }
 
-        internal func RecoverRequest(args Args) {
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let number = args.Number("issue")
-            let info = RepositoryAccess.RequireOwner(repo)
-            let owner = RepositoryIdentity.Login(J.Text(GitHub.Api("user"), "login"))
-            let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString())
-            if J.Number(issue, "number") != number {
-                throw Exception("Canonical issue identity changed")
-            }
-            let state = CoordinationState.Load(repo, number).Value()
-            let requests = List[JsonElement]()
-
+        private func Pending(repo string, event JsonElement, before int64, loaded CoordinationState) CoordinationState {
+            let number = J.Number(J.Get(event, "issue"), "number")
+            var current = loaded
+            var state = current.Value()
+            let since = J.Text(state, "approved_at")
+            let query = since == "" ? "": "&since=" + Uri.EscapeDataString(
+                DateTimeOffset.Parse(since).AddSeconds(-1).ToString("O")
+            )
             for page in 1 ... 11 {
                 let comments = GitHub.Api(
-                    "repos/" + repo + "/issues/" + number.ToString() + "/comments?per_page=100&page=" + page.ToString()
+                    "repos/" + repo + "/issues/" + number.ToString() +
+                        "/comments?per_page=100&page=" +
+                        page.ToString() + query
                 )
 
                 if comments.ValueKind != JsonValueKind.Array {
@@ -131,52 +135,77 @@ internal class Coordinator {
                 }
 
                 for comment in comments.EnumerateArray() {
-                    if J.Text(comment, "body").StartsWith("/tokate ", StringComparison.Ordinal) {
-                        requests.Add(comment)
+                    if !J.Text(comment, "body").StartsWith("/tokate ", StringComparison.Ordinal) {
+                        continue
+                    }
+                    if RepositoryIdentity.PositiveId(J.Get(comment, "id")) >= before {
+                        return current
+                    }
+                    try {
+                        let request = RequestData.CommentData(J.Text(comment, "body"))
+                        RequestData.Request(request)
+                        if RequestData.Recorded(state, J.Get(J.Get(comment, "user"), "id"), request).ValueKind !=
+                        JsonValueKind.Undefined {
+                            continue
+                        }
+                        Process(
+                            repo,
+                            J.Parse(
+                                J.Write(
+                                    map[string, Object?]{
+                                        "action": "created",
+                                        "repository": J.Get(event, "repository"),
+                                        "issue": J.Get(event, "issue"),
+                                        "comment": comment
+                                    }
+                                )
+                            ),
+                            "issue_comment",
+                            pending: true
+                        )
+                        current = CoordinationState.Load(repo, number)
+                        state = current.Value()
+                    } catch (error Exception) {
+                        Terminal.Message("Earlier request " + J.Get(comment, "id").ToString() + ": " + error.Message)
                     }
                 }
 
                 if comments.GetArrayLength() < 100 {
-                    break
+                    return current
                 }
 
                 if page == 10 {
-                    throw Exception("Request comment inspection exceeded its bounded page limit")
-                }
-            }
-
-            var index = requests.Count - 1
-            while index >= 0 {
-                let comment = requests[index]
-                let request = RequestData.CommentData(J.Text(comment, "body"))
-                RequestData.Request(request)
-                if RequestData.Recorded(state, J.Get(J.Get(comment, "user"), "id"), request).ValueKind ==
-                JsonValueKind.Undefined {
-                    Terminal.Step("Recovering request as " + owner)
-                    Process(
-                        repo,
-                        J.Parse(
-                            J.Write(
-                                map[string, Object?]{
-                                    "action": "created",
-                                    "repository": info,
-                                    "issue": issue,
-                                    "comment": comment
-                                }
-                            )
-                        ),
-                        "issue_comment",
-                        recover: true
+                    Terminal.Message(
+                        "Earlier request inspection reached its 1000-comment limit. Remaining comments were skipped."
                     )
-                    return
                 }
-                index--
             }
-
-            throw Exception("No unprocessed request comment found; recorded requests cannot be recovered")
+            return current
         }
 
-        private func Process(repo string, event JsonElement, eventName string, recover bool = false) {
+        private func Replay(
+            repo string,
+            number int32,
+            state CoordinationState,
+            request JsonElement,
+            actor JsonElement,
+            donor string,
+            outcome JsonElement
+        ) {
+            let action = J.Text(request, "action")
+            if action != "release" {
+                state.Check(repo, number, donor, actor)
+            }
+            if action == "amend" {
+                ReceiptVerification.Verify(repo, J.Number(outcome, "pr"))
+            }
+            if action == "publish" {
+                ContributionHandoff.Supersede(state, request)
+            }
+            Terminal.Json(outcome, "Recorded request outcome")
+        }
+
+        private func Process(repo string, event JsonElement, eventName string, pending bool = false) {
             let eventComment = J.Get(event, "comment")
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
@@ -234,34 +263,21 @@ internal class Coordinator {
             let request = RequestData.CommentData(text)
             RequestData.Request(request)
 
-            let state = CoordinationState.Load(repo, number)
+            var state = CoordinationState.Load(repo, number)
+            if !pending {
+                state = Pending(repo, event, commentId, state)
+            }
             let binding = RequestData.Binding(actor, request)
             let initial = state.Value()
             let outcomes = J.Items(J.Get(initial, "outcomes"))
 
             for old in outcomes {
                 if J.Text(old, "uuid") == J.Text(request, "uuid") {
-                    if recover {
-                        throw Exception("Request is already recorded; recovery refused")
-                    }
-
                     if J.Text(old, "binding") != binding {
                         throw Exception("UUID replay changed actor or request contents")
                     }
 
-                    if J.Text(request, "action") != "release" {
-                        state.Check(repo, number, donor, actor)
-                    }
-
-                    if J.Text(request, "action") == "amend" {
-                        ReceiptVerification.Verify(repo, J.Number(J.Get(old, "outcome"), "pr"))
-                    }
-
-                    if J.Text(request, "action") == "publish" {
-                        ContributionHandoff.Supersede(state, request)
-                    }
-
-                    Terminal.Json(J.Get(old, "outcome"), "Recorded request outcome")
+                    Replay(repo, number, state, request, actor, donor, J.Get(old, "outcome"))
                     return
                 }
             }
@@ -448,6 +464,11 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
+                let recorded = RequestData.Recorded(live.Value(), actor, request)
+                if recorded.ValueKind != JsonValueKind.Undefined {
+                    Replay(repo, number, live, request, actor, donor, recorded)
+                    return
+                }
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
 
@@ -476,10 +497,8 @@ internal class Coordinator {
                 let inspected = CoordinationState.Load(repo, number)
                 let recorded = RequestData.Recorded(inspected.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
-                    throw Exception(
-                        "Coordination write response was lost; exact UUID outcome is recorded. Inspect current state before redelivery.",
-                        error
-                    )
+                    Replay(repo, number, inspected, request, actor, donor, recorded)
+                    return
                 }
 
                 throw Exception(
@@ -500,6 +519,11 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
+                let recorded = RequestData.Recorded(acquired.Value(), actor, request)
+                if recorded.ValueKind != JsonValueKind.Undefined {
+                    Replay(repo, number, acquired, request, actor, donor, recorded)
+                    return
+                }
                 throw CliFailure(
                     "stale_approval",
                     "Coordination changed after reservation update; inspect current state"

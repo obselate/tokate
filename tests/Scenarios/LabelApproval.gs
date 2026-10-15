@@ -86,7 +86,13 @@ internal partial class CoordinationFlow {
         internal func LabelApprovalLifecycle(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
-            test.Claim()
+            let pending = test.ClaimRequest()
+            test.Event(pending)
+            test.Coordinate(test.LabelEvent())
+            Check.That(
+                Check.Text(test.State()["state"]?["reservation"]?["reservation"]) == Check.Text(pending["uuid"]),
+                "Label event did not process an earlier unrecorded request"
+            )
             let initial = test.State()
             let path = test.LabelEvent()
             test.Coordinate(path)

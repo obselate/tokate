@@ -222,6 +222,7 @@ internal class CoordinationState {
             state.Fields["issue"] = issue
             state.Fields["approval"] = approval
             state.Fields["approval_id"] = Data.Hash(RequestData.Canonical(approved))
+            state.Fields["approved_at"] = DateTimeOffset.UtcNow.ToString("O")
             state.Fields["revoked"] = false
             state.Fields["identity"] = nil
             state.Fields["publication_revision"] = nil
