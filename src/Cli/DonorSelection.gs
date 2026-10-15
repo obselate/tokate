@@ -60,9 +60,68 @@ internal class DonorSelection {
             }
 
             DonorDefaults.Fill(args, saved)
+            DonorDefaults.CheckPaths(args, saved)
+        }
+
+        private func CodexChoices(
+            capabilities Dictionary[string, HashSet[string]],
+            policy Policy,
+            unavailable string = ""
+        ) SortedSet[string] {
+            let choices = SortedSet[string](StringComparer.Ordinal)
+
+            for entry in capabilities {
+                for effort in entry.Value {
+                    if entry.Key != unavailable && policy.Allows("codex", "openai", entry.Key, effort) {
+                        choices.Add(entry.Key + " / " + effort)
+                    }
+                }
+            }
+
+            return choices
+        }
+
+        private func Eligible(args Args, policy Policy) string {
+            let groups = List[string]()
+
+            for tool in J.Items(policy.Tools) {
+                let models = J.Get(tool, "models")
+                let pairs = List[string]()
+
+                if J.Text(tool, "harness") == "codex" {
+                    pairs.AddRange(CodexChoices(CodexRuntime.Capabilities(args.Get("harness-path")), policy))
+                } else if models.ValueKind == JsonValueKind.Object {
+                    for model in models.EnumerateObject() {
+                        for effort in J.Items(model.Value) {
+                            pairs.Add(model.Name + " / " + effort.GetString())
+                        }
+                    }
+                } else {
+                    pairs.Add("any model")
+                }
+
+                groups.Add(
+                    J.Text(tool, "harness") + "/" + J.Text(tool, "provider") +
+                        ": " +
+                        (pairs.Count == 0 ? "none": String.Join(", ", pairs))
+                )
+            }
+
+            return String.Join("; ", groups)
         }
 
         internal func Resolve(args Args, policy Policy) JsonElement {
+            if args.Get("harness") == "" && args.Get("provider") == "" && args.Get("model") == "" && args.Get(
+                "effort"
+            ) == "" {
+                throw CliFailure(
+                    "invalid_arguments",
+                    "No usable saved default. Pass --harness HARNESS --model MODEL --effort EFFORT. Eligible pairs by harness/provider: " +
+                        Eligible(args, policy) +
+                        ". No inference started."
+                )
+            }
+
             DonorDefaults.NormalizePair(args)
 
             let harness = args.Get("harness", "codex")
@@ -127,22 +186,7 @@ internal class DonorSelection {
 
             let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))
             var availability = args.Get("availability", "unknown")
-            let unavailable = availability == "unavailable" ? model: ""
-            let choices = SortedDictionary[string, JsonElement](StringComparer.Ordinal)
-
-            for entry in capabilities {
-                if entry.Key == unavailable {
-                    continue
-                }
-
-                for candidateEffort in entry.Value {
-                    if policy.Allows("codex", "openai", entry.Key, candidateEffort) {
-                        choices[entry.Key + " / " + candidateEffort] = J.Parse(
-                            J.Write(map[string, Object?]{"model": entry.Key, "effort": candidateEffort})
-                        )
-                    }
-                }
-            }
+            let choices = CodexChoices(capabilities, policy, availability == "unavailable" ? model: "")
 
             if choices.Count == 0 {
                 throw Exception(
@@ -150,7 +194,7 @@ internal class DonorSelection {
                 )
             }
 
-            if !choices.ContainsKey(model + " / " + effort) {
+            if !choices.Contains(model + " / " + effort) {
                 var rejection = "Incomplete donor model/effort choice."
                 if model != "" && effort != "" {
                     var supported HashSet[string]
@@ -166,7 +210,7 @@ internal class DonorSelection {
                 }
 
                 let guidance = " Explicit donor choice required: --model MODEL --effort EFFORT. Eligible pairs: " +
-                    String.Join(", ", choices.Keys) + ". No inference started."
+                    String.Join(", ", choices) + ". No inference started."
                 if (explicitPair || args.Get("profile") != "") && model != "" && effort != "" {
                     throw Exception(rejection + guidance)
                 }

@@ -114,6 +114,19 @@ internal class OmpRuntime {
             }
         }
 
+        internal func DefaultRole(executable string) string {
+            let result = Native(executable, []string{"config", "get", "modelRoles", "--json"}, 30, nil)
+            if result.Code != 0 || result.Truncated || result.ReadFailed {
+                return ""
+            }
+
+            try {
+                return J.Text(J.Get(RequestData.Parse(result.Output.Trim(), 1024 * 1024), "value"), "default")
+            } catch (error CliFailure) {
+                return ""
+            }
+        }
+
         internal func Model(executable string, provider string, model string, budget RuntimeBudget? = nil) JsonElement {
             var selected JsonElement
             var matches int32

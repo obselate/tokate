@@ -142,10 +142,18 @@ internal class PiChecks {
             let hiddenCodex = Path.Combine(flow.Bin, "unused-codex")
             File.Move(codex, hiddenCodex)
             try {
+                File.WriteAllText(
+                    Path.Combine(agent, "settings.json"),
+                    "{\"defaultProvider\":\"local\",\"defaultModel\":\"fixture-model\",\"defaultThinkingLevel\":\"off\"}"
+                )
                 let diagnosis = Check.Envelope(
                     flow.Call([]string{"doctor", "managed", "pi", "--pi-root", root, "--node", node, "--json"}),
                     "doctor",
                     "ok"
+                )
+                Check.Contains(
+                    diagnosis["data"]?["tools"]?.ToJsonString() ?? "",
+                    "Pi settings: model fixture-model, effort off, provider local, endpoint " + catalog.Endpoint + "."
                 )
                 for tool in diagnosis["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Pi diagnostics required Codex")
@@ -155,8 +163,18 @@ internal class PiChecks {
                 for tool in inherited["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Managed diagnostics ignored the chosen Pi default")
                 }
+                let stale = Path.Combine(flow.Temp.Root, "missing-node")
+                flow.Call([]string{"defaults", "set", "--harness", "pi", "--pi-root", root, "--node", stale})
+                let refused = Check.Envelope(
+                    flow.Call([]string{"defaults", "check", "owner/project", "--json"}, 1),
+                    "defaults",
+                    "error",
+                    "invalid_state"
+                )
+                Check.Contains(Check.Text(refused["error"]?["message"]), "field node names a missing path")
                 flow.Call([]string{"defaults", "remove"})
             } finally {
+                File.Delete(Path.Combine(agent, "settings.json"))
                 File.Move(hiddenCodex, codex)
             }
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")

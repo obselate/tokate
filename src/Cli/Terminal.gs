@@ -464,13 +464,13 @@ internal class Terminal {
             return text.Length == 0 ? text: Char.ToUpperInvariant(text[0]).ToString() + text.Substring(1)
         }
 
-        private func Fields(value JsonElement, prefix string = "") {
+        private func Fields(value JsonElement, prefix string = "", names bool = false) {
             for field in value.EnumerateObject() {
-                let label = prefix + Label(field.Name)
+                let label = prefix + (names ? field.Name: Label(field.Name))
 
                 if field.Value.ValueKind == JsonValueKind.Object {
                     Message(label + ":", "default")
-                    Fields(field.Value, "  ")
+                    Fields(field.Value, prefix + "  ", prefix == "" && field.Name == "profiles")
                 } else if field.Value.ValueKind == JsonValueKind.Array {
                     let items = J.Items(field.Value)
 

@@ -243,6 +243,15 @@ internal class Startup {
             return false
         }
 
+        private func Listed(tools List[ToolCheck]) List[ToolCheck] {
+            let runner = tools.Find(tool -> tool.Name == "setsid" && tool.Path != "")
+            return tools.FindAll(
+                tool -> tool.Name != "/usr/bin/setsid" || tool.Path == "" || runner == nil || LocalPaths.CanonicalPath(
+                    tool.Path
+                ) != LocalPaths.CanonicalPath(runner.Path)
+            )
+        }
+
         internal func Show(tools List[ToolCheck], error bool = false) {
             for tool in tools {
                 let style = tool.Status == "ready" ||
@@ -276,8 +285,9 @@ internal class Startup {
                     return
                 }
 
-                PublicOutput.Tools(blockers)
-                Show(blockers, true)
+                let listed = Listed(blockers)
+                PublicOutput.Tools(listed)
+                Show(listed, true)
 
                 for tool in blockers {
                     if tool.Code.StartsWith("namespace_", StringComparison.Ordinal) {
@@ -440,6 +450,7 @@ internal class Startup {
                         }
                     }
 
+                    DonorDefaults.CheckPaths(options, saved)
                     options.HarnessFromDefault = true
                 }
             }
@@ -484,14 +495,6 @@ internal class Startup {
                 }
 
                 tools.Add(runtime)
-
-                if runtime.Status == "ready" && runtime.Report is JsonElement native {
-                    try {
-                        runtime.Report = ClaudeCode.Gate(options, native)
-                    } catch (error Exception) {
-                        throw CliFailure("verification_failed", error.Message)
-                    }
-                }
             }
 
             if doctorScope == "managed" && adapter?.Doctor == nil {
@@ -547,18 +550,24 @@ internal class Startup {
                 }
             }
 
-            PublicOutput.Tools(tools)
+            let listed = Listed(tools)
+            PublicOutput.Tools(listed)
 
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
                 fields["authentication_requested"] = options.Get("auth") == "true" || options.Get("model") != ""
-                if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is Object report {
-                    fields["claude"] = report
-                }
             }
 
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")
-            Show(tools)
+            Show(listed)
+
+            if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is JsonElement native {
+                let report = ClaudeCode.Gate(options, native)
+
+                if PublicOutput.ResultData is Dictionary[string, Object?]fields {
+                    fields["claude"] = report
+                }
+            }
 
             if (doctorScope == "external" && options.Subject != "external") || options.Get("set-default") == "true" {
                 DoctorHarnesses(options)
