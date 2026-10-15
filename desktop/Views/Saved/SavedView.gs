@@ -7,13 +7,11 @@ import System.Collections.Generic
 /// The saved work page: the list of saved runs below its actions, or the selected run.
 class SavedView {
     private let saved SavedWorkService
-    private let feedback FeedbackService
     private let list SavedListView
     private let details SavedRunView
 
-    init(saved SavedWorkService, feedback FeedbackService) {
+    init(saved SavedWorkService) {
         this.saved = saved
-        this.feedback = feedback
         list = SavedListView(saved)
         details = SavedRunView(saved)
     }
@@ -22,8 +20,7 @@ class SavedView {
 
     func Build(page PageContext) Blob {
         let state = saved.Current
-        let notice = feedback.Current
-        let inForm = state.Selected && details.HoldsNotice
+        let notice = page.Feedback
         let body = List[Blob]()
         if state.Selected {
             body.AddRange(details.Build(page, notice))
@@ -44,12 +41,6 @@ class SavedView {
                 }.Build()
             )
         }
-        if notice.Message != "" && !inForm {
-            body.Insert(1, Callout{Message: notice.Message, Tone: notice.Tone}.Build())
-        }
-        if notice.Report != "" {
-            body.Add(ReportText{Content: notice.Report}.Build())
-        }
         if state.Importing && !state.Selected {
             body.Add(
                 RunOpener{
@@ -64,6 +55,8 @@ class SavedView {
         if state.Loaded && !state.Selected {
             body.AddRange(list.Build(page))
         }
-        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+        let header = body[0]
+        body.RemoveAt(0)
+        return page.Layout(header, body.ToArray())
     }
 }

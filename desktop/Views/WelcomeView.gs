@@ -14,14 +14,14 @@ class WelcomeView {
         this.resume = resume
     }
 
-    func Build() Blob {
+    func Build(page PageContext) Blob {
         let metrics = app.Window.Metrics
         let compact = metrics.ContentWidth < 900
         let state = app.Welcome.Current
         return Showcase{
             Art: Painting.Mount(app, metrics.Short ? 160: 0, false),
             Children: []Blob{
-                HeroTitle{Width: metrics.ContentWidth, Title: "Give your inference", Accent: "a purpose."}.Build(),
+                page.Layout(HeroTitle{Width: metrics.ContentWidth, Title: "Give your inference", Accent: "a purpose."}.Build(), []Blob{
                 Overhang{
                     Content: Row{
                         Children: []Blob{
@@ -36,6 +36,7 @@ class WelcomeView {
                     }.Build(),
                     Above: state.Latest != nil ? Continue(state.Latest!!): nil,
                 }.Build(),
+                }),
             },
             Overlay: state.SignedOut ? SignIn(): nil,
             Short: metrics.Short,

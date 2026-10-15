@@ -48,7 +48,7 @@ data struct ProjectOpener {
                     Input: Input, Status: status, Tone: tone, Button: Button,
                     Disabled: Disabled, OnInput: OnInput, OnChoose: OnChoose, OnFind: OnOpen,
                 }.Build(),
-                SectionPanel{
+                ListSection{
                     Title: "Your repositories", Count: Projects.Length,
                     Children: lines.ToArray(),
                 }.Build(),

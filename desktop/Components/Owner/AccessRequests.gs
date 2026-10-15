@@ -44,6 +44,6 @@ data struct AccessRequests {
         if Requests.Length == 0 {
             lines.Add(ListRow{Children: []Blob{Label{Content: "No pending requests.", Muted: true}.Build()}}.Build())
         }
-        return SectionPanel{Title: "Requests", Count: Requests.Length, Children: lines.ToArray()}.Build()
+        return ListSection{Title: "Requests", Count: Requests.Length, Children: lines.ToArray()}.Build()
     }
 }

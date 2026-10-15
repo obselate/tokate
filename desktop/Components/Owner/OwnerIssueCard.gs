@@ -79,7 +79,7 @@ data struct OwnerIssueCard {
             Gap: AppTheme.Space16,
             Children: []Blob{
                 approval,
-                SectionPanel{
+                ListSection{
                     Title: "Draft pull requests",
                     Count: Reading ? -1: drafts.Length,
                     Children: lines.ToArray(),

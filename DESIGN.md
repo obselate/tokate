@@ -122,6 +122,31 @@ spaced. Longer documents can increase line height without enlarging every headin
 - Labels: Newsreader, 16px, 400, muted ink, 8px field gap.
 - Lists: 64px minimum rows. Tables: 8px inset, 16px horizontal and 12px vertical row padding.
 
+## Taste
+
+1. Put step actions at the bottom right, secondary before primary. Use the same order in dialogs.
+2. Use real secondary or tonal buttons for actions and list rows. Quiet buttons are tertiary navigation only.
+3. Use Fresco positive tones for grant, trust, approve and publish. Use danger for deny, revoke, remove and stop. Other actions are neutral.
+4. Center row labels vertically with their controls.
+5. Omit periods on short labels, hints and chips. Keep sentence punctuation in body text.
+6. Format durations consistently in values and limits: `1 h`, `45 min`, `1 h 30 min`.
+7. Disable stepper controls at their bounds. Make optional unlimited time the lowest value, never a checkbox between steppers.
+8. Put status in an inline chip beside the thing it describes, never in a banner below an input.
+9. Put feedback in one full-width slot below the page title and step tabs, before content.
+10. Animate loading with SkyLoader or an inline indicator. Never show bare checking text.
+11. Give lists a section heading, divider, and rows with hover and focus states.
+12. Put content in headed cards, not free-floating text or controls.
+13. Structure facts as grouped label/value rows, stat tiles or chips, not paragraphs of values.
+14. Align output title, line count and elapsed time on one baseline. Make per-item output collapsible.
+15. Give running screens ambient Fresco or SkyLoader motion. Respect reduced motion.
+16. Size cards to content. Avoid tall empty areas.
+17. Link to a target only once per view.
+18. Use circular arrows only for refresh. Use back or swap icons to change project or repository.
+19. Keep names and badges together with the small system gap.
+20. Show each fact once per view.
+21. Pick items from paginated checkbox lists instead of typing IDs.
+22. Merge shared runners into one OMP choice without a local label. Offer OMP providers and Local endpoint, mapping the latter to `--harness pi --endpoint URL` and others to `--harness omp --provider P`. Keep CLI harness values in saved profiles and policy tools.
+
 ## Layout
 
 Use generous margins and a clear reading order. Center a short promotional hero,

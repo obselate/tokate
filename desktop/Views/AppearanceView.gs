@@ -11,13 +11,12 @@ class AppearanceView {
         this.app = app
     }
 
-    func Build() Blob {
+    func Build(page PageContext) Blob {
         let settings = app.Theme.Settings
         let busy = app.Activity.Busy
-        return Stack{
-            Gap: AppTheme.SectionGap,
-            Children: []Blob{
-                Heading{Content: "Appearance", Size: AppTheme.DisplaySize}.Build(),
+        return page.Layout(
+            Heading{Content: "Appearance", Size: AppTheme.DisplaySize}.Build(),
+            []Blob{
                 Painting.Mount(app, Math.Min(app.Window.Metrics.ContentWidth * 0.4, app.Window.Metrics.WindowHeight * 0.3), true),
                 Panel{
                     Children: []Blob{
@@ -45,8 +44,8 @@ class AppearanceView {
                         }.Build(),
                     },
                 }.Build(),
-            },
-        }.Build()
+            }
+        )
     }
 
     private func Theme(title string, detail string, icon string, night bool, current bool, busy bool) Blob -> ChoiceCard{

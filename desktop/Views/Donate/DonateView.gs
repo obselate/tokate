@@ -7,7 +7,6 @@ import System.Collections.Generic
 /// The donor's page: choose an issue, set limits, review, then reserve and run the donation.
 class DonateView {
     private let donation DonationService
-    private let feedback FeedbackService
     private let issue IssueStepView
     private let limits LimitsStepView
     private let review ReviewStepView
@@ -15,13 +14,11 @@ class DonateView {
 
     init(
         donation DonationService,
-        feedback FeedbackService,
         art ArtworkService,
         navigate Action[Destination],
         openSaved Action[string]
     ) {
         this.donation = donation
-        this.feedback = feedback
         issue = IssueStepView(donation)
         limits = LimitsStepView(donation, art, () -> navigate(Destination.Profiles))
         review = ReviewStepView(donation)
@@ -39,14 +36,10 @@ class DonateView {
 
     func Build(page PageContext) Blob {
         let step = donation.Current.Step
-        let message = feedback.Current.Message
         if step == DonationStep.Donation {
-            return progress.Build(page, Header(page, step), message, feedback.Current.Tone)
+            return progress.Build(page, Header(page, step))
         }
-        let body = List[Blob]{Header(page, step)}
-        if message != "" {
-            body.Add(Callout{Message: message, Tone: feedback.Current.Tone}.Build())
-        }
+        let body = List[Blob]()
         if step == DonationStep.Issue {
             body.AddRange(issue.Build(page))
         } else if step == DonationStep.Limits {
@@ -54,7 +47,7 @@ class DonateView {
         } else {
             body.AddRange(review.Build(page))
         }
-        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+        return page.Layout(Header(page, step), body.ToArray())
     }
 
     /// The page title and the step indicator. Step IV names the issue and links to it.

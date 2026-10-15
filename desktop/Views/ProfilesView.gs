@@ -7,18 +7,15 @@ import System.Collections.Generic
 /// The donor's saved profiles, and the form that adds or changes one.
 class ProfilesView {
     private let profiles ProfileService
-    private let feedback FeedbackService
     private let art ArtworkService
 
-    init(profiles ProfileService, feedback FeedbackService, art ArtworkService) {
+    init(profiles ProfileService, art ArtworkService) {
         this.profiles = profiles
-        this.feedback = feedback
         this.art = art
     }
 
     func Build(page PageContext) Blob {
         let state = profiles.Current
-        let notice = feedback.Current
         let body = List[Blob]{
             Row{
                 Children: []Blob{
@@ -27,12 +24,6 @@ class ProfilesView {
                     (page.Button with{Label = "New profile", Icon = "add", Primary = !state.Open, OnClick = () -> profiles.New(), Disabled = state.Open}).Build(),
                 },
             }.Build(),
-        }
-        if notice.Message != "" {
-            body.Add(Callout{Message: notice.Message, Tone: notice.Tone}.Build())
-        }
-        if notice.Report != "" {
-            body.Add(ReportText{Content: notice.Report}.Build())
         }
         if state.Open {
             body.Add(Form(page, state))
@@ -66,7 +57,9 @@ class ProfilesView {
                 }.Build()
             )
         }
-        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+        let header = body[0]
+        body.RemoveAt(0)
+        return page.Layout(header, body.ToArray())
     }
 
     private func Form(page PageContext, state ProfilesState) Blob {

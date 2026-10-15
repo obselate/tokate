@@ -7,14 +7,12 @@ import System.Collections.Generic
 /// The owner's page: open a project, then work in its Contributions, Access and Setup tabs.
 class ProjectView {
     private let owner OwnerService
-    private let feedback FeedbackService
     private let contributions ContributionsTab
     private let access AccessTab
     private let setup SetupTab
 
-    init(owner OwnerService, feedback FeedbackService, art ArtworkService) {
+    init(owner OwnerService, art ArtworkService) {
         this.owner = owner
-        this.feedback = feedback
         contributions = ContributionsTab(owner)
         access = AccessTab(owner)
         setup = SetupTab(owner, art)
@@ -27,7 +25,6 @@ class ProjectView {
 
     func Build(page PageContext) Blob {
         let state = owner.Current
-        let notice = feedback.Current
         let issue = state.Open && state.Tab == OwnerTab.Contributions && state.Selected != nil
         let body = List[Blob]()
         if issue {
@@ -85,16 +82,10 @@ class ProjectView {
                 }.Build()
             )
         }
-        let messages = List[Blob]()
-        if notice.Message != "" {
-            messages.Add(Callout{Message: notice.Message, Tone: notice.Tone}.Build())
-        }
-        if notice.Report != "" {
-            messages.Add(ReportText{Content: notice.Report}.Build())
-        }
         if issue {
-            body.InsertRange(1, messages)
-            return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+            let header = body[0]
+            body.RemoveAt(0)
+            return page.Layout(header, body.ToArray())
         }
         if !state.Open {
             if state.DoctorReport != "" {
@@ -116,8 +107,9 @@ class ProjectView {
                     OnChoose: repository -> owner.OpenRepository(repository),
                 }.Build()
             )
-            body.InsertRange(1, messages)
-            return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+            let header = body[0]
+            body.RemoveAt(0)
+            return page.Layout(header, body.ToArray())
         }
         let tabs = List[string]()
         for tab in OwnerTabs.All {
@@ -135,6 +127,9 @@ class ProjectView {
                 }
             )
         )
+        let header = Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+        body.Clear()
+        let messages = List[Blob]()
         if state.Tab == OwnerTab.Setup {
             messages.Add(setup.Build(page))
         } else if state.Tab == OwnerTab.Access {
@@ -150,6 +145,6 @@ class ProjectView {
                 Children: messages.ToArray(),
             }.Build()
         )
-        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
+        return page.Layout(header, body.ToArray())
     }
 }

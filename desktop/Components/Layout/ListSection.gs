@@ -5,7 +5,7 @@ import Goo
 /// A bordered surface for the lines of a list, below a heading with the count of lines on its baseline. A
 /// count below zero does not show.
 /// `Trailing` blobs sit at the end of the heading row. `Note` is small text below the lines.
-data struct SectionPanel {
+data struct ListSection {
     var Title string
     var Count int32
     var Trailing []Blob
@@ -14,7 +14,7 @@ data struct SectionPanel {
 
     func Build() Container {
         let p = AppTheme.Current
-        let head = ListRow{
+        let head = Row{
             Children: []Blob{
                 Row{
                     Align: AlignItems.Baseline,
@@ -28,6 +28,8 @@ data struct SectionPanel {
                 Spacer{}.Build(),
             },
         }.Build()
+        head.MinHeight = AppTheme.RowHeight
+        head.Padding = Edges{Left: AppTheme.CardPadding, Right: AppTheme.CardPadding, Top: AppTheme.Space12, Bottom: AppTheme.Space12}
         for item in Trailing ?? []Blob{} {
             head.Children.Add(item)
         }

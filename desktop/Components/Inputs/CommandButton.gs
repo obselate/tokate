@@ -5,13 +5,20 @@ import Goo.Widgets.Actions
 import Goo.Widgets.Icons
 import System
 
-/// The shape of a command button. Tabs and segments show `Primary` as the selected state.
+/// Action buttons are primary or real secondary. Quiet is reserved for tertiary navigation.
 enum ButtonKind {
     Action,
     Quiet,
     Tab,
     Segment,
     Icon
+}
+
+/// The intent of an action, independent of its primary or secondary emphasis.
+enum ButtonTone {
+    Default,
+    Positive,
+    Danger
 }
 
 /// A button that starts a command. While its command runs it becomes the cancel control. A tab or segment
@@ -30,6 +37,7 @@ data struct CommandButton {
     var Name string
     var OnClick Action?
     var Primary bool
+    var Tone ButtonTone
     var Disabled bool
     var Kind ButtonKind
     var Icon string
@@ -63,10 +71,12 @@ data struct CommandButton {
         let choice = Kind == ButtonKind.Tab || Kind == ButtonKind.Segment
         let filled = Kind == ButtonKind.Action && Primary
         let framed = Kind == ButtonKind.Action || iconOnly || (Kind == ButtonKind.Segment && Primary)
+        let color = Tone == ButtonTone.Positive ? p.Ok: Tone == ButtonTone.Danger ? p.Fail: p.Ink
+        let tonal = framed && !choice && Tone != ButtonTone.Default
         let size = Kind == ButtonKind.Segment ? AppTheme.SmallSize: AppTheme.BodySize
         let height = Kind == ButtonKind.Segment ? AppTheme.CompactButtonHeight: AppTheme.ButtonHeight
-        let ink = filled ? p.Paper: choice && !Primary ? p.Muted: p.Ink
-        let rest = filled ? p.Ink: Kind == ButtonKind.Segment && Primary ? p.Paper: framed ? p.Surface: Color.Transparent
+        let ink = filled ? p.Paper: tonal ? color: choice && !Primary ? p.Muted: p.Ink
+        let rest = filled ? color: tonal ? AppTheme.Mix(p.Surface, color, 0.10): Kind == ButtonKind.Segment && Primary ? p.Paper: framed ? p.Surface: Color.Transparent
         let button = ActionButton{
             Content: iconOnly ? "": label,
             AccessibilityName: loading ? "Cancel command": identity,
@@ -88,11 +98,11 @@ data struct CommandButton {
             Disabled: unavailable,
             BackgroundColor: rest,
             TextColor: ink,
-            HoverBackgroundColor: filled ? p.Accent: Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Quiet ? p.Surface: p.Paper,
-            ActiveBackgroundColor: Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Segment ? p.Paper: p.Accent,
+            HoverBackgroundColor: filled ? AppTheme.Mix(color, p.Paper, 0.15): tonal ? AppTheme.Mix(p.Surface, color, 0.18): Kind == ButtonKind.Tab ? Color.Transparent: Kind == ButtonKind.Quiet ? p.Surface: p.Paper,
+            ActiveBackgroundColor: filled ? AppTheme.Mix(color, p.Paper, 0.25): tonal ? AppTheme.Mix(p.Surface, color, 0.24): Kind == ButtonKind.Tab ? Color.Transparent: p.Paper,
             DisabledBackgroundColor: filled ? p.Surface: rest,
             DisabledTextColor: !choice ? p.Muted: Disabled ? AppTheme.Mix(p.Muted, p.Paper, 0.5): ink,
-            BorderColor: filled && !unavailable ? p.Ink: framed || filled ? p.Line: Color.Transparent,
+            BorderColor: filled && !unavailable ? color: tonal ? AppTheme.Mix(p.Line, color, 0.45): framed || filled ? p.Line: Color.Transparent,
             FocusBorderColor: p.Accent,
             ShowFocusHighlight: AppTheme.FocusVisible,
             FontFamily: AppTheme.BodyFont,

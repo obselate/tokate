@@ -43,7 +43,7 @@ data struct ProfileList {
             )
             let actions = List[Blob]()
             if item.Default {
-                actions.Add(StatusBadge{Value: "Default", Tone: Tone.Done}.Build())
+                actions.Add(StatusChip{Value: "Default", Tone: Tone.Done}.Build())
                 actions.Add((Button with{Label = "Clear default", Kind = ButtonKind.Quiet, OnClick = OnClearDefault}).Build())
             } else {
                 actions.Add(

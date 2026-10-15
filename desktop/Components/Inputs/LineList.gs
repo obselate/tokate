@@ -66,7 +66,7 @@ data struct LineList {
                 Children: []Blob{
                     (Button with{
                         Label = "Add " + Name.ToLowerInvariant(),
-                        Kind = ButtonKind.Quiet,
+                        Kind = ButtonKind.Action,
                         Icon = "add",
                         IconFirst = true,
                         OnClick = () -> {

@@ -17,6 +17,29 @@ data struct PageContext {
     var OnTop Action?
     /// What a popup outside the page needs from the window.
     var Popup PopupInput
+    var Feedback Feedback
 
     prop NarrowContent bool -> Metrics.ContentWidth < AppTheme.NarrowBreakpoint
+
+    /// Places feedback below the complete page header, before the page content.
+    func Layout(header Blob, children []Blob, fill bool = false, notices []Blob? = nil) Blob {
+        let body = Stack{Gap: AppTheme.SectionGap, Fill: fill, Children: []Blob{header}}.Build()
+        let banner = Stack{Gap: AppTheme.Space8, Children: []Blob{}}.Build()
+        if (Feedback.Message ?? "") != "" {
+            banner.Children.Add(Callout{Message: Feedback.Message, Tone: Feedback.Tone}.Build())
+        }
+        for notice in notices ?? []Blob{} {
+            banner.Children.Add(notice)
+        }
+        if (Feedback.Report ?? "") != "" {
+            banner.Children.Add(ReportText{Content: Feedback.Report}.Build())
+        }
+        if banner.Children.Count > 0 {
+            body.Children.Add(banner)
+        }
+        for child in children {
+            body.Children.Add(child)
+        }
+        return body
+    }
 }

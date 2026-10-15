@@ -36,7 +36,7 @@ data struct DonationStatus {
             heading.Accessibility = Accessibility{Role: AccessibilityRole.Status, Name: Progress.State, Busy: Progress.Running}
         }
         if done && run.State != "" && run.State != "claimed" {
-            heading.Children.Add(StatusBadge{Value: run.Status, Tone: Statuses.ToneOf(run.Status)}.Build())
+            heading.Children.Add(StatusChip{Value: run.Status, Tone: Statuses.ToneOf(run.Status)}.Build())
         }
         let state = Container{FlexShrink: 1, MinWidth: 0, MaxWidth: AppTheme.WideFieldWidth, Gap: AppTheme.Space8, heading}
         if Progress.Path != "" {

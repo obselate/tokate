@@ -706,7 +706,7 @@ class DonationService {
             return
         }
         dialogs.Ask(
-            Confirmation{Title: "Start donation?", Text: Current.Repository + "\n" + ModelChoice.Tool(Current.Draft.Harness, Current.Draft.Provider) + " · " + Current.Draft.Model + "\nPer task: " + DonationState.Duration(int32.Parse(Current.PerTask)) + "\nTotal: " + (Current.Total == "" ? "Until stopped": DonationState.Duration(int32.Parse(Current.Total))), ConfirmLabel: "Confirm donation"},
+            Confirmation{Title: "Start donation?", Text: Current.Repository + "\n" + ModelChoice.Tool(Current.Draft.Harness, Current.Draft.Provider) + " · " + Current.Draft.Model + "\nPer task: " + DurationText.Format(int32.Parse(Current.PerTask)) + "\nTotal: " + (Current.Total == "" ? "Until stopped": DurationText.Format(int32.Parse(Current.Total))), ConfirmLabel: "Confirm donation"},
             () -> WorkRepository()
         )
     }

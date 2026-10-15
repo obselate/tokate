@@ -3,6 +3,9 @@ package TokateDesktop
 import System
 
 func DonationTests() {
+    Regression.Equal(DurationText.Format(45), "45 min", "minute duration")
+    Regression.Equal(DurationText.Format(60), "1 h", "hour duration")
+    Regression.Equal(DurationText.Format(90), "1 h 30 min", "mixed duration")
     let changed = () -> { }
     let feedback = FeedbackService(changed)
     let navigation = NavigationService(changed)

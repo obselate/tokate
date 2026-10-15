@@ -22,6 +22,7 @@ class ContributionsTab {
             let status = needsApproval ? "Needs fresh approval": work != nil && work!!.Drafts.Length > 0 ? "Needs review":
             work != nil ? work!!.State.Replace('_', ' '): issue.IsApproved ? "Approved": "Needs approval"
             return []Blob{
+                Stack{Gap: AppTheme.SectionGap, Children: []Blob{
                 Row{
                     Children: []Blob{
                         (page.Button with{
@@ -53,9 +54,10 @@ class ContributionsTab {
                             OnClick = () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
                         }).Build(),
                     },
-                    Trailing: StatusBadge{Value: status, Tone: Statuses.ToneOf(status)}.Build(),
+                    Trailing: StatusChip{Value: status, Tone: Statuses.ToneOf(status)}.Build(),
                     Stacked: page.NarrowContent,
                 }.Build(),
+                }}.Build(),
                 OwnerIssueCard{
                     Issue: issue,
                     Work: work,

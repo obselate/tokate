@@ -57,7 +57,7 @@ data struct SavedRow {
             }.Build()
             copy.Children.Add(summary)
         }
-        let badge = StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build()
+        let badge = StatusChip{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build()
         if Narrow {
             copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: AppTheme.Space4}, badge})
         }

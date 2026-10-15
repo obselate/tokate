@@ -157,7 +157,7 @@ class SetupTab {
             Contributors: Eligibility.Label(setup.EffectiveEligibility(policy)),
             Harnesses: String.Join(", ", harnesses),
             Models: String.Join(", ", models),
-            Limit: minutes == "0" ? "": "Up to " + DonationState.Duration(int32.TryParse(minutes, out var limit) ? limit: 0) + " per task",
+            Limit: minutes == "0" ? "": "Up to " + DurationText.Format(int32.TryParse(minutes, out var limit) ? limit: 0) + " per task",
             Written: state.PolicyTruncated ? "The CLI omitted policy entries. Use tokate init to preserve the complete tool permissions.": state.Written,
             Report: state.SetupReport,
             Previewed: state.SetupPreviewed,

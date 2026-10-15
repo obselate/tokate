@@ -21,13 +21,17 @@ data struct RepositoryPicker {
 
     func Build() Blob {
         let choose = OnChoose
-        let children = List[Blob]{
+        let field = Row{Gap: AppTheme.Space8, Children: []Blob{
             InputField{Label: "GitHub repository", Value: Input, Placeholder: "owner/repository or GitHub URL", Width: AppTheme.WideFieldWidth, Disabled: Disabled, OnChange: OnInput}.Build(),
+        }}.Build()
+        let children = List[Blob]{
+            IconHeading{Icon: "folder_open", Content: "Repository"}.Build(),
+            field,
         }
         if Loading {
-            children.Add(Label{Content: "Checking repository...", Muted: true}.Build())
+            field.Children.Add(Loader{Message: "Checking repository", Key: "repository-check"}.Build())
         } else if Status != "" {
-            children.Add(Callout{Message: Status, Tone: Tone}.Build())
+            field.Children.Add(StatusChip{Value: Status, Tone: Tone}.Build())
         }
         let seen = HashSet[string](StringComparer.OrdinalIgnoreCase)
         for index in 0 ... 2 {
@@ -36,20 +40,19 @@ data struct RepositoryPicker {
             for repository in source ?? []string{} {
                 if seen.Add(repository) && (Input == "" || repository.Contains(Input, StringComparison.OrdinalIgnoreCase)) {
                     let name = repository
-                    rows.Add((Button with{Label = repository, Kind = ButtonKind.Quiet, Disabled = Disabled, OnClick = () -> choose?.Invoke(name)}).Build())
+                    rows.Add(ListRow{Name: repository, Disabled: Disabled, OnChoose: () -> choose?.Invoke(name), Children: []Blob{Label{Content: repository}.Build()}}.Build())
                 }
             }
             if rows.Count > 0 {
-                children.Add(Label{Content: index == 0 ? "Recent": "Saved and yours", Muted: true}.Build())
-                children.Add(Row{Children: rows.ToArray()}.Build())
+                children.Add(ListSection{Title: index == 0 ? "Recent": "Saved and yours", Count: rows.Count, Children: rows.ToArray()}.Build())
             }
         }
         if Input == "" && seen.Count == 0 {
-            children.Add(Label{Content: "Search by repository name or paste a GitHub URL.", Muted: true}.Build())
+            children.Add(Label{Content: "Search by repository name or paste a GitHub URL", Muted: true}.Build())
         }
         var action = Button with{Label = "Choose repository", Primary = true, Disabled = Disabled || Loading || Invalid || String.IsNullOrWhiteSpace(Input), OnClick = OnFind}
         if action.Loading { action.Disabled = false }
-        children.Add(Row{Children: []Blob{action.Build()}}.Build())
+        children.Add(ActionBar{Children: []Blob{action.Build()}}.Build())
         return Panel{Name: "Repository picker", Children: children.ToArray()}.Build()
     }
 }

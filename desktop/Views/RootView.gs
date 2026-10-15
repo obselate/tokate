@@ -24,12 +24,12 @@ class RootView : Cell {
         this.app = app
         app.Theme.Bind(Animate(app.Theme.Settings.Night ? 1.0: 0.0))
         loadingPulse = Animate(1.0)
-        donate = DonateView(app.Donation, app.Feedback, app.Art, next -> Navigate(next), path -> OpenSaved(path))
-        project = ProjectView(app.Owner, app.Feedback, app.Art)
-        saved = SavedView(app.Saved, app.Feedback)
+        donate = DonateView(app.Donation, app.Art, next -> Navigate(next), path -> OpenSaved(path))
+        project = ProjectView(app.Owner, app.Art)
+        saved = SavedView(app.Saved)
         welcome = WelcomeView(app, next -> Navigate(next), path -> OpenSaved(path))
         appearance = AppearanceView(app)
-        profiles = ProfilesView(app.Profiles, app.Feedback, app.Art)
+        profiles = ProfilesView(app.Profiles, app.Art)
         app.Commands.RememberRun = path -> app.Saved.Remember(path)
         app.Saved.OnWork = (run, path) -> {
             Navigate(Destination.Donate)
@@ -125,6 +125,7 @@ class RootView : Cell {
             },
             Busy: activity.Busy,
             BusyHere: activity.Busy && activity.Page == app.Navigation.Current,
+            Feedback: app.Feedback.Current,
             Metrics: app.Window.Metrics,
             Loader: message -> SkyLoader.Mount(SkyLoaderInput{Message: message, Sun: app.Art.Sun, Moon: app.Art.Moon}),
             OnTop: () -> app.Window.ContentScroller.JumpTo(0, 0),
@@ -195,7 +196,7 @@ class RootView : Cell {
         if confirmation.Tiles.Length > 0 {
             let tiles = List[Blob]()
             for tile in confirmation.Tiles {
-                tiles.Add(SummaryTile{Title: tile.Title, Value: tile.Value, Icon: tile.Icon}.Build())
+                tiles.Add(StatTile{Title: tile.Title, Value: tile.Value, Icon: tile.Icon}.Build())
             }
             body.Add(Row{Children: tiles.ToArray()}.Build())
         }
@@ -235,8 +236,8 @@ class RootView : Cell {
             case Destination.Project: project.Build(Page())
             case Destination.Saved: saved.Build(Page())
             case Destination.Profiles: profiles.Build(Page())
-            case Destination.Appearance: appearance.Build()
-            default: welcome.Build()
+            case Destination.Appearance: appearance.Build(Page())
+            default: welcome.Build(Page())
         }
         let isWelcome = page == Destination.Welcome
         let activity = app.Activity.Current
@@ -257,14 +258,6 @@ class RootView : Cell {
             Stretch: browsing && !metrics.Short,
             Children: []Blob{content},
         }.Build()
-        let feedback = app.Feedback.Current
-        let plain = isWelcome || page == Destination.Appearance
-        if feedback.Message != "" && plain {
-            frame.Children.Add(Notice{Message: feedback.Message}.Build())
-        }
-        if feedback.Report != "" && plain {
-            frame.Children.Add(ReportText{Content: feedback.Report}.Build())
-        }
         var overlay Blob? = nil
         if let confirmation = app.Dialogs.Current {
             overlay = Dialog(confirmation)

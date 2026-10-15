@@ -12,9 +12,6 @@ class SavedRunView {
         this.saved = saved
     }
 
-    /// True when the amendment form is open, which then holds the message about the latest action.
-    prop HoldsNotice bool -> saved.Current.Amendment.Open
-
     func Build(page PageContext, notice Feedback) []Blob {
         let state = saved.Current
         let run = state.Run
@@ -25,7 +22,6 @@ class SavedRunView {
             Stacked: page.NarrowContent,
             Button: page.Button,
             Disabled: page.Busy,
-            Notice: notice,
             OnVerification: value -> saved.SetVerification(value),
             OnSummary: value -> saved.SetSummary(value),
             OnEdited: value -> saved.SetEdited(value),
@@ -57,6 +53,7 @@ class SavedRunView {
             )
         }
         return []Blob{
+            Stack{Gap: AppTheme.SectionGap, Children: []Blob{
             Row{
                 Children: []Blob{
                     (page.Button with{
@@ -79,9 +76,10 @@ class SavedRunView {
                 Title: item.Title == "" ? run.Identity: item.Title,
                 Caption: item.Title == "" ? "": run.Identity,
                 Links: links.ToArray(),
-                Trailing: StatusBadge{Value: item.Status(), Tone: Statuses.ToneOf(item.Status())}.Build(),
+                Trailing: StatusChip{Value: item.Status(), Tone: Statuses.ToneOf(item.Status())}.Build(),
                 Stacked: page.NarrowContent,
             }.Build(),
+            }}.Build(),
             state.Review == nil ? RunDetails{
                 Item: state.Chosen,
                 Actions: state.Actions,

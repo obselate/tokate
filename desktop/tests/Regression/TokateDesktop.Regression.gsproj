@@ -6,7 +6,7 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="*.gs;../../Models/**/*.gs;../../Services/**/*.gs;../../Components/Theme.gs" />
+    <Compile Include="*.gs;../../Models/**/*.gs;../../Services/**/*.gs;../../Components/Theme.gs;../../Components/Text/DurationText.gs" />
     <PackageReference Include="Goo" Version="0.7.27" />
     <PackageReference Include="Goo.Svg" Version="0.7.27" />
     <PackageReference Include="Goo.Animations" Version="0.2.5" />

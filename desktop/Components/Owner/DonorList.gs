@@ -74,7 +74,7 @@ open class DonorList : Cell[DonorListInput] {
                 ListRow{
                     Children: []Blob{
                         Container{Width: AppTheme.ShortFieldWidth, FlexShrink: 0, Label{Content: name}.Build()},
-                        StatusBadge{Value: member.Badge, Tone: Statuses.ToneOf(member.Badge)}.Build(),
+                        StatusChip{Value: member.Badge, Tone: Statuses.ToneOf(member.Badge)}.Build(),
                         Spacer{}.Build(),
                         (input.Button with{
                             Label = member.Trusted ? "Untrust": "Trust",
@@ -97,7 +97,7 @@ open class DonorList : Cell[DonorListInput] {
         if input.Members.Length == 0 {
             lines.Add(ListRow{Children: []Blob{Label{Content: "No donors have access.", Muted: true}.Build()}}.Build())
         }
-        return SectionPanel{
+        return ListSection{
             Title: "Donors",
             Count: input.Members.Length,
             Trailing: []Blob{

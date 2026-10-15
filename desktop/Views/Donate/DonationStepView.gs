@@ -16,12 +16,13 @@ class DonationStepView {
         this.openSaved = openSaved
     }
 
-    func Build(page PageContext, header Blob, message string, tone Tone) Blob {
+    func Build(page PageContext, header Blob) Blob {
         let progress = donation.Current.Progress
         let directory = progress.Path
-        let children = List[Blob]{header}
+        let children = List[Blob]()
+        let notices = List[Blob]()
         if donation.Current.RepositoryMode {
-            children.Add(Callout{Message: progress.State, Tone: progress.Tone}.Build())
+            notices.Add(Callout{Message: progress.State, Tone: progress.Tone}.Build())
             if progress.Running {
                 children.Add(Row{Children: []Blob{
                     (page.Button with{
@@ -42,20 +43,14 @@ class DonationStepView {
                 children.Add(DonationTasks{Tasks: session.Tasks, ReviewEach: donation.Current.ReviewEach, Button: page.Button, OnSaved: openSaved}.Build())
                 children.Add((page.Button with{Label = "New donation", OnClick = () -> donation.NewDonation()}).Build())
             }
-            if message != "" {
-                children.Add(Callout{Message: message, Tone: tone}.Build())
-            }
             children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
-            return Stack{Gap: AppTheme.SectionGap, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
-        }
-        if message != "" {
-            children.Add(Callout{Message: message, Tone: tone}.Build())
+            return page.Layout(header, children.ToArray(), fill: !page.Metrics.Short, notices: notices.ToArray())
         }
         if progress.Run.Warning != "" {
-            children.Add(Callout{Message: progress.Run.Warning, Tone: Tone.Need}.Build())
+            notices.Add(Callout{Message: progress.Run.Warning, Tone: Tone.Need}.Build())
         }
         if progress.Run.Guidance != "" {
-            children.Add(Callout{Message: progress.Run.Guidance, Tone: Tone.Need}.Build())
+            notices.Add(Callout{Message: progress.Run.Guidance, Tone: Tone.Need}.Build())
         }
         children.Add(
             DonationStatus{
@@ -71,6 +66,6 @@ class DonationStepView {
             }.Build()
         )
         children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
-        return Stack{Gap: AppTheme.SectionGap, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
+        return page.Layout(header, children.ToArray(), fill: !page.Metrics.Short, notices: notices.ToArray())
     }
 }

@@ -338,7 +338,7 @@ data struct DonationState {
 
     prop LimitMinutes int32 -> Policy.MaxSeconds > 0 ? Policy.MaxSeconds / 60: 0
 
-    prop LimitLabel string -> Policy.MaxSeconds > 0 ? "Up to " + Duration(Policy.MaxSeconds / 60): "No repository limit"
+    prop LimitLabel string -> Policy.MaxSeconds > 0 ? "Up to " + DurationText.Format(Policy.MaxSeconds / 60): "No repository limit"
 
     func ConsentFact(label string, fallback string) string {
         for line in (Consent ?? "").Split('\n') {
@@ -371,8 +371,6 @@ data struct DonationState {
     }
 
     shared {
-        func Duration(minutes int32) string -> minutes >= 60 && minutes % 60 == 0 ? (minutes / 60).ToString() + " h": minutes.ToString() + " min"
-
         let Initial DonationState = DonationState{
             Step: DonationStep.Issue,
             Input: "",

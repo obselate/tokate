@@ -59,7 +59,7 @@ data struct IssueRow {
             }
         }
         if ShowApproval && Issue.IsApproved {
-            row.Children.Add(StatusBadge{Value: "Approved", Tone: Tone.Done}.Build())
+            row.Children.Add(StatusChip{Value: "Approved", Tone: Tone.Done}.Build())
         }
         row.Children.Add(MaterialIcons.Create("chevron_right", 20, p.Muted))
         return Interaction.Keyboard(row)

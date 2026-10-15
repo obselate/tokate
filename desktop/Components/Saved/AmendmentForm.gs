@@ -13,8 +13,6 @@ data struct AmendmentForm {
     var Stacked bool
     var Button CommandButton
     var Disabled bool
-    /// The message about the latest action, which shows above the buttons.
-    var Notice Feedback
     var OnVerification Action[string]?
     var OnSummary Action[PublicSummary]?
     var OnEdited Action[EditedBy]?
@@ -63,9 +61,6 @@ data struct AmendmentForm {
         }
         if ready {
             children.Add(budget)
-        }
-        if Notice.Message != "" {
-            children.Add(Callout{Message: Notice.Message, Tone: Notice.Tone}.Build())
         }
         children.Add(
             Row{
