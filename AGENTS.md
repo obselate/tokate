@@ -73,7 +73,7 @@ authentication and write access. It lists each Actions setting, event policy,
 allowlist entry and required check with its current and proposed value, the
 `tokate/access` record, the files and the `tokate-setup` branch and PR. In a terminal
 without `--yes`, init asks once. Non-terminal preview returns `applied=false`.
-Run init again after `tokate update` to update the coordinator pin. Init migrates a
+Run init again after `tokate update --yes` to update the coordinator pin. Init migrates a
 version 2 policy to version 3 in the setup PR.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
 Approve existing issues with `tokate approve N [--base-branch BRANCH]`.

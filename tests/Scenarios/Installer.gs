@@ -196,8 +196,26 @@ internal class Installer {
             temp.Env["GH_TOKEN"] = "fixture-secret"
             temp.Env["OPENAI_API_KEY"] = "fixture-secret"
             state["clean"] = JsonValue.Create(true)
+            state["mode"] = JsonValue.Create("checksum-fail")
             File.WriteAllText(statePath, state.ToJsonString())
-            Check.Envelope(TestProcess.Run(installed, []string{"update", "--json"}, temp.Env), "update", "ok")
+            let preview = Check.Envelope(
+                TestProcess.Run(installed, []string{"update", "--json"}, temp.Env),
+                "update",
+                "ok"
+            )
+            Check.That(
+                Check.Text(preview["data"]?["applied"]) == "false" && Check.Text(
+                    preview["data"]?["target_version"]
+                ) == version,
+                "Update without --yes did not preview"
+            )
+            Check.That(
+                !Check.Success(TestProcess.Run(installed, []string{"update"}, temp.Env)).Contains("Downloading"),
+                "Update without a terminal downloaded"
+            )
+            state["mode"] = JsonValue.Create("")
+            File.WriteAllText(statePath, state.ToJsonString())
+            Check.Envelope(TestProcess.Run(installed, []string{"update", "--json", "--yes"}, temp.Env), "update", "ok")
             Check.That(File.ReadAllText(profile) == hook, "Update duplicated shell setup")
             if loginHook != "" {
                 Check.That(File.ReadAllText(bashProfile) == loginHook, "Update duplicated login shell setup")
@@ -205,7 +223,7 @@ internal class Installer {
             for mode in[]string{"checksum-fail", "download-fail"} {
                 state["mode"] = JsonValue.Create(mode)
                 File.WriteAllText(statePath, state.ToJsonString())
-                let failure = TestProcess.Run(installed, []string{"update", "--json"}, temp.Env)
+                let failure = TestProcess.Run(installed, []string{"update", "--json", "--yes"}, temp.Env)
                 Check.That(failure.Code != 0, "Update should fail: " + mode)
                 Check.Envelope(failure, "update", "error", "command_failed")
                 Check.That(Check.Hash(installed) == Check.Hash(binary), "Failed update changed binary")
@@ -216,7 +234,22 @@ internal class Installer {
             Directory.CreateDirectory(Path.GetDirectoryName(saved) ?? "")
             File.WriteAllText(saved, "keep")
             File.Delete(Path.Combine(tools, "curl"))
-            Check.Envelope(TestProcess.Run(installed, []string{"uninstall", "--json"}, temp.Env), "uninstall", "ok")
+            let removal = Check.Envelope(
+                TestProcess.Run(installed, []string{"uninstall", "--json"}, temp.Env),
+                "uninstall",
+                "ok"
+            )
+            Check.That(
+                File.Exists(installed) && Check.Text(removal["data"]?["applied"]) == "false" && Check.Text(
+                    removal["data"]?["removes"]?[0]
+                ) == installed,
+                "Uninstall without --yes did not preview"
+            )
+            Check.Envelope(
+                TestProcess.Run(installed, []string{"uninstall", "--json", "--yes"}, temp.Env),
+                "uninstall",
+                "ok"
+            )
             Check.That(!File.Exists(installed), "Uninstall left binary")
             Check.That(File.Exists(saved), "Uninstall removed saved work")
             if fish {
@@ -361,7 +394,11 @@ internal class Installer {
                     }
                 }
             }
-            Check.Envelope(TestProcess.Run(installed, []string{"uninstall", "--json"}, temp.Env), "uninstall", "ok")
+            Check.Envelope(
+                TestProcess.Run(installed, []string{"uninstall", "--json", "--yes"}, temp.Env),
+                "uninstall",
+                "ok"
+            )
             Check.That(!File.Exists(installed), "Unsupported libc blocked offline removal")
         }
     }

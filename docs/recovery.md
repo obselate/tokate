@@ -331,7 +331,7 @@ An access request does not grant eligibility. In `trusted` mode, the owner must 
 | Symptom (message text) | Do (exact command) |
 | --- | --- |
 | `Nix manages this installation. Use nix profile upgrade/remove or update your NixOS configuration.` | Profile installation: `nix profile upgrade tokate` |
-| `Running binary does not match the released archive member` | `tokate update` |
-| `Release archive checksum mismatch` | `tokate update` |
+| `Running binary does not match the released archive member` | `tokate update --yes` |
+| `Release archive checksum mismatch` | `tokate update --yes` |
 
 After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator).

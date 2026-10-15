@@ -24,8 +24,12 @@ internal class CliOption(spec string) {
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
+        case "yes" when command == "update": "Install the listed release version"
+        case "yes" when command == "uninstall": "Remove the listed files"
         case "file" when command == "doctor": "Native Claude report to check against the selected model and effort"
-        case "non-interactive" when command == "init": "Never prompt; preview unless --yes is given"
+        case "non-interactive" when command == "init" ||
+            command == "update" ||
+            command == "uninstall": "Never prompt; preview unless --yes is given"
         case "time" when command == "external": "Separate verification budget, at most the owner limit; required only for correction"
         case "tools" when command == "external": "Complete cumulative donor-reported tools JSON; retain prior rows, required only for correction"
         case "commit" when command == "external": "Exact commit; default: HEAD of the saved run coding checkout"
@@ -308,15 +312,15 @@ internal class Cli {
             ),
             CliCommand(
                 "update setup local_read,local_write,github_read",
-                "",
-                "",
+                "[--yes]",
+                "yes,non-interactive",
                 "Download and install latest stable Tokate; no inference.",
                 "update"
             ),
             CliCommand(
                 "uninstall more local_read,local_write",
-                "",
-                "",
+                "[--yes]",
+                "yes,non-interactive",
                 "Remove managed installation offline; keep saved runs.",
                 "uninstall"
             ),

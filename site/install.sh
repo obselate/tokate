@@ -61,7 +61,8 @@ ENV
 main() {
     tokate_action=${1:-install}
     case "$tokate_action" in install|update|uninstall) ;; *) fail 'Use install, update, or uninstall.' ;; esac
-    [ "$#" -le 2 ] || fail 'Too many arguments.'
+    [ "$#" -le 3 ] || fail 'Too many arguments.'
+    tokate_option=${3:-}
     tokate_os=$(uname -s)
     [ "$tokate_os" = Linux ] || fail "Unsupported operating system: $tokate_os. Tokate requires Linux x86_64 with glibc 2.34+ or Alpine musl; Windows and macOS are not supported."
     [ -n "${HOME:-}" ] && [ "${HOME#/}" != "$HOME" ] || fail 'HOME must be an absolute path.'
@@ -75,11 +76,17 @@ main() {
     [ ! -L "$tokate_bin" ] || fail "Refusing to replace a symlink at $tokate_bin"
     [ ! -e "$tokate_bin" ] || [ -f "$tokate_bin" ] || fail "Expected a regular file at $tokate_bin"
     if [ "$tokate_action" = uninstall ]; then
-        rm -f "$tokate_bin" "$tokate_data/env" "$tokate_data/installed"
+        tokate_fish=
         if [ -f "$tokate_data/path-fish" ]; then
             IFS= read -r tokate_fish < "$tokate_data/path-fish"
-            rm -f "$tokate_fish" "$tokate_data/path-fish"
         fi
+        if [ "$tokate_option" = preview ]; then
+            printf '%s\n' "$tokate_bin" "$tokate_data/env" "$tokate_data/installed"
+            [ -z "$tokate_fish" ] || printf '%s\n' "$tokate_fish" "$tokate_data/path-fish"
+            return
+        fi
+        rm -f "$tokate_bin" "$tokate_data/env" "$tokate_data/installed"
+        [ -z "$tokate_fish" ] || rm -f "$tokate_fish" "$tokate_data/path-fish"
         printf 'Tokate removed. Saved runs and shell setup markers were kept.\n'
         return
     fi
@@ -119,13 +126,20 @@ main() {
     for tokate_tool in curl tar sha256sum mktemp install; do
         command -v "$tokate_tool" >/dev/null 2>&1 || fail "Install $tokate_tool first."
     done
+    tokate_tag=$tokate_option
+    if [ -z "$tokate_tag" ] || [ "$tokate_tag" = preview ]; then
+        tokate_release=$(download --output /dev/null --write-out '%{url_effective}' https://github.com/obselate/tokate/releases/latest)
+        tokate_tag=${tokate_release##*/}
+    fi
+    printf '%s\n' "$tokate_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail 'Could not resolve a stable Tokate release.'
+    if [ "$tokate_option" = preview ]; then
+        printf '%s\n' "${tokate_tag#v}"
+        return
+    fi
     tokate_tmp=$(mktemp -d)
     tokate_stage=
     trap 'rm -rf "$tokate_tmp"; [ -z "$tokate_stage" ] || rm -f "$tokate_stage"' EXIT
     trap 'exit 1' HUP INT TERM
-    tokate_release=$(download --output /dev/null --write-out '%{url_effective}' https://github.com/obselate/tokate/releases/latest)
-    tokate_tag=${tokate_release##*/}
-    printf '%s\n' "$tokate_tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || fail 'Could not resolve a stable Tokate release.'
     tokate_bundle="tokate-${tokate_tag#v}-$tokate_runtime"
     tokate_url="https://github.com/obselate/tokate/releases/download/$tokate_tag/$tokate_bundle.tar.gz"
     printf 'Downloading Tokate %s...\n' "${tokate_tag#v}"

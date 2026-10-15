@@ -219,7 +219,7 @@ Checks do not accept the task or merge the PR. Target movement needs synchroniza
 1. Update the local CLI.
 
    ```sh
-   tokate update
+   tokate update --yes
    ```
 
 2. Preview the new pin, then apply it. Init opens a setup PR.
