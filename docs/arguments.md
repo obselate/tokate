@@ -36,7 +36,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [options]` | Preview GitHub settings, the access record and a setup PR with the policy and pinned workflow, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
+| `init` | `tokate init [OWNER/REPO] [options]` | Preview required Actions settings and one setup PR with the policy and `v0` workflow. Use `--pin` for an exact release commit. Ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
 | `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |

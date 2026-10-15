@@ -334,4 +334,4 @@ An access request does not grant eligibility. In `trusted` mode, the owner must 
 | `Running binary does not match the released archive member` | `tokate update --yes` |
 | `Release archive checksum mismatch` | `tokate update --yes` |
 
-After a local update, update the repository's coordinator pin with the [owner steps](owners.md#update-the-coordinator).
+After a local update, only exact-pin repositories need a [coordinator update](owners.md#update-the-coordinator). Repositories that follow `v0` update automatically.

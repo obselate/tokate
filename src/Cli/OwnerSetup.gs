@@ -62,46 +62,9 @@ internal class OwnerSetup {
             let fields = map[string, Object?]{}
 
             if upstream != "" {
-                let legacy = RequestData.Parse(upstream, 1024 * 1024)
-                for field in legacy.EnumerateObject() {
+                let value = RequestData.Parse(upstream, 1024 * 1024)
+                for field in value.EnumerateObject() {
                     fields[field.Name] = field.Value
-                }
-
-                if J.Number(legacy, "version") == 2 {
-                    let mode = J.Text(legacy, "model_policy")
-                    if J.Get(legacy, "model_policy")
-                        .ValueKind != JsonValueKind.Undefined &&
-                        (
-                        J.Get(legacy, "model_policy")
-                            .ValueKind != JsonValueKind.String ||
-                            (mode != "whitelist" && mode != "unrestricted")
-                    ) {
-                        throw Exception("Invalid version 2 model policy")
-                    }
-
-                    let models = J.Get(legacy, "models")
-                    if mode == "unrestricted" &&
-                        models.ValueKind != JsonValueKind.Undefined &&
-                        (models.ValueKind != JsonValueKind.Object || models.EnumerateObject().MoveNext()) {
-                        throw Exception("Unrestricted model policy requires omitted models or an empty object")
-                    }
-
-                    let tools = List[Object]()
-                    for tool in J.Items(J.Get(legacy, "allowed_tools")) {
-                        let pair = J.Select(tool, "harness,provider")
-                        if mode != "unrestricted" {
-                            pair["models"] = models
-                        }
-                        tools.Add(pair)
-                    }
-
-                    fields.Remove("models")
-                    fields.Remove("model_policy")
-                    fields["version"] = 3
-                    fields["allowed_tools"] = tools
-                    if J.Text(legacy, "eligibility") == "manual" {
-                        fields["eligibility"] = "trusted"
-                    }
                 }
             } else {
                 fields["version"] = 3
@@ -134,9 +97,7 @@ internal class OwnerSetup {
                 let answer = args.Get(key)
 
                 if answer == "" {
-                    if !fields.ContainsKey(field) && (key == "verification" || key == "required-checks") {
-                        args.Need(key)
-                    }
+                    continue
                 } else if key == "seconds" || key == "reservation-seconds" {
                     fields[field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
@@ -167,10 +128,10 @@ internal class OwnerSetup {
             ) ? upstream: Pretty(policy.Value)
             let path = ".github/workflows/tokate-coordinator.yml"
             let current = GitHub.FileAt(repo, path, head, missing: true)
-            let generated = CoordinatorSetup.Resolve()
+            let generated = CoordinatorSetup.Resolve(args.Get("pin") == "true")
             let pin = CoordinatorSetup.Pin(generated)
             let oldPin = CoordinatorSetup.Pin(current)
-            let workflow = oldPin == pin ? current: generated
+            let workflow = current.Replace("\r", "").TrimEnd() == generated.TrimEnd() ? current: generated
             let shared = "obselate/tokate/.github/workflows/tokate-shared.yml@" + pin
             let changes = List[Object]()
             let manual = List[string]()
@@ -213,70 +174,7 @@ internal class OwnerSetup {
                 Change(changes, "Allow GitHub Actions to create and approve pull requests", "no", "yes")
             }
 
-            let events = CoordinatorSetup.EventPolicy(repo, path)
-            if !events {
-                Change(
-                    changes,
-                    "Actions event policy Tokate coordinator events",
-                    "",
-                    "allow issues, issue_comment, pull_request_target and workflow_call for " + path
-                )
-            }
-
-            let branch = J.Text(policy.Value, "target_branch") == "" ? main: J.Text(policy.Value, "target_branch")
-            let protectionPath = "repos/" + repo + "/branches/" + Uri.EscapeDataString(branch) + "/protection"
-            var protection JsonElement
-            let missing = List[string]()
-            try {
-                protection = GitHub.Api(protectionPath, missing: true)
-                let statusChecks = J.Get(protection, "required_status_checks")
-                let required = List[string]()
-                for check in J.Items(J.Get(statusChecks, "checks")) {
-                    required.Add(J.Text(check, "context"))
-                }
-                for context in J.Items(J.Get(statusChecks, "contexts")) {
-                    required.Add(context.GetString() ?? "")
-                }
-                for check in J.Items(J.Get(policy.Value, "required_checks")) {
-                    let name = check.GetString() ?? ""
-                    if !required.Contains(name) && !missing.Contains(name) {
-                        missing.Add(name)
-                    }
-                }
-                if missing.Count > 0 &&
-                    protection.ValueKind != JsonValueKind.Undefined &&
-                    statusChecks.ValueKind != JsonValueKind
-                    .Object {
-                    manual.Add(
-                        "In GitHub Settings > Branches > " + branch + ", require " + String.Join(", ", missing) + "."
-                    )
-                    missing.Clear()
-                }
-                if missing.Count > 0 {
-                    let after = List[string](required)
-                    after.AddRange(missing)
-                    Change(
-                        changes,
-                        "Required checks on " + branch,
-                        String.Join(", ", required),
-                        String.Join(", ", after)
-                    )
-                }
-            } catch (error Exception) {
-                manual.Add(
-                    "GitHub branch protection could not be read: " +
-                        error.Message +
-                        " Require the policy checks on " +
-                        branch +
-                        "."
-                )
-            }
-
-            let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")), missing: true)
-            if access.Sha == "" {
-                Change(changes, "Branch tokate/access", "", "empty donor access record")
-            }
-
+            CoordinatorSetup.EventPolicy(repo, path)
             let files = List[Object]()
             if text != upstream {
                 files.Add(
@@ -396,53 +294,6 @@ internal class OwnerSetup {
                     method: "PUT"
                 )
             }
-            if !events {
-                GitHub.Api(
-                    "repos/" + repo + "/actions/policies",
-                    map[string, Object?]{
-                        "name": "Tokate coordinator events",
-                        "enforcement": "active",
-                        "conditions": map[string, Object?]{
-                            "workflow_path": map[string, Object?]{"include": []string{path}, "exclude": []string{}}
-                        },
-                        "rules": []Object{
-                            map[string, Object?]{
-                                "type": "restrict_action_events",
-                                "parameters": map[string, Object?]{
-                                    "allowed_events": []string{
-                                        "issues",
-                                        "issue_comment",
-                                        "pull_request_target",
-                                        "workflow_call"
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    method: "POST"
-                )
-            }
-            if missing.Count > 0 && protection.ValueKind == JsonValueKind.Undefined {
-                GitHub.Api(
-                    protectionPath,
-                    map[string, Object?]{
-                        "required_status_checks": map[string, Object?]{"strict": false, "contexts": missing},
-                        "enforce_admins": false,
-                        "required_pull_request_reviews": nil,
-                        "restrictions": nil
-                    },
-                    method: "PUT"
-                )
-            } else if missing.Count > 0 {
-                GitHub.Api(
-                    protectionPath + "/required_status_checks/contexts",
-                    map[string, Object?]{"contexts": missing},
-                    method: "POST"
-                )
-            }
-            if access.Sha == "" {
-                access.Write(repo, head, owner)
-            }
             if rebuild {
                 let base = GitHub.Api("repos/" + repo + "/git/commits/" + head)
                 let tree = GitHub.Api(
@@ -480,7 +331,7 @@ internal class OwnerSetup {
                             "title": "Set up Tokate",
                             "head": repo.Split('/')[0] + ":tokate-setup",
                             "base": main,
-                            "body": "Tokate owner setup: policy and pinned coordinator workflow. Merge to finish setup."
+                            "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
                         }
                     ),
                     "html_url"
