@@ -62,9 +62,19 @@ internal class Checks {
             facts Dictionary[string, Object?],
             directory string,
             verbose bool,
+            approval bool,
             ref previous string
         ) {
             PublicOutput.Checks(run, J.Parse(J.Write(observed)), facts["checks_status"]?.ToString() ?? "unread", facts)
+            let view = []string{"gh", "pr", "view", run.Number("pr").ToString(), "--repo", run.Text("repo"), "--web"}
+
+            if PublicOutput.Enabled {
+                PublicOutput.Actions.Clear()
+
+                if approval {
+                    PublicOutput.Actions.Add(view)
+                }
+            }
 
             let snapshot = J.Write(
                 map[string, Object?]{
@@ -97,8 +107,14 @@ internal class Checks {
             Terminal.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
 
             if !PublicOutput.Enabled {
-                if facts["owner_review"]?.ToString() == "required" {
-                    Terminal.Message("Owner review: read the diff, then merge.", "default")
+                if approval {
+                    Terminal.Message(ApprovalAction, "yellow")
+                    Terminal.Message("Next: " + Terminal.Hint(view), "default")
+                } else if facts["owner_review"]?.ToString() == "required" {
+                    Terminal.Message(
+                        machine == "passed" ? "Owner review: read the diff, then merge.": "Owner review: read the diff.",
+                        "default"
+                    )
                 }
 
                 if verbose {
@@ -515,7 +531,7 @@ internal class Checks {
                         []string{ReportAction, Review}
                     }
 
-                    Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
+                    Show(run, observed, facts, directory, args.Get("verbose") == "true", approval, ref previous)
 
                     if failed {
                         return 1
@@ -599,7 +615,7 @@ internal class Checks {
                         }
                     }
 
-                    Show(run, observed, facts, directory, args.Get("verbose") == "true", ref previous)
+                    Show(run, observed, facts, directory, args.Get("verbose") == "true", approval, ref previous)
 
                     if error is CliFailure || error is ApiDeadlineException {
                         throw error
