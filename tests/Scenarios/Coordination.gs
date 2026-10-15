@@ -1651,6 +1651,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Path.Combine(gratisFlow.Upstream, "CONTRIBUTING.md"),
             "Add result.txt containing the fixture completion text.\n"
         )
+        File.WriteAllText(
+            Path.Combine(gratisFlow.Upstream, "AGENTS.md"),
+            "Read [design](design.md) before changes.\n" + String('x', 33000) + "\nFull guidance ends here.\n"
+        )
+        File.WriteAllText(
+            Path.Combine(gratisFlow.Upstream, "design.md"),
+            "Linked document body.\n" + String('y', 70000)
+        )
+        Directory.CreateDirectory(Path.Combine(gratisFlow.Upstream, "nested"))
+        File.WriteAllText(Path.Combine(gratisFlow.Upstream, "nested/CONTRIBUTING.md"), "Nested contribution rules.\n")
         gratisFlow.Commit("Welcome donated work without a policy")
         let instruction = Path.Combine(gratisFlow.Temp.Root, "donation.txt")
         File.WriteAllText(instruction, "Complete the task named by CONTRIBUTING.md.")
@@ -1714,6 +1724,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(prompt, "CONTRIBUTING.md")
         Check.Contains(prompt, "Complete the task named by CONTRIBUTING.md.")
         Check.Contains(prompt, "Add result.txt")
+        Check.Contains(prompt, "Full guidance ends here.")
+        Check.Contains(prompt, "Nested contribution rules.")
+        Check.Contains(prompt, "Linked documents")
+        Check.Contains(prompt, "design.md")
+        Check.Contains(prompt, "Read and follow all embedded guidance in full before work.")
+        Check.Contains(prompt, "read that file in the checkout before changing code")
+        Check.That(!prompt.Contains("Linked document body."), "Gratis embedded linked document text")
         Check.Contains(prompt, "tokate-refusal.txt")
         Check.Contains(prompt, "Open PR snapshot")
         let gratisDirectory = Check.Text(gratis["tasks"]?[0]?["run_directory"])

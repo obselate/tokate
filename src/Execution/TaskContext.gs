@@ -11,7 +11,8 @@ internal class TaskContext {
         private func GratisInstructions(record JsonElement) string {
             var text = "## Task instruction\n<tokate-instruction>\n" +
                 Escape(J.Text(record, "prompt")) +
-                "\n</tokate-instruction>\n## Repository guidance\n<tokate-guidance>\n"
+                "\n</tokate-instruction>\n## Repository guidance\nRead and follow all embedded guidance in full before work. " +
+                "When guidance requires a listed linked document, read that file in the checkout before changing code.\n<tokate-guidance>\n"
             for file in J.Get(record, "guidance").EnumerateObject() {
                 text += Escape(J.Write(file.Name)) + "\n" + Escape(file.Value.GetString() ?? "") + "\n"
             }
