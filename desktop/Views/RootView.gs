@@ -101,6 +101,14 @@ class RootView : Cell {
         app.Art.Paint(app.Theme.Twilight, app.Theme.Settings.OilPaint)
     }
 
+    private func CancelActivity() {
+        if app.Donation.Current.RepositoryMode && app.Donation.Current.Progress.Running {
+            app.Donation.StopRepository()
+        } else {
+            app.Activity.Cancel()
+        }
+    }
+
     /// The shell state every page builds from this frame.
     private func Page() PageContext {
         let activity = app.Activity.Current
@@ -112,7 +120,7 @@ class RootView : Cell {
                 Stopping: activity.Stopping,
                 Pulse: loadingPulse.Value,
                 ActivityTitle: activity.Title,
-                OnCancel: () -> app.Activity.Cancel(),
+                OnCancel: () -> CancelActivity(),
                 OnActivate: label -> app.Activity.Activate(label),
             },
             Busy: activity.Busy,
@@ -276,7 +284,7 @@ class RootView : Cell {
                         Pulse: loadingPulse.Value,
                         OnToggleTheme: () -> app.Theme.Toggle(),
                         OnShowRunning: () -> Navigate(activity.Page),
-                        OnCancel: () -> app.Activity.Cancel(),
+                        OnCancel: () -> CancelActivity(),
                     }
                 ),
                 Navigation: metrics.Compact ? Sidebar(): nil,

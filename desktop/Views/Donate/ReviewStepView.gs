@@ -13,6 +13,17 @@ class ReviewStepView {
 
     func Build(page PageContext) []Blob {
         let state = donation.Current
+        if state.RepositoryMode {
+            return []Blob{
+                Heading{Content: state.Repository}.Build(),
+                Label{Content: state.Consent.Contains("Gratis mode. No owner approved the task.") ? "Mode: Gratis": "Mode: Owner policy"}.Build(),
+                Callout{Message: state.Consent, Tone: Tone.Need}.Build(),
+                Row{Children: []Blob{
+                    (page.Button with{Label = "Change details", OnClick = () -> donation.ChangeDetails()}).Build(),
+                    (page.Button with{Label = "Start donating", OnClick = () -> donation.StartRepository(), Primary = true}).Build(),
+                }}.Build(),
+            }
+        }
         return []Blob{
             DonationSummary{
                 Repository: state.Repository,

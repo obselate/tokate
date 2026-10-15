@@ -11,6 +11,7 @@ data struct RepositoryFinder {
     var Button CommandButton
     var Disabled bool
     var Compact bool
+    var RepositoryMode bool
     var OnInput Action[string]?
     var OnFind Action?
 
@@ -27,7 +28,7 @@ data struct RepositoryFinder {
             Row{
                 Children: []Blob{
                     (Button with{
-                        Label = "Find approved issues",
+                        Label = RepositoryMode ? "Choose repository": "Find approved issues",
                         OnClick = OnFind,
                         Primary = true,
                         Disabled = String.IsNullOrWhiteSpace(Input),

@@ -318,8 +318,16 @@ data struct DonationState {
     /// The harnesses that are not set up on this computer.
     var Unready []string
     var Progress DonationProgress
+    var RepositoryMode bool
+    var PerTask string
+    var Total string
+    var Prompt string
+    var Consent string
+    var ReviewedArguments []string
+    var Session DonationSession
+    var StopRequested bool
 
-    prop Identity string -> Repository + " #" + Issue
+    prop Identity string -> RepositoryMode ? Repository: Repository + " #" + Issue
 
     /// The models to choose from for the selected harness and provider.
     func Catalog() []ModelChoice -> ModelChoice.Catalog(Draft.Harness, Draft.Provider, Models, OmpModels, Policy)
@@ -359,6 +367,30 @@ data struct DonationState {
             OmpModels: []ModelChoice{},
             Unready: []string{},
             Progress: DonationProgress.Empty,
+            PerTask: "60",
+            Total: "",
+            Prompt: "",
+            Consent: "",
+            ReviewedArguments: []string{},
         }
     }
+}
+
+data struct DonationTask {
+    var Issue string
+    var Result string
+    var Reason string
+    var PullRequest string
+    var Directory string
+}
+
+data struct DonationSession {
+    var Repository string
+    var Reason string
+    var Submitted int32
+    var Skipped int32
+    var Failed int32
+    var Usage string
+    var WallSeconds string
+    var Tasks []DonationTask
 }

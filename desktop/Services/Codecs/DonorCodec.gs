@@ -6,6 +6,29 @@ import System.Text.Json
 
 class DonorCodec {
     shared {
+        func Session(data JsonElement) DonationSession {
+            let tasks = List[DonationTask]()
+            for task in Json.Items(data, "tasks") {
+                tasks.Add(DonationTask{
+                    Issue: Json.Text(task, "issue"),
+                    Result: Json.Text(task, "result"),
+                    Reason: Json.Text(task, "error") != "" ? Json.Text(task, "error"): Json.Text(task, "reason"),
+                    PullRequest: Json.Text(task, "pr_url"),
+                    Directory: Json.Text(task, "run_directory"),
+                })
+            }
+            return DonationSession{
+                Repository: Json.Text(data, "repo"),
+                Reason: Json.Text(data, "reason"),
+                Submitted: Json.Int(data, "submitted"),
+                Skipped: Json.Int(data, "skipped"),
+                Failed: Json.Int(data, "failed"),
+                Usage: Json.Raw(Json.Get(data, "usage")),
+                WallSeconds: Json.Text(data, "wall_seconds"),
+                Tasks: tasks.ToArray(),
+            }
+        }
+
         /// The saved profiles. Tokate stores the default as a copy without a name, so a profile with the same
         /// harness, provider, model and effort is the default.
         func Profiles(data JsonElement) []DonorProfile {

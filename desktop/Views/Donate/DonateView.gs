@@ -63,7 +63,7 @@ class DonateView {
         let run = state.Progress.Run
         let repository = state.Progress.Path != "" ? run.Repo: state.Repository
         let number = state.Progress.Path != "" ? run.Issue.ToString(): state.Issue
-        let identity = repository + " #" + number
+        let identity = state.RepositoryMode ? state.Repository: repository + " #" + number
         let titled = step == DonationStep.Donation && state.IssueTitle != "" && identity == state.Identity
         let children = List[Blob]{
             Heading{
@@ -72,7 +72,7 @@ class DonateView {
                 MaxLines: 2,
             }.Build(),
         }
-        if step == DonationStep.Donation {
+        if step == DonationStep.Donation && !state.RepositoryMode {
             children.Add(
                 Row{
                     Children: []Blob{

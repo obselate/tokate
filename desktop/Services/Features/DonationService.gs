@@ -69,6 +69,17 @@ class DonationService {
         Set(Current with{Input = value, Account = ""})
     }
 
+    func SetRepositoryMode(value bool) {
+        Issues.Reset("", IssueFilter.Approved)
+        Set(Current with{RepositoryMode = value, Policy = Policy.Empty, Account = "", Consent = ""})
+    }
+
+    func SetPerTask(value string) -> Set(Current with{PerTask = value})
+
+    func SetTotal(value string) -> Set(Current with{Total = value})
+
+    func SetPrompt(value string) -> Set(Current with{Prompt = value})
+
     /// Lists the repository's approved issues, or goes straight to the issue an issue URL names.
     func Find() {
         try {
@@ -93,7 +104,14 @@ class DonationService {
                         return
                     }
                     Set(Current with{Account = user.Value ?? ""})
-                    LoadPolicy(repository, requested)
+                    if Current.RepositoryMode {
+                        Set(Current with{Step = DonationStep.Limits, Policy = Policy.Empty, Unready = HarnessDoctor.Known})
+                        LoadProfiles(() -> StartWithDefault())
+                        go CheckHarnesses()
+                    } else {
+                        LoadPolicy(repository, requested)
+                    }
+                    return
                 }
             )
         } catch (error Exception) {
@@ -245,6 +263,10 @@ class DonationService {
 
     /// Checks the selection with the CLI, which resolves profiles and defaults, then moves to review.
     func Review() {
+        if Current.RepositoryMode {
+            PreviewRepository()
+            return
+        }
         try {
             Current.Draft.BudgetSeconds(Current.Policy)
             commands.Cli[DonorProfile](
@@ -376,6 +398,7 @@ class DonationService {
         feedback.Clear()
         Set(
             Current with{
+                RepositoryMode = false,
                 Step = DonationStep.Donation,
                 Progress = DonationProgress.Empty with{
                     Path = directory,
@@ -536,6 +559,98 @@ class DonationService {
             progress = progress with{Run = reply.Value with{Warning = outcome.Warning}}
         }
         SetProgress(progress)
+    }
+
+    private func PreviewRepository() {
+        try {
+            let arguments = TokateCommands.RepositoryWork(Current.Repository, Current.Draft, Current.PerTask, Current.Total, Current.Prompt)
+            commands.Cli(
+                arguments,
+                (outcome CommandOutcome) -> {
+                    if outcome.Failure != "" || outcome.Envelope?.Error?.Code != "confirmation_required" {
+                        feedback.ShowError(outcome)
+                        return
+                    }
+                    if outcome.Diagnostics.Trim() == "" {
+                        feedback.Show("The CLI did not return the repository consent. Nothing started.", Tone.Fail)
+                        return
+                    }
+                    feedback.Clear()
+                    Set(Current with{Consent = outcome.Diagnostics.Trim(), ReviewedArguments = arguments, Step = DonationStep.Review})
+                },
+                completeOnError: true
+            )
+        } catch (error Exception) {
+            feedback.Show(error.Message, Tone.Fail)
+        }
+    }
+
+    func StartRepository() {
+        if activity.Busy || Current.Consent == "" || Current.ReviewedArguments.Length == 0 {
+            return
+        }
+        dialogs.Ask(
+            Confirmation{Title: "Start repository donation?", Heading: Current.Repository, Text: Current.Consent, ConfirmLabel: "Start repository donation"},
+            () -> WorkRepository()
+        )
+    }
+
+    private func WorkRepository() {
+        output.Clear()
+        let channel = chan[string](output.Limit)
+        lines = channel
+        let arguments = List[string](Current.ReviewedArguments)
+        arguments.Add("--yes")
+        Set(Current with{
+            Step = DonationStep.Donation,
+            Session = DonationSession{},
+            StopRequested = false,
+            Progress = DonationProgress.Empty with{Started = true, Running = true, State = "Repository donation running", Tone = Tone.Need},
+        })
+        commands.Stream[DonationSession](
+            arguments.ToArray(), DonorCodec.Session, channel, seconds -> Collect(seconds),
+            (reply Reply[DonationSession]) -> {
+                Collect(Current.Progress.Elapsed)
+                lines = nil
+                let failed = reply.Outcome.Failure != "" || reply.Outcome.ExitCode != 0
+                Set(Current with{
+                    Session = reply.Value,
+                    Progress = Current.Progress with{
+                        Running = false,
+                        State = failed ? "Repository donation needs attention": "Repository donation finished",
+                        Tone = failed ? Tone.Fail: Tone.Done,
+                    },
+                })
+            },
+            0
+        )
+    }
+
+    func StopRepository() {
+        if !Current.Progress.Running || Current.StopRequested {
+            return
+        }
+        dialogs.Ask(
+            Confirmation{
+                Title: "Stop repository donation?", Heading: Current.Repository,
+                Text: "Finish the current task, then stop. Progress stays visible while the task finishes.",
+                ConfirmLabel: "Stop after current task",
+            },
+            () -> {
+                Set(Current with{StopRequested = true})
+                go RequestRepositoryStop(Current.Repository)
+            }
+        )
+    }
+
+    private func RequestRepositoryStop(repository string) {
+        let outcome = CliClient().Run(TokateCommands.RepositoryStop(repository), 0)
+        window.Post(() -> {
+            if outcome.Failure != "" || outcome.ExitCode != 0 {
+                Set(Current with{StopRequested = false})
+                feedback.ShowError(outcome)
+            }
+        })
     }
 
     func NewDonation() {

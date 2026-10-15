@@ -17,7 +17,14 @@ class IssueStepView {
         let search = donation.Issues
         if !search.Current.Loaded {
             return []Blob{
+                PresetGroup{
+                    Button: page.Button,
+                    Labels: []string{"Targeted issue", "Repository donation"},
+                    Selected: state.RepositoryMode ? 1: 0,
+                    OnChoose: index -> donation.SetRepositoryMode(index == 1),
+                }.Build(),
                 RepositoryFinder{
+                    RepositoryMode: state.RepositoryMode,
                     Input: state.Input,
                     Account: state.Account,
                     Button: page.Button,

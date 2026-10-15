@@ -1,0 +1,12 @@
+obselate/goo
+Harness: codex
+Model: gpt-6.1-sol
+Effort: high
+Per task: 900 seconds
+Total: 1800 seconds
+Gratis mode. No owner approved the task.
+Guidance: CONTRIBUTING.md, README.md, docs/native-authoring.md
+Task instruction:
+Choose one useful task permitted by the repository guidance, or complete the selected issue.
+Preview only; use --yes to apply these changes.
+tokate: Repository work requires --yes. No claim or inference started.

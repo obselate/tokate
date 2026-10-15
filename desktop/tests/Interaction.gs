@@ -445,10 +445,81 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         Activate(window, adapter, "Go back")
         Settle(host)
         Require(Find(adapter.Root, AccessibilityRole.Text, "Donation") != nil, "Saved work did not open Donate")
+        RepositoryDonateFlow(host, window, adapter, donation, fixture)
     } finally {
         Environment.SetEnvironmentVariable("PATH", previous)
         Directory.Delete(fixture, true)
     }
+}
+
+func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibility, donation DonationService, fixture string) {
+    let files = Path.Combine(AppContext.BaseDirectory, "Fixtures")
+    File.Copy(Path.Combine(files, "donation-gratis-preview.json"), Path.Combine(fixture, "preview.json"))
+    File.Copy(Path.Combine(files, "donation-gratis-preview.txt"), Path.Combine(fixture, "consent.txt"))
+    Script(
+        fixture, "tokate",
+        ("printf '%s\\n' \"$$@\" >> FIXTURE/repository-calls\n" +
+        "case \"$$1\" in\n" +
+        "defaults) printf '%s' '{\"schema_version\":1,\"command\":\"defaults\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"profiles\":{}}}';;\n" +
+        "work)\n" +
+        "if [ \"$$3\" = stop ]; then touch FIXTURE/stop-requested; while [ ! -e FIXTURE/task-done ]; do sleep .05; done\n" +
+        "else\n" +
+        "yes=false; for arg in \"$$@\"; do [ \"$$arg\" = --yes ] && yes=true; done\n" +
+        "if [ \"$$yes\" = false ]; then cat FIXTURE/consent.txt >&2; cat FIXTURE/preview.json; exit 1; fi\n" +
+        "printf 'Repository task started\\n' >&2; touch FIXTURE/repository-started\n" +
+        "while [ ! -e FIXTURE/stop-requested ]; do sleep .05; done\n" +
+        "printf 'Finishing current task\\n' >&2\n" +
+        "while [ ! -e FIXTURE/release-task ]; do sleep .05; done\n" +
+        "touch FIXTURE/task-done\n" +
+        "fi\n" +
+        "printf '%s' '{\"schema_version\":1,\"command\":\"work\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"repo\":\"obselate/goo\",\"reason\":\"stopped\",\"submitted\":1,\"skipped\":1,\"failed\":0,\"usage\":{\"input_tokens\":120,\"cached_input_tokens\":20,\"output_tokens\":30},\"wall_seconds\":2.5,\"tasks\":[{\"issue\":42,\"result\":\"submitted\",\"pr_url\":\"https://github.com/obselate/goo/pull/43\",\"run_directory\":\"/fixture/run\"},{\"issue\":44,\"result\":\"skipped\",\"reason\":\"refused\",\"pr_url\":\"\",\"run_directory\":\"\"}]}}';;\n" +
+        "*) exit 1;;\nesac\n")
+            .Replace("FIXTURE", fixture)
+    )
+    donation.NewDonation()
+    Settle(host)
+    Choose(host, window, adapter, "Repository donation")
+    Edit(window, host, adapter, "GitHub repository or issue URL", "obselate/goo")
+    Choose(host, window, adapter, "Choose repository")
+    AwaitControl(host, adapter, AccessibilityRole.TextInput, "Per-task minutes", enabled: true)
+    Edit(window, host, adapter, "Per-task minutes", "15")
+    Edit(window, host, adapter, "Total minutes (optional)", "30")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Check selection & review", enabled: true)
+    Choose(host, window, adapter, "Check selection & review")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Start donating", enabled: true)
+    Require(FindText(adapter.Root, "Gratis mode. No owner approved the task."), "Repository review omitted gratis consent")
+    Require(FindText(adapter.Root, "docs/native-authoring.md"), "Repository review omitted guidance files")
+    Require(!File.Exists(Path.Combine(fixture, "repository-started")), "Preview started work")
+    Choose(host, window, adapter, "Start donating")
+    Require(!File.Exists(Path.Combine(fixture, "repository-started")), "Work started without confirmation")
+    Choose(host, window, adapter, "Go back")
+    Choose(host, window, adapter, "Start donating")
+    Choose(host, window, adapter, "Start repository donation")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Stop repository donation", enabled: true)
+    let started = Stopwatch.StartNew()
+    while !FindText(adapter.Root, "Repository task started") && started.Elapsed.TotalSeconds < 5 {
+        Settle(host)
+    }
+    Require(FindText(adapter.Root, "Repository task started"), "Repository stderr did not stream")
+    Choose(host, window, adapter, "Stop repository donation")
+    Require(!File.Exists(Path.Combine(fixture, "stop-requested")), "Stop ran before confirmation")
+    Choose(host, window, adapter, "Stop after current task")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Stopping after current task")
+    let stopping = Stopwatch.StartNew()
+    while !FindText(adapter.Root, "Finishing current task") && stopping.Elapsed.TotalSeconds < 5 {
+        Settle(host)
+    }
+    Require(donation.Current.Progress.Running, "Stop killed the loop before the task finished")
+    Require(FindText(adapter.Root, "Finishing current task"), "Progress stopped while waiting for task completion")
+    File.WriteAllText(Path.Combine(fixture, "release-task"), "")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "New donation", enabled: true)
+    Require(FindText(adapter.Root, "Reason: stopped") && FindText(adapter.Root, "Submitted: 1"), "Session counts or stop reason missing")
+    Require(FindText(adapter.Root, "Wall time: 2.5") && FindText(adapter.Root, "input_tokens"), "Session usage or wall time missing")
+    Require(FindText(adapter.Root, "#44 skipped") && FindText(adapter.Root, "refused"), "Task results missing")
+    Require(Find(adapter.Root, AccessibilityRole.Button, "Open pull request") != nil, "Session PR link missing")
+    let calls = File.ReadAllText(Path.Combine(fixture, "repository-calls"))
+    Require(calls.Contains("stop\n--yes\n--json"), "Repository stop argv is incorrect")
+    Require(donation.Current.Session.Tasks.Length == 2, "Final session report was not decoded")
 }
 
 func TestDesktop() {

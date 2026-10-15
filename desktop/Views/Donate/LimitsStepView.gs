@@ -48,7 +48,7 @@ class LimitsStepView {
                             ModelPicker{
                                 Harness: draft.Harness,
                                 Provider: draft.Provider,
-                                Providers: state.Policy.Providers(draft.Harness),
+                                Providers: state.RepositoryMode && draft.Harness == "omp" ? ModelChoice.Providers(state.OmpModels): state.Policy.Providers(draft.Harness),
                                 Model: draft.Model,
                                 Effort: draft.Effort,
                                 Endpoint: draft.Endpoint,
@@ -73,7 +73,17 @@ class LimitsStepView {
                             }.Build(),
                         },
                     }.Build(),
-                    TimeLimits{
+                    state.RepositoryMode ? Panel{
+                        Compact: compact,
+                        Name: "Repository donation limits",
+                        Children: []Blob{
+                            IconHeading{Icon: "schedule", Content: "Time"}.Build(),
+                            Label{Content: "Gratis repositories allow up to 60 minutes per task. Leave total time empty to run until stopped."}.Build(),
+                            InputField{Label: "Per-task minutes", Value: state.PerTask, Disabled: page.Busy, OnChange: value -> donation.SetPerTask(value)}.Build(),
+                            InputField{Label: "Total minutes (optional)", Value: state.Total, Disabled: page.Busy, OnChange: value -> donation.SetTotal(value)}.Build(),
+                            InputField{Label: "Prompt URL or file (gratis only)", Value: state.Prompt, Disabled: page.Busy, OnChange: value -> donation.SetPrompt(value)}.Build(),
+                        },
+                    }.Build(): TimeLimits{
                         Draft: draft,
                         Policy: state.Policy,
                         Button: page.Button,

@@ -13,5 +13,6 @@
     <PackageReference Include="Goo.Animations" Version="0.2.5" />
     <GooShaderEffect Include="../Shaders/fresco.slang" TargetPath="Shaders/fresco.goo-effect" />
     <Content Include="../Assets/*" Link="Assets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Regression/Fixtures/donation-gratis-preview.*" Link="Fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

@@ -79,6 +79,20 @@ class TokateCommands {
 
         func Work(run string) []string -> []string{"work", "--run", run, "--yes"}
 
+        func RepositoryWork(repo string, draft DonationDraft, perTask string, total string, prompt string) []string {
+            let args = Selection("work", repo, draft with{Profile = ""})
+            args.AddRange([]string{"--time", perTask.Trim() + "m"})
+            if total.Trim() != "" {
+                args.AddRange([]string{"--total", total.Trim() + "m"})
+            }
+            if prompt.Trim() != "" {
+                args.AddRange([]string{"--prompt", prompt.Trim()})
+            }
+            return args.ToArray()
+        }
+
+        func RepositoryStop(repo string) []string -> []string{"work", repo, "stop", "--yes"}
+
         func HarnessDoctor(harness string) []string -> []string{"doctor", "managed", harness}
 
         func OwnerDoctor() []string -> []string{"doctor", "external", "--auth"}

@@ -85,4 +85,19 @@ func DonationTests() {
     Regression.Check(donation.Current.Step == DonationStep.Issue && !donation.Current.Progress.Started, "new donation")
     Regression.Equal(DonationSteps.Heading(DonationStep.Limits), "Set your limits", "step heading")
     Regression.Check(DonationSteps.Index(DonationStep.Donation) == 3, "step index")
+    let preview = CliCodec.Envelope(Regression.Fixture("donation-gratis-preview.json"))
+    Regression.Check(preview.Error?.Code == "confirmation_required" && preview.ExitCode == 1, "real gratis preview requires consent")
+    let stop = CliCodec.Envelope(Regression.Fixture("donation-stop-preview.json"))
+    Regression.Check(stop.Error?.Code == "confirmation_required" && stop.ExitCode == 1, "real stop preview requires consent")
+    Regression.Equal(
+        Regression.Args(TokateCommands.RepositoryWork("owner/repo", DonationDraft.Initial, "15", "30", "https://example.org/task")),
+        "work owner/repo --harness codex --model gpt-6.1-sol --effort high --non-interactive --time 15m --total 30m --prompt https://example.org/task",
+        "repository preview carries selection, limits and prompt without consent"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.RepositoryWork("owner/repo", DonationDraft.Initial with{Profile = "saved"}, "60", "", "")),
+        "work owner/repo --harness codex --model gpt-6.1-sol --effort high --non-interactive --time 60m",
+        "repository profile without total runs until stopped"
+    )
+    Regression.Equal(Regression.Args(TokateCommands.RepositoryStop("owner/repo")), "work owner/repo stop --yes", "repository stop waits through CLI")
 }
