@@ -54,6 +54,7 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
    Or save these choices with `tokate defaults set NAME --harness codex --model MODEL --effort EFFORT`
    and use `tokate work 42 NAME --time 1h --verify-time 20m`.
+   Pi also needs `--endpoint URL` or a saved profile. See [local inference with Pi](#local-inference-with-pi).
 3. Keep the printed run name, such as `42`. Wait for coding and verification.
 4. Submit the saved run.
 
@@ -192,7 +193,7 @@ Profiles save tool settings, not time budgets. The owner must allow your tool, p
 | Pi setting | Requirement |
 | --- | --- |
 | Effort | Use a supported reasoning level. Use `absent` only for a model without reasoning. |
-| Endpoint | HTTP loopback URL ending in `/v1`. Remote endpoints and authentication are not supported. |
+| Endpoint | Required. Pass `--endpoint` or use a saved profile. HTTP loopback URL ending in `/v1`. Remote endpoints and authentication are not supported. |
 | Model limits | Pi SDK metadata must provide valid context and output limits. |
 | Custom installation | Supply absolute `--pi-root` and `--node` paths. `--pi-root` names the installed `node_modules` directory. |
 

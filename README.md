@@ -58,6 +58,8 @@ tokate doctor
   tokate submit OWNER/REPO#42
   ```
 
+  Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](docs/donors.md#local-inference-with-pi).
+
   Gratis work on a repository without a Tokate policy:
 
   ```sh
