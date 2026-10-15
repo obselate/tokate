@@ -2,6 +2,12 @@ package TokateDesktop
 
 import Goo
 import System
+/// The intent of an action, independent of its primary or secondary emphasis.
+enum ButtonTone {
+    Default,
+    Positive,
+    Danger
+}
 
 data struct Palette {
     var Paper Color

@@ -42,7 +42,7 @@ data struct HarnessOption {
             HarnessOption{Id: "codex", Name: "Codex", Provider: "openai"},
             HarnessOption{Id: "claude", Name: "Claude", Provider: "anthropic"},
             HarnessOption{Id: "omp", Name: "OMP", Provider: ""},
-            HarnessOption{Id: "pi", Name: "Pi / local", Provider: "local-chat-completions"},
+            HarnessOption{Id: "pi", Name: "Pi", Provider: "local-chat-completions"},
             HarnessOption{Id: "command", Name: "Owner command", Provider: ""},
         }
 
@@ -113,7 +113,7 @@ data struct ModelChoice {
         func Pair(model string, effort string) string -> effort == "" ? model: model + " / " + EffortLabel(effort)
 
         /// The name of a harness, with its selected provider.
-        func Tool(harness string, provider string) string -> (harness == "omp" || harness == "command") && (provider ?? "") != "" ?
+        func Tool(harness string, provider string) string -> harness == "pi" ? "OMP · Local endpoint": (harness == "omp" || harness == "command") && (provider ?? "") != "" ?
         HarnessOption.NameOf(harness) + " \u00b7 " + provider: HarnessOption.NameOf(harness)
 
         func EffortLabel(value string) string -> value == "xhigh" ? "Extra high": value == "absent" ? "Not set": value == "" ? "": char.ToUpperInvariant(
@@ -354,6 +354,13 @@ data struct DonationState {
 
     func Efforts() []string -> Draft.EffortChoices(Catalog())
 
+    func Providers() []string {
+        if Draft.Harness != "omp" && Draft.Harness != "pi" { return Policy.Providers(Draft.Harness) }
+        let providers = List[string](Policy.Loaded ? Policy.Providers("omp"): ModelChoice.Providers(OmpModels))
+        if Policy.AllowsHarness("pi") { providers.Add("local-chat-completions") }
+        return providers.ToArray()
+    }
+
     /// Clears a model or an effort that the catalog does not offer. A profile keeps its saved choice, and
     /// a catalog that is not loaded changes nothing.
     func Settled() DonationState {
@@ -415,4 +422,16 @@ data struct DonationSession {
     var Usage string
     var WallSeconds string
     var Tasks []DonationTask
+
+    prop EndReason string -> switch Reason {
+        case "stopped": "Stopped by you"
+        case "total_exhausted": "Total time used"
+        case "issues_completed": "Issues done"
+        case "consecutive_failures": "Three failures in a row"
+        case "refused": "Task declined"
+        case "no_pr": "No pull request produced"
+        case "failed": "Task failed"
+        case "interrupted": "Task interrupted"
+        default: "Donation ended"
+    }
 }

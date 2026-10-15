@@ -35,7 +35,7 @@ data struct ProjectOpener {
         var tone = Tone.Done
         if !String.IsNullOrWhiteSpace(Input) {
             try {
-                status = "Ready to open " + RepositoryRef.Parse(Input).FullName + "."
+                status = "Ready to open " + RepositoryRef.Parse(Input).FullName
             } catch (error Exception) {
                 status = error.Message
                 tone = Tone.Fail

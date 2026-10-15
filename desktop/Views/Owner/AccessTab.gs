@@ -21,21 +21,19 @@ class AccessTab {
                 page.Busy && page.Loader != nil ? page.Loader!!("Reading donor access"): EmptyMessage{Content: "Access could not be loaded. Refresh to try again.", Icon: "group"}.Build(),
             }}.Build()
         }
-        if !canWrite {
-            body.Add(Callout{Message: "Write access is required to manage donors.", Tone: Tone.Wait}.Build())
-        }
         if state.Access.Loaded && state.Access.AccessSha == "" {
             body.Add(
                 Panel{
                     Children: []Blob{
                         Row{
                             Children: []Blob{
-                                Label{Content: "Access is not set up for this project."}.Build(),
+                                Label{Content: "Access is not set up for this project"}.Build(),
                                 Spacer{}.Build(),
                                 (page.Button with{
                                     Label = "Initialize access",
                                     OnClick = () -> owner.ChangeAccess("init", ""),
                                     Primary = true,
+                                    Tone = ButtonTone.Positive,
                                     Disabled = !canWrite,
                                 }).Build(),
                             },

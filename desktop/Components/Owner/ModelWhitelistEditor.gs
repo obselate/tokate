@@ -40,7 +40,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
                         (input.Button with{
                             Label = "Remove",
                             Name = "Remove " + key,
-                            Kind = ButtonKind.Quiet,
+                            Tone = ButtonTone.Danger,
                             OnClick = () -> owner.RemoveModel(key),
                         }).Build(),
                     },

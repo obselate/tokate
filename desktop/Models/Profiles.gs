@@ -1,6 +1,7 @@
 package TokateDesktop
 
 import System
+import System.Collections.Generic
 
 /// The profiles that the donor saved with Tokate, and the form that adds or changes one.
 data struct ProfilesState {
@@ -18,6 +19,12 @@ data struct ProfilesState {
     var Draft DonationDraft
 
     func Catalog() []ModelChoice -> ModelChoice.Catalog(Draft.Harness, Draft.Provider, Models, OmpModels, Policy.Empty)
+
+    func Providers() []string {
+        let providers = List[string](ModelChoice.Providers(OmpModels))
+        providers.Add("local-chat-completions")
+        return providers.ToArray()
+    }
 
     func Efforts() []string -> Draft.EffortChoices(Catalog())
 

@@ -21,19 +21,20 @@ data struct AccessRequests {
             lines.Add(
                 ListRow{
                     Children: []Blob{
-                        Container{Width: AppTheme.ShortFieldWidth, FlexShrink: 0, Label{Content: request.Donor}.Build()},
+                        Label{Content: request.Donor}.Build(),
                         Label{Content: "Requests issue #" + request.Issue, Size: AppTheme.SmallSize, Muted: true}.Build(),
                         Spacer{}.Build(),
                         (Button with{
                             Label = "Grant #" + request.Issue,
                             Name = "Grant #" + request.Issue + " to " + request.Donor,
+                            Tone = ButtonTone.Positive,
                             OnClick = () -> grant?.Invoke(selected),
                             Disabled = !CanWrite,
                         }).Build(),
                         (Button with{
                             Label = "Trust for all issues",
                             Name = "Trust " + request.Donor,
-                            Kind = ButtonKind.Quiet,
+                            Tone = ButtonTone.Positive,
                             OnClick = () -> trust?.Invoke(selected),
                             Disabled = !CanWrite,
                         }).Build(),
@@ -42,7 +43,7 @@ data struct AccessRequests {
             )
         }
         if Requests.Length == 0 {
-            lines.Add(ListRow{Children: []Blob{Label{Content: "No pending requests.", Muted: true}.Build()}}.Build())
+            lines.Add(ListRow{Children: []Blob{Label{Content: "No pending requests", Muted: true}.Build()}}.Build())
         }
         return ListSection{Title: "Requests", Count: Requests.Length, Children: lines.ToArray()}.Build()
     }

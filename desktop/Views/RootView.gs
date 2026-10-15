@@ -217,6 +217,7 @@ class RootView : Cell {
             Text: confirmation.Text,
             Content: ConfirmationBody(confirmation),
             ConfirmLabel: confirmation.ConfirmLabel,
+            Tone: confirmation.Tone,
             WindowWidth: metrics.WindowWidth,
             Short: metrics.Short,
             KeyBindings: WidgetKeyBindings.Editing(app.Window.PlatformInput),

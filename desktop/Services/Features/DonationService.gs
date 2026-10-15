@@ -44,7 +44,7 @@ class DonationService {
 
     prop IsDonating bool -> Current.Step == DonationStep.Donation
 
-    prop IsLive bool -> IsDonating && Current.Progress.Started
+    prop IsLive bool -> IsDonating && Current.Progress.Started && (!Current.RepositoryMode || Current.Progress.Running)
 
     prop IsBrowsing bool -> Current.Step == DonationStep.Issue && Issues.Current.Loaded
 
@@ -130,6 +130,20 @@ class DonationService {
     func SetPrompt(value string) -> Set(Current with{Prompt = value})
 
     func SetIssueList(value string) -> Set(Current with{IssueList = value})
+
+    func LoadRepositoryIssues() {
+        if !Current.RepositoryMode || Current.Policy.Loaded { return }
+        Issues.Reset(Current.Repository, IssueFilter.All)
+        Issues.Search(1, true)
+    }
+
+    func ToggleIssue(number string, selected bool) {
+        if !Current.RepositoryMode || Current.Policy.Loaded { return }
+        let issues = List[string]((Current.IssueList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        if selected && !issues.Contains(number) { issues.Add(number) }
+        if !selected { issues.Remove(number) }
+        SetIssueList(String.Join(",", issues))
+    }
 
     func SetReviewEach(value bool) -> Set(Current with{ReviewEach = value})
 
@@ -332,7 +346,14 @@ class DonationService {
     func SetEffort(effort string) -> SetDraft(Current.Draft with{Effort = effort, Profile = ""})
 
     /// Selects an OMP provider. The model belongs to the earlier provider, so it is cleared.
-    func SetProvider(provider string) -> SetDraft(Current.Draft with{Provider = provider, Model = "", Effort = "", Profile = ""})
+    func SetProvider(provider string) {
+        let harness = Current.Draft.Harness
+        SetDraft(Current.Draft with{
+            Harness = harness == "omp" || harness == "pi" ? (provider == "local-chat-completions" ? "pi": "omp"): harness,
+            Provider = provider == "local-chat-completions" ? "": provider, Model = "", Effort = "", Profile = "",
+        })
+        LoadModels()
+    }
 
     func SetEndpoint(endpoint string) -> SetDraft(Current.Draft with{Endpoint = endpoint, Profile = ""})
 
@@ -362,6 +383,7 @@ class DonationService {
 
     func Back() {
         feedback.Clear()
+        if Current.RepositoryMode { Issues.Reset("", IssueFilter.Approved) }
         Set(Current with{Step = DonationStep.Issue})
     }
 
@@ -434,10 +456,10 @@ class DonationService {
                     Tiles: []ConfirmationTile{
                         ConfirmationTile{
                             Title: "Coding",
-                            Value: draft.Unlimited ? "Unlimited": draft.Coding + " minutes",
+                            Value: draft.Unlimited ? "Unlimited": DurationText.Format(int32.Parse(draft.Coding)),
                             Icon: "schedule",
                         },
-                        ConfirmationTile{Title: "Verification", Value: draft.Verification + " minutes", Icon: "verified"},
+                        ConfirmationTile{Title: "Verification", Value: DurationText.Format(draft.ReserveMinutes()), Icon: "verified"},
                     },
                     Details: []ConfirmationDetail{
                         ConfirmationDetail{Label: "Model", Value: draft.Model + " / " + draft.Effort},
@@ -706,7 +728,18 @@ class DonationService {
             return
         }
         dialogs.Ask(
-            Confirmation{Title: "Start donation?", Text: Current.Repository + "\n" + ModelChoice.Tool(Current.Draft.Harness, Current.Draft.Provider) + " · " + Current.Draft.Model + "\nPer task: " + DurationText.Format(int32.Parse(Current.PerTask)) + "\nTotal: " + (Current.Total == "" ? "Until stopped": DurationText.Format(int32.Parse(Current.Total))), ConfirmLabel: "Confirm donation"},
+            Confirmation{
+                Title: "Start donation?", Heading: Current.Repository, ConfirmLabel: "Confirm donation",
+                Tiles: []ConfirmationTile{
+                    ConfirmationTile{Title: "Per task", Value: DurationText.Format(int32.Parse(Current.PerTask)), Icon: "schedule"},
+                    ConfirmationTile{Title: "Total", Value: Current.IssueList != "" ? Current.ConsentFact("Total", "Selected issues"): Current.Total == "" ? "Until stopped": DurationText.Format(int32.Parse(Current.Total)), Icon: "schedule"},
+                },
+                Details: []ConfirmationDetail{
+                    ConfirmationDetail{Label: "Harness", Value: ModelChoice.Tool(Current.Draft.Harness, Current.Draft.Provider)},
+                    ConfirmationDetail{Label: "Model", Value: ModelChoice.Pair(Current.Draft.Model, Current.Draft.Effort)},
+                    ConfirmationDetail{Label: "Publishing", Value: Current.ReviewEach ? "Review each pull request": "Automatic draft pull requests"},
+                },
+            },
             () -> WorkRepository()
         )
     }
@@ -753,6 +786,7 @@ class DonationService {
                 Title: "Stop repository donation?", Heading: Current.Repository,
                 Text: "Finish the current task, then stop. Progress stays visible while the task finishes.",
                 ConfirmLabel: "Stop after current task",
+                Tone: ButtonTone.Danger,
             },
             () -> {
                 Set(Current with{StopRequested = true})

@@ -13,19 +13,18 @@ data struct RunOpener {
 
     func Build() Blob -> Panel{
         Children: []Blob{
-            Row{
-                Children: []Blob{
-                    InputField{
-                        Label: "Run directory",
-                        Value: Path,
-                        OnChange: OnPath,
-                        Placeholder: "Path printed by Tokate",
-                        Width: AppTheme.WideFieldWidth,
-                        Disabled: Disabled,
-                    }.Build(),
-                    (Button with{Label = "Open run", OnClick = OnOpen, Primary = true, Disabled = Path == ""}).Build(),
-                },
+            Heading{Content: "Open saved run", Size: AppTheme.ItemSize}.Build(),
+            InputField{
+                Label: "Run directory",
+                Value: Path,
+                OnChange: OnPath,
+                Placeholder: "Path printed by Tokate",
+                Width: AppTheme.WideFieldWidth,
+                Disabled: Disabled,
             }.Build(),
+            ActionBar{Children: []Blob{
+                (Button with{Label = "Open run", OnClick = OnOpen, Primary = true, Disabled = Path == ""}).Build(),
+            }}.Build(),
         },
     }.Build()
 }

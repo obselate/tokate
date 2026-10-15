@@ -25,13 +25,13 @@ data struct ModelPicker {
 
     func Build() Blob {
         let fields = List[Blob]()
-        if Harness == "omp" || Harness == "command" {
+        if Harness == "omp" || Harness == "pi" || Harness == "command" {
             let providers = List[ComboBoxOption]()
             for provider in Providers {
-                providers.Add(Option(provider, provider))
+                providers.Add(Option(provider, provider == "local-chat-completions" ? "Local endpoint": provider))
             }
             fields.Add(
-                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, AppTheme.ShortFieldWidth, "Choose"): Field(
+                providers.Count > 0 ? Choice("Provider", Harness == "pi" ? "local-chat-completions": Provider, providers.ToArray(), OnProvider, AppTheme.ShortFieldWidth, "Choose"): Field(
                     "Provider",
                     Provider,
                     OnProvider,

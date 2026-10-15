@@ -13,13 +13,13 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
         let tags = List[Blob]()
         for check in input.Setup.Checks {
             let selected = check
-            tags.Add((input.Button with{Label = check, Icon = "close", OnClick = () -> owner.RemoveCheck(selected)}).Build())
+            tags.Add((input.Button with{Label = check, Tone = ButtonTone.Danger, Icon = "close", OnClick = () -> owner.RemoveCheck(selected)}).Build())
         }
         let rows = List[Blob]{
             IconHeading{
                 Icon: "verified",
                 Content: "Required CI checks",
-                Detail: "The CI checks that must pass on a pull request.",
+                Detail: "Checks required on each pull request",
             }.Build(),
         }
         if tags.Count > 0 {

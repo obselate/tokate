@@ -40,7 +40,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             let selected = id == "omp" ? allowed.Count > 0: Array.IndexOf(pairs, id + "/" + option.Provider) >= 0
             cards.Add(
                 ChoiceCard{
-                    Title: option.Name,
+                    Title: id == "pi" ? "Pi": option.Name,
                     Detail: id == "codex" ? "OpenAI": id == "claude" ? "Anthropic": id == "pi" ? "Local endpoint": allowed.Count == 0 ?
                     "Choose providers": allowed.Count == 1 ? "1 provider": allowed.Count.ToString() + " providers",
                     Icon: "terminal",
@@ -52,7 +52,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             )
         }
         let children = List[Blob]{
-            IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "Choose the coding tools donors may use."}.Build(),
+            IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "Choose the coding tools donors may use"}.Build(),
             Row{Children: cards.ToArray()}.Build(),
         }
         children.Add(Rule{}.Build())
@@ -71,7 +71,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                         commandArgv = Json.StringArray(current.Command)
                         commandOutput = current.Output
                     }}).Build(),
-                    (input.Button with{Label = "Remove", Name = "Remove " + tool.Tool, OnClick = () -> owner.RemoveCommandTool(current.Tool)}).Build(),
+                    (input.Button with{Label = "Remove", Tone = ButtonTone.Danger, Name = "Remove " + tool.Tool, OnClick = () -> owner.RemoveCommandTool(current.Tool)}).Build(),
                 }}.Build())
             }
         }
@@ -142,7 +142,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                 Children: []Blob{
                     Heading{Content: "OMP providers", Size: AppTheme.ItemSize}.Build(),
                     Label{
-                        Content: "A donor can use OMP only with a provider that you allow.",
+                        Content: "Only allowed providers can run OMP",
                         Size: AppTheme.SmallSize,
                         Muted: true,
                     }.Build(),

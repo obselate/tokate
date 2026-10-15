@@ -19,9 +19,17 @@ class LimitsStepView {
     func Build(page PageContext) []Blob {
         let state = donation.Current
         let draft = state.Draft
+        let repository = List[Blob]{
+            Row{Gap: AppTheme.Space8, Children: []Blob{
+                Heading{Content: state.Identity}.Build(),
+                StatusChip{Value: state.Policy.Loaded ? "Policy": "Gratis", Tone: Tone.Wait, Icon: ""}.Build(),
+                Spacer{}.Build(),
+                (page.Button with{Label = "Change repository", Icon = "arrow_back", OnClick = () -> donation.Back()}).Build(),
+            }}.Build(),
+        }
+        if state.IssueTitle != "" { repository.Add(Label{Content: state.IssueTitle, Muted: true}.Build()) }
         return []Blob{
-            Heading{Content: state.Identity + (state.IssueTitle == "" ? "": " · " + state.IssueTitle)}.Build(),
-            Label{Content: state.Policy.Loaded ? "Owner policy · " + state.LimitLabel + " per task": "Gratis · No Tokate policy", Muted: true}.Build(),
+            Panel{Name: "Selected repository", Children: repository.ToArray()}.Build(),
             Panel{
                 Name: "Harness settings",
                 Children: []Blob{
@@ -46,7 +54,7 @@ class LimitsStepView {
                             ModelPicker{
                                 Harness: draft.Harness,
                                 Provider: draft.Provider,
-                                Providers: state.RepositoryMode && draft.Harness == "omp" ? ModelChoice.Providers(state.OmpModels): state.Policy.Providers(draft.Harness),
+                                Providers: state.Providers(),
                                 Model: draft.Model,
                                 Effort: draft.Effort,
                                 Endpoint: draft.Endpoint,
@@ -76,7 +84,7 @@ class LimitsStepView {
                         Children: []Blob{
                             IconHeading{Icon: "schedule", Content: "Time"}.Build(),
                             TimeBudget{Caption: "Per task", Minutes: int32.Parse(state.PerTask), Minimum: 1, Maximum: state.LimitMinutes, Hint: state.LimitLabel, Disabled: page.Busy, Button: page.Button, OnChange: value -> donation.SetPerTask(value)}.Build(),
-                            TimeBudget{Caption: "Total", Minutes: int32.TryParse(state.Total, out var total) ? total: 0, Minimum: 5, Optional: true, Hint: "Across all tasks.", Disabled: page.Busy, Button: page.Button, OnChange: value -> donation.SetTotal(value)}.Build(),
+                            TimeBudget{Caption: "Total", Minutes: int32.TryParse(state.Total, out var total) ? total: 0, Minimum: 5, Optional: true, Hint: "Across all tasks", Disabled: page.Busy, Button: page.Button, OnChange: value -> donation.SetTotal(value)}.Build(),
                         },
                     }.Build(): TimeLimits{
                         Draft: draft,
@@ -89,19 +97,44 @@ class LimitsStepView {
                     }.Build(),
                 },
             }.Build(),
-            state.RepositoryMode ? Panel{Name: "Repository options", Children: state.Policy.Loaded ? []Blob{
-                Label{Content: "Issue lists and pull request review are available in Gratis mode only.", Muted: true}.Build(),
-            }: []Blob{
-                InputField{Label: "Issues (optional)", Value: state.IssueList ?? "", Placeholder: state.Repository + "#12,15,40", Disabled: page.Busy, OnChange: value -> donation.SetIssueList(value)}.Build(),
+            state.RepositoryMode && !state.Policy.Loaded ? Panel{Name: "Repository options", Children: []Blob{
+                IconHeading{Icon: "checklist", Content: "Tasks and publishing"}.Build(),
+                RepositoryIssues(page),
                 Check{Label: "Review each pull request before publishing", Value: state.ReviewEach, Disabled: page.Busy, OnChange: value -> donation.SetReviewEach(value)}.Build(),
                 InputField{Label: "Guidance file or URL (optional)", Value: state.Prompt, Disabled: page.Busy, OnChange: value -> donation.SetPrompt(value)}.Build(),
             }}.Build(): Stack{Children: []Blob{}}.Build(),
-            Row{
+            ActionBar{
                 Children: []Blob{
                     (page.Button with{Label = "Back", OnClick = () -> donation.Back()}).Build(),
                     (page.Button with{Label = "Review donation", OnClick = () -> donation.Review(), Primary = true}).Build(),
                 },
             }.Build(),
         }
+    }
+
+    private func RepositoryIssues(page PageContext) Blob {
+        let listing = donation.Issues.Current
+        let selected = (donation.Current.IssueList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+        let rows = List[Blob]()
+        for issue in listing.Rows {
+            let number = issue.NumberText
+            let order = Array.IndexOf(selected, number)
+            rows.Add(ListRow{Name: "Issue " + number, Children: []Blob{
+                Check{Label: "#" + number + "  " + issue.Title, Value: order >= 0, Disabled: page.Busy, OnChange: value -> donation.ToggleIssue(number, value)}.Build(),
+                order >= 0 ? StatusChip{Value: "Run " + (order + 1).ToString(), Tone: Tone.Wait, Icon: ""}.Build(): Stack{Children: []Blob{}}.Build(),
+            }}.Build())
+        }
+        if !listing.Loaded {
+            rows.Add(ListRow{Children: []Blob{(page.Button with{Label = "Choose issues", OnClick = () -> donation.LoadRepositoryIssues()}).Build()}}.Build())
+        } else {
+            rows.Insert(0, ListRow{Children: []Blob{Row{Align: AlignItems.FlexEnd, Children: []Blob{
+                InputField{Label: "Search open issues", Value: listing.Query, OnChange: value -> donation.Issues.SetQuery(value), Disabled: page.Busy}.Build(),
+                (page.Button with{Label = "Search", OnClick = () -> donation.Issues.Search(1, true)}).Build(),
+            }}.Build()}}.Build())
+            if page.Busy { rows.Add(ListRow{Children: []Blob{Loader{Message: "Loading issues", Key: "repository-issues"}.Build()}}.Build()) }
+            if listing.Rows.Length == 0 && !page.Busy { rows.Add(ListRow{Children: []Blob{Label{Content: "No open issues found", Muted: true}.Build()}}.Build()) }
+            rows.Add(ListRow{Children: []Blob{IssuePager{Listing: listing, Button: page.Button, Narrow: page.NarrowContent, OnPage: number -> donation.Issues.Search(number)}.Build()}}.Build())
+        }
+        return ListSection{Title: "Open issues", Count: listing.Loaded ? listing.Total: -1, Note: selected.Length == 0 ? "Optional · The harness chooses": "Run order: #" + String.Join(", #", selected), Children: rows.ToArray()}.Build()
     }
 }

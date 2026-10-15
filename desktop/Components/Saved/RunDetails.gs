@@ -5,8 +5,7 @@ import Goo.Widgets.Icons
 import System
 import System.Collections.Generic
 
-/// A selected saved run: the step it is at, who acts next, any failure and the actions it allows. The
-/// action that the status calls for is first and primary.
+/// A selected saved run and its next actions, with the primary action last.
 data struct RunDetails {
     var Item SavedRun
     var Actions []RunAction
@@ -14,8 +13,6 @@ data struct RunDetails {
     /// A narrow panel names only the current step.
     var Narrow bool
     var Form Blob?
-    /// What the coordinator does with a request of this run. The actions are disabled while `Waiting`.
-    var Note Feedback
     var LastMessage string
     var Waiting bool
     var OnAction Action[RunAction]?
@@ -70,28 +67,16 @@ data struct RunDetails {
         if text != "" {
             children.Add(Label{Content: text}.Build())
         }
-        if run.ErrorMessage != "" {
-            children.Add(Callout{Message: run.FailureReason + ": " + run.ErrorMessage + "\n" + CliError{Code: run.FailureReason}.Recovery, Tone: Tone.Fail}.Build())
-        }
-        if run.Warning != "" {
-            children.Add(Callout{Message: run.Warning, Tone: Tone.Need}.Build())
-        }
-        if run.Guidance != "" {
-            children.Add(Callout{Message: run.Guidance, Tone: Tone.Need}.Build())
-        }
-        if Note.Message != "" {
-            children.Add(Callout{Message: Note.Message, Tone: Note.Tone}.Build())
-        }
         var lead = guide.Main != nil ? shown.IndexOf(guide.Main!!): -1
         for index in 0 ... shown.Count {
             if lead < 0 && RunActions.Primary(shown[index]) {
                 lead = index
             }
         }
-        if lead > 0 {
-            let first = shown[lead]
+        if lead >= 0 && lead < shown.Count - 1 {
+            let primary = shown[lead]
             shown.RemoveAt(lead)
-            shown.Insert(0, first)
+            shown.Add(primary)
         }
         let buttons = List[Blob]()
         for index in 0 ... shown.Count {
@@ -106,13 +91,14 @@ data struct RunDetails {
                             act?.Invoke(selected)
                         }
                     },
-                    Primary = Form == nil && lead >= 0 && index == 0,
+                    Primary = Form == nil && lead >= 0 && index == shown.Count - 1,
+                    Tone = selected == RunAction.Submit || selected == RunAction.Amend ? ButtonTone.Positive: ButtonTone.Default,
                     Disabled = Waiting,
                 }).Build()
             )
         }
         if buttons.Count > 0 {
-            children.Add(Row{Children: buttons.ToArray()}.Build())
+            children.Add(ActionBar{Children: buttons.ToArray()}.Build())
         }
         for next in Item.Actions {
             let continuation = Array.IndexOf(next.Arguments, "--continue-from") >= 0
@@ -132,13 +118,13 @@ data struct RunDetails {
                     }
                 }
                 children.Add(Label{Content: continuation ? "Continue saved work with a new time budget.": next.Command == "help" ? "Read recovery instructions before another attempt.": next.Command == "sync" ? "Review changes before synchronization.": "Check the current approval and permissions."}.Build())
-                followButtons.Insert(0, (Button with{
+                followButtons.Add((Button with{
                     Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": next.Command == "sync" ? "Review synchronization": "Inspect authority",
                     Disabled = Waiting,
                     Primary = Form == nil && continuation && lead < 0,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())
-                children.Add(Row{Children: followButtons.ToArray()}.Build())
+                children.Add(ActionBar{Children: followButtons.ToArray()}.Build())
             }
         }
         let failure = String.Join("\n", run.Guidance, run.ErrorMessage, LastMessage)
@@ -181,8 +167,8 @@ data struct PullRequestReview {
                 Focusable: true,
                 Focus: AppTheme.FocusStyle(),
             },
-            Row{Children: []Blob{
-                (Button with{Label = "Publish pull request", Primary = true, OnClick = OnPublish}).Build(),
+            ActionBar{Children: []Blob{
+                (Button with{Label = "Publish pull request", Primary = true, Tone = ButtonTone.Positive, OnClick = OnPublish}).Build(),
             }}.Build(),
         },
     }.Build()

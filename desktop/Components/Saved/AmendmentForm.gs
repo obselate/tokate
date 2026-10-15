@@ -63,10 +63,10 @@ data struct AmendmentForm {
             children.Add(budget)
         }
         children.Add(
-            Row{
+            ActionBar{
                 Children: []Blob{
-                    (Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true, Disabled = !ready}).Build(),
-                    (Button with{Label = "Cancel", Kind = ButtonKind.Quiet, OnClick = OnCancel}).Build(),
+                    (Button with{Label = "Cancel", OnClick = OnCancel}).Build(),
+                    (Button with{Label = "Verify and publish amendment", OnClick = OnPublish, Primary = true, Tone = ButtonTone.Positive, Disabled = !ready}).Build(),
                 },
             }.Build()
         )
@@ -109,7 +109,7 @@ data struct AmendmentForm {
                         Size: AppTheme.SmallSize,
                         Muted: true,
                     }.Build(),
-                    OpenCheckout(ButtonKind.Quiet),
+                    OpenCheckout(ButtonKind.Action),
                 },
             }.Build(),
         },

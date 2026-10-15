@@ -21,7 +21,7 @@ class WelcomeView {
         return Showcase{
             Art: Painting.Mount(app, metrics.Short ? 160: 0, false),
             Children: []Blob{
-                page.Layout(HeroTitle{Width: metrics.ContentWidth, Title: "Give your inference", Accent: "a purpose."}.Build(), []Blob{
+                page.Layout(HeroTitle{Width: metrics.ContentWidth, Title: "Give your inference", Accent: "a purpose"}.Build(), []Blob{
                 Overhang{
                     Content: Row{
                         Children: []Blob{

@@ -21,10 +21,8 @@ class SavedListView {
                 FirstIndex: (state.Page - 1) * IssueListing.PageSize,
                 Total: total,
                 Reading: state.Reading,
-                Short: page.Metrics.Short,
                 Narrow: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
                 Disabled: page.Busy,
-                Loader: page.Loader,
                 OnOpen: item -> saved.Select(item),
             }.Build(),
             Pager{

@@ -49,6 +49,7 @@ data struct OwnerIssueCard {
                             Label = stale ? "Re-approve issue #" + number: approved ? "Revoke approval #" + number: "Approve issue #" + number,
                             OnClick = OnApproval,
                             Primary = !approved,
+                            Tone = approved ? ButtonTone.Danger: ButtonTone.Positive,
                             Disabled = !CanWrite || (!approved && !SupportsApproval),
                         }).Build(),
                     },
@@ -69,11 +70,9 @@ data struct OwnerIssueCard {
             lines.Add(Draft(draft))
         }
         if Reading {
-            let line = ListRow{Children: []Blob{Label{Content: "Reading the contribution", Muted: true}.Build()}}.Build()
-            line.Opacity = AppTheme.Motion ? Button.Pulse: 1
-            lines.Add(line)
+            lines.Add(ListRow{Children: []Blob{Loader{Message: "Reading the contribution", Key: "owner-contribution"}.Build()}}.Build())
         } else if lines.Count == 0 {
-            lines.Add(ListRow{Children: []Blob{Label{Content: "No draft pull requests.", Muted: true}.Build()}}.Build())
+            lines.Add(ListRow{Children: []Blob{Label{Content: "No draft pull requests", Muted: true}.Build()}}.Build())
         }
         return Stack{
             Gap: AppTheme.Space16,
@@ -108,7 +107,6 @@ data struct OwnerIssueCard {
                 (Button with{
                     Label = "Review",
                     Name = "Review PR #" + pr,
-                    Kind = ButtonKind.Quiet,
                     Icon = "open_in_new",
                     OnClick = () -> review?.Invoke(pr),
                 }).Build(),

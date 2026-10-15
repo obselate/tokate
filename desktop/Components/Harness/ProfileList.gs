@@ -22,9 +22,6 @@ data struct ProfileList {
         let rows = List[Blob]()
         for profile in Profiles {
             let item = profile
-            if rows.Count > 0 {
-                rows.Add(Rule{}.Build())
-            }
             let row = List[Blob]()
             if let logo = Logo {
                 if item.Harness != "command" {
@@ -37,20 +34,18 @@ data struct ProfileList {
                     FlexBasis: 0,
                     MinWidth: AppTheme.ColumnMin,
                     Gap: AppTheme.Space4,
-                    Heading{Content: item.Name, Size: AppTheme.ItemSize}.Build(),
+                    Row{Gap: AppTheme.Space8, Children: item.Default ? []Blob{Heading{Content: item.Name, Size: AppTheme.ItemSize}.Build(), StatusChip{Value: "Default", Tone: Tone.Done}.Build()}: []Blob{Heading{Content: item.Name, Size: AppTheme.ItemSize}.Build()}}.Build(),
                     Label{Content: Summary(item), Size: AppTheme.SmallSize, Muted: true}.Build(),
                 }
             )
             let actions = List[Blob]()
             if item.Default {
-                actions.Add(StatusChip{Value: "Default", Tone: Tone.Done}.Build())
-                actions.Add((Button with{Label = "Clear default", Kind = ButtonKind.Quiet, OnClick = OnClearDefault}).Build())
+                actions.Add((Button with{Label = "Clear default", OnClick = OnClearDefault}).Build())
             } else {
                 actions.Add(
                     (Button with{
                         Label = "Set as default",
                         Name = "Set " + item.Name + " as default",
-                        Kind = ButtonKind.Quiet,
                         OnClick = () -> choose?.Invoke(item),
                     }).Build()
                 )
@@ -60,17 +55,14 @@ data struct ProfileList {
                 (Button with{
                     Label = "Remove",
                     Name = "Remove profile " + item.Name,
-                    Kind = ButtonKind.Quiet,
+                    Tone = ButtonTone.Danger,
                     OnClick = () -> remove?.Invoke(item),
                 }).Build()
             )
             row.Add(Row{NoWrap: true, Children: actions.ToArray()}.Build())
             rows.Add(ListRow{Children: row.ToArray()}.Build())
         }
-        let panel = Panel{Children: rows.ToArray(), Name: "Saved profiles"}.Build()
-        panel.Padding = AppTheme.Space8
-        panel.Gap = 0
-        return panel
+        return ListSection{Title: "Saved profiles", Count: Profiles.Length, Children: rows.ToArray()}.Build()
     }
 
     private func Summary(profile DonorProfile) string -> ModelChoice.Tool(profile.Harness, profile.Provider) + " \u00b7 " + ModelChoice.Pair(

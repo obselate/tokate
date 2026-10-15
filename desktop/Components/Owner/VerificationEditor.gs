@@ -22,7 +22,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
             IconHeading{
                 Icon: "checklist",
                 Content: "Verification",
-                Detail: "Tokate runs these commands to verify each contribution.",
+                Detail: "Commands to verify each contribution",
             }.Build(),
         }
         let commands = input.Setup.Commands
@@ -42,7 +42,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
                         (input.Button with{
                             Label = "Remove",
                             Name = "Remove command " + (index + 1).ToString(),
-                            Kind = ButtonKind.Quiet,
+                            Tone = ButtonTone.Danger,
                             OnClick = () -> owner.RemoveCommand(current),
                         }).Build(),
                     },

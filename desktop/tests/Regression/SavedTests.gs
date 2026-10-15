@@ -56,6 +56,7 @@ func SavedTests() {
     saved.Act(RunAction.Amend)
     Regression.Check(dialogs.Open && dialogs.Current?.Title == "Publish amendment", "amendment asks first")
     Regression.Check(dialogs.Current?.Text == "owner/repo #7\n\n" + RunActions.DialogDetail(RunAction.Amend), "amendment dialog text")
+    Regression.Check(dialogs.Current?.Tone == ButtonTone.Positive, "amendment publication uses the positive tone")
     dialogs.Dismiss()
     Regression.Check(!activity.Busy, "dismissing runs nothing")
     Regression.Equal(

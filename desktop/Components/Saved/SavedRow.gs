@@ -11,8 +11,6 @@ data struct SavedRow {
     var Item SavedRun
     var Index int32
     var Disabled bool
-    /// The last row has no line below it.
-    var Last bool
     /// A narrow row shows the status below the text.
     var Narrow bool
     var OnOpen Action[SavedRun]?
@@ -61,27 +59,15 @@ data struct SavedRow {
         if Narrow {
             copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: AppTheme.Space4}, badge})
         }
-        return Interaction.Keyboard(
-            Button{
-                Key: Item.Path,
-                MinHeight: AppTheme.RowHeight,
-                Padding: Edges{Left: AppTheme.Space16, Right: AppTheme.Space16, Top: AppTheme.Space12, Bottom: AppTheme.Space12},
-                FlexDirection: FlexDirection.Row,
-                AlignItems: AlignItems.Center,
-                Gap: AppTheme.Space12,
-                BorderWidth: Edges{Bottom: Last ? 0: 1},
-                BorderColor: p.Line,
-                BackgroundColor: Color.Transparent,
-                Hover: Style{BackgroundColor: p.Paper},
-                Focus: AppTheme.FocusStyle(),
-                Focusable: true,
-                Disabled: Disabled || !Item.Openable,
-                Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: "Saved " + identity, Description: Item.Error},
-                OnClick: () -> choose?.Invoke(item),
+        return ListRow{
+            Name: "Saved " + identity,
+            Disabled: Disabled || !Item.Openable,
+            OnChoose: () -> choose?.Invoke(item),
+            Children: []Blob{
                 copy,
                 Narrow ? Container{}: badge,
                 MaterialIcons.Create("chevron_right", 20, Item.Openable ? p.Muted: Color.Transparent),
-            }
-        )
+            },
+        }.Build()
     }
 }

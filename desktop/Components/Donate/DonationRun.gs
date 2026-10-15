@@ -3,74 +3,41 @@ package TokateDesktop
 import Goo
 import System
 
-/// The output of a donation. Before the start it is an empty panel. After the start it is an `ActivityLog`,
-/// which keeps the scroll position, with the line count in its header.
 data struct DonationRun {
     var Progress DonationProgress
     var Short bool
     var Button CommandButton
 
     func Build() Blob {
-        let p = AppTheme.Current
-        let count = Progress.Output.Count
-        let summary = Progress.Truncated ? "Latest " + count.ToString() + " lines. Earlier lines are not shown.": count == 0 ? "": count.ToString() + (
-            count == 1 ? " line": " lines"
-        )
-        let panel = Container{
+        if !Progress.Started {
+            return OutputPanel{Title: "Output", Children: []Blob{
+                Container{Padding: AppTheme.Space24, Label{Content: "Output appears after the donation starts", Muted: true}.Build()},
+            }}.Build()
+        }
+        return Container{
             FlexGrow: Short ? 0: 1,
             FlexBasis: Short ? Length.Auto: Length(0),
             MinHeight: 0,
             Overflow: Overflow.Hidden,
-            BackgroundColor: p.Surface,
+            BackgroundColor: AppTheme.Current.Surface,
             BorderWidth: 1,
-            BorderColor: p.Line,
+            BorderColor: AppTheme.Current.Line,
             BorderRadius: AppTheme.PanelRadius,
+            ActivityLog.Mount("donation-output", ActivityLogInput{
+                Lines: Progress.Output,
+                Revision: Progress.OutputRevision,
+                Placeholder: Progress.Running ? "Waiting for task output": "No output recorded",
+                Name: "Donation output", LineName: "Command output",
+                Running: Progress.Running, Short: Short,
+                Leading: () -> {
+                    let header = OutputPanel{Title: "Output", LineCount: Progress.Output.Count, Elapsed: DonationProgress.Clock(Progress.Elapsed)}.Header()
+                    header.Padding = 0
+                    header.MinHeight = 0
+                    return []Blob{header}
+                },
+                Trailing: () -> Progress.Truncated ? []Blob{Label{Content: "Earlier lines omitted", Muted: true, Size: AppTheme.SmallSize}.Build()}: []Blob{},
+                FollowButton: Button,
+            }),
         }
-        if !Progress.Started {
-            panel.Children.Add(
-                Container{
-                    MinHeight: AppTheme.ButtonHeight,
-                    JustifyContent: JustifyContent.Center,
-                    Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24},
-                    Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
-                }
-            )
-            panel.Children.Add(Rule{}.Build())
-            panel.Children.Add(
-                Container{
-                    FlexGrow: 1,
-                    AlignItems: AlignItems.Center,
-                    JustifyContent: JustifyContent.Center,
-                    Padding: AppTheme.Space24,
-                    Label{Content: "The output shows here after the donation starts.", Muted: true}.Build(),
-                }
-            )
-            return panel
-        }
-        panel.Children.Add(
-            ActivityLog.Mount(
-                "donation-output",
-                ActivityLogInput{
-                    Lines: Progress.Output,
-                    Revision: Progress.OutputRevision,
-                    Placeholder: Progress.Running ? "Waiting for task output...": "No output recorded.",
-                    Name: "Donation output",
-                    LineName: "Command output",
-                    Running: Progress.Running,
-                    Short: Short,
-                    Leading: () -> []Blob{
-                        Row{
-                            Align: AlignItems.Baseline,
-                            Children: []Blob{
-                                Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
-                                Label{Content: summary, Size: AppTheme.SmallSize, Muted: true}.Build(),
-                            },
-                        }.Build(),
-                    },
-                    FollowButton: Button,
-                }
-            )
-        )
-        return panel
     }
 }

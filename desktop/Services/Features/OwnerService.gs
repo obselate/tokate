@@ -199,7 +199,7 @@ class OwnerService {
                 "\n\nThis ends any reservation or published PR authority under an earlier approval." +
                 (drafts.Length > 0 ? "\n\nThis issue has a contribution under an earlier approval (PR #" + String.Join(", #", drafts) +
                 "). A new approval replaces its reservation, and the donor cannot amend the contribution after that.": ""),
-            false
+            false, ButtonTone.Positive
         )
     }
 
@@ -207,7 +207,7 @@ class OwnerService {
         "Revoke issue approval #" + issue.NumberText,
         TokateCommands.Revoke(Repository, issue.NumberText),
         "Stop future work under this approval.",
-        false
+        false, ButtonTone.Danger
     )
 
     func CheckPullRequest(pr string) {
@@ -253,12 +253,12 @@ class OwnerService {
         AccessOperations.Title(operation, donor),
         TokateCommands.Access(Repository, operation, donor, issue),
         AccessOperations.Detail(operation, issue),
-        true
+        true, operation == "deny" || operation == "untrust" || operation == "revoke" ? ButtonTone.Danger: ButtonTone.Positive
     )
 
-    private func Confirm(title string, arguments []string, detail string, access bool) {
+    private func Confirm(title string, arguments []string, detail string, access bool, tone ButtonTone) {
         dialogs.Ask(
-            Confirmation{Title: title, Text: Repository + "\n\n" + detail, ConfirmLabel: "Confirm", Heading: ""},
+            Confirmation{Title: title, Text: Repository + "\n\n" + detail, ConfirmLabel: "Confirm", Heading: "", Tone: tone},
             () -> {
                 commands.Cli(
                     arguments,
@@ -486,6 +486,7 @@ class OwnerService {
                     "adds required checks to target-branch protection, and initializes the donor access record when missing." +
                     "\n\nReview and merge the setup PR before approving work. Complete the reported manual steps. Existing checks are preserved unless you explicitly replaced them.",
                 ConfirmLabel: "Confirm", Heading: "",
+                Tone: ButtonTone.Positive,
             },
             () -> commands.Cli[SetupReport](
                 arguments,

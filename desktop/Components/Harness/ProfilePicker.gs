@@ -46,7 +46,7 @@ data struct ProfilePicker {
         children.Add(
             (Button with{
                 Label = profiles.Length > 0 ? "Manage profiles": "Save a profile",
-                Kind = ButtonKind.Quiet,
+                Primary = false,
                 AllowWhileBusy = true,
                 OnClick = OnManage,
             }).Build()

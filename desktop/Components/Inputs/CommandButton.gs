@@ -14,12 +14,6 @@ enum ButtonKind {
     Icon
 }
 
-/// The intent of an action, independent of its primary or secondary emphasis.
-enum ButtonTone {
-    Default,
-    Positive,
-    Danger
-}
 
 /// A button that starts a command. While its command runs it becomes the cancel control. A tab or segment
 /// keeps its label then: a segment above the pulse line, a tab with a pulse of the label.

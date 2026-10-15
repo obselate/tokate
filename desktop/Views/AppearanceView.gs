@@ -23,21 +23,21 @@ class AppearanceView {
                         IconHeading{Icon: "palette", Content: "Theme"}.Build(),
                         Row{
                             Children: []Blob{
-                                Theme("Daylight", "Light colors.", "light_mode", false, settings.Night, busy),
-                                Theme("Moonlight", "Dark colors.", "dark_mode", true, settings.Night, busy),
+                                Theme("Daylight", "Light colors", "light_mode", false, settings.Night, busy),
+                                Theme("Moonlight", "Dark colors", "dark_mode", true, settings.Night, busy),
                             },
                         }.Build(),
                         Rule{}.Build(),
                         Check{
                             Label: "Oil-paint texture",
-                            Detail: "Shows brush strokes on the paintings.",
+                            Detail: "Shows brush strokes on the paintings",
                             Value: settings.OilPaint,
                             OnChange: value -> app.Theme.SetOilPaint(value),
                             Disabled: busy,
                         }.Build(),
                         Check{
                             Label: "Animations",
-                            Detail: "Animate theme changes and loading states.",
+                            Detail: "Animate theme changes and loading states",
                             Value: settings.Motion,
                             OnChange: value -> app.Theme.SetMotion(value),
                             Disabled: busy,

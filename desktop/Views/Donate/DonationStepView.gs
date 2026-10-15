@@ -22,29 +22,39 @@ class DonationStepView {
         let children = List[Blob]()
         let notices = List[Blob]()
         if donation.Current.RepositoryMode {
-            notices.Add(Callout{Message: progress.State, Tone: progress.Tone}.Build())
+            notices.Add(Callout{Message: progress.State, Tone: progress.Running ? Tone.Wait: progress.Tone}.Build())
             if progress.Running {
-                children.Add(Row{Children: []Blob{
-                    (page.Button with{
-                        Label = donation.Current.StopRequested ? "Stopping after current task": "Stop after current task",
-                        AllowWhileBusy = true,
-                        Disabled = donation.Current.StopRequested,
-                        OnClick = () -> donation.StopRepository(),
-                    }).Build(),
-                    Label{Content: "Elapsed " + DonationProgress.Clock(progress.Elapsed), Muted: true}.Build(),
+                children.Add(Panel{Name: "Repository donation", Children: []Blob{
+                    IconHeading{Icon: "volunteer_activism", Content: donation.Current.Repository}.Build(),
+                    page.Loader?.Invoke(donation.Current.StopRequested ? "Finishing the current task": "Donating inference") ?? Loader{Message: "Donating inference", Key: "donation-ambient"}.Build(),
+                    ActionBar{Children: []Blob{
+                        (page.Button with{
+                            Label = donation.Current.StopRequested ? "Stopping after current task": "Stop after current task",
+                            Tone = ButtonTone.Danger,
+                            AllowWhileBusy = true,
+                            Disabled = donation.Current.StopRequested,
+                            OnClick = () -> donation.StopRepository(),
+                        }).Build(),
+                    }}.Build(),
                 }}.Build())
             } else {
                 let session = donation.Current.Session
-                children.Add(Label{Content: "Reason: " + session.Reason}.Build())
-                children.Add(Label{
-                    Content: "Submitted: " + session.Submitted.ToString() + "   Skipped: " + session.Skipped.ToString() + "   Failed: " + session.Failed.ToString(),
-                }.Build())
-                children.Add(Label{Content: "Usage: " + session.Usage + " · Wall time: " + session.WallSeconds}.Build())
+                children.Add(Panel{Name: "Donation results", Children: []Blob{
+                    IconHeading{Icon: "volunteer_activism", Content: donation.Current.Repository}.Build(),
+                    Row{Children: []Blob{
+                        StatTile{Title: "Submitted", Value: session.Submitted.ToString(), Icon: "check_circle"}.Build(),
+                        StatTile{Title: "Skipped", Value: session.Skipped.ToString(), Icon: "skip_next"}.Build(),
+                        StatTile{Title: "Failed", Value: session.Failed.ToString(), Icon: "error"}.Build(),
+                        StatTile{Title: "Time", Value: session.WallSeconds, Icon: "schedule"}.Build(),
+                        StatTile{Title: "Tokens", Value: session.Usage, Icon: "token"}.Build(),
+                    }}.Build(),
+                    DetailRow{Caption: "End reason", Value: session.EndReason}.Build(),
+                }}.Build())
                 children.Add(DonationTasks{Tasks: session.Tasks, ReviewEach: donation.Current.ReviewEach, Button: page.Button, OnSaved: openSaved}.Build())
-                children.Add((page.Button with{Label = "New donation", OnClick = () -> donation.NewDonation()}).Build())
+                children.Add(ActionBar{Children: []Blob{(page.Button with{Label = "New donation", OnClick = () -> donation.NewDonation()}).Build()}}.Build())
             }
-            children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
-            return page.Layout(header, children.ToArray(), fill: !page.Metrics.Short, notices: notices.ToArray())
+            if progress.Running { children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build()) }
+            return page.Layout(header, children.ToArray(), fill: progress.Running && !page.Metrics.Short, notices: notices.ToArray())
         }
         if progress.Run.Warning != "" {
             notices.Add(Callout{Message: progress.Run.Warning, Tone: Tone.Need}.Build())
@@ -59,6 +69,7 @@ class DonationStepView {
                 Busy: page.Busy,
                 Cancellable: page.BusyHere,
                 Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
+                Ambient: progress.Running ? page.Loader?.Invoke("Donating inference"): nil,
                 OnStart: () -> donation.Start(),
                 OnInspectSaved: () -> navigate(Destination.Saved),
                 OnNew: () -> donation.NewDonation(),

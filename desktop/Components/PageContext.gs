@@ -32,7 +32,11 @@ data struct PageContext {
             banner.Children.Add(notice)
         }
         if (Feedback.Report ?? "") != "" {
-            banner.Children.Add(ReportText{Content: Feedback.Report}.Build())
+            banner.Children.Add(OutputPanel{
+                Title: "Report",
+                LineCount: Feedback.Report.TrimEnd().Split('\n').Length,
+                Children: []Blob{Container{Padding: AppTheme.Space24, ReportText{Content: Feedback.Report}.Build()}},
+            }.Build())
         }
         if banner.Children.Count > 0 {
             body.Children.Add(banner)

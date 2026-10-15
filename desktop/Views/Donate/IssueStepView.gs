@@ -17,12 +17,15 @@ class IssueStepView {
         let search = donation.Issues
         if !search.Current.Loaded {
             return []Blob{
-                PresetGroup{
-                    Button: page.Button,
-                    Labels: []string{"Targeted issue", "Repository donation"},
-                    Selected: state.RepositoryMode ? 1: 0,
-                    OnChoose: index -> donation.SetRepositoryMode(index == 1),
-                }.Build(),
+                Panel{Name: "Donation type", Children: []Blob{
+                    IconHeading{Icon: "volunteer_activism", Content: "Donation type"}.Build(),
+                    PresetGroup{
+                        Button: page.Button,
+                        Labels: []string{"Targeted issue", "Repository donation"},
+                        Selected: state.RepositoryMode ? 1: 0,
+                        OnChoose: index -> donation.SetRepositoryMode(index == 1),
+                    }.Build(),
+                }}.Build(),
                 RepositoryPicker{
                     Input: state.Input,
                     Recent: state.RecentRepositories,
@@ -40,13 +43,17 @@ class IssueStepView {
             }
         }
         return []Blob{
-            Row{
-                Children: []Blob{
+            Panel{Name: "Selected repository", Children: []Blob{
+                Row{Gap: AppTheme.Space8, Children: []Blob{
                     Heading{Content: state.Repository}.Build(),
-                    (page.Button with{Label = "Change repository", Kind = ButtonKind.Quiet, OnClick = () -> donation.ChangeRepository()}).Build(),
-                },
-            }.Build(),
-            Label{Content: "Owner policy · " + state.LimitLabel + " per task", Muted: true}.Build(),
+                    StatusChip{Value: "Policy", Tone: Tone.Wait, Icon: ""}.Build(),
+                    Spacer{}.Build(),
+                    (page.Button with{Label = "Change repository", Icon = "arrow_back", OnClick = () -> donation.ChangeRepository()}).Build(),
+                }}.Build(),
+            }}.Build(),
+            Panel{Name: "Approved issues", Children: []Blob{
+                IconHeading{Icon: "checklist", Content: "Approved issues"}.Build(),
+                Rule{}.Build(),
             IssueSearchBar{
                 Listing: search.Current,
                 Button: page.Button,
@@ -68,6 +75,7 @@ class IssueStepView {
                 Narrow: page.NarrowContent,
                 OnPage: number -> search.Search(number),
             }.Build(),
+            }}.Build(),
         }
     }
 }

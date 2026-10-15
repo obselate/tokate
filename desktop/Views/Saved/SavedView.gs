@@ -57,6 +57,21 @@ class SavedView {
         }
         let header = body[0]
         body.RemoveAt(0)
-        return page.Layout(header, body.ToArray())
+        let notices = List[Blob]()
+        if state.Selected {
+            let run = state.Run
+            if run.ErrorMessage != "" {
+                notices.Add(Callout{Message: run.FailureReason + ": " + run.ErrorMessage + "\n" + CliError{Code: run.FailureReason}.Recovery, Tone: Tone.Fail}.Build())
+            }
+            for message in []string{run.Warning, run.Guidance} {
+                if message != "" {
+                    notices.Add(Callout{Message: message, Tone: Tone.Need}.Build())
+                }
+            }
+            if state.Note.Message != "" && state.Note.Message != notice.Message {
+                notices.Add(Callout{Message: state.Note.Message, Tone: state.Note.Tone}.Build())
+            }
+        }
+        return page.Layout(header, body.ToArray(), notices: notices.ToArray())
     }
 }

@@ -14,6 +14,7 @@ data struct DonationStatus {
     var Busy bool
     var Cancellable bool
     var Stacked bool
+    var Ambient Blob?
     var OnStart Action?
     var OnInspectSaved Action?
     var OnNew Action?
@@ -39,6 +40,9 @@ data struct DonationStatus {
             heading.Children.Add(StatusChip{Value: run.Status, Tone: Statuses.ToneOf(run.Status)}.Build())
         }
         let state = Container{FlexShrink: 1, MinWidth: 0, MaxWidth: AppTheme.WideFieldWidth, Gap: AppTheme.Space8, heading}
+        if Progress.Running {
+            state.Children.Add(Ambient ?? Loader{Message: "Donating inference", Key: "targeted-donation-ambient"}.Build())
+        }
         if Progress.Path != "" {
             state.Children.Add(
                 Label{
@@ -90,18 +94,18 @@ data struct DonationStatus {
         if Progress.Running {
             actions.Add(CancelButton{Stopping: Button.Stopping, OnCancel: Button.OnCancel}.Build())
         } else if done {
+            actions.Add((Button with{Label = "New donation", OnClick = OnNew}).Build())
             actions.Add((Button with{Label = "View saved work", OnClick = OnViewSaved, Primary = true}).Build())
-            actions.Add((Button with{Label = "New donation", Kind = ButtonKind.Quiet, OnClick = OnNew}).Build())
         } else {
-            actions.Add(
-                (Button with{Label = "Start donation", OnClick = OnStart, Primary = true, Disabled = !Progress.Ready}).Build()
-            )
             if Cancellable {
                 actions.Add(CancelButton{Stopping: Button.Stopping, OnCancel: Button.OnCancel}.Build())
             }
             if !Busy && Progress.Path == "" {
                 actions.Add((Button with{Label = "Inspect saved work", OnClick = OnInspectSaved}).Build())
             }
+            actions.Add(
+                (Button with{Label = "Start donation", OnClick = OnStart, Primary = true, Disabled = !Progress.Ready}).Build()
+            )
         }
         return actions.ToArray()
     }
@@ -122,7 +126,7 @@ data struct DonationStatus {
             time.Children.Add(Label{Content: "Unlimited coding time"}.Build())
             return time
         }
-        let clock = DonationProgress.Clock(Progress.Started ? Progress.Elapsed: limit)
+        let clock = limit == 0 ? "Until stopped": DonationProgress.Clock(limit)
         let readout = Row{
             Align: AlignItems.Baseline,
             Gap: AppTheme.Space12,
@@ -134,11 +138,11 @@ data struct DonationStatus {
                     Color: p.Ink,
                     Accessibility: Accessibility{
                         Role: AccessibilityRole.Text,
-                        Name: Progress.Started ? "Elapsed " + DonationProgress.ElapsedText(Progress.Elapsed): "Limit " + clock,
+                        Name: "Limit " + clock,
                     },
                 },
                 Label{
-                    Content: !Progress.Started ? "limit": limit == 0 ? "elapsed": "of " + DonationProgress.Clock(limit),
+                    Content: limit == 0 ? "": "limit",
                     Size: AppTheme.SmallSize,
                     Muted: true,
                 }.Build(),
@@ -149,9 +153,7 @@ data struct DonationStatus {
             readout.Children.Add(Spacer{}.Build())
             readout.Children.Add(
                 Label{
-                    Content: "Coding " + (run.CodingSeconds / 60).ToString() + " min  ·  Verification " + (
-                        run.VerificationReserve / 60
-                    ).ToString() + " min",
+                    Content: "Coding " + DurationText.Format(run.CodingSeconds / 60) + " · Verification " + DurationText.Format(run.VerificationReserve / 60),
                     Size: AppTheme.SmallSize,
                     Muted: true,
                 }.Build()

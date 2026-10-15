@@ -28,7 +28,7 @@ data struct EligibilityPicker {
         }
         return Panel{
             Children: []Blob{
-                IconHeading{Icon: "group", Content: "Who can contribute", Detail: "The donors that can claim an approved issue."}.Build(),
+                IconHeading{Icon: "group", Content: "Who can contribute", Detail: "Access to approved issues"}.Build(),
                 Row{Children: cards.ToArray()}.Build(),
             },
         }.Build()
@@ -47,7 +47,7 @@ data struct ModelPolicyPicker {
             Children: []Blob{
                 ChoiceCard{
                     Title: "All supported",
-                    Detail: "Each model that a harness accepts.",
+                    Detail: "Each model that a harness accepts",
                     Icon: "apps",
                     Selected: Policy == "unrestricted",
                     OnChoose: () -> choose?.Invoke("unrestricted"),
@@ -55,7 +55,7 @@ data struct ModelPolicyPicker {
                 }.Build(),
                 ChoiceCard{
                     Title: "Selected models",
-                    Detail: "Only the models in your list.",
+                    Detail: "Only the models in your list",
                     Icon: "checklist",
                     Selected: Policy != "unrestricted",
                     OnChoose: () -> choose?.Invoke("whitelist"),
@@ -75,7 +75,7 @@ data struct LimitsEditor {
 
     func Build() Blob -> Panel{
         Children: []Blob{
-            IconHeading{Icon: "schedule", Content: "Time limit", Detail: "The longest time that one donation can use."}.Build(),
+            IconHeading{Icon: "schedule", Content: "Time limit", Detail: "Maximum time per donation"}.Build(),
             InputField{
                 Label: "Maximum minutes per donation",
                 Value: Minutes,

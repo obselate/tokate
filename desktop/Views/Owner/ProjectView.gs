@@ -38,7 +38,7 @@ class ProjectView {
                         Row{
                             NoWrap: true,
                             Children: []Blob{
-                                (page.Button with{Label = "Change project", Kind = ButtonKind.Quiet, OnClick = () -> owner.Close()}).Build(),
+                                (page.Button with{Label = "Change project", Icon = "arrow_back", IconFirst = true, OnClick = () -> owner.Close()}).Build(),
                                 (page.Button with{
                                     Label = "Refresh project",
                                     Kind = ButtonKind.Icon,
@@ -67,7 +67,7 @@ class ProjectView {
                             Children: []Blob{
                                 (page.Button with{
                                     Label = "Check owner prerequisites",
-                                    Kind = ButtonKind.Quiet,
+                                    Primary = false,
                                     OnClick = () -> owner.CheckPrerequisites(),
                                 }).Build(),
                                 (page.Button with{
@@ -91,7 +91,7 @@ class ProjectView {
             if state.DoctorReport != "" {
                 body.Add(Panel{Children: []Blob{
                     IconHeading{Icon: "fact_check", Content: "Owner prerequisites"}.Build(),
-                    ReportText{Content: state.DoctorReport, MaxHeight: AppTheme.ReportMaxHeight}.Build(),
+                    OwnerHealthReport{Report: state.DoctorReport}.Build(),
                 }}.Build())
             }
             body.Add(
@@ -127,6 +127,15 @@ class ProjectView {
                 }
             )
         )
+        if state.Tab == OwnerTab.Setup {
+            body.Add(PresetGroup{
+                Button: page.Button, Labels: SetupSteps.Names, Selected: state.Setup.Step,
+                OnChoose: step -> {
+                    owner.SetStep(step)
+                    page.OnTop?.Invoke()
+                },
+            }.Build())
+        }
         let header = Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
         body.Clear()
         let messages = List[Blob]()
@@ -145,6 +154,7 @@ class ProjectView {
                 Children: messages.ToArray(),
             }.Build()
         )
-        return page.Layout(header, body.ToArray())
+        return page.Layout(header, body.ToArray(), fill: state.Browsing && !page.Metrics.Short, notices: state.Tab == OwnerTab.Access && !state.Project.CanWrite ?
+            []Blob{Callout{Message: "Write access is required to manage donors", Tone: Tone.Wait}.Build()}: []Blob{})
     }
 }

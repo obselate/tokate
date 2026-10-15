@@ -34,25 +34,20 @@ class SetupTab {
         }
         if step < 2 {
             body.Add(
-                Row{
+                ActionBar{
                     Children: []Blob{
                         (page.Button with{Label = "Back", OnClick = () -> show(step - 1), Disabled = step == 0}).Build(),
                         (page.Button with{
                             Label = SetupSteps.Next(step),
                             OnClick = () -> show(step + 1),
                             Primary = true,
+                            Tone = ButtonTone.Default,
                         }).Build(),
                     },
                 }.Build()
             )
         }
-        return Stack{
-            Gap: AppTheme.SectionGap,
-            Children: []Blob{
-                PresetGroup{Button: page.Button, Labels: SetupSteps.Names, Selected: step, OnChoose: show}.Build(),
-                Swap{Key: step.ToString(), Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build(),
-            },
-        }.Build()
+        return Swap{Key: step.ToString(), Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 
     private func Checks(page PageContext, editor SetupEditorInput) Blob -> Panel{
@@ -69,7 +64,7 @@ class SetupTab {
             tools.Add(ComboBoxOption{Id: pair, Label: pair, Content: Label{Content: pair}.Build()})
         }
         let models = List[Blob]{
-            IconHeading{Icon: "tune", Content: "Models", Detail: "Choose the models donors may use."}.Build(),
+            IconHeading{Icon: "tune", Content: "Models", Detail: "Choose the models donors may use"}.Build(),
             Dropdown{
                 Caption: "Tool",
                 Value: setup.ModelTool,
@@ -79,7 +74,7 @@ class SetupTab {
                 Width: AppTheme.FieldWidth,
                 Popup: page.Popup,
             }.Build(),
-            Label{Content: setup.ModelTool.StartsWith("command/") ? "Select models for this command harness.": "Allow all models or select a list.", Size: AppTheme.SmallSize}.Build(),
+            Label{Content: setup.ModelTool.StartsWith("command/") ? "Select models for this command harness": "Allow all models or select a list", Size: AppTheme.SmallSize}.Build(),
         }
         if !setup.ModelTool.StartsWith("command/") {
             models.Add(ModelPolicyPicker{
@@ -151,7 +146,6 @@ class SetupTab {
             models.Add(pair + ": " + (tool.Restricted ? Count(tool.Models.Length, "selected model"): "All supported"))
         }
         let review = SetupReview{
-            Repository: owner.Repository,
             CommandCount: state.Setup.Commands.Length,
             CheckCount: state.Setup.Checks.Length,
             Contributors: Eligibility.Label(setup.EffectiveEligibility(policy)),
@@ -165,16 +159,20 @@ class SetupTab {
             Button: page.Button,
             OnApply: () -> owner.Apply(),
             OnPreview: () -> owner.PreviewSetup(),
+            OnBack: () -> {
+                owner.SetStep(1)
+                page.OnTop?.Invoke()
+            },
         }.Build()
         let health = List[Blob]{
             IconHeading{
                 Icon: "fact_check", Content: "Repository health",
-                Detail: "Check policy, access and GitHub Actions.",
+                Detail: "Policy, access and GitHub Actions",
             }.Build(),
-            Row{Children: []Blob{(page.Button with{Label = "Check repository health", OnClick = () -> owner.CheckPrerequisites(), Primary = true}).Build()}}.Build(),
+            ActionBar{Children: []Blob{(page.Button with{Label = "Check repository health", OnClick = () -> owner.CheckPrerequisites()}).Build()}}.Build(),
         }
         if state.DoctorReport != "" {
-            health.Add(ReportText{Content: state.DoctorReport, MaxHeight: AppTheme.ReportMaxHeight}.Build())
+            health.Add(OwnerHealthReport{Report: state.DoctorReport}.Build())
         }
         return Stack{
             Gap: AppTheme.SectionGap,

@@ -100,6 +100,7 @@ data struct Confirmation {
     var Title string
     var Text string
     var ConfirmLabel string
+    var Tone ButtonTone
     var Heading string
     var Tiles []ConfirmationTile
     var Details []ConfirmationDetail

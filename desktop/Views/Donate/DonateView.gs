@@ -72,7 +72,6 @@ class DonateView {
                         Label{Content: identity, Size: AppTheme.SmallSize, Muted: true}.Build(),
                         (page.Button with{
                             Label = "Open issue",
-                            Kind = ButtonKind.Quiet,
                             Icon = "open_in_new",
                             AllowWhileBusy = true,
                             OnClick = () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
@@ -88,6 +87,6 @@ class DonateView {
                 Current: DonationSteps.Index(step),
             }.Build()
         )
-        return Stack{Gap: step == DonationStep.Donation ? AppTheme.Space8: AppTheme.Space16, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 }

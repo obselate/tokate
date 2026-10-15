@@ -10,20 +10,12 @@ data struct SavedTable {
     var FirstIndex int32
     var Total int32
     var Reading bool
-    var Short bool
     var Narrow bool
     var Disabled bool
-    var Loader Func[string, Blob]?
     var OnOpen Action[SavedRun]?
 
     func Build() Blob {
         let rows = List[Blob]()
-        var last = -1
-        for index in 0 ... Rows.Length {
-            if Rows[index].Status() != "Merged" {
-                last = index
-            }
-        }
         for index in 0 ... Rows.Length {
             let item = Rows[index]
             if item.Status() != "Merged" {
@@ -32,21 +24,21 @@ data struct SavedTable {
                         Item: item,
                         Index: FirstIndex + index,
                         Disabled: Disabled,
-                        Last: index == last,
                         Narrow: Narrow,
                         OnOpen: OnOpen,
                     }.Build()
                 )
             }
         }
-        if last < 0 {
+        let count = rows.Count
+        if count == 0 {
             rows.Add(
-                Reading && Loader != nil ? Loader!!("Reading saved contributions"): EmptyMessage{
+                Reading ? ListRow{Children: []Blob{Loader{Message: "Reading saved contributions", Key: "saved-loading"}.Build()}}.Build(): EmptyMessage{
                     Content: Total == 0 ? "No saved contributions": "No unmerged contributions on this page",
                     Icon: "inbox",
                 }.Build()
             )
         }
-        return ListPanel{Short: Short, Fill: last < 0, Children: rows.ToArray()}.Build()
+        return ListSection{Title: "Contributions", Count: count, Children: rows.ToArray()}.Build()
     }
 }

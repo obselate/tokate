@@ -29,9 +29,7 @@ class ProfilesView {
             body.Add(Form(page, state))
         }
         if !state.Loaded && !state.Open && page.Busy {
-            if let loader = page.Loader {
-                body.Add(loader("Loading profiles"))
-            }
+            body.Add(Loader{Message: "Loading profiles", Key: "profiles-loading"}.Build())
         }
         if state.Profiles.Length > 0 {
             body.Add(
@@ -49,8 +47,9 @@ class ProfilesView {
             body.Add(
                 Panel{
                     Children: []Blob{
+                        Heading{Content: "Saved profiles", Size: AppTheme.ItemSize}.Build(),
                         EmptyMessage{
-                            Content: "No profiles yet. Save a harness and model with New profile.",
+                            Content: "Save a harness and model with New profile",
                             Icon: "bookmark_add",
                         }.Build(),
                     },
@@ -70,7 +69,7 @@ class ProfilesView {
                 IconHeading{
                     Icon: state.Editing != "" ? "edit": "bookmark_add",
                     Content: state.Editing != "" ? "Change " + state.Editing: "New profile",
-                    Detail: "Save a harness and model on this computer.",
+                    Detail: "Save a harness and model on this computer",
                 }.Build(),
                 InputField{
                     Label: "Profile name",
@@ -99,7 +98,7 @@ class ProfilesView {
                 ModelPicker{
                     Harness: draft.Harness,
                     Provider: draft.Provider,
-                    Providers: draft.Harness == "omp" ? ModelChoice.Providers(state.OmpModels): []string{},
+                    Providers: state.Providers(),
                     Model: draft.Model,
                     Effort: draft.Effort,
                     Endpoint: draft.Endpoint,
@@ -112,10 +111,10 @@ class ProfilesView {
                     OnProvider: value -> profiles.SetProvider(value),
                     Popup: page.Popup,
                 }.Build(),
-                Row{
+                ActionBar{
                     Children: []Blob{
+                        (page.Button with{Label = "Cancel", OnClick = () -> profiles.Cancel()}).Build(),
                         (page.Button with{Label = "Save profile", OnClick = () -> profiles.Save(), Primary = true}).Build(),
-                        (page.Button with{Label = "Cancel", Kind = ButtonKind.Quiet, OnClick = () -> profiles.Cancel()}).Build(),
                     },
                 }.Build(),
             },

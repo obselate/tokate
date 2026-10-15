@@ -22,11 +22,14 @@ data struct RepositoryPicker {
     func Build() Blob {
         let choose = OnChoose
         let field = Row{Gap: AppTheme.Space8, Children: []Blob{
-            InputField{Label: "GitHub repository", Value: Input, Placeholder: "owner/repository or GitHub URL", Width: AppTheme.WideFieldWidth, Disabled: Disabled, OnChange: OnInput}.Build(),
+            InputField{Label: "GitHub repository", Bare: true, Value: Input, Placeholder: "owner/repository or GitHub URL", Width: AppTheme.WideFieldWidth, Disabled: Disabled, OnChange: OnInput}.Build(),
         }}.Build()
         let children = List[Blob]{
             IconHeading{Icon: "folder_open", Content: "Repository"}.Build(),
-            field,
+            Stack{Gap: AppTheme.Space8, Children: []Blob{
+                Label{Content: "GitHub repository", Size: AppTheme.LabelSize, Muted: true}.Build(),
+                field,
+            }}.Build(),
         }
         if Loading {
             field.Children.Add(Loader{Message: "Checking repository", Key: "repository-check"}.Build())

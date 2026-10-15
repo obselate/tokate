@@ -16,8 +16,10 @@ data struct OutputPanel {
     func Header() Blob {
         let header = Row{Align: AlignItems.Baseline, Children: []Blob{
             Heading{Content: Title, Size: AppTheme.ItemSize}.Build(),
-            Label{Content: LineCount.ToString() + (LineCount == 1 ? " line": " lines"), Size: AppTheme.SmallSize, Muted: true}.Build(),
         }}.Build()
+        if LineCount >= 0 {
+            header.Children.Add(Label{Content: LineCount.ToString() + (LineCount == 1 ? " line": " lines"), Size: AppTheme.SmallSize, Muted: true}.Build())
+        }
         header.MinHeight = AppTheme.ButtonHeight
         header.Padding = Edges{Left: AppTheme.Space24, Right: AppTheme.Space12, Top: AppTheme.Space8, Bottom: AppTheme.Space8}
         if (Elapsed ?? "") != "" {

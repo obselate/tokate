@@ -84,6 +84,10 @@ func DonationTests() {
         Progress = DonationProgress.Empty with{Started = true, Path = "/runs/1"},
     }
     Regression.Check(donation.IsDonating && donation.IsLive, "a started donation is live")
+    donation.Current = donation.Current with{RepositoryMode = true}
+    Regression.Check(!donation.IsLive, "completed repository results use the scrollable page")
+    donation.Current = donation.Current with{Progress = donation.Current.Progress with{Running = true}}
+    Regression.Check(donation.IsLive, "running repository output fills the viewport")
     donation.NewDonation()
     Regression.Check(donation.Current.Step == DonationStep.Issue && !donation.Current.Progress.Started, "new donation")
     Regression.Equal(DonationSteps.Heading(DonationStep.Limits), "Set your limits", "step heading")
@@ -118,6 +122,34 @@ func DonationTests() {
     donation.Current = donation.Current with{Consent = "exact", ReviewedArguments = []string{"work"}}
     donation.SetReviewEach(true)
     Regression.Check(donation.Current.Consent == "" && donation.Current.ReviewedArguments.Length == 0, "a review change invalidates preview consent")
-    Regression.Equal(DonorCodec.Usage(Json.Parse("{\"input_tokens\":12345,\"cached_input_tokens\":2000,\"output_tokens\":321}")), "12.3K input · 2.0K cached · 321 output tokens", "usage is readable")
+    donation.Current = DonationState.Initial with{RepositoryMode = true, Repository = "owner/repo"}
+    donation.ToggleIssue("12", true)
+    donation.ToggleIssue("15", true)
+    donation.ToggleIssue("12", true)
+    donation.ToggleIssue("40", true)
+    Regression.Equal(donation.Current.IssueList, "12,15,40", "checkbox selection preserves run order without duplicates")
+    donation.ToggleIssue("15", false)
+    donation.ToggleIssue("15", true)
+    Regression.Equal(Regression.Args(TokateCommands.RepositoryWork("owner/repo", donation.Current.Draft, "60", "", "", donation.Current.IssueList)), "work owner/repo#12,40,15 --harness codex --model gpt-6.1-sol --effort high --non-interactive --time 60m", "reselected issue runs last")
+    donation.Current = donation.Current with{Policy = Policy.Empty with{Loaded = true}}
+    donation.ToggleIssue("99", true)
+    Regression.Equal(donation.Current.IssueList, "12,40,15", "policy mode does not accept issue multi-selection")
+    donation.Current = DonationState.Initial with{Draft = DonationDraft.Initial with{Harness = "omp"}, Policy = Policy.Empty with{Loaded = true, Version = 3, ToolProviders = []string{"omp/openai", "pi/local-chat-completions"}, ToolModels = []ToolAllowance{ToolAllowance{Tool: "pi/local-chat-completions", Restricted: false}}}}
+    Regression.Equal(String.Join(",", donation.Current.Providers()), "openai,local-chat-completions", "merged runner only offers policy providers")
+    donation.SetProvider("local-chat-completions")
+    donation.SetModel("local-model")
+    donation.SetEffort("high")
+    donation.SetEndpoint("http://127.0.0.1:8080/v1")
+    Regression.Equal(Regression.Args(TokateCommands.RepositoryWork("owner/repo", donation.Current.Draft, "60", "", "")), "work owner/repo --harness pi --model local-model --effort high --endpoint http://127.0.0.1:8080/v1 --non-interactive --time 60m", "local endpoint uses the pi CLI harness")
+    donation.Current = donation.Current with{Policy = Policy.Empty, OmpModels = []ModelChoice{ModelChoice{Slug: "remote", DisplayName: "Remote", Provider: "openai", Efforts: []string{"high"}}}}
+    donation.SetProvider("openai")
+    donation.SetModel("remote")
+    donation.SetEffort("high")
+    Regression.Check(donation.Current.Draft.Harness == "omp" && donation.Current.Draft.Provider == "openai", "remote provider switches back to omp")
+    Regression.Equal(DonorCodec.Usage(Json.Parse("{\"input_tokens\":12345,\"cached_input_tokens\":2000,\"output_tokens\":321}")), "12.7K", "token total does not count cached input twice")
+    Regression.Equal((DonationSession{Reason: "stopped"}).EndReason, "Stopped by you", "stop reason is readable")
+    Regression.Equal((DonationSession{Reason: "total_exhausted"}).EndReason, "Total time used", "total reason is readable")
+    Regression.Equal((DonationSession{Reason: "issues_completed"}).EndReason, "Issues done", "issue completion reason is readable")
+    Regression.Equal((DonationSession{Reason: "consecutive_failures"}).EndReason, "Three failures in a row", "failure reason is readable")
     Regression.Equal(DonorCodec.WallTime("3725.5"), "1 h 2 min", "wall time is readable")
 }

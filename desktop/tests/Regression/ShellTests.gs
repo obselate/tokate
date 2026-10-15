@@ -55,6 +55,12 @@ func ShellTests() {
 
     let window = WindowService(changed)
     let activity = ActivityService(window, navigation, feedback, changed)
+    let profiles = ProfileService(CommandRunner(activity, feedback, navigation), feedback, dialogs, window, changed)
+    profiles.Current = ProfilesState.Initial with{OmpModels = []ModelChoice{ModelChoice{}}}
+    profiles.SetProvider("local-chat-completions")
+    Regression.Check(profiles.Current.Draft.Harness == "pi" && profiles.Current.Draft.Provider == "", "local endpoint keeps the CLI pi harness")
+    profiles.SetProvider("openai")
+    Regression.Check(profiles.Current.Draft.Harness == "omp" && profiles.Current.Draft.Provider == "openai", "hosted provider restores the CLI omp harness")
     let stop = Stop()
     feedback.Show("old")
     let ticket = activity.Begin("status", stop)

@@ -32,7 +32,7 @@ class DonorCodec {
         private func Tokens(count int64) string -> count >= 1000000 ? (float64(count) / 1000000).ToString("0.0") + "M": count >= 1000 ? (float64(count) / 1000).ToString("0.0") + "K": count.ToString()
 
         func Usage(value JsonElement) string -> Json.IsObject(value) ?
-            Tokens(Json.Long(value, "input_tokens") ?? 0) + " input · " + Tokens(Json.Long(value, "cached_input_tokens") ?? 0) + " cached · " + Tokens(Json.Long(value, "output_tokens") ?? 0) + " output tokens": "Not reported"
+            Tokens((Json.Long(value, "input_tokens") ?? 0) + (Json.Long(value, "output_tokens") ?? 0)): "Not reported"
 
         func WallTime(value string) string {
             if !float64.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds) {

@@ -61,8 +61,8 @@ class ProfileService {
         if harness == "codex" && Current.Models.Length == 0 {
             commands.Models(harness, models -> Set(Current with{Models = models}))
         }
-        if harness == "omp" && Current.OmpModels.Length == 0 {
-            commands.Models(harness, models -> Set(Current with{OmpModels = models}))
+        if (harness == "omp" || harness == "pi") && Current.OmpModels.Length == 0 {
+            commands.Models("omp", models -> Set(Current with{OmpModels = models}))
         }
     }
 
@@ -97,7 +97,10 @@ class ProfileService {
         LoadModels()
     }
 
-    func SetProvider(provider string) -> SetDraft(Current.Draft with{Provider = provider, Model = "", Effort = ""})
+    func SetProvider(provider string) {
+        SetDraft(Current.Draft with{Harness = provider == "local-chat-completions" ? "pi": "omp", Provider = provider == "local-chat-completions" ? "": provider, Model = "", Effort = ""})
+        LoadModels()
+    }
 
     func SetModel(model string) -> SetDraft(Current.Draft.WithModel(model, Current.Catalog()))
 
@@ -160,6 +163,7 @@ class ProfileService {
                 Text: "Tokate removes the saved profile. Saved work and reservations do not change." +
                     (profile.Default ? " This profile is the default, so no profile is the default after that.": ""),
                 ConfirmLabel: "Remove",
+                Tone: ButtonTone.Danger,
                 Heading: "",
             },
             () -> commands.Cli(

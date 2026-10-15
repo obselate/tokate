@@ -35,7 +35,6 @@ class SavedRunView {
         let links = List[Blob]{
             (page.Button with{
                 Label = "Open issue",
-                Kind = ButtonKind.Quiet,
                 Icon = "open_in_new",
                 AllowWhileBusy = true,
                 OnClick = () -> Browser.Open("https://github.com/" + run.Repo + "/issues/" + run.Issue.ToString()),
@@ -45,7 +44,6 @@ class SavedRunView {
             links.Add(
                 (page.Button with{
                     Label = "Open pull request",
-                    Kind = ButtonKind.Quiet,
                     Icon = "open_in_new",
                     AllowWhileBusy = true,
                     OnClick = () -> Browser.Open("https://github.com/" + run.Repo + "/pull/" + run.Pr.ToString()),
@@ -66,7 +64,6 @@ class SavedRunView {
                     Spacer{}.Build(),
                     (page.Button with{
                         Label = "Refresh status",
-                        Kind = ButtonKind.Quiet,
                         Icon = "refresh",
                         OnClick = () -> saved.LoadRun(),
                     }).Build(),
@@ -86,7 +83,6 @@ class SavedRunView {
                 Button: page.Button,
                 Narrow: page.NarrowContent,
                 Form: form,
-                Note: state.Note,
                 LastMessage: notice.Message,
                 Waiting: state.Waiting,
                 OnAction: action -> saved.Act(action),

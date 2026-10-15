@@ -368,6 +368,7 @@ class SavedWorkService {
                     Title: RunActions.DialogTitle(action),
                     Text: run.Identity + "\n\n" + RunActions.DialogDetail(action),
                     ConfirmLabel: "Confirm",
+                    Tone: action == RunAction.Submit || action == RunAction.Amend ? ButtonTone.Positive: ButtonTone.Default,
                     Heading: "",
                 },
                 () -> {
@@ -455,6 +456,7 @@ class SavedWorkService {
                 Title: "Publish pull request?",
                 Text: run.Identity + "\n\n" + preview.Title + "\n\n" + preview.Base + " <- " + preview.Head + "\n\nThe owner reviews and merges.",
                 ConfirmLabel: "Publish pull request",
+                Tone: ButtonTone.Positive,
                 Heading: "",
             },
             () -> {

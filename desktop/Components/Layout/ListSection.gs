@@ -11,6 +11,7 @@ data struct ListSection {
     var Trailing []Blob
     var Children []Blob
     var Note string
+    var Scrolls bool
 
     func Build() Container {
         let p = AppTheme.Current
@@ -41,6 +42,11 @@ data struct ListSection {
             BorderColor: p.Line,
             BorderRadius: AppTheme.PanelRadius,
             head,
+        }
+        if Scrolls {
+            panel.FlexShrink = 1
+            panel.MinHeight = 0
+            panel.OverflowY = Overflow.Scroll
         }
         for child in Children ?? []Blob{} {
             panel.Children.Add(Rule{}.Build())

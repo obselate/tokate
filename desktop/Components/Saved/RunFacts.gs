@@ -39,6 +39,7 @@ data struct RunFacts {
         let half = (facts.Count + 1) / 2
         return Panel{
             Children: []Blob{
+                Heading{Content: "Run details", Size: AppTheme.ItemSize}.Build(),
                 Columns{
                     Stacked: Stacked,
                     Gap: Stacked ? AppTheme.Space12: AppTheme.Space24,

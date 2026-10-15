@@ -295,7 +295,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
             Find(adapter.Root, AccessibilityRole.ComboBox, "Reasoning effort")?.Value == "Max",
             "Effort dropdown did not commit"
         )
-        Activate(window, adapter, "Pi / local")
+        Activate(window, adapter, "OMP")
         Settle(host)
         Require(
             Find(adapter.Root, AccessibilityRole.ComboBox, "Model") == nil &&
@@ -335,7 +335,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         Activate(window, adapter, "Welcome")
         Settle(host)
         Require(
-            Find(adapter.Root, AccessibilityRole.Text, "a purpose.") != nil,
+            Find(adapter.Root, AccessibilityRole.Text, "a purpose") != nil,
             "Navigation is blocked during reservation"
         )
         AwaitControl(host, adapter, AccessibilityRole.Button, "Show Reserving donation")
@@ -399,8 +399,8 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         Activate(window, adapter, "Follow live")
         Settle(host)
         Require(FindText(adapter.Root, "Output line 50"), "Cannot return to the latest activity")
-        AwaitControl(host, adapter, AccessibilityRole.Text, "Elapsed 00:00:01")
-        guard let footer = Find(adapter.Root, AccessibilityRole.Text, "Elapsed 00:00:01") else {
+        AwaitControl(host, adapter, AccessibilityRole.Text, "Elapsed 00:01")
+        guard let footer = Find(adapter.Root, AccessibilityRole.Text, "Elapsed 00:01") else {
             throw Exception("Missing elapsed footer")
         }
         Require(footer.Bounds.Y + footer.Bounds.Height <= window.Height, "Elapsed footer overflowed the window")
@@ -449,6 +449,9 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     let files = Path.Combine(AppContext.BaseDirectory, "Fixtures")
     File.Copy(Path.Combine(files, "donation-gratis-preview.json"), Path.Combine(fixture, "preview.json"))
     File.Copy(Path.Combine(files, "donation-gratis-preview.txt"), Path.Combine(fixture, "consent.txt"))
+    let taskRun = Directory.CreateDirectory(Path.Combine(fixture, "task-run")).FullName
+    File.WriteAllText(Path.Combine(taskRun, "report.md"), "Task 42 saved report\nVerification passed")
+    Script(fixture, "gh", "if [ \"$$2\" = user ]; then printf '%s' '{\"login\":\"fixture\"}'; elif [ \"$$2\" = search/issues ]; then printf '%s' '{\"items\":[{\"number\":42,\"title\":\"First task\",\"state\":\"open\",\"html_url\":\"https://github.com/obselate/goo/issues/42\",\"labels\":[]},{\"number\":44,\"title\":\"Second task\",\"state\":\"open\",\"html_url\":\"https://github.com/obselate/goo/issues/44\",\"labels\":[]}],\"total_count\":2}'; else printf '%s' '{\"full_name\":\"obselate/goo\"}'; fi\n")
     Script(
         fixture, "tokate",
         ("printf '%s\\n' \"$$@\" >> FIXTURE/repository-calls\n" +
@@ -468,7 +471,7 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
         "fi\n" +
         "printf '%s' '{\"schema_version\":1,\"command\":\"work\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"repo\":\"obselate/goo\",\"reason\":\"stopped\",\"submitted\":1,\"skipped\":1,\"failed\":0,\"usage\":{\"input_tokens\":120,\"cached_input_tokens\":20,\"output_tokens\":30},\"wall_seconds\":2.5,\"tasks\":[{\"issue\":42,\"result\":\"submitted\",\"pr_url\":\"https://github.com/obselate/goo/pull/43\",\"run_directory\":\"/fixture/run\"},{\"issue\":44,\"result\":\"skipped\",\"reason\":\"refused\",\"pr_url\":\"\",\"run_directory\":\"\"},{\"issue\":45,\"result\":\"completed\",\"pr_url\":\"\",\"run_directory\":\"/fixture/review\"}]}}';;\n" +
         "*) exit 1;;\nesac\n")
-            .Replace("FIXTURE", fixture)
+            .Replace("FIXTURE", fixture).Replace("/fixture/run", taskRun)
     )
     donation.NewDonation()
     Settle(host)
@@ -488,7 +491,13 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     Require(donation.Current.Total == "" && FindText(adapter.Root, "Until stopped"), "Total did not return to until stopped")
     donation.SetPerTask("15")
     donation.SetTotal("30")
-    donation.SetIssueList("42,44")
+    Choose(host, window, adapter, "Choose issues")
+    AwaitControl(host, adapter, AccessibilityRole.Checkbox, "#42  First task")
+    Activate(window, adapter, "#42  First task", AccessibilityRole.Checkbox)
+    Settle(host)
+    Activate(window, adapter, "#44  Second task", AccessibilityRole.Checkbox)
+    Settle(host)
+    Require(donation.Current.IssueList == "42,44", "Issue checkboxes did not preserve run order")
     donation.SetReviewEach(true)
     Settle(host)
     Choose(host, window, adapter, "Review donation")
@@ -520,8 +529,8 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     Require(FindText(adapter.Root, "Finishing current task"), "Progress stopped while waiting for task completion")
     File.WriteAllText(Path.Combine(fixture, "release-task"), "")
     AwaitControl(host, adapter, AccessibilityRole.Button, "New donation", enabled: true)
-    Require(FindText(adapter.Root, "Reason: stopped") && FindText(adapter.Root, "Submitted: 1"), "Session counts or stop reason missing")
-    Require(FindText(adapter.Root, "Wall time: 2.5 s") && FindText(adapter.Root, "120 input"), "Session usage or wall time missing")
+    Require(FindText(adapter.Root, "Stopped by you") && FindText(adapter.Root, "Submitted"), "Session counts or stop reason missing")
+    Require(FindText(adapter.Root, "2.5 s") && FindText(adapter.Root, "150"), "Session token total or wall time missing")
     Require(FindText(adapter.Root, "#44") && FindText(adapter.Root, "skipped") && FindText(adapter.Root, "refused"), "Task results missing")
     Require(Find(adapter.Root, AccessibilityRole.Button, "Open pull request 42") != nil, "Session PR link missing")
     let calls = File.ReadAllText(Path.Combine(fixture, "repository-calls"))
@@ -529,6 +538,10 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     Require(calls.Contains("obselate/goo#42,44") && calls.Contains("--review"), "Gratis selection and review argv missing")
     Require(donation.Current.Session.Tasks.Length == 3, "Final session report was not decoded")
     Require(FindText(adapter.Root, "Ready to submit") && Find(adapter.Root, AccessibilityRole.Button, "Open saved run 45") != nil, "Review task has no saved-run action")
+    Choose(host, window, adapter, "Expand Task output")
+    Require(FindText(adapter.Root, "Task 42 saved report") && FindText(adapter.Root, "Verification passed"), "Task output did not read its saved run report")
+    Choose(host, window, adapter, "Collapse Task output")
+    Require(!FindText(adapter.Root, "Task 42 saved report"), "Collapsed task output is still shown")
 }
 
 func SubmitFlow(host TestHost, desktop DesktopApp) {
@@ -614,7 +627,7 @@ func TestDesktop() {
     for width in[]int32{800, 1024, 1280, 1920, 800} {
         host.Resize(width, 600, width, 600)
         Settle(host)
-        let title = Find(adapter.Root, AccessibilityRole.Text, "a purpose.") ?? throw Exception("Missing headline")
+        let title = Find(adapter.Root, AccessibilityRole.Text, "a purpose") ?? throw Exception("Missing headline")
         for name in[]string{"Donate AI time", "Open your project", "Pick up your work"} {
             let action = Find(adapter.Root, AccessibilityRole.Button, name) ?? throw Exception("Missing home action")
             Require(

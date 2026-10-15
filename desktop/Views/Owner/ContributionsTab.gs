@@ -2,6 +2,7 @@ package TokateDesktop
 
 import Goo
 import System
+import System.Collections.Generic
 
 /// The project's open issues, or one issue's approval and draft pull requests.
 class ContributionsTab {
@@ -35,7 +36,6 @@ class ContributionsTab {
                         Spacer{}.Build(),
                         (page.Button with{
                             Label = "Refresh contribution",
-                            Kind = ButtonKind.Quiet,
                             Icon = "refresh",
                             OnClick = () -> owner.Inspect(number),
                         }).Build(),
@@ -48,7 +48,6 @@ class ContributionsTab {
                         (page.Button with{
                             Label = "Open issue",
                             Name = "Open issue #" + number,
-                            Kind = ButtonKind.Quiet,
                             Icon = "open_in_new",
                             AllowWhileBusy = true,
                             OnClick = () -> Browser.Open("https://github.com/" + repository + "/issues/" + number),
@@ -79,7 +78,26 @@ class ContributionsTab {
             }
         }
         let search = owner.Issues
+        let rows = List[Blob]()
+        for issue in search.Current.Rows {
+            let selected = issue
+            rows.Add(ListRow{
+                Name: "Issue #" + issue.NumberText + ": " + issue.Title,
+                Disabled: page.Busy, OnChoose: () -> owner.Select(selected),
+                Children: []Blob{
+                    Label{Content: "#" + issue.NumberText, Muted: true}.Build(),
+                    Label{Content: issue.Title}.Build(),
+                    StatusChip{Value: issue.IsApproved ? "Approved": "Needs approval", Tone: issue.IsApproved ? Tone.Done: Tone.Wait}.Build(),
+                },
+            }.Build())
+        }
+        if rows.Count == 0 {
+            rows.Add(page.Busy ? Loader{Message: "Reading issues", Key: "owner-issues"}.Build():
+                EmptyMessage{Content: "No matching issues", Icon: "search_off"}.Build())
+        }
         return []Blob{
+            Panel{Children: []Blob{
+            IconHeading{Icon: "search", Content: "Find contributions"}.Build(),
             IssueSearchBar{
                 Listing: search.Current,
                 Button: page.Button,
@@ -89,14 +107,8 @@ class ContributionsTab {
                 OnSearch: () -> search.Search(1, true),
                 OnFilter: filter -> search.SetFilter(filter),
             }.Build(),
-            IssueTable{
-                Listing: search.Current,
-                Short: page.Metrics.Short,
-                Busy: page.Busy,
-                ShowApproval: true,
-                Loader: page.Loader,
-                OnChoose: issue -> owner.Select(issue),
-            }.Build(),
+            }}.Build(),
+            ListSection{Title: "Open issues", Count: search.Current.Total, Scrolls: !page.Metrics.Short, Children: rows.ToArray()}.Build(),
             IssuePager{
                 Listing: search.Current,
                 Button: page.Button,

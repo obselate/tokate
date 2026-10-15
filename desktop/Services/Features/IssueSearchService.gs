@@ -14,6 +14,7 @@ class IssueSearchService {
     private var batch []Issue = []Issue{}
     /// The number of the batch that is held. Zero when none is.
     private var held int32
+    private var generation int32
     var Repository string = ""
     var Current IssueListing
 
@@ -33,6 +34,7 @@ class IssueSearchService {
 
     /// Clears results and targets `repository` with the given filter.
     func Reset(repository string, filter IssueFilter) {
+        generation++
         Repository = repository
         held = 0
         Current = IssueListing.Empty(filter)
@@ -68,10 +70,13 @@ class IssueSearchService {
         let numbered = listing.RequestedNumber() > 0
         Current = listing with{Loaded = true}
         activity.Activate("Search issues")
+        let version = generation
         let started = commands.GitHub[IssueSearchPage](
             GitHubCommands.SearchIssues(Repository, listing, needed),
             value -> numbered ? IssueCodec.Single(value): IssueCodec.Search(value),
-            (reply Reply[IssueSearchPage]) -> Loaded(reply, numbered, page, needed)
+            (reply Reply[IssueSearchPage]) -> {
+                if version == generation { Loaded(reply, numbered, page, needed) }
+            }
         )
         if !started {
             changed()
