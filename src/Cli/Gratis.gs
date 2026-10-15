@@ -163,7 +163,7 @@ internal class Gratis {
             return true
         }
 
-        internal func Publish(directory string, run Data) {
+        internal func Publish(directory string, run Data, args Args) {
             ContributionAuthority.Recheck(run)
             if run.Text("state") == "refused" {
                 return
@@ -199,6 +199,31 @@ internal class Gratis {
                 id +
                 " -->\n" +
                 marker
+            let pullRequest = map[string, Object?]{
+                "title": run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"):
+                run.Text("gratis_title"),
+                "body": body,
+                "head": donor + ":" + run.Text("branch"),
+                "base": run.Text("base_branch"),
+                "draft": !run.Flag("ready"),
+                "maintainer_can_modify": false
+            }
+            let preview = map[string, Object?]{"repo": repoName, "pull_request": pullRequest, "applied": false}
+            PublicOutput.ResultData = preview
+            Console.Error.WriteLine(
+                "Repository: " + repoName + "\nBase: " + run.Text("base_branch") +
+                    "\nFork branch: " +
+                    donor +
+                    ":" +
+                    run.Text("branch") + "\nTitle: " + pullRequest["title"]?.ToString() + "\nBody:\n" + body
+            )
+            if !OwnerSetup.Confirm(args, "Publish this contribution?") {
+                if OwnerSetup.Unattended(args) {
+                    PublicOutput.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
+                    return
+                }
+                throw CliFailure("confirmation_required", "Gratis submission requires --yes. Nothing changed.")
+            }
             if run.Text("state") == "generated" {
                 let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
                 Require(Commands.Git(checkout, "rev-parse", "HEAD") == run.Text("commit"), "Verified head changed")
@@ -209,20 +234,10 @@ internal class Gratis {
                 ContributionAuthority.Recheck(run)
                 run.Fields["publication_attempted"] = true
                 run.Save(directory)
-                let pull = GitHub.Api(
-                    "repos/" + repoName + "/pulls",
-                    map[string, Object?]{
-                        "title": run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"):
-                        run.Text("gratis_title"),
-                        "body": body,
-                        "head": donor + ":" + run.Text("branch"),
-                        "base": run.Text("base_branch"),
-                        "draft": !run.Flag("ready"),
-                        "maintainer_can_modify": false
-                    }
-                )
+                let pull = GitHub.Api("repos/" + repoName + "/pulls", pullRequest)
                 Publication.SavePr(directory, run, pull)
             }
+            preview["applied"] = true
             let findings = run.Text("findings")
             if findings == "" {
                 return

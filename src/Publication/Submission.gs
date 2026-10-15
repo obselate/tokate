@@ -636,7 +636,7 @@ internal class Submission {
             let run = Data.Load(directory)
 
             if run.Flag("gratis") {
-                Gratis.Publish(directory, run)
+                Gratis.Publish(directory, run, args)
                 return
             }
 

@@ -221,9 +221,9 @@ internal class Cli {
             ),
             CliCommand(
                 "submit donate local_read,local_write,github_read,github_write run",
-                "RUN [--incomplete]",
-                "run,incomplete",
-                "Push saved work and request a draft PR; no inference.",
+                "RUN [--incomplete] [--yes]",
+                "run,incomplete,yes,non-interactive",
+                "Push saved work and request a draft PR; no inference. Gratis work previews the exact PR text and asks once in a terminal. Without a terminal, use --yes to publish.",
                 "submit 42"
             ),
             CliCommand(

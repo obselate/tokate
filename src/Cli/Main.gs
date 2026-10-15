@@ -269,6 +269,9 @@ func Dispatch(options Args) int32 {
 
             let directory = Path.GetFullPath(options.Need("run"))
             var run = Data.Load(directory)
+            if run.Flag("gratis") {
+                return 0
+            }
 
             if PublicOutput.Enabled && !Donate.Active {
                 pending = run.Number("pr") == 0 && !run.Flag("gratis")

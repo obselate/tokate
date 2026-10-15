@@ -1790,17 +1790,67 @@ internal partial class CoordinationFlow : CoordinationFixture {
         acceptedArgs.Add("--yes")
         let named = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")["data"] ??
             throw Exception("Missing named issue report")
-        Check.That(Check.Text(named["submitted"]) == "1", "Named gratis issue was not submitted")
+        Check.That(Check.Text(named["prepared"]) == "1", "Named gratis issue was not prepared")
         Check.That(Check.Text(named["reason"]) == "issue_completed", "Named donation did not stop")
         Check.That(named["tasks"]?.AsArray().Count == 1, "Named donation ran more than one task")
         Check.That(Check.Text(named["tasks"]?[0]?["issue"]) == "2", "Named donation selected another issue")
         namedFlow.Reload()
         Check.That(Check.Text(namedFlow.State["exec_count"]) == "1", "Named donation repeated inference")
-        let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
-        let title = "fix(fixture): complete the named issue"
-        Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR ignored the title artifact")
-        Check.Contains(Check.Text(namedPull["body"]), "Fixes #2")
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Named work published a PR")
+        Check.That(Check.Text(named["tasks"]?[0]?["pr_url"]) == "", "Named work reported a published PR")
         let namedDirectory = Check.Text(named["tasks"]?[0]?["run_directory"])
+        let savedRun = File.ReadAllText(Path.Combine(namedDirectory, "run.json"))
+        namedFlow.ResetTraffic()
+        let submit = []string{"submit", "owner/project#2", "--json"}
+        let submitPreview = namedFlow.Call(submit)
+        let publication = Check.Envelope(submitPreview, "submit", "ok")["data"] ??
+            throw Exception("Missing submission preview")
+        Check.That(Check.Text(publication["applied"]) == "false", "Preview claimed publication")
+        Check.That(Check.Text(publication["repo"]) == "owner/project", "Preview names the wrong repository")
+        let proposed = publication["pull_request"] ?? throw Exception("Missing PR preview")
+        let title = "fix(fixture): complete the named issue"
+        let proposedBody = Check.Text(proposed["body"])
+        Check.That(Check.Text(proposed["title"]) == title, "Preview ignored the title artifact")
+        Check.That(Check.Text(proposed["base"]) == "main", "Preview names the wrong base")
+        Check.Contains(Check.Text(proposed["head"]), "donor:tokate/gratis-")
+        Check.Contains(proposedBody, "Fixes #2")
+        Check.Contains(submitPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
+        let plainPreview = namedFlow.Call([]string{"submit", "owner/project#2", "--non-interactive"})
+        Check.Contains(plainPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
+        let rejected = TestTerminal.Pty(Flow.Binary, []string{"submit", "owner/project#2"}, namedFlow.Temp, 80, "\n")
+        Check.That(rejected.Code == 1, "Rejected publication succeeded")
+        Check.Contains(rejected.Output, "Publish this contribution? [y/N]")
+        Check.Contains(rejected.Output, "Nothing changed.")
+        namedFlow.Reload()
+        for call in namedFlow.State["api_calls"]?.AsArray() ?? throw Exception("Missing preview API evidence") {
+            Check.That(Check.Text(call["method"]) == "GET", "Submission preview made a GitHub write")
+        }
+        Check.That(
+            File.ReadAllText(Path.Combine(namedDirectory, "run.json")) == savedRun,
+            "Submission preview changed the saved run"
+        )
+        Check.That(!File.Exists(Path.Combine(namedDirectory, "publication.json")), "Preview saved publication")
+        let savedState = Check.Json(savedRun)
+        Check.That(
+            namedFlow.Git(
+                "--git-dir",
+                Path.Combine(namedFlow.Bin, "fork"),
+                "rev-parse",
+                Check.Text(savedState["branch"])
+            ) == Check.Text(savedState["base"]),
+            "Work or submission preview pushed the candidate"
+        )
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Preview opened a PR")
+        let published = Check.Envelope(
+            namedFlow.Call([]string{"submit", "owner/project#2", "--yes", "--json"}),
+            "submit",
+            "ok"
+        )["data"]
+        Check.That(Check.Text(published?["applied"]) == "true", "Confirmed submission did not publish")
+        namedFlow.Reload()
+        let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
+        Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR differs from preview title")
+        Check.That(Check.Text(namedPull["body"]) == proposedBody, "Gratis PR differs from preview body")
         let checkout = Path.Combine(namedDirectory, "checkout")
         Check.That(
             namedFlow.Git("-C", checkout, "show", "-s", "--format=%s", "HEAD") == title,

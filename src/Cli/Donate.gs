@@ -89,17 +89,20 @@ internal class Donate {
             }
         }
 
-        private func Task(options Args, issue int32, gratis JsonElement) Dictionary[string, Object?] {
+        private func Task(options Args, issue int32, gratis JsonElement, publish bool) Dictionary[string, Object?] {
             options.Values["--issue"] = issue.ToString()
             var directory string = ""
             let task = map[string, Object?]{"issue": issue, "result": "submitted"}
             try {
                 directory = ContributionPreparation.Acquire(options, gratis)
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
-                Dispatch(Args([]string{"submit", "--run", directory}))
+                if publish {
+                    Dispatch(Args([]string{"submit", "--run", directory, "--yes"}))
+                }
                 if gratis.ValueKind != JsonValueKind.Undefined {
                     let run = Data.Load(directory)
-                    task["result"] = run.Text("state") == "published" ? "submitted": "skipped"
+                    task["result"] = run.Text("state") == "published" ? "submitted":
+                    !publish && run.Text("state") == "generated" ? "prepared": "skipped"
                     task["reason"] = run.Text("state")
                     task["discussion_error"] = run.Text("discussion_error")
                     task["discussion_url"] = run.Text("discussion_url")
@@ -275,7 +278,7 @@ internal class Donate {
                             "body": "Choose a task from the repository guidance."
                         }: GitHub.Issue(repo, issue)
                     }
-                    let task = Task(options, issue, gratis ? Gratis.Context(context, pulls): JsonElement{})
+                    let task = Task(options, issue, gratis ? Gratis.Context(context, pulls): JsonElement{}, named == 0)
                     tasks.Add(task)
                     let result = task["result"]?.ToString() ?? ""
                     session.Fields[result] = session.Number(result) + 1
@@ -307,6 +310,11 @@ internal class Donate {
                 session.Fields["wall_seconds"] = timer.Elapsed.TotalSeconds
                 session.Write(sessionPath)
                 Report(session.Element())
+                if named > 0 && tasks.Count == 1 && session.Number("prepared") == 1 {
+                    let next = []string{"tokate", "submit", repo + "#" + named.ToString()}
+                    PublicOutput.Actions.Add(next)
+                    Terminal.Message("Next: " + Terminal.Command(next), error: true)
+                }
             }
             return consecutive == 3 ? 1: 0
         }

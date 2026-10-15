@@ -106,8 +106,11 @@ Stop waits for the current task and prints wall time, submitted, skipped and fai
 
 Without a Tokate policy, `tokate work OWNER/REPO#42 --yes --time 1h` donates to
 exactly that open, unlocked issue. It does not need `--total` and does not claim
-another issue. Consent names the issue. Tokate publishes the result without a
-separate submit command. A repository with a policy keeps the approved-issue flow.
+another issue. Consent names the issue. Work stops before publication.
+Use `tokate submit OWNER/REPO#42` to review the exact PR title, body and target,
+then `tokate submit OWNER/REPO#42 --yes` to publish. In a terminal, submit asks
+once. With `--json`, `--non-interactive` or no terminal, it previews without changes.
+A repository with a policy keeps the approved-issue flow.
 In gratis mode, the harness can write `tokate-title.txt` in the checkout root to
 set the commit and PR title. Use one plain ASCII line of at most 100 characters.
 
