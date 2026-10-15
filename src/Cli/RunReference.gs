@@ -77,7 +77,7 @@ internal class RunReference {
 
             let row = saved.Rows.Find(other -> other.Location == action[index + 1])
 
-            if row == nil || saved.Rows.FindAll(other -> other.Name == row.Name).Count > 1 {
+            if row == nil || row.Issue < 1 || saved.Rows.FindAll(other -> other.Name == row.Name).Count > 1 {
                 return action
             }
 
