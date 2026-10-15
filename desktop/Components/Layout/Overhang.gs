@@ -16,7 +16,7 @@ data struct Overhang {
             Left: 0,
             Right: 0,
             Bottom: Percent(100),
-            Padding: Edges{Bottom: 4},
+            Padding: Edges{Bottom: AppTheme.Space4},
             AlignItems: AlignItems.Center,
             Children: Above != nil ? []Blob{Above!!}: []Blob{},
         },

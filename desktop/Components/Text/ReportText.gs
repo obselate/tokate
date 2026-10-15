@@ -2,7 +2,7 @@ package TokateDesktop
 
 import Goo
 
-/// Scrollable monospace output such as command reports. Zero size resolves to the code size and zero height to 300.
+/// Scrollable monospace output such as command reports. Zero size and height use the theme defaults.
 data struct ReportText {
     var Content string
     var Size float64
@@ -13,7 +13,7 @@ data struct ReportText {
         FontFamily: AppTheme.MonoFont,
         FontSize: Size == 0 ? AppTheme.CodeSize: Size,
         Color: AppTheme.Current.Ink,
-        MaxHeight: MaxHeight == 0 ? 300: MaxHeight,
+        MaxHeight: MaxHeight == 0 ? AppTheme.ReportMaxHeight: MaxHeight,
         OverflowY: Overflow.Scroll,
     }
 }

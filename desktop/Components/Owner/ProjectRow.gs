@@ -18,7 +18,7 @@ data struct ProjectRow {
             FlexGrow: 1,
             FlexBasis: 0,
             MinWidth: 0,
-            Gap: 3,
+            Gap: AppTheme.Space4,
             Heading{Content: repository, Size: AppTheme.ItemSize, MaxLines: 1}.Build(),
         }
         if Project.Description != "" {
@@ -26,11 +26,11 @@ data struct ProjectRow {
         }
         return Interaction.Keyboard(
             Button{
-                MinHeight: 64,
-                Padding: Edges{Left: 20, Right: 12, Top: 10, Bottom: 10},
+                MinHeight: AppTheme.RowHeight,
+                Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space12, Top: AppTheme.Space12, Bottom: AppTheme.Space12},
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
-                Gap: 12,
+                Gap: AppTheme.Space12,
                 BorderWidth: 0,
                 BackgroundColor: Color.Transparent,
                 Hover: Style{BackgroundColor: p.Paper},

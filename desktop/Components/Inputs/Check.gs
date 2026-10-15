@@ -35,10 +35,10 @@ data struct Check {
             return check
         }
         return Container{
-            Gap: 2,
+            Gap: AppTheme.Space4,
             AlignItems: AlignItems.FlexStart,
             check,
-            Container{Padding: Edges{Left: 28}, Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()},
+            Container{Padding: Edges{Left: AppTheme.Space24}, Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()},
         }
     }
 }

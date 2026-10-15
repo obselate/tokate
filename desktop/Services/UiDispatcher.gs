@@ -1,6 +1,5 @@
 package TokateDesktop
 
-import Goo
 import System
 
 class UiDispatcher {
@@ -13,8 +12,6 @@ class UiDispatcher {
     func TryPost(action Action) bool -> post(action)
 
     shared {
-        func ForWindow(window Window) UiDispatcher -> UiDispatcher(action -> window.TryPost(action))
-
         func Inline() UiDispatcher -> UiDispatcher(
             action -> {
                 action()

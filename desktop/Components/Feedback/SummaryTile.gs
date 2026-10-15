@@ -12,9 +12,9 @@ data struct SummaryTile {
     func Build() Blob -> Container{
         FlexGrow: 1,
         FlexBasis: 0,
-        MinWidth: 190,
-        Padding: 20,
-        Gap: 12,
+        MinWidth: AppTheme.ShortFieldWidth,
+        Padding: AppTheme.Space24,
+        Gap: AppTheme.Space12,
         BackgroundColor: AppTheme.Current.Paper,
         BorderRadius: AppTheme.ControlRadius,
         Row{

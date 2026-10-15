@@ -8,5 +8,5 @@ data struct Notice {
     var Size float64
     var Plain bool
 
-    func Build() Text -> Label{Content: Message, Size: Size == 0 ? 16: Size, Muted: !Plain}.Build()
+    func Build() Text -> Label{Content: Message, Size: Size == 0 ? AppTheme.LabelSize: Size, Muted: !Plain}.Build()
 }

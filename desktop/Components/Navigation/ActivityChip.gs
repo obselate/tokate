@@ -20,11 +20,11 @@ data struct ActivityChip {
         let show = OnOpen
         let cancel = OnCancel
         let summary = Button{
-            Height: 30,
-            Padding: Edges{Left: 10, Right: 8},
+            Height: AppTheme.CompactButtonHeight,
+            Padding: Edges{Left: AppTheme.Space12, Right: AppTheme.Space8},
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
-            Gap: 8,
+            Gap: AppTheme.Space8,
             BorderWidth: 0,
             BackgroundColor: Color.Transparent,
             Hover: Style{BackgroundColor: p.Paper},
@@ -39,7 +39,7 @@ data struct ActivityChip {
             summary.Children.Insert(1, Label{Content: Title, Size: AppTheme.SmallSize}.Build())
         }
         return Container{
-            Height: 32,
+            Height: AppTheme.CompactButtonHeight,
             FlexShrink: 0,
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
@@ -51,8 +51,8 @@ data struct ActivityChip {
             Interaction.Keyboard(summary),
             Interaction.Keyboard(
                 Button{
-                    Height: 30,
-                    Padding: Edges{Left: 8, Right: 10},
+                    Height: AppTheme.CompactButtonHeight,
+                    Padding: Edges{Left: AppTheme.Space8, Right: AppTheme.Space12},
                     AlignItems: AlignItems.Center,
                     JustifyContent: JustifyContent.Center,
                     BorderWidth: 0,
@@ -68,8 +68,8 @@ data struct ActivityChip {
             ),
             Container{
                 Position: PositionType.Absolute,
-                Left: 8,
-                Right: 8,
+                Left: AppTheme.Space8,
+                Right: AppTheme.Space8,
                 Bottom: 2,
                 Height: 2,
                 BorderRadius: 1,

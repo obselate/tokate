@@ -19,11 +19,9 @@ class LimitsStepView {
     func Build(page PageContext) []Blob {
         let state = donation.Current
         let draft = state.Draft
-        let compact = page.CompactPanels || page.Metrics.WindowHeight < 900
         return []Blob{
             Heading{Content: state.Identity + "  " + state.IssueTitle}.Build(),
             Panel{
-                Compact: compact,
                 Name: "Harness settings",
                 Children: []Blob{
                     IconHeading{Icon: "terminal", Content: "Harness"}.Build(),
@@ -38,10 +36,9 @@ class LimitsStepView {
                 },
             }.Build(),
             CardColumns{
-                Stacked: page.Metrics.ContentWidth < 740,
+                Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
                 Cards: []Container{
                     Panel{
-                        Compact: compact,
                         Name: "Model settings",
                         Children: []Blob{
                             IconHeading{Icon: "tune", Content: "Model"}.Build(),
@@ -74,7 +71,6 @@ class LimitsStepView {
                         },
                     }.Build(),
                     state.RepositoryMode ? Panel{
-                        Compact: compact,
                         Name: "Repository donation limits",
                         Children: []Blob{
                             IconHeading{Icon: "schedule", Content: "Time"}.Build(),
@@ -88,7 +84,6 @@ class LimitsStepView {
                         Policy: state.Policy,
                         Button: page.Button,
                         Disabled: page.Busy,
-                        Compact: compact,
                         OnPreset: minutes -> donation.ChoosePreset(minutes),
                         OnUnlimited: value -> donation.SetUnlimited(value),
                         OnCoding: value -> donation.SetCoding(value),

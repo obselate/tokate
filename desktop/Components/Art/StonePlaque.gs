@@ -23,7 +23,7 @@ data struct StonePlaque {
             Padding: Edges{Left: 84, Right: 84},
             AlignItems: AlignItems.Center,
             JustifyContent: JustifyContent.Center,
-            Gap: 2,
+            Gap: AppTheme.Space4,
             Accessibility: Accessibility{Role: AccessibilityRole.Alert, Name: Title},
             Image{
                 Source: Stone,
@@ -37,14 +37,14 @@ data struct StonePlaque {
             Container{
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
-                Gap: 8,
+                Gap: AppTheme.Space8,
                 MaterialIcons.Create("error", 18, day.Accent),
                 Text{Content: Title, FontFamily: AppTheme.HeadingFont, FontWeight: 500, FontSize: AppTheme.ItemSize, Color: AppTheme.StoneInk},
             },
             Container{
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Baseline,
-                Gap: 7,
+                Gap: AppTheme.Space8,
                 Label{Content: Detail, Size: AppTheme.SmallSize, Ink: day.Muted}.Build(),
                 Label{Content: Command, Mono: true, Ink: AppTheme.StoneInk}.Build(),
             },

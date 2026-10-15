@@ -47,16 +47,15 @@ class SetupTab {
             )
         }
         return Stack{
-            Gap: 18,
+            Gap: AppTheme.SectionGap,
             Children: []Blob{
                 PresetGroup{Button: page.Button, Labels: SetupSteps.Names, Selected: step, OnChoose: show}.Build(),
-                Swap{Key: step.ToString(), Gap: 18, Children: body.ToArray()}.Build(),
+                Swap{Key: step.ToString(), Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build(),
             },
         }.Build()
     }
 
     private func Checks(page PageContext, editor SetupEditorInput) Blob -> Panel{
-        Compact: page.CompactPanels,
         Children: []Blob{VerificationEditor.Mount(editor), Rule{}.Build(), RequiredChecksEditor.Mount(editor)},
     }.Build()
 
@@ -90,13 +89,12 @@ class SetupTab {
             models.Add(ModelWhitelistEditor.Mount(editor))
         }
         return Stack{
-            Gap: 18,
+            Gap: AppTheme.SectionGap,
             Children: []Blob{
                 EligibilityPicker{
                     Selected: setup.EffectiveEligibility(policy),
                     Disabled: page.Busy,
-                    Compact: page.CompactPanels,
-                    Stacked: page.Metrics.ContentWidth < 790,
+                    Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
                     OnChoose: mode -> owner.SetEligibility(mode),
                 }.Build(),
                 HarnessEditor.Mount(
@@ -104,16 +102,14 @@ class SetupTab {
                         Owner: owner,
                         Logo: id -> art.Logo(id).Render(),
                         Busy: page.Busy,
-                        Compact: page.CompactPanels,
                         Button: page.Button,
                     }
                 ),
-                Panel{Compact: page.CompactPanels, Children: models.ToArray()}.Build(),
+                Panel{Children: models.ToArray()}.Build(),
                 LimitsEditor{
                     Minutes: setup.Minutes,
                     Placeholder: (policy.MaxSeconds / 60).ToString(),
                     Disabled: page.Busy,
-                    Compact: page.CompactPanels,
                     OnMinutes: value -> owner.SetMinutes(value),
                 }.Build(),
             },
@@ -165,7 +161,6 @@ class SetupTab {
             Report: state.SetupReport,
             Previewed: state.SetupPreviewed,
             Disabled: page.Busy,
-            Compact: page.CompactPanels,
             Button: page.Button,
             OnApply: () -> owner.Apply(),
             OnPreview: () -> owner.PreviewSetup(),
@@ -178,13 +173,13 @@ class SetupTab {
             (page.Button with{Label = "Check repository health", OnClick = () -> owner.CheckPrerequisites()}).Build(),
         }
         if state.DoctorReport != "" {
-            health.Add(ReportText{Content: state.DoctorReport, MaxHeight: 420}.Build())
+            health.Add(ReportText{Content: state.DoctorReport, MaxHeight: AppTheme.ReportMaxHeight}.Build())
         }
         return Stack{
-            Gap: 18,
+            Gap: AppTheme.SectionGap,
             Children: []Blob{
                 review,
-                Panel{Compact: page.CompactPanels, Children: health.ToArray()}.Build(),
+                Panel{Children: health.ToArray()}.Build(),
             },
         }.Build()
     }

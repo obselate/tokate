@@ -8,9 +8,9 @@ data struct ListRow {
 
     func Build() Container {
         let row = Row{Children: Children}.Build()
-        row.MinHeight = 64
+        row.MinHeight = AppTheme.RowHeight
         row.AlignContent = AlignContent.Center
-        row.Padding = Edges{Left: 20, Right: 16, Top: 10, Bottom: 10}
+        row.Padding = Edges{Left: AppTheme.CardPadding, Right: AppTheme.CardPadding, Top: AppTheme.Space12, Bottom: AppTheme.Space12}
         return row
     }
 }

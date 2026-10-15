@@ -11,8 +11,8 @@ data struct DetailRow {
     func Build() Blob -> Container{
         FlexDirection: FlexDirection.Row,
         AlignItems: AlignItems.FlexStart,
-        Gap: 16,
-        Container{Width: 120, FlexShrink: 0, Label{Content: Caption, Size: AppTheme.SmallSize, Muted: true}.Build()},
+        Gap: AppTheme.Space16,
+        Container{Width: AppTheme.DetailLabelWidth, FlexShrink: 0, Label{Content: Caption, Size: AppTheme.LabelSize, Muted: true}.Build()},
         Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Label{Content: Value, Mono: Mono}.Build()},
     }
 }

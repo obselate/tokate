@@ -38,7 +38,7 @@ data struct DonationStatus {
         if done && run.State != "" && run.State != "claimed" {
             heading.Children.Add(StatusBadge{Value: run.Status, Tone: Statuses.ToneOf(run.Status)}.Build())
         }
-        let state = Container{FlexShrink: 1, MinWidth: 0, MaxWidth: 460, Gap: 6, heading}
+        let state = Container{FlexShrink: 1, MinWidth: 0, MaxWidth: AppTheme.WideFieldWidth, Gap: AppTheme.Space8, heading}
         if Progress.Path != "" {
             state.Children.Add(
                 Label{
@@ -55,7 +55,7 @@ data struct DonationStatus {
         let row = Container{
             FlexDirection: Stacked ? FlexDirection.Column: FlexDirection.Row,
             AlignItems: Stacked ? AlignItems.Stretch: AlignItems.Center,
-            Gap: Stacked ? 14: 28,
+            Gap: Stacked ? AppTheme.Space16: AppTheme.Space24,
             state,
         }
         if Progress.Started || run.Unlimited || Progress.Limit > 0 {
@@ -66,7 +66,7 @@ data struct DonationStatus {
         row.Children.Add(Row{Children: Actions(done)}.Build())
         return Container{
             FlexShrink: 0,
-            Padding: Edges{Left: 22, Right: 22, Top: 16, Bottom: 16},
+            Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24, Top: AppTheme.Space16, Bottom: AppTheme.Space16},
             BackgroundColor: p.Surface,
             BorderWidth: 1,
             BorderColor: p.Line,
@@ -115,8 +115,8 @@ data struct DonationStatus {
         let time = Container{
             FlexGrow: Stacked ? 0: 1,
             FlexBasis: Stacked ? Length.Auto: Length(0),
-            MinWidth: Stacked ? 0: 200,
-            Gap: 8,
+            MinWidth: Stacked ? 0: AppTheme.ShortFieldWidth,
+            Gap: AppTheme.Space8,
         }
         if !Progress.Started && run.Unlimited {
             time.Children.Add(Label{Content: "Unlimited coding time"}.Build())
@@ -125,7 +125,7 @@ data struct DonationStatus {
         let clock = DonationProgress.Clock(Progress.Started ? Progress.Elapsed: limit)
         let readout = Row{
             Align: AlignItems.Baseline,
-            Gap: 10,
+            Gap: AppTheme.Space12,
             Children: []Blob{
                 Text{
                     Content: clock,

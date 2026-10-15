@@ -15,7 +15,7 @@ data struct Row {
         let row = Container{
             FlexDirection: FlexDirection.Row,
             AlignItems: Align ?? AlignItems.Center,
-            Gap: Gap ?? 12,
+            Gap: Gap ?? AppTheme.Space12,
             FlexWrap: NoWrap ? FlexWrap.NoWrap: FlexWrap.Wrap,
             Children: Children ?? []Blob{},
         }

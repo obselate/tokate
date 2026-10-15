@@ -42,7 +42,7 @@ open class TabRow : Cell[TabRowInput] {
             Position: PositionType.Relative,
             FlexDirection: FlexDirection.Row,
             FlexWrap: FlexWrap.Wrap,
-            Gap: 4,
+            Gap: AppTheme.Space4,
             BorderWidth: Edges{Bottom: 1},
             BorderColor: p.Line,
         }

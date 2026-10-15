@@ -34,7 +34,7 @@ open class DonorList : Cell[DonorListInput] {
                             donor = value
                         },
                         Placeholder: "GitHub username",
-                        Width: 240,
+                        Width: AppTheme.ShortFieldWidth,
                         Disabled: input.Busy,
                     }.Build(),
                     InputField{
@@ -44,7 +44,7 @@ open class DonorList : Cell[DonorListInput] {
                             issue = value
                         },
                         Placeholder: "Issue number",
-                        Width: 140,
+                        Width: AppTheme.ShortFieldWidth,
                         Disabled: input.Busy,
                     }.Build(),
                     (input.Button with{
@@ -61,7 +61,7 @@ open class DonorList : Cell[DonorListInput] {
                 },
             }.Build()
             form.AlignItems = AlignItems.FlexEnd
-            form.Padding = Edges{Left: 20, Right: 12, Top: 12, Bottom: 14}
+            form.Padding = Edges{Left: AppTheme.Space24, Right: AppTheme.Space12, Top: AppTheme.Space12, Bottom: AppTheme.Space16}
             form.BackgroundColor = AppTheme.Current.Paper
             lines.Add(form)
         }
@@ -72,7 +72,7 @@ open class DonorList : Cell[DonorListInput] {
             lines.Add(
                 ListRow{
                     Children: []Blob{
-                        Container{Width: 190, FlexShrink: 0, Label{Content: name}.Build()},
+                        Container{Width: AppTheme.ShortFieldWidth, FlexShrink: 0, Label{Content: name}.Build()},
                         StatusBadge{Value: member.Badge, Tone: Statuses.ToneOf(member.Badge)}.Build(),
                         Spacer{}.Build(),
                         (input.Button with{

@@ -44,7 +44,7 @@ data struct SavedRow {
             FlexGrow: 1,
             FlexBasis: 0,
             MinWidth: 0,
-            Gap: 3,
+            Gap: AppTheme.Space4,
             Heading{Content: Item.Title == "" ? identity: Item.Title, Size: AppTheme.ItemSize, MaxLines: 2}.Build(),
         }
         if facts.Count > 0 {
@@ -59,16 +59,16 @@ data struct SavedRow {
         }
         let badge = StatusBadge{Value: Item.Status(), Tone: Statuses.ToneOf(Item.Status())}.Build()
         if Narrow {
-            copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: 4}, badge})
+            copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: AppTheme.Space4}, badge})
         }
         return Interaction.Keyboard(
             Button{
                 Key: Item.Path,
-                MinHeight: 62,
-                Padding: Edges{Left: 14, Right: 6, Top: 8, Bottom: 8},
+                MinHeight: AppTheme.RowHeight,
+                Padding: Edges{Left: AppTheme.Space16, Right: AppTheme.Space16, Top: AppTheme.Space12, Bottom: AppTheme.Space12},
                 FlexDirection: FlexDirection.Row,
                 AlignItems: AlignItems.Center,
-                Gap: 12,
+                Gap: AppTheme.Space12,
                 BorderWidth: Edges{Bottom: Last ? 0: 1},
                 BorderColor: p.Line,
                 BackgroundColor: Color.Transparent,

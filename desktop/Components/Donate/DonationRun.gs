@@ -29,9 +29,9 @@ data struct DonationRun {
         if !Progress.Started {
             panel.Children.Add(
                 Container{
-                    MinHeight: 44,
+                    MinHeight: AppTheme.ButtonHeight,
                     JustifyContent: JustifyContent.Center,
-                    Padding: Edges{Left: 22, Right: 22},
+                    Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24},
                     Heading{Content: "Output", Size: AppTheme.ItemSize}.Build(),
                 }
             )
@@ -41,7 +41,7 @@ data struct DonationRun {
                     FlexGrow: 1,
                     AlignItems: AlignItems.Center,
                     JustifyContent: JustifyContent.Center,
-                    Padding: 24,
+                    Padding: AppTheme.Space24,
                     Label{Content: "The output shows here after the donation starts.", Muted: true}.Build(),
                 }
             )

@@ -18,7 +18,6 @@ data struct SetupReview {
     var Report SetupReport
     var Previewed bool
     var Disabled bool
-    var Compact bool
     var Button CommandButton
     var OnApply Action?
     var OnPreview Action?
@@ -40,7 +39,6 @@ data struct SetupReview {
             facts.Add(DetailRow{Caption: "Time limit", Value: Limit}.Build())
         }
         let review = Panel{
-            Compact: Compact,
             Children: []Blob{
                 IconHeading{
                     Icon: "folder_open",
@@ -49,7 +47,7 @@ data struct SetupReview {
                         "Preview first, then apply GitHub settings. Review and merge the PR before approving work.",
                 }.Build(),
                 Rule{}.Build(),
-                Stack{Gap: 10, Children: facts.ToArray()}.Build(),
+                Stack{Gap: AppTheme.Space12, Children: facts.ToArray()}.Build(),
                 Row{
                     Children: []Blob{
                         (Button with{Label = "Preview setup", OnClick = OnPreview, Primary = !Previewed}).Build(),
@@ -74,7 +72,7 @@ data struct SetupReview {
             }).Build())
         }
         if Written != "" {
-            review.Children.Add(ReportText{Content: Written, MaxHeight: 420}.Build())
+            review.Children.Add(ReportText{Content: Written, MaxHeight: AppTheme.ReportMaxHeight}.Build())
         }
         return review
     }

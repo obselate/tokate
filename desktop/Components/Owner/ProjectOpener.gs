@@ -36,7 +36,7 @@ data struct ProjectOpener {
                     Value: Input,
                     OnChange: OnInput,
                     Placeholder: "owner/repository",
-                    Width: 280,
+                    Width: AppTheme.FieldWidth,
                     Disabled: Disabled,
                 }.Build(),
                 (Button with{Label = "Open project", OnClick = OnOpen, Disabled = Input == ""}).Build(),

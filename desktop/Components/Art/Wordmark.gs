@@ -9,10 +9,10 @@ data struct Wordmark {
 
     func Build() Blob -> Container{
         FlexDirection: FlexDirection.Row,
-        Gap: 10,
+        Gap: AppTheme.Space12,
         AlignItems: AlignItems.Center,
         JustifyContent: JustifyContent.Center,
-        Padding: Edges{Bottom: 16},
+        Padding: Edges{Bottom: AppTheme.Space16},
         Container{Width: 25, Height: 36, Mark},
         Text{
             Content: "tokate",

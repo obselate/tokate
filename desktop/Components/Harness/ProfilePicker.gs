@@ -37,7 +37,7 @@ data struct ProfilePicker {
                             }
                         }
                     },
-                    Width: 230,
+                    Width: AppTheme.ShortFieldWidth,
                     Disabled: Disabled,
                     Popup: Popup,
                 }.Build()

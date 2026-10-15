@@ -11,7 +11,7 @@ data struct IssuePager {
     var Narrow bool
     var OnPage Action[int32]?
 
-    func Build() Blob -> !Listing.Loaded ? Container{FlexShrink: 0, MinHeight: 44}: Pager{
+    func Build() Blob -> !Listing.Loaded ? Container{FlexShrink: 0, MinHeight: AppTheme.ButtonHeight}: Pager{
         Button: Button,
         Page: Listing.Page,
         LastPage: IssueListing.LastPage(Listing.VisibleTotal),

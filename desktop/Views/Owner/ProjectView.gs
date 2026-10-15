@@ -94,7 +94,7 @@ class ProjectView {
         }
         if issue {
             body.InsertRange(1, messages)
-            return Stack{Gap: 16, Children: body.ToArray()}.Build()
+            return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
         }
         if !state.Open {
             body.Add(
@@ -111,7 +111,7 @@ class ProjectView {
                 }.Build()
             )
             body.InsertRange(1, messages)
-            return Stack{Gap: 20, Children: body.ToArray()}.Build()
+            return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
         }
         let tabs = List[string]()
         for tab in OwnerTabs.All {
@@ -139,11 +139,11 @@ class ProjectView {
         body.Add(
             Swap{
                 Key: OwnerTabs.Label(state.Tab),
-                Gap: 16,
+                Gap: AppTheme.Space16,
                 Fill: state.Browsing && !page.Metrics.Short,
                 Children: messages.ToArray(),
             }.Build()
         )
-        return Stack{Gap: 16, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 }

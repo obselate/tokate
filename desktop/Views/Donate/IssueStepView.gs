@@ -29,7 +29,6 @@ class IssueStepView {
                     Account: state.Account,
                     Button: page.Button,
                     Disabled: page.Busy,
-                    Compact: page.CompactPanels,
                     OnInput: value -> donation.SetInput(value),
                     OnFind: () -> donation.Find(),
                 }.Build(),

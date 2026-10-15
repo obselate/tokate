@@ -45,8 +45,8 @@ open class SkyLoader : Cell[SkyLoaderInput] {
             FlexGrow: 1,
             AlignItems: AlignItems.Center,
             JustifyContent: JustifyContent.Center,
-            Gap: 14,
-            Padding: 28,
+            Gap: AppTheme.Space16,
+            Padding: AppTheme.Space24,
             Container{
                 Width: SkyWidth,
                 Height: SkyHeight,

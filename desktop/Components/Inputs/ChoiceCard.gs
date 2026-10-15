@@ -20,7 +20,7 @@ data struct ChoiceCard {
     func Build() Blob {
         let p = AppTheme.Current
         let choose = OnChoose
-        let text = Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Gap: 2, Heading{Content: Title, Size: AppTheme.ItemSize}.Build()}
+        let text = Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 0, Gap: AppTheme.Space4, Heading{Content: Title, Size: AppTheme.ItemSize}.Build()}
         let note = Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()
         if Detail != "" && !Compact {
             text.Children.Add(note)
@@ -37,16 +37,16 @@ data struct ChoiceCard {
             Button{
                 FlexGrow: 1,
                 FlexBasis: 0,
-                MinWidth: Compact ? 150: 220,
-                MinHeight: Compact ? 0: 82,
-                Padding: Compact ? 12: 20,
-                Gap: 10,
+                MinWidth: Compact ? AppTheme.CompactChoiceMinWidth: AppTheme.ChoiceMinWidth,
+                MinHeight: AppTheme.RowHeight,
+                Padding: AppTheme.CardPadding,
+                Gap: AppTheme.Space12,
                 AlignSelf: AlignSelf.Stretch,
                 AlignItems: AlignItems.FlexStart,
                 BackgroundColor: Selected ? p.Paper: p.Surface,
                 BorderWidth: Selected ? 2: 1,
                 BorderColor: Selected ? p.Accent: p.Line,
-                BorderRadius: AppTheme.ControlRadius,
+                BorderRadius: AppTheme.PanelRadius,
                 Disabled: Disabled,
                 Focusable: true,
                 Focus: AppTheme.FocusStyle(),
@@ -57,7 +57,7 @@ data struct ChoiceCard {
                     Width: Percent(100),
                     FlexDirection: FlexDirection.Row,
                     AlignItems: AlignItems.Center,
-                    Gap: 12,
+                    Gap: AppTheme.Space12,
                     mark,
                     text,
                     end,

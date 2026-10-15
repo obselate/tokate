@@ -11,7 +11,6 @@ data struct RunDetails {
     var Item SavedRun
     var Actions []RunAction
     var Button CommandButton
-    var Compact bool
     /// A narrow panel names only the current step.
     var Narrow bool
     var Form Blob?
@@ -145,6 +144,6 @@ data struct RunDetails {
         if let form = Form {
             children.Add(form)
         }
-        return Panel{Compact: Compact, Children: children.ToArray()}.Build()
+        return Panel{Children: children.ToArray()}.Build()
     }
 }

@@ -10,7 +10,6 @@ data struct TimeLimits {
     var Policy Policy
     var Button CommandButton
     var Disabled bool
-    var Compact bool
     var OnPreset Action[string]?
     var OnUnlimited Action[bool]?
     var OnCoding Action[string]?
@@ -53,18 +52,18 @@ data struct TimeLimits {
         }
         let budgets = List[Blob]()
         if !Draft.Unlimited {
-            budgets.Add(InputField{Label: "Coding minutes", Value: Draft.Coding, OnChange: OnCoding, Width: 195, Disabled: Disabled}.Build())
+            budgets.Add(InputField{Label: "Coding minutes", Value: Draft.Coding, OnChange: OnCoding, Width: AppTheme.ShortFieldWidth, Disabled: Disabled}.Build())
         }
         budgets.Add(
             InputField{
                 Label: "Verification minutes",
                 Value: Draft.Verification,
                 OnChange: OnVerification,
-                Width: 195,
+                Width: AppTheme.ShortFieldWidth,
                 Disabled: Disabled,
             }.Build()
         )
         children.Add(Row{Children: budgets.ToArray()}.Build())
-        return Panel{Compact: Compact, Name: "Time limit settings", Children: children.ToArray()}.Build()
+        return Panel{Name: "Time limit settings", Children: children.ToArray()}.Build()
     }
 }

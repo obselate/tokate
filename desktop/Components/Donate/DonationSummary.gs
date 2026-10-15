@@ -12,7 +12,6 @@ data struct DonationSummary {
     var Draft DonationDraft
     /// The models of the selected harness, for the name of the model.
     var Models []ModelChoice
-    var Compact bool
 
     private func ModelName() string {
         for model in Models ?? []ModelChoice{} {
@@ -24,10 +23,9 @@ data struct DonationSummary {
     }
 
     func Build() Blob -> Panel{
-        Compact: Compact,
         Children: []Blob{
             Stack{
-                Gap: 16,
+                Gap: AppTheme.Space16,
                 Children: []Blob{
                     Heading{Content: "#" + Issue + "  " + Title}.Build(),
                     Label{Content: Repository, Size: AppTheme.SmallSize, Muted: true}.Build(),

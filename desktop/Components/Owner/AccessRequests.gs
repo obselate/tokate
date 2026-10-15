@@ -21,7 +21,7 @@ data struct AccessRequests {
             lines.Add(
                 ListRow{
                     Children: []Blob{
-                        Container{Width: 190, FlexShrink: 0, Label{Content: request.Donor}.Build()},
+                        Container{Width: AppTheme.ShortFieldWidth, FlexShrink: 0, Label{Content: request.Donor}.Build()},
                         Label{Content: "Requests issue #" + request.Issue, Size: AppTheme.SmallSize, Muted: true}.Build(),
                         Spacer{}.Build(),
                         (Button with{

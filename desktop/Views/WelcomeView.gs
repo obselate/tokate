@@ -29,7 +29,7 @@ class WelcomeView {
                             Choice("Open your project", Destination.Project, compact),
                             Choice("Pick up your work", Destination.Saved, compact),
                         },
-                        Gap: compact ? 12: 24,
+                        Gap: compact ? AppTheme.Space12: AppTheme.Space24,
                         Align: AlignItems.Stretch,
                         Justify: JustifyContent.Center,
                         NoWrap: true,

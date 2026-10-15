@@ -56,7 +56,7 @@ open class ActivityLog : Cell[ActivityLogInput] {
         rowTheme = AppTheme.Twilight
         rowName = name
         let next = (line OutputLine) -> Container{
-            Padding: Edges{Left: 22, Right: 22, Top: 2, Bottom: 2},
+            Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24, Top: AppTheme.Space4, Bottom: AppTheme.Space4},
             Text{
                 Content: line.Content,
                 FontFamily: AppTheme.MonoFont,
@@ -92,9 +92,9 @@ open class ActivityLog : Cell[ActivityLogInput] {
                 event.PreventDefault()
             }
         }
-        let header = Row{Children: input.Leading?.Invoke() ?? []Blob{}, Gap: 12}.Build()
-        header.Padding = Edges{Left: 22, Right: 10, Top: 4, Bottom: 4}
-        header.MinHeight = 44
+        let header = Row{Children: input.Leading?.Invoke() ?? []Blob{}, Gap: AppTheme.Space12}.Build()
+        header.Padding = Edges{Left: AppTheme.Space24, Right: AppTheme.Space12, Top: AppTheme.Space4, Bottom: AppTheme.Space4}
+        header.MinHeight = AppTheme.ButtonHeight
         header.Children.Add(Spacer{}.Build())
         if input.Running && !follow {
             header.Children.Add(

@@ -73,7 +73,6 @@ data struct Activity {
             case "debug": "Loading models"
             case "amend": "Amending contribution"
             case "submit": "Submitting contribution"
-            case "publish": "Publishing draft PR"
             case "checks": "Checking pull request"
             default: "Loading contribution details"
         }

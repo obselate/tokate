@@ -32,7 +32,6 @@ class ReviewStepView {
                 Account: state.Account,
                 Draft: state.Draft,
                 Models: state.Catalog(),
-                Compact: page.CompactPanels,
             }.Build(),
             Row{
                 Children: []Blob{

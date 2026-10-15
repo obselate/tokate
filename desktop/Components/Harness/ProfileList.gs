@@ -35,8 +35,8 @@ data struct ProfileList {
                 Container{
                     FlexGrow: 1,
                     FlexBasis: 0,
-                    MinWidth: 320,
-                    Gap: 2,
+                    MinWidth: AppTheme.ColumnMin,
+                    Gap: AppTheme.Space4,
                     Heading{Content: item.Name, Size: AppTheme.ItemSize}.Build(),
                     Label{Content: Summary(item), Size: AppTheme.SmallSize, Muted: true}.Build(),
                 }
@@ -68,7 +68,7 @@ data struct ProfileList {
             rows.Add(ListRow{Children: row.ToArray()}.Build())
         }
         let panel = Panel{Children: rows.ToArray(), Name: "Saved profiles"}.Build()
-        panel.Padding = 8
+        panel.Padding = AppTheme.Space8
         panel.Gap = 0
         return panel
     }

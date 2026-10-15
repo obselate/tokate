@@ -35,7 +35,7 @@ data struct Pager {
                     Disabled = page >= LastPage,
                 }).Build(),
             },
-            Gap: 8,
+            Gap: AppTheme.Space8,
             Justify: JustifyContent.FlexEnd,
         }.Build()
         buttons.FlexGrow = Narrow ? 0: 1
@@ -43,8 +43,8 @@ data struct Pager {
             FlexDirection: Narrow ? FlexDirection.Column: FlexDirection.Row,
             AlignItems: Narrow ? AlignItems.Stretch: AlignItems.Center,
             FlexShrink: 0,
-            MinHeight: 44,
-            Gap: 12,
+            MinHeight: AppTheme.ButtonHeight,
+            Gap: AppTheme.Space12,
             Label{
                 Content: LastPage > 1 ? "Page " + Page.ToString() + " of " + LastPage.ToString() + "  ·  " + Summary: Summary,
                 Size: AppTheme.SmallSize,

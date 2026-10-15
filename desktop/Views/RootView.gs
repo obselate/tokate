@@ -202,7 +202,7 @@ class RootView : Cell {
         for detail in confirmation.Details {
             body.Add(DetailRow{Caption: detail.Label, Value: detail.Value}.Build())
         }
-        return Stack{Gap: 16, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: body.ToArray()}.Build()
     }
 
     private func Dialog(confirmation Confirmation) Blob {
@@ -214,7 +214,6 @@ class RootView : Cell {
             Content: ConfirmationBody(confirmation),
             ConfirmLabel: confirmation.ConfirmLabel,
             WindowWidth: metrics.WindowWidth,
-            Compact: metrics.Compact,
             Short: metrics.Short,
             KeyBindings: WidgetKeyBindings.Editing(app.Window.PlatformInput),
             OnKeyDown: event -> app.Window.KeyNavigation(event),
@@ -291,7 +290,7 @@ class RootView : Cell {
                 Content: frame,
                 Scrolls: !fill,
                 Scroller: app.Window.ContentScroller,
-                Padding: isWelcome ? 0: metrics.Compact ? 16: 28,
+                Padding: isWelcome ? 0: AppTheme.PageGutter,
             }.Build(),
             Overlay: overlay,
             Framed: app.Window.Framed,

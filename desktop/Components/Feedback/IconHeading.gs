@@ -16,12 +16,12 @@ data struct IconHeading {
         let title = Row{
             Children: []Blob{
                 MaterialIcons.Create(Icon, IconSize == 0 ? 25: IconSize, AppTheme.Current.Accent),
-                Heading{Content: Content, Size: Size == 0 ? 28: Size}.Build(),
+                Heading{Content: Content, Size: Size == 0 ? AppTheme.TitleSize: Size}.Build(),
             },
         }.Build()
         if (Detail ?? "") == "" {
             return title
         }
-        return Stack{Gap: 6, Children: []Blob{title, Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()}}.Build()
+        return Stack{Gap: AppTheme.Space8, Children: []Blob{title, Label{Content: Detail, Size: AppTheme.SmallSize, Muted: true}.Build()}}.Build()
     }
 }

@@ -22,7 +22,7 @@ class SavedListView {
                 Total: total,
                 Reading: state.Reading,
                 Short: page.Metrics.Short,
-                Narrow: page.Metrics.ContentWidth < 740,
+                Narrow: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
                 Disabled: page.Busy,
                 Loader: page.Loader,
                 OnOpen: item -> saved.Select(item),

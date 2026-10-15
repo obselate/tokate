@@ -24,7 +24,7 @@ func Sources(root string, folder string) []string {
     let result = List[string]()
     for file in Directory.EnumerateFiles(path, "*.gs", SearchOption.AllDirectories) {
         let relative = Path.GetRelativePath(root, file).Replace('\\', '/')
-        if !relative.Contains("/obj/") && !relative.Contains("/bin/") {
+        if !relative.StartsWith("obj/") && !relative.StartsWith("bin/") && !relative.Contains("/obj/") && !relative.Contains("/bin/") {
             result.Add(file)
         }
     }
@@ -35,6 +35,15 @@ func Relative(root string, file string) string -> Path.GetRelativePath(root, fil
 
 func ArchitectureTests() {
     let root = DesktopRoot()
+    for file in Sources(root, "") {
+        let relative = Relative(root, file)
+        let category = relative.Split('/')[0]
+        Regression.Check(
+            category == "tests" || category == "Components" || category == "Models" || category == "Services" || category == "Views" ||
+                relative == "Program.gs" || relative == "DesktopApp.gs",
+            "desktop sources have a defined owner: " + relative
+        )
+    }
     for file in Sources(root, "Views") {
         let text = File.ReadAllText(file)
         let primitive = Regex.Match(text, "(?<!\\[\\])\\b(Container|Text|Button|Image)\\s*\\{")

@@ -31,34 +31,34 @@ data struct ModelPicker {
                 providers.Add(Option(provider, provider))
             }
             fields.Add(
-                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, 150, "Choose"): Field(
+                providers.Count > 0 ? Choice("Provider", Provider, providers.ToArray(), OnProvider, AppTheme.ShortFieldWidth, "Choose"): Field(
                     "Provider",
                     Provider,
                     OnProvider,
                     "Provider name",
-                    150
+                    AppTheme.ShortFieldWidth
                 )
             )
         }
         if (Harness == "pi" || Harness == "command") && Models.Length == 0 {
-            fields.Add(Field("Model", Model, OnModel, "Exact model ID", 230))
+            fields.Add(Field("Model", Model, OnModel, "Exact model ID", AppTheme.ShortFieldWidth))
         } else {
             let models = List[ComboBoxOption]()
             for model in Models {
                 models.Add(Option(model.Slug, model.DisplayName))
             }
-            fields.Add(Choice("Model", Model, models.ToArray(), OnModel, Harness == "omp" ? 270: 230, "Choose a model"))
+            fields.Add(Choice("Model", Model, models.ToArray(), OnModel, AppTheme.ShortFieldWidth, "Choose a model"))
         }
         let efforts = List[ComboBoxOption]()
         for effort in Efforts {
             efforts.Add(Option(effort, ModelChoice.EffortLabel(effort)))
         }
-        fields.Add(Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, 170, "Choose"))
+        fields.Add(Choice("Reasoning effort", Effort, efforts.ToArray(), OnEffort, AppTheme.ShortFieldWidth, "Choose"))
         let children = List[Blob]{Row{Align: AlignItems.FlexEnd, Children: fields.ToArray()}.Build()}
         if Harness == "pi" {
             children.Add(Field("Local endpoint", Endpoint, OnEndpoint, "http://127.0.0.1:8080/v1", 0))
         }
-        return Stack{Gap: 18, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 
     /// A text field. Zero width fills the row.

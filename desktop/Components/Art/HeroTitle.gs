@@ -10,9 +10,9 @@ data struct HeroTitle {
     var Accent string
 
     func Build() Blob -> Container{
-        Padding: Edges{Top: 24, Bottom: 16},
+        Padding: Edges{Top: AppTheme.Space24, Bottom: AppTheme.Space16},
         AlignItems: AlignItems.Center,
-        Gap: 10,
+        Gap: AppTheme.Space12,
         Heading{Content: Title, Size: Math.Clamp(Width * 0.06, 36, 55)}.Build(),
         Text{
             Content: Accent,

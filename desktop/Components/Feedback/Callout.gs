@@ -13,8 +13,8 @@ data struct Callout {
         return Container{
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.FlexStart,
-            Gap: 10,
-            Padding: 16,
+            Gap: AppTheme.Space12,
+            Padding: AppTheme.Space16,
             BackgroundColor: AppTheme.Current.Surface,
             BorderWidth: Edges{Left: 3},
             BorderColor: look.Edge,

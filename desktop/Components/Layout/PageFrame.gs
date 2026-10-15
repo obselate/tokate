@@ -19,9 +19,9 @@ data struct PageFrame {
             Height: Fill ? Percent(100): Length.Auto,
             FlexShrink: Fill ? 1: 0,
             MinHeight: 0,
-            MaxWidth: Wide ? Percent(100): Length(1050),
+            MaxWidth: Wide ? Percent(100): Length(AppTheme.ContentMax),
             AlignSelf: AlignSelf.Center,
-            Gap: 18,
+            Gap: AppTheme.SectionGap,
             Children: Children ?? []Blob{},
         }
         if Stretch && frame.Children.Count > 0 {

@@ -14,14 +14,12 @@ class AppearanceView {
     func Build() Blob {
         let settings = app.Theme.Settings
         let busy = app.Activity.Busy
-        let compact = app.Window.Metrics.ContentWidth < 650
         return Stack{
-            Gap: 20,
+            Gap: AppTheme.SectionGap,
             Children: []Blob{
                 Heading{Content: "Appearance", Size: AppTheme.DisplaySize}.Build(),
                 Painting.Mount(app, Math.Min(app.Window.Metrics.ContentWidth * 0.4, app.Window.Metrics.WindowHeight * 0.3), true),
                 Panel{
-                    Compact: compact,
                     Children: []Blob{
                         IconHeading{Icon: "palette", Content: "Theme"}.Build(),
                         Row{

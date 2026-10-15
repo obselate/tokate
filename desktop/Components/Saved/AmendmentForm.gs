@@ -26,7 +26,7 @@ data struct AmendmentForm {
 
     func Build() Blob {
         let budget = Row{
-            Gap: 8,
+            Gap: AppTheme.Space8,
             Children: []Blob{
                 Label{Content: "Verify for at most"}.Build(),
                 InputField{
@@ -34,7 +34,7 @@ data struct AmendmentForm {
                     Bare: true,
                     Value: Amendment.Verification,
                     OnChange: OnVerification,
-                    Width: 80,
+                    Width: AppTheme.ShortFieldWidth,
                     Disabled: Disabled,
                 }.Build(),
                 Label{Content: "minutes"}.Build(),
@@ -75,11 +75,11 @@ data struct AmendmentForm {
                 },
             }.Build()
         )
-        return Stack{Gap: 18, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 
     private func Section(title string, detail string) Blob -> Stack{
-        Gap: 4,
+        Gap: AppTheme.Space4,
         Children: []Blob{
             Heading{Content: title, Size: AppTheme.ItemSize}.Build(),
             Label{Content: detail, Size: AppTheme.SmallSize, Muted: true}.Build(),
@@ -98,7 +98,7 @@ data struct AmendmentForm {
     }).Build()
 
     private func Commit() Blob -> Stack{
-        Gap: 4,
+        Gap: AppTheme.Space4,
         Children: []Blob{
             Caption(),
             Row{
@@ -130,11 +130,11 @@ data struct AmendmentForm {
             steps.Add(Label{Content: step, Size: AppTheme.SmallSize, Muted: true}.Build())
         }
         return Stack{
-            Gap: 12,
+            Gap: AppTheme.Space12,
             Children: []Blob{
                 Caption(),
                 Label{Content: "The saved checkout has no new commit with file changes."}.Build(),
-                Stack{Gap: 4, Children: steps.ToArray()}.Build(),
+                Stack{Gap: AppTheme.Space4, Children: steps.ToArray()}.Build(),
                 Row{
                     Children: []Blob{
                         OpenCheckout(ButtonKind.Action),
@@ -149,7 +149,7 @@ data struct AmendmentForm {
         let summary = Amendment.Summary
         let change = OnSummary
         return Stack{
-            Gap: 16,
+            Gap: AppTheme.Space16,
             Children: []Blob{
                 Section(
                     "Describe the complete change",
@@ -230,11 +230,11 @@ data struct AmendmentForm {
                     Value: Amendment.Tools,
                     OnChange: OnTools,
                     Placeholder: "Path to a JSON file",
-                    Width: 650,
+                    Width: AppTheme.WideFieldWidth,
                     Disabled: Disabled,
                 }.Build()
             )
         }
-        return Stack{Gap: 14, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 }

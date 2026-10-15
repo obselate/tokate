@@ -64,7 +64,7 @@ data struct CommandButton {
         let filled = Kind == ButtonKind.Action && Primary
         let framed = Kind == ButtonKind.Action || iconOnly || (Kind == ButtonKind.Segment && Primary)
         let size = Kind == ButtonKind.Segment ? AppTheme.SmallSize: AppTheme.BodySize
-        let height = Kind == ButtonKind.Segment ? 36.0: 44.0
+        let height = Kind == ButtonKind.Segment ? AppTheme.CompactButtonHeight: AppTheme.ButtonHeight
         let ink = filled ? p.Paper: choice && !Primary ? p.Muted: p.Ink
         let rest = filled ? p.Ink: Kind == ButtonKind.Segment && Primary ? p.Paper: framed ? p.Surface: Color.Transparent
         let button = ActionButton{
@@ -99,25 +99,20 @@ data struct CommandButton {
             FontWeight: 400,
             FontSize: size,
             Height: height,
-            MinWidth: Kind == ButtonKind.Action ? 0: iconOnly ? 44: 24,
-            BorderRadius: Kind == ButtonKind.Tab ? 0: Kind == ButtonKind.Segment ? 3: AppTheme.ControlRadius,
+            MinWidth: iconOnly ? AppTheme.ButtonHeight: Kind == ButtonKind.Segment ? AppTheme.CompactButtonMinWidth: Kind == ButtonKind.Action ? AppTheme.ButtonMinWidth: AppTheme.QuietMinWidth,
+            BorderRadius: Kind == ButtonKind.Tab ? 0: AppTheme.ControlRadius,
             TransitionMs: AppTheme.Motion && !unavailable && !loading ? 180: 0,
         }.Build()
         button.MaxWidth = Percent(100)
         button.MinHeight = height
-        button.Height = Length.Auto
+        button.Height = height
         button.FlexDirection = FlexDirection.Row
         button.AlignItems = AlignItems.Center
         button.JustifyContent = JustifyContent.Center
-        button.Gap = iconOnly ? 0: 8
-        button.Padding = iconOnly ? Edges{Left: 0, Right: 0}: Kind == ButtonKind.Segment ? Edges{Left: 12, Right: 12, Top: 6, Bottom: 6}: Edges{
-            Left: 16,
-            Right: 16,
-            Top: 10,
-            Bottom: 10,
-        }
+        button.Gap = iconOnly ? 0: AppTheme.Space8
+        button.Padding = Edges{Left: iconOnly ? 0: AppTheme.Space16, Right: iconOnly ? 0: AppTheme.Space16}
         if iconOnly {
-            button.Width = 44
+            button.Width = AppTheme.ButtonHeight
         }
         if button is Button {
             if symbol != "" && !loading {
@@ -129,7 +124,7 @@ data struct CommandButton {
             if Count > 0 {
                 button.Children.Add(
                     Container{
-                        Padding: Edges{Left: 7, Right: 7, Top: 2, Bottom: 2},
+                        Padding: Edges{Left: AppTheme.Space8, Right: AppTheme.Space8, Top: AppTheme.Space4, Bottom: AppTheme.Space4},
                         BorderRadius: AppTheme.ControlRadius,
                         BackgroundColor: p.Accent,
                         Text{Content: Count.ToString(), FontFamily: AppTheme.BodyFont, FontSize: AppTheme.CodeSize, Color: p.Surface},
@@ -163,9 +158,9 @@ data struct CommandButton {
                 button.Children.Add(
                     Container{
                         Position: PositionType.Absolute,
-                        Left: 10,
-                        Right: 10,
-                        Bottom: 3,
+                        Left: AppTheme.Space12,
+                        Right: AppTheme.Space12,
+                        Bottom: AppTheme.Space4,
                         Height: 2,
                         BorderRadius: 1,
                         BackgroundColor: filled ? p.Paper: p.Accent,

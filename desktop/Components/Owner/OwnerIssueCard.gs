@@ -15,7 +15,6 @@ data struct OwnerIssueCard {
     var Reviews []DraftReview
     var CanWrite bool
     var SupportsApproval bool
-    var Compact bool
     var Button CommandButton
     var OnApproval Action?
     var OnReview Action[string]?
@@ -28,17 +27,16 @@ data struct OwnerIssueCard {
         let approved = Issue.IsApproved && !stale
         let look = AppTheme.Look(approved ? Tone.Done: Tone.Wait)
         let approval = Panel{
-            Compact: Compact,
             Children: []Blob{
                 Row{
-                    Gap: 16,
+                    Gap: AppTheme.Space16,
                     Children: []Blob{
                         MaterialIcons.Create(approved ? "task_alt": "radio_button_unchecked", 26, look.Edge),
                         Container{
                             FlexGrow: 1,
                             FlexBasis: 0,
-                            MinWidth: 200,
-                            Gap: 2,
+                            MinWidth: AppTheme.ShortFieldWidth,
+                            Gap: AppTheme.Space4,
                             Heading{Content: stale ? "Fresh owner approval required": approved ? "Approved for donation": "Not approved for donation", Size: AppTheme.ItemSize}.Build(),
                             Label{
                                 Content: stale ? Work!!.NextAction: approved ?
@@ -79,7 +77,7 @@ data struct OwnerIssueCard {
             lines.Add(ListRow{Children: []Blob{Label{Content: "No draft pull requests.", Muted: true}.Build()}}.Build())
         }
         return Stack{
-            Gap: 16,
+            Gap: AppTheme.Space16,
             Children: []Blob{
                 approval,
                 SectionPanel{
@@ -123,11 +121,11 @@ data struct OwnerIssueCard {
     private func Result(text string, unchecked bool, tone Tone) Blob {
         let look = AppTheme.Look(tone)
         return Container{
-            Width: 178,
+            Width: AppTheme.ShortFieldWidth,
             FlexShrink: 0,
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
-            Gap: 6,
+            Gap: AppTheme.Space8,
             MaterialIcons.Create(
                 unchecked ? "radio_button_unchecked": tone == Tone.Done ? "check_circle": tone == Tone.Fail ? "error": "schedule",
                 18,

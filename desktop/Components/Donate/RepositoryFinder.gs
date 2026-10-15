@@ -10,7 +10,6 @@ data struct RepositoryFinder {
     var Account string
     var Button CommandButton
     var Disabled bool
-    var Compact bool
     var RepositoryMode bool
     var OnInput Action[string]?
     var OnFind Action?
@@ -22,7 +21,7 @@ data struct RepositoryFinder {
                 Value: Input,
                 OnChange: OnInput,
                 Placeholder: "owner/repository",
-                Width: 540,
+                Width: AppTheme.WideFieldWidth,
                 Disabled: Disabled,
             }.Build(),
             Row{
@@ -39,6 +38,6 @@ data struct RepositoryFinder {
         if Account != "" {
             children.Add(DetailRow{Caption: "Account", Value: Account}.Build())
         }
-        return Panel{Compact: Compact, Children: children.ToArray()}.Build()
+        return Panel{Children: children.ToArray()}.Build()
     }
 }

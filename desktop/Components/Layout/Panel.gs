@@ -2,16 +2,15 @@ package TokateDesktop
 
 import Goo
 
-/// A bordered surface that groups related content. Compact panels use tighter padding.
+/// A bordered surface that groups related content.
 data struct Panel {
     var Children []Blob
-    var Compact bool
     var Name string?
 
     func Build() Container {
         let panel = Container{
-            Padding: Compact ? 20: 28,
-            Gap: 18,
+            Padding: AppTheme.CardPadding,
+            Gap: AppTheme.SectionGap,
             BackgroundColor: AppTheme.Current.Surface,
             BorderWidth: 1,
             BorderColor: AppTheme.Current.Line,

@@ -18,7 +18,5 @@ data struct PageContext {
     /// What a popup outside the page needs from the window.
     var Popup PopupInput
 
-    prop CompactPanels bool -> Metrics.ContentWidth < 650
-
-    prop NarrowContent bool -> Metrics.ContentWidth < 540
+    prop NarrowContent bool -> Metrics.ContentWidth < AppTheme.NarrowBreakpoint
 }

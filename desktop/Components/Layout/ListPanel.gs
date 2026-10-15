@@ -12,7 +12,7 @@ data struct ListPanel {
 
     func Build() Container {
         let panel = Panel{Children: Children}.Build()
-        panel.Padding = 8
+        panel.Padding = AppTheme.Space8
         panel.Gap = 0
         panel.FlexGrow = Fill && !Short ? 1: 0
         panel.FlexShrink = Short ? 0: 1

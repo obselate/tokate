@@ -12,7 +12,7 @@ data struct PageTitle {
     var Stacked bool
 
     func Build() Container {
-        let links = Row{Children: []Blob{}, Gap: 4}.Build()
+        let links = Row{Children: []Blob{}, Gap: AppTheme.Space4}.Build()
         if (Caption ?? "") != "" {
             links.Children.Add(Label{Content: Caption, Size: AppTheme.SmallSize, Muted: true}.Build())
         }
@@ -23,15 +23,15 @@ data struct PageTitle {
             FlexGrow: 1,
             FlexBasis: 0,
             MinWidth: 0,
-            Gap: 2,
+            Gap: AppTheme.Space4,
             Heading{Content: Title, Size: AppTheme.DisplaySize, MaxLines: 2}.Build(),
         }
-        let title = Container{FlexDirection: FlexDirection.Row, AlignItems: AlignItems.FlexStart, Gap: 16, copy}
+        let title = Container{FlexDirection: FlexDirection.Row, AlignItems: AlignItems.FlexStart, Gap: AppTheme.Space16, copy}
         if let trailing = Trailing {
             if Stacked {
-                copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: 6, Bottom: 6}, trailing})
+                copy.Children.Add(Container{AlignItems: AlignItems.FlexStart, Padding: Edges{Top: AppTheme.Space8, Bottom: AppTheme.Space8}, trailing})
             } else {
-                title.Children.Add(Container{Padding: Edges{Top: 8}, FlexShrink: 0, trailing})
+                title.Children.Add(Container{Padding: Edges{Top: AppTheme.Space8}, FlexShrink: 0, trailing})
             }
         }
         copy.Children.Add(links)

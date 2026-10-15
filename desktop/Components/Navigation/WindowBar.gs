@@ -33,16 +33,16 @@ open class WindowBar : Cell[WindowBarInput] {
             Icon: MaterialIcons.Create(input.Night ? "light_mode": "dark_mode", 20, p.Accent),
             AccessibilityName: input.Night ? "Switch to daylight": "Switch to moonlight",
             OnClick: () -> toggle?.Invoke(),
-            Width: 40,
-            Height: 32,
+            Width: AppTheme.ButtonHeight,
+            Height: AppTheme.CompactButtonHeight,
             BorderRadius: AppTheme.ControlRadius,
             HoverBackgroundColor: p.ChromeHover,
             ShowFocusHighlight: AppTheme.FocusVisible,
             FocusOutlineColor: p.Accent,
         }.Build()
         theme.Key = "theme"
-        let trailing = Row{Children: []Blob{theme}, Gap: 10, NoWrap: true}.Build()
-        trailing.Padding = Edges{Right: 12}
+        let trailing = Row{Children: []Blob{theme}, Gap: AppTheme.Space12, NoWrap: true}.Build()
+        trailing.Padding = Edges{Right: AppTheme.Space12}
         if input.Running != "" {
             let chip = ActivityChip{
                 Title: input.Running,
@@ -58,8 +58,8 @@ open class WindowBar : Cell[WindowBarInput] {
         }
         return WindowChrome{
             Host: input.Host,
-            Height: 42,
-            ControlWidth: 40,
+            Height: AppTheme.ButtonHeight,
+            ControlWidth: AppTheme.ButtonHeight,
             BackgroundColor: Color.Transparent,
             BorderColor: Color.Transparent,
             ControlColor: p.Muted,
@@ -78,8 +78,8 @@ open class WindowBar : Cell[WindowBarInput] {
             ),
             CreateControl: (options, command, content, action) -> Button{
                 Width: options.ControlWidth,
-                Height: 32,
-                Margin: Edges{Right: 4},
+                Height: AppTheme.CompactButtonHeight,
+                Margin: Edges{Right: AppTheme.Space4},
                 BorderRadius: AppTheme.ControlRadius,
                 Padding: 0,
                 AlignItems: AlignItems.Center,

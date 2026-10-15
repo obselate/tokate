@@ -12,7 +12,7 @@ data struct StepIndicator {
         let p = AppTheme.Current
         let progress = Row{
             Children: []Blob{},
-            Gap: 10,
+            Gap: AppTheme.Space12,
             Name: "Step " + (Current + 1).ToString() + " of " + Names.Length.ToString() + ": " + Names[Current],
         }.Build()
         for i in 0 ... Names.Length {
@@ -21,8 +21,8 @@ data struct StepIndicator {
                 Container{
                     FlexDirection: FlexDirection.Row,
                     AlignItems: AlignItems.Center,
-                    Gap: 8,
-                    Padding: Edges{Left: 12, Right: 12, Top: 8, Bottom: 8},
+                    Gap: AppTheme.Space8,
+                    Padding: Edges{Left: AppTheme.Space12, Right: AppTheme.Space12, Top: AppTheme.Space8, Bottom: AppTheme.Space8},
                     BorderRadius: AppTheme.ControlRadius,
                     BackgroundColor: active ? p.Surface: Color.Transparent,
                     BorderWidth: Edges{Bottom: active ? 2: 0},

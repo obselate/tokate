@@ -16,7 +16,7 @@ data struct Choices {
         let p = AppTheme.Current
         let choose = OnChoose
         let group = Container{
-            Gap: 4,
+            Gap: AppTheme.Space4,
             AlignItems: AlignItems.FlexStart,
             Accessibility: Accessibility{Role: AccessibilityRole.Group, Name: Name},
         }
@@ -27,9 +27,9 @@ data struct Choices {
                 Interaction.Keyboard(
                     Button{
                         MaxWidth: Percent(100),
-                        MinHeight: 36,
-                        Padding: Edges{Left: 6, Right: 10, Top: 4, Bottom: 4},
-                        Gap: 10,
+                        MinHeight: AppTheme.CompactButtonHeight,
+                        Padding: Edges{Left: AppTheme.Space8, Right: AppTheme.Space12, Top: AppTheme.Space4, Bottom: AppTheme.Space4},
+                        Gap: AppTheme.Space12,
                         FlexDirection: FlexDirection.Row,
                         AlignItems: AlignItems.Center,
                         BackgroundColor: Color.Transparent,

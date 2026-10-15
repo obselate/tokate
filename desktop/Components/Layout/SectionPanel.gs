@@ -18,7 +18,7 @@ data struct SectionPanel {
             Children: []Blob{
                 Row{
                     Align: AlignItems.Baseline,
-                    Gap: 10,
+                    Gap: AppTheme.Space12,
                     NoWrap: true,
                     Children: []Blob{
                         Heading{Content: Title, Size: AppTheme.ItemSize}.Build(),
@@ -48,7 +48,7 @@ data struct SectionPanel {
             panel.Children.Add(Rule{}.Build())
             panel.Children.Add(
                 Container{
-                    Padding: Edges{Left: 20, Right: 20, Top: 12, Bottom: 12},
+                    Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24, Top: AppTheme.Space12, Bottom: AppTheme.Space12},
                     Label{Content: Note, Size: AppTheme.SmallSize, Muted: true}.Build(),
                 }
             )

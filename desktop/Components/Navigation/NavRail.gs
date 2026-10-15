@@ -17,11 +17,11 @@ data struct NavRail {
         if Compact {
             let bar = Container{
                 Key: "navigation",
-                Height: 46,
+                Height: AppTheme.ButtonHeight,
                 FlexShrink: 0,
                 FlexDirection: FlexDirection.Row,
-                Padding: Edges{Left: 8, Right: 8, Bottom: 4},
-                Gap: 2,
+                Padding: Edges{Left: AppTheme.Space8, Right: AppTheme.Space8, Bottom: AppTheme.Space4},
+                Gap: AppTheme.Space4,
                 BorderWidth: Edges{Bottom: 1},
                 BorderColor: AppTheme.Current.Line,
             }
@@ -35,18 +35,18 @@ data struct NavRail {
         }
         let rail = Container{
             Key: "navigation",
-            Width: Narrow ? 202: 226,
+            Width: Narrow ? AppTheme.NarrowRailWidth: AppTheme.RailWidth,
             FlexShrink: 0,
-            Padding: Edges{Left: 20, Right: 20, Bottom: 24},
+            Padding: Edges{Left: AppTheme.Space24, Right: AppTheme.Space24, Bottom: AppTheme.Space24},
             BorderWidth: Edges{Right: 1},
             BorderColor: AppTheme.Current.Line,
-            Gap: 10,
+            Gap: AppTheme.Space12,
         }
         if let header = Header {
-            rail.Children.Add(Window.DragRegion(Container{Padding: Edges{Top: 28}, header}))
-            rail.Children.Add(Rule{Spacing: 14}.Build())
+            rail.Children.Add(Window.DragRegion(Container{Padding: Edges{Top: AppTheme.Space24}, header}))
+            rail.Children.Add(Rule{Spacing: AppTheme.Space16}.Build())
         } else {
-            rail.Padding = Edges{Left: 20, Right: 20, Top: 28, Bottom: 24}
+            rail.Padding = Edges{Left: AppTheme.Space24, Right: AppTheme.Space24, Top: AppTheme.Space24, Bottom: AppTheme.Space24}
         }
         for item in items {
             rail.Children.Add(item)

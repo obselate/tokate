@@ -13,7 +13,6 @@ data struct ConfirmDialog {
     var Content Blob?
     var ConfirmLabel string
     var WindowWidth float64
-    var Compact bool
     var Short bool
     var KeyBindings []KeyBinding?
     var OnKeyDown Action[KeyEvent]?
@@ -40,9 +39,9 @@ data struct ConfirmDialog {
                     Content ?? Label{Content: Text}.Build(),
                 },
                 AccessibilityName: Title,
-                Width: Math.Min(580, WindowWidth - 32),
-                Padding: Compact ? 20: 30,
-                Gap: Short ? 12: 20,
+                Width: Math.Min(AppTheme.WideFieldWidth, WindowWidth - AppTheme.PageGutter * 2),
+                Padding: AppTheme.CardPadding,
+                Gap: Short ? AppTheme.Space12: AppTheme.Space24,
                 BackgroundColor: AppTheme.Current.Surface,
                 BorderColor: AppTheme.Current.Line,
                 CancelText: "Go back",
@@ -74,8 +73,9 @@ data struct ConfirmDialog {
 
     shared {
         private func DialogButton(title string, content Blob, primary bool) Button -> Button{
-            Height: 44,
-            Padding: Edges{Left: 16, Right: 16},
+            Height: AppTheme.ButtonHeight,
+            MinWidth: AppTheme.ButtonMinWidth,
+            Padding: Edges{Left: AppTheme.Space16, Right: AppTheme.Space16},
             BorderWidth: 1,
             BorderColor: primary ? AppTheme.Current.Ink: AppTheme.Current.Line,
             BorderRadius: AppTheme.ControlRadius,

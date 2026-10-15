@@ -16,15 +16,15 @@ data struct NavItem {
         let p = AppTheme.Current
         let choose = OnSelect
         let button = Button{
-            Height: Compact ? 42: 50,
+            Height: AppTheme.ButtonHeight,
             FlexGrow: Compact ? 1: 0,
             FlexBasis: Compact ? Length(0): Length.Auto,
             MinWidth: 0,
-            Padding: Edges{Left: Compact ? 6: 14, Right: Compact ? 6: 14},
+            Padding: Edges{Left: Compact ? AppTheme.Space8: AppTheme.Space16, Right: Compact ? AppTheme.Space8: AppTheme.Space16},
             BorderRadius: AppTheme.ControlRadius,
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
-            Gap: 16,
+            Gap: AppTheme.Space16,
             JustifyContent: Compact ? JustifyContent.Center: JustifyContent.FlexStart,
             BackgroundColor: Selected ? p.Surface: Color.Transparent,
             BorderWidth: 0,
@@ -47,8 +47,8 @@ data struct NavItem {
             indicator.Bottom = 0
             indicator.Height = 2
         } else {
-            indicator.Top = 6
-            indicator.Bottom = 6
+            indicator.Top = AppTheme.Space8
+            indicator.Bottom = AppTheme.Space8
             indicator.Width = 2
         }
         button.Children.Insert(0, indicator)

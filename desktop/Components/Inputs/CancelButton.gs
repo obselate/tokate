@@ -12,7 +12,9 @@ data struct CancelButton {
         let cancel = OnCancel
         return Interaction.Keyboard(
             Button{
-                Padding: Edges{Left: 14, Right: 14, Top: 8, Bottom: 8},
+                Height: AppTheme.ButtonHeight,
+                MinWidth: AppTheme.ButtonMinWidth,
+                Padding: Edges{Left: AppTheme.Space16, Right: AppTheme.Space16},
                 BorderWidth: 1,
                 BorderColor: AppTheme.Current.Line,
                 BorderRadius: AppTheme.ControlRadius,

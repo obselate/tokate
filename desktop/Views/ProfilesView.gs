@@ -61,13 +61,12 @@ class ProfilesView {
                 }.Build()
             )
         }
-        return Stack{Gap: 20, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 
     private func Form(page PageContext, state ProfilesState) Blob {
         let draft = state.Draft
         return Panel{
-            Compact: page.CompactPanels,
             Name: "Profile settings",
             Children: []Blob{
                 IconHeading{
@@ -81,11 +80,11 @@ class ProfilesView {
                     Value: state.Name,
                     OnChange: name -> profiles.SetName(name),
                     Placeholder: "A short name",
-                    Width: 230,
+                    Width: AppTheme.ShortFieldWidth,
                     Disabled: page.Busy || state.Editing != "",
                 }.Build(),
                 Stack{
-                    Gap: 6,
+                    Gap: AppTheme.Space8,
                     Children: []Blob{
                         Label{Content: "Harness", Size: AppTheme.SmallSize, Muted: true}.Build(),
                         HarnessPicker{

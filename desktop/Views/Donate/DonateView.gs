@@ -54,7 +54,7 @@ class DonateView {
         } else {
             body.AddRange(review.Build(page))
         }
-        return Stack{Gap: 20, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 
     /// The page title and the step indicator. Step IV names the issue and links to it.
@@ -95,6 +95,6 @@ class DonateView {
                 Current: DonationSteps.Index(step),
             }.Build()
         )
-        return Stack{Gap: step == DonationStep.Donation ? 8: 18, Children: children.ToArray()}.Build()
+        return Stack{Gap: step == DonationStep.Donation ? AppTheme.Space8: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 }

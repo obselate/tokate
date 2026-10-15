@@ -10,7 +10,7 @@ data struct Meter {
 
     func Build() Blob {
         let p = AppTheme.Current
-        let track = Container{FlexDirection: FlexDirection.Row, Gap: 3, Height: 8}
+        let track = Container{FlexDirection: FlexDirection.Row, Gap: AppTheme.Space4, Height: AppTheme.Space8}
         for i in 0 ... Parts.Length {
             track.Children.Add(
                 Container{

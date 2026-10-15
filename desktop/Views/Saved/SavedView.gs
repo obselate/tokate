@@ -56,7 +56,6 @@ class SavedView {
                     Path: state.RunPath,
                     Button: page.Button,
                     Disabled: page.Busy,
-                    Compact: page.CompactPanels,
                     OnPath: value -> saved.SetRunPath(value),
                     OnOpen: () -> saved.LoadRun(),
                 }.Build()
@@ -65,6 +64,6 @@ class SavedView {
         if state.Loaded && !state.Selected {
             body.AddRange(list.Build(page))
         }
-        return Stack{Gap: 16, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 }

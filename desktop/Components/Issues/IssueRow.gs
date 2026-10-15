@@ -20,11 +20,11 @@ data struct IssueRow {
         let number = Issue.NumberText
         let row = Button{
             Key: number,
-            MinHeight: 52,
-            Padding: Edges{Left: 14, Right: 6, Top: 6, Bottom: 6},
+            MinHeight: AppTheme.RowHeight,
+            Padding: Edges{Left: AppTheme.Space16, Right: AppTheme.Space16, Top: AppTheme.Space12, Bottom: AppTheme.Space12},
             FlexDirection: FlexDirection.Row,
             AlignItems: AlignItems.Center,
-            Gap: 12,
+            Gap: AppTheme.Space12,
             BorderWidth: Edges{Bottom: Last ? 0: 1},
             BorderColor: p.Line,
             BackgroundColor: Color.Transparent,
@@ -34,7 +34,7 @@ data struct IssueRow {
             Disabled: Disabled,
             Accessibility: Accessibility{Role: AccessibilityRole.Button, Name: "Issue #" + number + ": " + Issue.Title},
             OnClick: () -> choose?.Invoke(),
-            Container{Width: 56, FlexShrink: 0, Label{Content: "#" + number, Muted: true}.Build()},
+            Container{Width: AppTheme.IssueNumberWidth, FlexShrink: 0, Label{Content: "#" + number, Muted: true}.Build()},
             Container{
                 FlexGrow: 1,
                 FlexBasis: 0,
@@ -49,7 +49,7 @@ data struct IssueRow {
                 row.Children.Add(
                     Container{
                         FlexShrink: 0,
-                        Padding: Edges{Left: 8, Right: 8, Top: 2, Bottom: 2},
+                        Padding: Edges{Left: AppTheme.Space8, Right: AppTheme.Space8, Top: AppTheme.Space4, Bottom: AppTheme.Space4},
                         BorderWidth: 1,
                         BorderColor: p.Line,
                         BorderRadius: 12,

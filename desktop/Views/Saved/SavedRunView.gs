@@ -86,7 +86,6 @@ class SavedRunView {
                 Item: state.Chosen,
                 Actions: state.Actions,
                 Button: page.Button,
-                Compact: page.CompactPanels,
                 Narrow: page.NarrowContent,
                 Form: form,
                 Note: state.Note,
@@ -96,7 +95,7 @@ class SavedRunView {
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
                 OnFollow: action -> saved.Follow(action),
             }.Build(),
-            RunFacts{Item: state.Chosen, Compact: page.CompactPanels, Stacked: page.Metrics.ContentWidth < 740}.Build(),
+            RunFacts{Item: state.Chosen, Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint}.Build(),
         }
     }
 }

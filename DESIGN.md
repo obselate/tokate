@@ -108,6 +108,20 @@ The token sizes describe the site's hierarchy. Scale display type fluidly and
 check wrapping at narrow widths. Keep body copy around 18px and comfortably
 spaced. Longer documents can increase line height without enlarging every heading.
 
+## System
+
+- Desktop spacing: 4, 8, 12, 16, 24, 32px.
+- Content: 1050px maximum, 24px gutters.
+- Columns: 1 below 740px content width, otherwise 2 equal columns, 320px minimum, 24px gap.
+- Cards: 24px padding, 8px radius.
+- Sections: 24px gap. Heading detail: 8px. Title caption: 4px.
+- Primary and secondary buttons: 44px height, 96px minimum width.
+- Quiet buttons: 44px height, 64px minimum width. Icons: 44px square.
+- Compact buttons: 36px height, 64px minimum width.
+- Fields: 44px height, 192/400/540px width, 12px horizontal padding, 5px radius.
+- Labels: Newsreader, 16px, 400, muted ink, 8px field gap.
+- Lists: 64px minimum rows. Tables: 8px inset, 16px horizontal and 12px vertical row padding.
+
 ## Layout
 
 Use generous margins and a clear reading order. Center a short promotional hero,

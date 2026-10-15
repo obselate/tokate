@@ -2,27 +2,6 @@ package TokateDesktop
 
 import System
 
-enum RunState {
-    Unknown,
-    ClaimPending,
-    Requested,
-    ApprovalWaiting,
-    Preparing,
-    Claimed,
-    Running,
-    Verifying,
-    Generated,
-    IncompleteGenerated,
-    Verified,
-    Publishing,
-    Published,
-    Completed,
-    Failed,
-    Interrupted,
-    Unavailable,
-    StaleRemoteData
-}
-
 data struct Run {
     var Path string
     var Repo string
@@ -54,8 +33,6 @@ data struct Run {
     var Guidance string
     var Warning string
 
-    prop Kind RunState -> Run.Parse(State)
-
     prop Identity string -> Repo + " #" + Issue.ToString()
 
     /// True when the run names the whole tool of the donation, which a tool declaration needs.
@@ -81,27 +58,6 @@ data struct Run {
 
     shared {
         func Minutes(seconds int32) string -> (seconds / 60).ToString() + (seconds / 60 == 1 ? " minute": " minutes")
-
-        func Parse(state string) RunState -> switch state {
-            case "claim_pending": RunState.ClaimPending
-            case "requested": RunState.Requested
-            case "approval_waiting": RunState.ApprovalWaiting
-            case "preparing": RunState.Preparing
-            case "claimed": RunState.Claimed
-            case "running": RunState.Running
-            case "verifying": RunState.Verifying
-            case "generated": RunState.Generated
-            case "incomplete_generated": RunState.IncompleteGenerated
-            case "verified": RunState.Verified
-            case "publishing": RunState.Publishing
-            case "published": RunState.Published
-            case "completed": RunState.Completed
-            case "failed": RunState.Failed
-            case "interrupted": RunState.Interrupted
-            case "unavailable": RunState.Unavailable
-            case "stale_remote_data": RunState.StaleRemoteData
-            default: RunState.Unknown
-        }
 
         let Empty Run = Run{
             Path: "",

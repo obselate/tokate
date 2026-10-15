@@ -19,7 +19,6 @@ class AccessTab {
         if state.Access.Loaded && state.Access.AccessSha == "" {
             body.Add(
                 Panel{
-                    Compact: page.CompactPanels,
                     Children: []Blob{
                         Row{
                             Children: []Blob{
@@ -59,6 +58,6 @@ class AccessTab {
                 }
             )
         )
-        return Stack{Gap: 16, Children: body.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
     }
 }

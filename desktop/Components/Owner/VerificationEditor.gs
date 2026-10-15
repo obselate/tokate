@@ -31,12 +31,12 @@ open class VerificationEditor : Cell[SetupEditorInput] {
             let current = index
             lines.Add(
                 Row{
-                    Gap: 16,
+                    Gap: AppTheme.Space16,
                     Children: []Blob{
                         Container{
                             FlexGrow: 1,
                             FlexBasis: 0,
-                            MinWidth: 200,
+                            MinWidth: AppTheme.ShortFieldWidth,
                             Label{Content: String.Join(" ", commands[index]), Mono: true}.Build(),
                         },
                         (input.Button with{
@@ -51,7 +51,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
             lines.Add(Rule{}.Build())
         }
         if lines.Count > 1 {
-            rows.Add(Stack{Gap: 6, Children: lines.ToArray()}.Build())
+            rows.Add(Stack{Gap: AppTheme.Space8, Children: lines.ToArray()}.Build())
         }
         rows.Add(
             Row{
@@ -64,7 +64,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
                             command = value
                         },
                         Placeholder: "dotnet test",
-                        Width: 520,
+                        Width: AppTheme.WideFieldWidth,
                         Disabled: input.Busy,
                     }.Build(),
                     (input.Button with{
@@ -78,7 +78,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
                 },
             }.Build()
         )
-        return Stack{Gap: 18, Children: rows.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: rows.ToArray()}.Build()
     }
 
     shared {

@@ -28,7 +28,7 @@ data struct LineList {
             children.Add(
                 Row{
                     NoWrap: true,
-                    Gap: 4,
+                    Gap: AppTheme.Space4,
                     Align: AlignItems.FlexStart,
                     Children: []Blob{
                         InputField{
@@ -79,6 +79,6 @@ data struct LineList {
                 },
             }.Build()
         )
-        return Stack{Gap: 8, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space8, Children: children.ToArray()}.Build()
     }
 }

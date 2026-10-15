@@ -8,7 +8,6 @@ data struct HarnessEditorInput {
     var Owner OwnerService
     var Logo Func[string, Blob]
     var Busy bool
-    var Compact bool
     var Button CommandButton
 }
 
@@ -78,11 +77,11 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
         }
         children.Add(InputField{
             Label: "Command provider", Value: commandProvider, OnChange: value -> {commandProvider = value},
-            Placeholder: "my-tool", Width: 260, Disabled: input.Busy,
+            Placeholder: "my-tool", Width: AppTheme.ShortFieldWidth, Disabled: input.Busy,
         }.Build())
         children.Add(InputField{
             Label: "Command argv", Value: commandArgv, OnChange: value -> {commandArgv = value},
-            Placeholder: "[\"my-tool\",\"--model\",\"{model}\",\"{prompt_file}\"]", Width: 650, Disabled: input.Busy,
+            Placeholder: "[\"my-tool\",\"--model\",\"{model}\",\"{prompt_file}\"]", Width: AppTheme.WideFieldWidth, Disabled: input.Busy,
         }.Build())
         children.Add(PresetGroup{
             Button: input.Button, Labels: []string{"codex", "claude", "session"},
@@ -106,7 +105,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                 }.Build()
             )
         }
-        return Panel{Compact: input.Compact, Children: children.ToArray()}.Build()
+        return Panel{Children: children.ToArray()}.Build()
     }
 
     private func Known(pair string) bool {
@@ -125,7 +124,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             let current = name
             checks.Add(
                 Container{
-                    Width: 200,
+                    Width: AppTheme.ShortFieldWidth,
                     AlignItems: AlignItems.FlexStart,
                     Check{
                         Label: name,
@@ -138,7 +137,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
         }
         let children = List[Blob]{
             Stack{
-                Gap: 4,
+                Gap: AppTheme.Space4,
                 Children: []Blob{
                     Heading{Content: "OMP providers", Size: AppTheme.ItemSize}.Build(),
                     Label{
@@ -150,7 +149,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             }.Build(),
         }
         if checks.Count > 0 {
-            children.Add(Row{Gap: 10, Children: checks.ToArray()}.Build())
+            children.Add(Row{Gap: AppTheme.Space12, Children: checks.ToArray()}.Build())
         }
         children.Add(
             Row{
@@ -163,7 +162,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                             provider = value
                         },
                         Placeholder: "Provider name",
-                        Width: 260,
+                        Width: AppTheme.ShortFieldWidth,
                         Disabled: input.Busy,
                     }.Build(),
                     (input.Button with{
@@ -179,7 +178,7 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
                 },
             }.Build()
         )
-        return Stack{Gap: 14, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: children.ToArray()}.Build()
     }
 
     shared {

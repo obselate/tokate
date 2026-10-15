@@ -8,12 +8,10 @@ data struct RunOpener {
     var Path string
     var Button CommandButton
     var Disabled bool
-    var Compact bool
     var OnPath Action[string]?
     var OnOpen Action?
 
     func Build() Blob -> Panel{
-        Compact: Compact,
         Children: []Blob{
             Row{
                 Children: []Blob{
@@ -22,7 +20,7 @@ data struct RunOpener {
                         Value: Path,
                         OnChange: OnPath,
                         Placeholder: "Path printed by Tokate",
-                        Width: 560,
+                        Width: AppTheme.WideFieldWidth,
                         Disabled: Disabled,
                     }.Build(),
                     (Button with{Label = "Open run", OnClick = OnOpen, Primary = true, Disabled = Path == ""}).Build(),

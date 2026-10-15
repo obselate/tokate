@@ -34,8 +34,8 @@ data struct Dropdown {
             Container{
                 Width: Width,
                 MaxWidth: Percent(100),
-                Gap: 6,
-                Label{Content: Caption, Size: AppTheme.SmallSize, Muted: true}.Build(),
+                Gap: AppTheme.Space8,
+                Label{Content: Caption, Size: AppTheme.LabelSize, Muted: true}.Build(),
                 Container{
                     Position: PositionType.Relative,
                     Cell.Mount[ComboBoxInput, ComboBox](
@@ -50,14 +50,14 @@ data struct Dropdown {
                             AccessibilityName: Caption,
                             Disabled: Disabled || Options.Length == 0,
                             Width: Width,
-                            RowHeight: 40,
+                            RowHeight: AppTheme.FieldHeight,
                             CreateRoot: (input, root) -> {
                                 root.MaxWidth = Percent(100)
                                 return root
                             },
                             CreateTrigger: (input, button) -> {
                                 let p = AppTheme.Current
-                                button.Height = 44
+                                button.Height = AppTheme.FieldHeight
                                 button.BackgroundColor = p.Surface
                                 button.BorderColor = p.Line
                                 button.BorderRadius = AppTheme.ControlRadius
@@ -93,7 +93,7 @@ data struct Dropdown {
                     ),
                     Container{
                         Position: PositionType.Absolute,
-                        Right: 12,
+                        Right: AppTheme.Space12,
                         Top: 0,
                         Bottom: 0,
                         JustifyContent: JustifyContent.Center,

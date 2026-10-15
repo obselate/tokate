@@ -7,7 +7,6 @@ import System.Collections.Generic
 /// The settings of a selected saved run, its pull request and its run directory. `Stacked` uses one column.
 data struct RunFacts {
     var Item SavedRun
-    var Compact bool
     var Stacked bool
 
     func Build() Blob {
@@ -39,14 +38,13 @@ data struct RunFacts {
         }
         let half = (facts.Count + 1) / 2
         return Panel{
-            Compact: Compact,
             Children: []Blob{
                 Columns{
                     Stacked: Stacked,
-                    Gap: Stacked ? 10: 28,
+                    Gap: Stacked ? AppTheme.Space12: AppTheme.Space24,
                     Children: []Blob{
-                        Stack{Gap: 10, Children: facts.GetRange(0, half).ToArray()}.Build(),
-                        Stack{Gap: 10, Children: facts.GetRange(half, facts.Count - half).ToArray()}.Build(),
+                        Stack{Gap: AppTheme.Space12, Children: facts.GetRange(0, half).ToArray()}.Build(),
+                        Stack{Gap: AppTheme.Space12, Children: facts.GetRange(half, facts.Count - half).ToArray()}.Build(),
                     },
                 }.Build(),
                 DetailRow{Caption: "Run directory", Value: Item.Path, Mono: true}.Build(),

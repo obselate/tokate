@@ -15,8 +15,8 @@ data struct EmptyMessage {
             FlexGrow: 1,
             AlignItems: AlignItems.Center,
             JustifyContent: JustifyContent.Center,
-            Gap: 10,
-            Padding: 28,
+            Gap: AppTheme.Space12,
+            Padding: AppTheme.Space24,
             MaterialIcons.Create(Icon, 40, AppTheme.Current.Muted),
             message,
         }

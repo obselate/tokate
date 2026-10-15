@@ -219,15 +219,6 @@ data struct OwnerState {
         return result.ToArray()
     }
 
-    func ReviewFor(pr string) DraftReview {
-        for item in Reviews {
-            if item.Pr == pr {
-                return item
-            }
-        }
-        return DraftReview{Pr: pr, Receipt: "", Ci: ""}
-    }
-
     func WorkFor(number string) IssueWork? {
         for item in Work {
             if item.Issue == number {

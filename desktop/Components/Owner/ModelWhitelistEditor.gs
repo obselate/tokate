@@ -33,9 +33,9 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
             }
             allowed.Add(
                 Row{
-                    Gap: 16,
+                    Gap: AppTheme.Space16,
                     Children: []Blob{
-                        Container{FlexGrow: 1, FlexBasis: 0, MinWidth: 200, Label{Content: key, Mono: true}.Build()},
+                        Container{FlexGrow: 1, FlexBasis: 0, MinWidth: AppTheme.ShortFieldWidth, Label{Content: key, Mono: true}.Build()},
                         Label{Content: String.Join(", ", levels), Size: AppTheme.SmallSize, Muted: true}.Build(),
                         (input.Button with{
                             Label = "Remove",
@@ -49,7 +49,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
             allowed.Add(Rule{}.Build())
         }
         if allowed.Count > 1 {
-            rows.Add(Stack{Gap: 6, Children: allowed.ToArray()}.Build())
+            rows.Add(Stack{Gap: AppTheme.Space8, Children: allowed.ToArray()}.Build())
         }
         let fields = List[Blob]()
         if sources.Length > 1 {
@@ -61,7 +61,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
                     OnChange: value -> {
                         source = value
                     },
-                    Width: 210,
+                    Width: AppTheme.ShortFieldWidth,
                     Disabled: input.Busy,
                     Popup: input.Popup,
                 }.Build()
@@ -77,7 +77,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
                         model = value
                     },
                     Placeholder: "Exact model ID",
-                    Width: 320,
+                    Width: AppTheme.FieldWidth,
                     Disabled: input.Busy,
                 }.Build()
             )
@@ -100,7 +100,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
                         model = value
                         efforts = List[string](Array.Find(catalog, choice -> choice.Slug == value).Efforts)
                     },
-                    Width: 320,
+                    Width: AppTheme.FieldWidth,
                     Searchable: models.Count > 12,
                     Disabled: input.Busy,
                     Popup: input.Popup,
@@ -129,10 +129,10 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
             }
             rows.Add(
                 Stack{
-                    Gap: 8,
+                    Gap: AppTheme.Space8,
                     Children: []Blob{
                         Label{Content: "Reasoning efforts", Size: AppTheme.SmallSize, Muted: true}.Build(),
-                        Row{Gap: 22, Children: checks.ToArray()}.Build(),
+                        Row{Gap: AppTheme.Space24, Children: checks.ToArray()}.Build(),
                     },
                 }.Build()
             )
@@ -157,7 +157,7 @@ open class ModelWhitelistEditor : Cell[SetupEditorInput] {
                 },
             }.Build()
         )
-        return Stack{Gap: 18, Children: rows.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: rows.ToArray()}.Build()
     }
 
     private func Clear() {

@@ -45,7 +45,7 @@ data struct IssueSearchBar {
                         Value: Listing.Query,
                         OnChange: OnQuery,
                         Placeholder: "Title keywords or #number",
-                        Width: 320,
+                        Width: AppTheme.FieldWidth,
                         OnSubmit: search,
                         Disabled: Disabled,
                     }.Build(),
@@ -53,7 +53,7 @@ data struct IssueSearchBar {
                 },
             }.Build()
         )
-        let body = Stack{Gap: 12, Children: []Blob{bar}}.Build()
+        let body = Stack{Gap: AppTheme.Space12, Children: []Blob{bar}}.Build()
         if Listing.Truncated {
             body.Children.Add(Label{Content: "Refine your search to see all matching issues.", Size: AppTheme.SmallSize}.Build())
         }

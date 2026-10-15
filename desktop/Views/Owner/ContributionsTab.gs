@@ -63,7 +63,6 @@ class ContributionsTab {
                     Reviews: state.Reviews,
                     CanWrite: state.Project.CanWrite,
                     SupportsApproval: state.Policy.Version >= 2,
-                    Compact: page.CompactPanels,
                     Button: page.Button,
                     OnApproval: () -> {
                         if issue.IsApproved && !needsApproval {

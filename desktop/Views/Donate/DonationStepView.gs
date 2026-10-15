@@ -53,7 +53,7 @@ class DonationStepView {
                 children.Add(Callout{Message: message, Tone: tone}.Build())
             }
             children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
-            return Stack{Gap: 16, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
+            return Stack{Gap: AppTheme.SectionGap, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
         }
         if message != "" {
             children.Add(Callout{Message: message, Tone: tone}.Build())
@@ -70,7 +70,7 @@ class DonationStepView {
                 Button: page.Button,
                 Busy: page.Busy,
                 Cancellable: page.BusyHere,
-                Stacked: page.Metrics.ContentWidth < 740,
+                Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint,
                 OnStart: () -> donation.Start(),
                 OnInspectSaved: () -> navigate(Destination.Saved),
                 OnNew: () -> donation.NewDonation(),
@@ -78,6 +78,6 @@ class DonationStepView {
             }.Build()
         )
         children.Add(DonationRun{Progress: progress, Short: page.Metrics.Short, Button: page.Button}.Build())
-        return Stack{Gap: 16, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
+        return Stack{Gap: AppTheme.SectionGap, Fill: !page.Metrics.Short, Children: children.ToArray()}.Build()
     }
 }

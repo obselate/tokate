@@ -36,7 +36,7 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
                             name = value
                         },
                         Placeholder: "build",
-                        Width: 360,
+                        Width: AppTheme.FieldWidth,
                         Disabled: input.Busy,
                     }.Build(),
                     (input.Button with{
@@ -50,7 +50,7 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
                 },
             }.Build()
         )
-        return Stack{Gap: 18, Children: rows.ToArray()}.Build()
+        return Stack{Gap: AppTheme.Space16, Children: rows.ToArray()}.Build()
     }
 
     shared {
