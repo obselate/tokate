@@ -8,11 +8,21 @@ import System.Text.RegularExpressions
 
 internal class CoordinationState {
     internal var Sha string = ""
+    internal var Commit string = ""
     internal let Fields Dictionary[string, Object?] = Dictionary[string, Object?]()
 
     internal func Value() JsonElement -> J.Parse(J.Write(Fields))
 
-    internal func Write(repo string, issue int32, expected string, expires int64 = 0) {
+    internal func Write(repo string, issue int32, expected string, expires int64 = 0, rejection bool = false) {
+        if Sha != "" && expected != Sha {
+            throw CliFailure("stale_approval", "Coordination changed before state update")
+        }
+        let parent = Commit == "" ? expected: Commit
+        if rejection {
+            Fields["revision"] = Sha
+        } else {
+            Fields.Remove("revision")
+        }
         let tree = GitHub.Api(
             "repos/" + repo + "/git/trees",
             map[string, Object?]{
@@ -33,7 +43,7 @@ internal class CoordinationState {
             GitHub.AutomationCommit(
                 "Tokate coordination #" + issue.ToString(),
                 J.Text(tree, "sha"),
-                []string{expected},
+                []string{parent},
                 GitHub.Bot()
             ),
             expires: expires
@@ -76,18 +86,21 @@ internal class CoordinationState {
                     ApiTransport.Settle()
                     let current = Load(repo, issue)
 
-                    if current.Sha == next {
+                    if current.Commit == next {
                         break
                     }
 
-                    if current.Sha != expected {
+                    if current.Commit != parent {
                         throw error
                     }
                 }
             }
         }
 
-        Sha = next
+        Commit = next
+        if !rejection {
+            Sha = next
+        }
     }
 
     internal func Check(repo string, issue int32, donor string, actor JsonElement) JsonElement {
@@ -175,9 +188,11 @@ internal class CoordinationState {
 
         internal func At(repo string, issue int32, sha string) CoordinationState {
             let result = CoordinationState()
-            result.Sha = RepositoryIdentity.CommitSha(sha)
+            result.Commit = RepositoryIdentity.CommitSha(sha)
 
-            let value = RequestData.Parse(GitHub.FileAt(repo, "state.json", result.Sha), 1024 * 1024)
+            let value = RequestData.Parse(GitHub.FileAt(repo, "state.json", result.Commit), 1024 * 1024)
+            result.Sha = J.Text(value, "revision") == "" ? result.Commit:
+            RepositoryIdentity.CommitSha(J.Text(value, "revision"))
             let stateVersion = J.Number(value, "version")
             let stateRepo = J.Text(value, "repo")
             let stateIssue = J.Number(value, "issue")

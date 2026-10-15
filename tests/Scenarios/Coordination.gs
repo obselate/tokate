@@ -391,7 +391,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let replay = Coordinate(path, traffic: true)
-        Flow.Traffic(13, 0, 0, replay)
+        Flow.Traffic(12, 0, 0, replay)
         Check.That(Check.Text(State()["sha"]) == Check.Text(state["sha"]), "Replay wrote state")
         let changed = request.DeepClone()
         changed["metadata"] = Check.Map("command", "touch /tmp/unsafe")
@@ -923,7 +923,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.ResetTraffic()
         let duplicate = Coordinate(path, traffic: true)
-        Flow.Traffic(13, 0, 0, duplicate)
+        Flow.Traffic(12, 0, 0, duplicate)
         Flow.Receipt("owner/project#10", owner: true)
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
         Expire()
@@ -1309,16 +1309,26 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Check.That(Check.Text(call["method"]) == "GET", "Recorded request repeated a write")
         }
         Check.That(Check.Text(State()["sha"]) == revision, "Replay changed a recorded request")
-        Check.That(
-            (Flow.State["api_calls"]?.ToJsonString() ?? "").Contains("since="),
-            "Replay did not bound comment inspection by the current approval time"
-        )
         Coordinate(Event(fresh))
         Check.That(
             Check.Text(State()["state"]?["reservation"]?["status"]) == "released",
             "Stale earlier request blocked a later valid request"
         )
         Flow.Reload()
+        var rejected bool
+        for entry in State()["state"]?["outcomes"]?.AsArray() ?? throw Exception("Missing outcomes") {
+            if Check.Text(entry["uuid"]) == Check.Text(stale["uuid"]) {
+                rejected = Check.Text(entry["outcome"]?["rejected"]) == "true"
+            }
+        }
+        Check.That(
+            Check.Text(fresh["expected"]) == revision && rejected,
+            "An earlier rejection invalidated the fresh request revision"
+        )
+        Check.That(
+            (Flow.State["api_calls"]?.ToJsonString() ?? "").Contains("since="),
+            "Request did not bound comment inspection by the current approval time"
+        )
         let busy = Flow.State["comments"] ?? throw Exception("Missing comments")
         for index in 0 ... 1000 {
             Comment++

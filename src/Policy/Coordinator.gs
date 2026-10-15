@@ -271,6 +271,11 @@ internal class Coordinator {
             RequestData.Request(request)
 
             var state = CoordinationState.Load(repo, number)
+            let recorded = RequestData.Recorded(state.Value(), actor, request)
+            if recorded.ValueKind != JsonValueKind.Undefined {
+                Replay(repo, number, state, request, actor, donor, recorded)
+                return
+            }
             if !pending {
                 state = Pending(repo, event, commentId, state)
             }
@@ -293,7 +298,7 @@ internal class Coordinator {
             var record JsonElement
             var outcome Object = map[string, Object?]{}
             var rejection CliFailure? = nil
-            let previous = state.Sha
+            let previous = state.Commit
             let originalExpiry = J.Get(initial, "reservation")
                 .ValueKind == JsonValueKind.Object ? CoordinationState.Unix(J.Get(initial, "reservation"), "expires"): 0
 
@@ -505,7 +510,7 @@ internal class Coordinator {
                     "message": error.Message,
                     "action": error.Action
                 }
-                state = CoordinationState{Sha: state.Sha}
+                state = CoordinationState{Sha: state.Sha, Commit: state.Commit}
                 for field in initial.EnumerateObject() {
                     state.Fields[field.Name] = field.Value
                 }
@@ -525,11 +530,12 @@ internal class Coordinator {
                 state.Write(
                     repo,
                     number,
-                    rejection == nil ? J.Text(request, "expected"): previous,
+                    rejection == nil ? J.Text(request, "expected"): state.Sha,
                     rejection != nil ? 0: LeaseLifecycle.Transition(action) ? originalExpiry: CoordinationState.Unix(
                         J.Get(updated, "reservation"),
                         "expires"
-                    )
+                    ),
+                    rejection: rejection != nil
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
@@ -551,7 +557,7 @@ internal class Coordinator {
 
             var acquired = CoordinationState.Load(repo, number)
             for attempt in 0 ... 5 {
-                if acquired.Sha != previous {
+                if acquired.Commit != previous {
                     break
                 }
 
@@ -559,7 +565,7 @@ internal class Coordinator {
                 acquired = CoordinationState.Load(repo, number)
             }
 
-            if acquired.Sha != state.Sha {
+            if acquired.Commit != state.Commit {
                 let recorded = RequestData.Recorded(acquired.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     Replay(repo, number, acquired, request, actor, donor, recorded)
