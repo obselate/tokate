@@ -1,40 +1,5 @@
 {
-  "version": 2,
-  "models": {
-    "claude-opus-5-5": [
-      "medium",
-      "high",
-      "xhigh"
-    ],
-    "claude-sonnet-5-5": [
-      "high"
-    ],
-    "gpt-6.1-sol": [
-      "high",
-      "xhigh"
-    ],
-    "gpt-6-astra": [
-      "medium",
-      "high",
-      "xhigh"
-    ],
-    "flash": [
-      "low"
-    ],
-    "glm-5.3-flash": [
-      "minimal",
-      "low",
-      "medium",
-      "high"
-    ],
-    "~deepseek/deepseek-flash-latest": [
-      "low"
-    ],
-    "gpt-6-luna": [
-      "xhigh",
-      "max"
-    ]
-  },
+  "version": 3,
   "max_seconds": 14400,
   "allow_unlimited": true,
   "required_checks": [
@@ -49,37 +14,281 @@
   "protected_paths": [
     "scripts/verify.sh"
   ],
-  "model_policy": "whitelist",
   "approval_scope": "task",
   "eligibility": "trusted",
   "allowed_tools": [
     {
       "harness": "claude",
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "codex",
-      "provider": "openai"
+      "provider": "openai",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "pi",
-      "provider": "local-chat-completions"
+      "provider": "local-chat-completions",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "omp",
-      "provider": "gufo"
+      "provider": "gufo",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "omp",
-      "provider": "openrouter"
+      "provider": "openrouter",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "omp",
-      "provider": "openai-codex"
+      "provider": "openai-codex",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     },
     {
       "harness": "omp",
-      "provider": "anthropic"
+      "provider": "anthropic",
+      "models": {
+        "claude-opus-5-5": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "claude-sonnet-5-5": [
+          "high"
+        ],
+        "gpt-6.1-sol": [
+          "high",
+          "xhigh"
+        ],
+        "gpt-6-astra": [
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "flash": [
+          "low"
+        ],
+        "glm-5.3-flash": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ],
+        "~deepseek/deepseek-flash-latest": [
+          "low"
+        ],
+        "gpt-6-luna": [
+          "xhigh",
+          "max"
+        ]
+      }
     }
   ],
   "target_branch": "main"
