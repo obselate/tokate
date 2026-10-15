@@ -163,10 +163,7 @@ internal class Cli {
             "summary FILE: Bounded public JSON summary for the exact candidate commit",
             "file FILE: Strict claim or publication request JSON",
             "event FILE: Trusted GitHub event JSON",
-            "sync SHA: Exact live owner synchronization grant",
-            "resume: Inspect saved reconciliation intent and physical Git state without repeating a merge",
-            "grant SHA: Synchronization grant to revoke",
-            "upstream SHA: Exact current trusted target revision",
+            "resume: Resume saved amendment publication",
             "commit SHA: Exact candidate commit to verify",
             "help: Show help (-h); no tools, network or inference",
             "prompt URL|FILE: Gratis task instruction from a bounded file or HTTPS URL",
@@ -202,8 +199,6 @@ internal class Cli {
             "defaults remove": "local_read,local_write",
             "defaults check": "local_read,github_read",
             "work stop": "local_read,local_write",
-            "sync authorize": "local_read,github_read,github_write commit,upstream",
-            "sync revoke": "local_read,github_read,github_write grant",
         }
 
         internal let Commands[]CliCommand = []CliCommand{
@@ -335,8 +330,8 @@ internal class Cli {
             ),
             CliCommand(
                 "amend more local_read,local_write,github_read,github_write run",
-                "RUN\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "run,commit,time,tools,sync,summary,resume",
+                "RUN\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--resume]",
+                "run,commit,time,tools,summary,resume",
                 "Archive completed work, or verify and publish a same-donor correction before or after publication; no inference.",
                 "amend 42 --time 5m"
             ),
@@ -346,20 +341,6 @@ internal class Cli {
                 "run,commit,summary,time,tools",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
                 "external 42"
-            ),
-            CliCommand(
-                "reconcile more local_read,local_write,github_read run",
-                "RUN [--resume]",
-                "run,resume",
-                "Merge the exact current target in a saved published workspace; no inference, checks or publication.",
-                "reconcile 42"
-            ),
-            CliCommand(
-                "sync more local_read,github_read,github_write repo,pr",
-                "PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]\nPR revoke --grant SHA",
-                "commit,upstream,sync,grant",
-                "Owner: grant an exact candidate synchronization, or revoke a grant by nonforce ref advance; no candidate inspection or acceptance.",
-                "sync 10 authorize --commit 0123456789abcdef0123456789abcdef01234567 --upstream 89abcdef0123456789abcdef0123456789abcdef"
             ),
             CliCommand(
                 "completion more local_read",
@@ -947,7 +928,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"commit", "grant", "upstream", "sync"} {
+            for key in[]string{"commit"} {
                 if args.Get(key) != "" {
                     RepositoryIdentity.CommitSha(args.Get(key))
                 }
@@ -963,22 +944,6 @@ internal class Cli {
 
             if args.Help {
                 return
-            }
-
-            if args.Command == "sync" {
-                if args.Subject != "authorize" && args.Subject != "revoke" {
-                    throw Exception("Use tokate sync PR authorize or tokate sync PR revoke")
-                }
-
-                for key in(args.Subject == "authorize" ? "commit,upstream": "grant").Split(',') {
-                    args.Need(key)
-                }
-
-                for key in(args.Subject == "authorize" ? "grant": "commit,upstream,sync").Split(',') {
-                    if args.Get(key) != "" {
-                        throw Exception("Unknown option for sync " + args.Subject + ": --" + key)
-                    }
-                }
             }
 
             if args.Command == "defaults" {

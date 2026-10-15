@@ -242,7 +242,7 @@ internal class AttemptContinuation {
             )
             let evidence = original.Value()
 
-            Synchronization.Ancestor(J.Text(value, "repo"), original.Sha, J.Text(value, "repo"), state.Sha)
+            GitHubPathEvidence.Ancestor(J.Text(value, "repo"), original.Sha, J.Text(value, "repo"), state.Sha)
 
             let old = J.Get(evidence, "reservation")
             let oldIdentity = J.Get(evidence, "identity")

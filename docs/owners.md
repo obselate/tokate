@@ -171,9 +171,8 @@ Tokate keeps its records in `tokate/` branches of your repository. Init names th
 | --- | --- |
 | `tokate/access` | Donor trust, grants and denials |
 | `tokate/contributions/N` | Reservation and publication record for issue N |
-| `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch |
 
-Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Receipt verification reads the synchronization branches of a synchronized PR.
+Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and deny entries. Deleting a contribution branch removes that issue's record.
 
 Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are not records.
 
@@ -214,7 +213,7 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    gh pr merge 10
    ```
 
-Checks do not accept the task or merge the PR. Target movement needs synchronization only for conflicts or required up-to-date branches.
+Checks do not accept the task or merge the PR. Checks accept clean target-branch merges after the receipt head. Other later changes need owner review and a verified amendment. Required CI checks use the exact current PR head.
 
 ## Update the coordinator
 

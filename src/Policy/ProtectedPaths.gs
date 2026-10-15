@@ -166,48 +166,6 @@ internal class ProtectedPaths {
             return entries
         }
 
-        internal func EqualTrees(
-            policy JsonElement,
-            approval JsonElement,
-            trusted Dictionary[string, string],
-            candidate Dictionary[string, string]
-        ) {
-            let configured = List[string]()
-            for entry in J.Items(J.Get(policy, "protected_paths")) {
-                configured.Add(entry.GetString() ?? "")
-            }
-
-            let paths = HashSet[string](trusted.Keys, StringComparer.Ordinal)
-            paths.UnionWith(candidate.Keys)
-
-            for path in paths {
-                let relation = Relation(configured, approval, path)
-                if relation == 0 {
-                    continue
-                }
-
-                var left string
-                var right string
-                let hasLeft = trusted.TryGetValue(path, out left)
-                let hasRight = candidate.TryGetValue(path, out right)
-
-                if relation == 1 &&
-                    (!hasLeft || left.StartsWith("040000 tree ", StringComparison.Ordinal)) &&
-                    (!hasRight || right.StartsWith("040000 tree ", StringComparison.Ordinal)) {
-                    continue
-                }
-
-                if relation == 1 && hasLeft && hasRight {
-                    left = left.Substring(0, left.LastIndexOf(' '))
-                    right = right.Substring(0, right.LastIndexOf(' '))
-                }
-
-                if hasLeft != hasRight || left != right {
-                    throw Exception("Synchronization changes protected owner content: " + J.Write(path))
-                }
-            }
-        }
-
         internal func Local(
             checkout string,
             policy JsonElement,

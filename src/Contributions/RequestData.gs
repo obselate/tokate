@@ -407,13 +407,13 @@ internal class RequestData {
                     Correction(correction, J.Text(metadata, "head"), JsonElement{})
                 }
             } else if J.Text(value, "action") == "amend" {
-                Keys(metadata, "fork,branch,previous,head,pr,seconds,tools,verification,sync,summary,attempt")
+                Keys(metadata, "fork,branch,previous,head,pr,seconds,tools,verification,base,summary,attempt")
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "head"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "previous"))
 
-                if J.Get(metadata, "sync").ValueKind != JsonValueKind.Undefined {
-                    RepositoryIdentity.CommitSha(J.Text(metadata, "sync"))
+                if J.Get(metadata, "base").ValueKind != JsonValueKind.Undefined {
+                    RepositoryIdentity.CommitSha(J.Text(metadata, "base"))
                 }
 
                 if !Regex.IsMatch(J.Text(metadata, "branch"), "^tokate/v2-[0-9a-f-]{36}$") || J.Number(

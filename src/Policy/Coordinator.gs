@@ -459,7 +459,7 @@ internal class Coordinator {
             let updated = state.Value()
             if J.Text(request, "action") == "amend" {
                 Revalidate(repo, number, state, actor, donor)
-                SyncProof(repo, record, updated, J.Get(request, "metadata"), J.Text(request, "expected"))
+                GitHubPathEvidence.Amendment(repo, record, J.Get(request, "metadata"))
             }
 
             let live = CoordinationState.Load(repo, number)
@@ -598,8 +598,7 @@ internal class Coordinator {
             }
 
             RepositoryAccess.ValidateFork(repo, metadata, actor)
-            let history = Synchronization.Append(repo, Synchronization.History(current), J.Text(metadata, "sync"))
-            SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+            GitHubPathEvidence.Amendment(repo, record, metadata)
 
             let run = Data()
             run.Fields["version"] = 2
@@ -619,11 +618,9 @@ internal class Coordinator {
                 amendment.Fields["public_summary"] = J.Get(metadata, "summary")
             }
 
-            if J.Text(metadata, "sync") != "" {
-                amendment.Fields["sync"] = J.Text(metadata, "sync")
+            if J.Text(metadata, "base") != "" {
+                amendment.Fields["base"] = J.Text(metadata, "base")
             }
-
-            Synchronization.Keep(amendment.Fields, history)
 
             let receipt = Amendment.Receipt(
                 ContributionReceipt.FromState(value),
@@ -683,7 +680,7 @@ internal class Coordinator {
 
                 let updated = PrBody.ReplaceBody(body, report, receipt)
                 Revalidate(repo, number, state, actor, donor)
-                SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+                GitHubPathEvidence.Amendment(repo, record, metadata)
                 RepositoryAccess.ValidateFork(repo, metadata, actor)
 
                 let fresh = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
@@ -707,7 +704,7 @@ internal class Coordinator {
             }
 
             Revalidate(repo, number, state, actor, donor)
-            SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+            GitHubPathEvidence.Amendment(repo, record, metadata)
             RepositoryAccess.ValidateFork(repo, metadata, actor)
 
             let latest = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
@@ -742,93 +739,13 @@ internal class Coordinator {
                 entry["summary"] = J.Get(metadata, "summary")
             }
 
-            if J.Text(metadata, "sync") != "" {
-                entry["sync"] = J.Text(metadata, "sync")
+            if J.Text(metadata, "base") != "" {
+                entry["base"] = J.Text(metadata, "base")
             }
-
-            Synchronization.Keep(entry, history)
             retainedHistory.Add(entry)
             state.Fields["amendments"] = retainedHistory
 
             return outcome
-        }
-
-        private func SyncProof(
-            repo string,
-            record JsonElement,
-            state JsonElement,
-            metadata JsonElement,
-            expected string
-        ) {
-            SyncProofHistory(
-                repo,
-                record,
-                state,
-                metadata,
-                expected,
-                Synchronization.History(CoordinationState.Current(state))
-            )
-        }
-
-        private func SyncProofHistory(
-            repo string,
-            record JsonElement,
-            state JsonElement,
-            metadata JsonElement,
-            expected string,
-            history JsonElement
-        ) {
-            Synchronization.Live(
-                repo,
-                J.Number(metadata, "pr"),
-                record,
-                J.Text(state, "approval_id"),
-                history,
-                J.Text(metadata, "fork"),
-                J.Text(metadata, "branch"),
-                J.Text(metadata, "head"),
-                J.Text(metadata, "sync"),
-                expected,
-                J.Text(metadata, "previous"),
-                contribution: J.Get(state, "contribution")
-            )
-
-            if history.GetArrayLength() > 0 {
-                Synchronization.Remote(
-                    repo,
-                    J.Get(record, "policy"),
-                    J.Get(record, "approval"),
-                    J.Text(J.Get(record, "approval"), "base"),
-                    history,
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "head")
-                )
-            } else {
-                ValidateDiff(repo, record, metadata)
-                GitHubPathEvidence.Check(
-                    repo,
-                    J.Get(record, "policy"),
-                    J.Get(record, "approval"),
-                    J.Text(metadata, "previous"),
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "head")
-                )
-            }
-
-            Synchronization.Live(
-                repo,
-                J.Number(metadata, "pr"),
-                record,
-                J.Text(state, "approval_id"),
-                history,
-                J.Text(metadata, "fork"),
-                J.Text(metadata, "branch"),
-                J.Text(metadata, "head"),
-                J.Text(metadata, "sync"),
-                expected,
-                J.Text(metadata, "previous"),
-                contribution: J.Get(state, "contribution")
-            )
         }
 
         private func Revalidate(repo string, issue int32, state CoordinationState, actor JsonElement, donor string) {

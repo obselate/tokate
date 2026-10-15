@@ -358,8 +358,8 @@ internal partial class NativeFlow : NativeFixture {
                 Check.Text(saved["execution_seconds"]) + "s | 6 | 812 | 76.4K |"
         )
         Check.That(
-            Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "false",
-            "Cross-account PR must disable maintainer modification"
+            Check.Text(State["pulls"]?[0]?["maintainer_can_modify"]) == "true",
+            "Policy PR must allow maintainer edits by default"
         )
         CommitIdentity(
             Path.Combine(Bin, "fork"),

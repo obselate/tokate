@@ -2,44 +2,116 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Text.Json
 
 internal class GitHubPathEvidence {
     shared {
-        internal func Tree(repo string, head string) Dictionary[string, string] {
-            let commit = GitHub.Api(
-                "repos/" + RepositoryIdentity.Repo(repo) + "/git/commits/" + RepositoryIdentity.CommitSha(head)
-            )
-
-            if J.Text(commit, "sha") != head {
-                throw Exception("Mismatched protected commit evidence")
+        internal func Ancestor(repo string, base string, fork string, head string) {
+            RepositoryIdentity.Repo(repo)
+            RepositoryIdentity.Repo(fork)
+            RepositoryIdentity.CommitSha(base)
+            RepositoryIdentity.CommitSha(head)
+            let value = GitHub.Api("repos/" + repo + "/compare/" + base + "..." + fork.Split('/')[0] + ":" + head)
+            let commits = J.Items(J.Get(value, "commits"))
+            if J.Text(J.Get(value, "base_commit"), "sha") != base || J.Text(
+                J.Get(value, "merge_base_commit"),
+                "sha"
+            ) != base ||
+                J
+                .Get(value, "behind_by").ValueKind != JsonValueKind.Number || J.Number(value, "behind_by") != 0 ||
+                (
+                base == head ? J.Text(value, "status") != "identical":
+                J.Text(value, "status") != "ahead" || commits.Count == 0 || J.Text(
+                    commits[commits.Count - 1],
+                    "sha"
+                ) != head
+            ) {
+                throw CliFailure("invalid_state", "Missing or mismatched ancestry evidence")
             }
+        }
 
-            let sha = RepositoryIdentity.CommitSha(J.Text(J.Get(commit, "tree"), "sha"))
-            let value = GitHub.Api("repos/" + repo + "/git/trees/" + sha + "?recursive=1")
-            if J.Text(value, "sha") != sha || J.Get(value, "truncated").ValueKind != JsonValueKind.False || J.Get(
-                value,
-                "tree"
+        internal func Target(repo string, approval JsonElement, head string) {
+            Ancestor(repo, J.Text(approval, "base"), repo, head)
+            Ancestor(repo, head, repo, GitHub.Branch(repo, J.Text(approval, "base_branch")))
+            Decree.CheckCurrent(repo, head, approval)
+        }
+
+        internal func LocalBase(checkout string, repo string, approval JsonElement, head string) string {
+            var baseline = J.Text(approval, "base")
+            for merge in Commands.Git(
+                checkout,
+                "rev-list",
+                "--first-parent",
+                "--merges",
+                "--reverse",
+                baseline + ".." + head
             )
-                .ValueKind != JsonValueKind.Array {
-                throw Exception("Missing, truncated or mismatched protected tree evidence")
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries) {
+                let parents = Commands.Git(checkout, "rev-list", "--parents", "-n", "1", merge).Split(' ')
+                if parents.Length != 3 {
+                    throw CliFailure("invalid_state", "Amend requires two-parent target merges")
+                }
+                Target(repo, approval, parents[2])
+                Ancestor(repo, baseline, repo, parents[2])
+                baseline = parents[2]
             }
+            return baseline
+        }
 
-            let entries = Dictionary[string, string](StringComparer.Ordinal)
+        internal func Amendment(repo string, record JsonElement, metadata JsonElement) {
+            let approval = J.Get(record, "approval")
+            let baseline = J.Text(metadata, "base") == "" ? J.Text(approval, "base"): J.Text(metadata, "base")
+            if baseline != J.Text(approval, "base") {
+                Target(repo, approval, baseline)
+            }
+            Ancestor(repo, J.Text(metadata, "previous"), J.Text(metadata, "fork"), J.Text(metadata, "head"))
+            Check(repo, J.Get(record, "policy"), approval, baseline, J.Text(metadata, "fork"), J.Text(metadata, "head"))
+        }
 
-            for entry in J.Get(value, "tree").EnumerateArray() {
-                ProtectedPaths.AddTree(
-                    entries,
-                    J.Text(entry, "path"),
-                    J.Text(entry, "mode"),
-                    J.Text(entry, "type"),
-                    J.Text(entry, "sha")
+        internal func CleanMerges(repo string, fork string, approval JsonElement, receipt string, head string) {
+            let checkout = Path.Combine(Path.GetTempPath(), "tokate-checks-" + Guid.NewGuid().ToString("N"))
+            Directory.CreateDirectory(checkout)
+            try {
+                Commands.Git(checkout, "init", "--quiet", "--bare")
+                Commands.Git(
+                    checkout,
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "--no-recurse-submodules",
+                    "--",
+                    "https://github.com/" + RepositoryIdentity.Repo(fork) + ".git",
+                    RepositoryIdentity.CommitSha(head)
                 )
+                Commands.Git(checkout, "merge-base", "--is-ancestor", RepositoryIdentity.CommitSha(receipt), head)
+                var previous = receipt
+                for merge in Commands.Git(checkout, "rev-list", "--first-parent", "--reverse", receipt + ".." + head)
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries) {
+                    let parents = Commands.Git(checkout, "rev-list", "--parents", "-n", "1", merge).Split(' ')
+                    if parents.Length != 3 || parents[1] != previous {
+                        throw CliFailure(
+                            "stale_approval",
+                            "Later PR commits need owner review and a verified amendment"
+                        )
+                    }
+                    Target(repo, approval, parents[2])
+                    let tree = Commands.Git(checkout, "rev-parse", merge + "^{tree}")
+                    if Commands.Git(checkout, "merge-tree", "--write-tree", previous, parents[2]) != tree ||
+                        Commands.Git(checkout, "merge-tree", "--write-tree", receipt, parents[2]) != tree {
+                        throw CliFailure(
+                            "stale_approval",
+                            "Later PR changes need owner review and a verified amendment"
+                        )
+                    }
+                    previous = merge
+                }
+                if previous != head {
+                    throw CliFailure("stale_approval", "PR head is not a clean target merge of the receipt head")
+                }
+            } finally {
+                Directory.Delete(checkout, true)
             }
-
-            ProtectedPaths.CompleteTree(entries)
-
-            return entries
         }
 
         internal func Check(

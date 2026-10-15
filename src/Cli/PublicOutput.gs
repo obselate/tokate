@@ -249,14 +249,6 @@ internal class PublicOutput {
             result["verification"] = Rows(verification, "state,exit_code,output_truncated,error_truncated", true)
             result["verification_count"] = J.Count(verification)
 
-            if J.Get(value, "reconciliation").ValueKind == JsonValueKind.Object {
-                let local = J.Select(J.Get(value, "reconciliation"), "phase,previous,upstream,start,target,candidate")
-
-                local["local"] = true
-                local["verified"] = false
-                result["reconciliation"] = local
-            }
-
             if AttemptContinuation.Has(run) {
                 result["predecessor"] = J.Get(value, "continuation")
                 result["continuation_phase"] = run.Text("continuation_phase")
@@ -498,8 +490,8 @@ internal class PublicOutput {
                 amendment.Number("seconds").ToString() + "s"
             }
 
-            for key in[]string{"tools", "summary", "sync"} {
-                let argument = amendment.Text(key == "sync" ? key: key + "_argument")
+            for key in[]string{"tools", "summary"} {
+                let argument = amendment.Text(key + "_argument")
 
                 if argument != "" {
                     command.AddRange([]string{"--" + key, argument})
@@ -553,18 +545,6 @@ internal class PublicOutput {
                     }
 
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
-
-                    if Command == "reconcile" {
-                        let intent = J.Get(run.Element(), "reconciliation")
-
-                        if code != "" &&
-                            code != "stale_approval" &&
-                            (J.Text(intent, "phase") == "fetching" || J.Text(intent, "phase") == "merging") {
-                            Actions.Add([]string{"tokate", "reconcile", "--run", RunDirectory, "--resume", "--json"})
-                        }
-
-                        return
-                    }
 
                     if run.Text("state") == "preparing" && run.Number("preparation_version") == 1 &&
                         code != "stale_approval" {

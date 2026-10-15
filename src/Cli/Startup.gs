@@ -134,7 +134,9 @@ internal class Startup {
                 command == "external" ||
                 command == "submit" ||
                 command == "amend" ||
-                command == "reconcile" {
+                command == "checks" ||
+                command == "overlaps" ||
+                command == "coordinate" {
                 names.Add("git")
             }
 

@@ -16,7 +16,7 @@ internal class Amendment {
         )
 
         internal func ValidateReceipt(value JsonElement, policy Policy, head string) {
-            RequestData.Keys(value, "id,previous,seconds,tools,sync,summary")
+            RequestData.Keys(value, "id,previous,seconds,tools,base,summary")
             var id Guid
             let seconds = J.Number(value, "seconds")
 
@@ -36,8 +36,8 @@ internal class Amendment {
 
             Tools(policy, J.Get(value, "tools"))
 
-            if J.Get(value, "sync").ValueKind != JsonValueKind.Undefined {
-                RepositoryIdentity.CommitSha(J.Text(value, "sync"))
+            if J.Get(value, "base").ValueKind != JsonValueKind.Undefined {
+                RepositoryIdentity.CommitSha(J.Text(value, "base"))
             }
         }
 
@@ -95,14 +95,7 @@ internal class Amendment {
             return pull
         }
 
-        internal func Authority(
-            run Data,
-            amendment Data?,
-            resume bool = false,
-            published string = "",
-            ready bool = true,
-            directory string = ""
-        ) JsonElement {
+        internal func Authority(run Data, amendment Data?, resume bool = false, directory string = "") JsonElement {
             let viewer = GitHub.Api("user")
 
             if !RepositoryIdentity.SameDonor(viewer, run) {
@@ -204,16 +197,10 @@ internal class Amendment {
                     .Get(current, "actor").ToString() != actor {
                     throw CliFailure("stale_approval", stale)
                 }
-                for key in[]string{"previous", "seconds", "tools"} {
+                for key in[]string{"previous", "seconds", "tools", "base"} {
                     if !RequestData.Same(J.Get(current, key), J.Get(saved, key)) {
                         throw CliFailure("stale_approval", stale)
                     }
-                }
-                if J.Text(current, "sync") != amendment.Text("sync") || !RequestData.Same(
-                    Synchronization.History(current),
-                    Synchronization.History(saved)
-                ) {
-                    throw CliFailure("stale_approval", "Amendment synchronization differs from coordination authority")
                 }
 
                 Transition(run.Text("repo"), state, amendment.Text("expected"))
@@ -221,10 +208,9 @@ internal class Amendment {
                 throw CliFailure("stale_approval", "Current published head differs from saved contribution")
             }
 
-            let physical = amendment?.Text("published") ?? published
             let remoteHead = Remote(
                 run,
-                physical == "" ? (amendment?.Text("previous") ?? run.Text("commit")): physical,
+                amendment?.Text("previous") ?? run.Text("commit"),
                 amendment?.Text("commit") ?? ""
             )
 
@@ -242,8 +228,6 @@ internal class Amendment {
                 J.Get(viewer, "id")
             )
 
-            SyncAuthority(run, amendment, record, original, ready && state.Sha == amendment?.Text("expected"))
-
             return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
         }
 
@@ -256,49 +240,13 @@ internal class Amendment {
             }
         }
 
-        private func SyncAuthority(
-            run Data,
-            amendment Data?,
-            record JsonElement,
-            contribution JsonElement = default(JsonElement),
-            ready bool = true
-        ) {
-            if amendment != nil {
-                if amendment.Text("published") != "" {
-                    let grant = Synchronization.Load(run.Text("repo"), amendment.Text("sync"))
-                    let pending = J.Text(grant, "pending")
-                    if pending == "" || amendment.Text("published") != J.Text(
-                        Synchronization.Load(run.Text("repo"), pending),
-                        "candidate"
-                    ) {
-                        throw CliFailure("stale_approval", "Published head differs from saved synchronization grant")
-                    }
-                }
-                Synchronization.Live(
-                    run.Text("repo"),
-                    amendment.Number("pr"),
-                    record,
-                    run.Text("approval"),
-                    Synchronization.History(amendment.Element()),
-                    run.Text("head_repo"),
-                    run.Text("branch"),
-                    amendment.Text("commit"),
-                    amendment.Text("sync"),
-                    amendment.Text("expected"),
-                    amendment.Text("previous"),
-                    contribution: contribution,
-                    ready: ready
-                )
-            }
-        }
-
         private func Snapshot(
             checkout string,
             run Data,
             commit string,
             previous string,
             record JsonElement,
-            history JsonElement
+            baseline string
         ) string {
             let policy = J.Get(record, "policy")
             let approval = J.Get(record, "approval")
@@ -331,7 +279,7 @@ internal class Amendment {
                 )
             }
 
-            Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", run.Text("base"), commit)
+            Commands.Git(checkout, "diff", "--no-ext-diff", "--no-textconv", "--check", baseline, commit)
 
             for name in[]string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"} {
                 if File.Exists(Path.Combine(checkout, ".git", name)) {
@@ -342,19 +290,12 @@ internal class Amendment {
                 }
             }
 
-            if history.GetArrayLength() > 0 {
-                Synchronization.Local(checkout, run.Text("repo"), policy, approval, run.Text("base"), history, commit)
-            } else {
-                ProtectedPaths.Local(checkout, policy, approval, run.Text("base"), commit)
-                if previous != "" {
-                    ProtectedPaths.Local(checkout, policy, approval, previous, commit)
-                }
-            }
+            ProtectedPaths.Local(checkout, policy, approval, baseline, commit)
 
             if previous != "" {
                 return Commands.Git(checkout, "rev-parse", "HEAD^{tree}") + "\n" + Commands.GitRaw(
                     checkout,
-                    []string{"diff", "--no-ext-diff", "--no-textconv", "--binary", run.Text("base"), commit}
+                    []string{"diff", "--no-ext-diff", "--no-textconv", "--binary", baseline, commit}
                 )
             }
             return Commands.GitRaw(
@@ -366,7 +307,7 @@ internal class Amendment {
                     "--binary",
                     "--full-index",
                     "--find-renames=100%",
-                    run.Text("base"),
+                    baseline,
                     commit,
                     "--"
                 }
@@ -395,8 +336,8 @@ internal class Amendment {
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
             if correcting {
                 Completed(directory, run)
-                if args.Get("sync") != "" || args.Get("resume") != "" {
-                    throw CliFailure("invalid_state", "Synchronization and resume require a published PR")
+                if args.Get("resume") != "" {
+                    throw CliFailure("invalid_state", "Resume requires a published PR")
                 }
                 let current = Path.Combine(directory, "correction.json")
                 let existing = File.Exists(current) ? Data.Read(current): nil
@@ -431,19 +372,14 @@ internal class Amendment {
                     return
                 }
             }
-            let coding = run.Text("source") == "external" && args.Get("sync") == "" && !run.Fields.ContainsKey(
-                "reconciliation"
-            ) &&
-                !run
-                .Fields
-                .ContainsKey("synchronizations")
+            let coding = run.Text("source") == "external"
             let checkout = Path.Combine(directory, "checkout")
             let source = coding ? Path.Combine(directory, "coding"): checkout
             if !continuing && args.Get("commit") == "" {
                 args.Values["--commit"] = Commands.Git(source, "rev-parse", "HEAD")
             }
             if continuing {
-                for key in[]string{"tools", "summary", "sync", "resume"} {
+                for key in[]string{"tools", "summary", "resume"} {
                     if args.Get(key) != "" {
                         args.Need("commit")
                     }
@@ -494,18 +430,13 @@ internal class Amendment {
                 }
             } else {
                 let seconds = args.Number("seconds")
-                let sync = args.Get("sync") == "" ? "": RepositoryIdentity.CommitSha(args.Need("sync"))
                 let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(
                     args.Need("tools"),
                     correcting ? 4096: 8192
                 )
                 let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
-                let pending = sync == "" ? "": J.Text(Synchronization.Load(run.Text("repo"), sync), "pending")
-                let published = pending == "" ? run.Text("commit"): J.Text(
-                    Synchronization.Load(run.Text("repo"), pending),
-                    "candidate"
-                )
-                let authority = Authority(run, nil, args.Get("resume") == "true", published, directory: directory)
+                let published = run.Text("commit")
+                let authority = Authority(run, nil, args.Get("resume") == "true", directory: directory)
                 let record = J.Get(authority, "record")
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 Tools(policy, tools)
@@ -517,31 +448,18 @@ internal class Amendment {
                     "pr"
                 )
                 let pull = correcting ? default(JsonElement): Pull(run, number, published, "")
-                let history = correcting ? J.Parse("[]"): Synchronization.Append(
-                    run.Text("repo"),
-                    Synchronization.History(PrBody.Receipt(J.Text(pull, "body"))),
-                    sync
-                )
                 if !correcting {
-                    ReceiptVerification.Verify(run.Text("repo"), number, pull, sync == "", pending: pending)
+                    ReceiptVerification.Verify(run.Text("repo"), number, pull)
                     Remote(run, published, "")
-                    Synchronization.Live(
-                        run.Text("repo"),
-                        number,
-                        record,
-                        run.Text("approval"),
-                        history,
-                        run.Text("head_repo"),
-                        run.Text("branch"),
-                        commit,
-                        sync,
-                        J.Text(authority, "sha"),
-                        run.Text("commit"),
-                        contribution: J.Get(J.Get(authority, "state"), "contribution")
-                    )
                 }
                 if coding {
-                    Snapshot(source, run, commit, published, record, history)
+                    let baseline = GitHubPathEvidence.LocalBase(
+                        source,
+                        run.Text("repo"),
+                        J.Get(record, "approval"),
+                        commit
+                    )
+                    Snapshot(source, run, commit, published, record, baseline)
                     Commands.Git(
                         checkout,
                         "-c",
@@ -556,7 +474,13 @@ internal class Amendment {
                     )
                     Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)
                 }
-                let accepted = correcting ? "": Snapshot(checkout, run, commit, run.Text("commit"), record, history)
+                let baseline = correcting ? run.Text("base"): GitHubPathEvidence.LocalBase(
+                    checkout,
+                    run.Text("repo"),
+                    J.Get(record, "approval"),
+                    commit
+                )
+                let accepted = correcting ? "": Snapshot(checkout, run, commit, run.Text("commit"), record, baseline)
                 let archive = OriginalEvidence.Capture(directory, run)
                 change = Data(
                     map[string, Object?]{
@@ -578,6 +502,9 @@ internal class Amendment {
                     change.Fields["version"] = 1
                     change.Fields["uuid"] = change.Text("id")
                 }
+                if baseline != run.Text("base") {
+                    change.Fields["base"] = baseline
+                }
                 if summary.ValueKind != JsonValueKind.Undefined {
                     change.Fields["public_summary"] = summary
                 }
@@ -589,19 +516,11 @@ internal class Amendment {
                         )
                     }
                 }
-                if published != run.Text("commit") {
-                    change.Fields["published"] = published
-                }
-                if sync != "" {
-                    change.Fields["sync"] = sync
-                    change.Fields["synchronization_grant"] = Synchronization.Load(run.Text("repo"), sync)
-                }
-                Synchronization.Keep(change.Fields, history)
                 change.Fields["previous_body"] = J.Text(pull, "body")
                 let location = Location(directory, change)
                 Directory.CreateDirectory(location)
                 try {
-                    let snapshot = correcting ? Snapshot(checkout, run, commit, "", record, history): accepted
+                    let snapshot = correcting ? Snapshot(checkout, run, commit, "", record, baseline): accepted
                     if correcting {
                         change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
                     }
@@ -645,18 +564,17 @@ internal class Amendment {
         }
 
         private func Inputs(args Args, change Data, commit string, correcting bool) {
-            for key in[]string{"seconds", "sync", "tools", "summary"} {
+            for key in[]string{"seconds", "tools", "summary"} {
                 try {
                     let input = switch key {
                         case "seconds": J.Parse(args.Number(key).ToString())
-                        case "sync": J.Parse(J.Write(args.Get(key)))
                         case "tools": args.Get(key) == "" ? J.Parse("[]"): RequestData.FileData(
                             args.Need(key),
                             correcting ? 4096: 8192
                         )
                         default: PublicSummary.FileSummary(args.Get(key), commit)
                     }
-                    let same = key == "sync" ? change.Text(key) == args.Get(key): RequestData.Same(
+                    let same = RequestData.Same(
                         J.Get(change.Element(), key == "summary" ? "public_summary": key),
                         input
                     )
@@ -705,7 +623,7 @@ internal class Amendment {
                 change.Text("commit"),
                 change.Text("previous"),
                 record,
-                Synchronization.History(change.Element())
+                change.Text("base") == "" ? run.Text("base"): change.Text("base")
             )
             let correcting = change.Text("uuid") != ""
             let patch = File.ReadAllText(Path.Combine(Location(directory, change), "candidate.patch"))
@@ -842,9 +760,8 @@ internal class Amendment {
             snapshot string
         ) {
             let record = J.Get(authority, "record")
-            let policy = Policy(J.Write(J.Get(record, "policy")))
             let checkout = Path.Combine(directory, "checkout")
-            let published = amendment.Text("published") == "" ? amendment.Text("previous"): amendment.Text("published")
+            let published = amendment.Text("previous")
             let pull = Pull(run, amendment.Number("pr"), published, amendment.Text("commit"))
             let remote = Remote(run, published, amendment.Text("commit"))
 
@@ -905,8 +822,8 @@ internal class Amendment {
                     J.Get(amendment.Element(), "public_summary")
                 )
 
-                if amendment.Text("sync") != "" {
-                    metadata["sync"] = amendment.Text("sync")
+                if amendment.Text("base") != "" {
+                    metadata["base"] = amendment.Text("base")
                 }
 
                 amendment.Fields["request"] = map[string, Object?]{
@@ -954,28 +871,11 @@ internal class Amendment {
             Remote(run, amendment.Text("commit"), "")
 
             let latest = Pull(run, amendment.Number("pr"), amendment.Text("commit"), "")
-            let history = Synchronization.History(amendment.Element())
-
-            if history.GetArrayLength() > 0 {
-                Synchronization.Remote(
-                    run.Text("repo"),
-                    policy.Value,
-                    J.Get(record, "approval"),
-                    run.Text("base"),
-                    history,
-                    run.Text("head_repo"),
-                    amendment.Text("commit")
-                )
-            } else {
-                GitHubPathEvidence.Check(
-                    run.Text("repo"),
-                    policy.Value,
-                    J.Get(record, "approval"),
-                    run.Text("base"),
-                    run.Text("head_repo"),
-                    amendment.Text("commit")
-                )
-            }
+            GitHubPathEvidence.Amendment(
+                run.Text("repo"),
+                record,
+                J.Get(amendment.Element(), "request").GetProperty("metadata")
+            )
 
             Authority(run, amendment, directory: directory)
 
@@ -1175,7 +1075,7 @@ internal class Amendment {
                     change.Fields.Remove(key)
                 }
                 Save(directory, change)
-                Publication.SavePr(directory, run, existing)
+                Publication.SavePr(directory, run, existing, Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits)
                 return
             }
             if existing.ValueKind != JsonValueKind.Undefined && remote != change.Text("commit") {
@@ -1252,7 +1152,6 @@ internal class Amendment {
             fields["expected"] = expected
             fields["amendment"] = PublicRecord(amendment)
             fields.Remove("incomplete")
-            Synchronization.Keep(fields, Synchronization.History(amendment.Element()))
             return J.Parse(J.Write(fields))
         }
 
@@ -1264,8 +1163,8 @@ internal class Amendment {
                 "tools": J.Get(amendment.Element(), "tools")
             }
 
-            if amendment.Text("sync") != "" {
-                fields["sync"] = amendment.Text("sync")
+            if amendment.Text("base") != "" {
+                fields["base"] = amendment.Text("base")
             }
 
             return PublicSummary.Attach(fields, J.Get(amendment.Element(), "public_summary"))
@@ -1294,7 +1193,6 @@ internal class Amendment {
             }
 
             run.Fields["amendments"] = history
-            Synchronization.Keep(run.Fields, Synchronization.History(amendment.Element()))
             run.Fields["commit"] = amendment.Text("commit")
 
             if amendment.Text("attempt") != "" {

@@ -46,15 +46,6 @@ internal class SuiteCatalog {
                         }
                     }
                 }
-                case "Synchronization" {
-                    SynchronizationChecks.All(binary, "current")
-                }
-                case "SynchronizationFirst" {
-                    SynchronizationChecks.All(binary, "current", 1)
-                }
-                case "SynchronizationSecond" {
-                    SynchronizationChecks.All(binary, "current", 2)
-                }
                 case "Native" {
                     NativeFlow.All(binary, parallel: true)
                 }
@@ -114,8 +105,6 @@ internal class SuiteCatalog {
                 File.Copy(Path.Combine(project, "global.json"), Path.Combine(published, "global.json"))
                 let jobs = []SuiteJob{
                     Job("Environment"),
-                    Job("SynchronizationFirst"),
-                    Job("SynchronizationSecond"),
                     Job("Native"),
                     Job("Coordination"),
                     Job("Admission"),

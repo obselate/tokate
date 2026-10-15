@@ -84,46 +84,22 @@ Optional amendment inputs:
 | `--tools FILE` | Declare the AI tools that made the edits. Omit it for hand edits. |
 | `--commit SHA` | Publish a commit other than the checkout HEAD. |
 
-## Synchronize a published PR
+## Update a published PR from the target branch
 
-1. Check GitHub mergeability and branch requirements.
+Target movement alone does not fail checks. Merge the target only for conflicts or a required up-to-date branch.
 
-   ```sh
-   tokate checks PR
-   ```
-
-2. For conflicts or a required up-to-date branch, merge the current target without inference.
-
-   ```sh
-   tokate reconcile 42-1
-   ```
-
-3. Resolve and commit any conflicts in the saved checkout.
-4. Resume reconciliation after conflict resolution.
+1. Run `tokate checks PR`.
+2. Fetch the owner's target branch in the saved checkout.
+3. Merge that branch. Resolve and commit conflicts.
+4. For a conflict resolution or other donor changes, verify and publish the exact commit:
 
    ```sh
-   tokate reconcile 42-1 --resume
+   tokate amend 42-1 --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
    ```
 
-5. Ask the owner to authorize the exact candidate `C` and target `U` shown by reconciliation.
+Checks accept a clean merge only when its new parent is on the owner's target branch and its tree matches the clean merge of the receipt head and that parent. Other later changes fail the receipt gate and need owner review.
 
-   ```sh
-   tokate sync PR authorize --commit C --upstream U
-   ```
-
-6. Use the returned grant `G` to verify and publish the candidate.
-
-   ```sh
-   tokate amend 42-1 --commit C --sync G --time 5m --tools TOOLS_FILE --summary SUMMARY_FILE
-   ```
-
-Target movement alone does not fail checks. Synchronize only when GitHub reports a conflict or requires an up-to-date branch.
-
-If the target moves before a sync amendment finishes recording, keep the saved
-candidate and amendment. Run `tokate reconcile 42-1`. It checks remote publication
-and coordination evidence, records an accepted amendment when safe, and prepares
-the next reconciliation against the current target. It does not repeat publication.
-Obtain a new owner grant for the next exact candidate and target.
+Amend checks donor changes against the merged target commit. That commit must descend from the approval base and remain on the target branch. Protected-path rules and the approval policy binding still apply. CI checks use the exact current PR head. The receipt stays bound to the verified donor head.
 
 ## Continue stopped work
 
@@ -184,7 +160,7 @@ Keep saved work and inspect current state before any explicit next action.
 | `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate work --run DIR` after inspecting the saved evidence. Use `tokate claim --run DIR` to finish preparation without inference. |
 | `invalid_state` | `Ambiguous or incomplete fork discovery` or `Incomplete fork discovery after 60 seconds` | Select `--fork DONOR/NAME` explicitly in a fresh preparation. |
 | `invalid_state` | Malformed coordination data, unsafe continuation paths or changed capture evidence | Preserve the run and inspect the indicated data. Do not edit authority or evidence to bypass validation. |
-| `stale_approval` | `Saved run has stale coordination authority`, `Handoff source or approval changed` or `Synchronization target moved` | Inspect `tokate status --run DIR --json`. The owner must review changed authority or issue a fresh exact synchronization grant. |
+| `stale_approval` | `Saved run has stale coordination authority` or `Handoff source or approval changed` | Inspect `tokate status --run DIR --json`. The owner must review changed authority. |
 | `stale_approval` | `Saved fork repository identity changed` | Inspect the original repository and fork before further work. |
 | `authentication_required` | `Active GitHub account differs from the saved donor` | Use the original donor account and inspect `tokate status --run DIR --json`. |
 | `command_failed` | Required remote evidence could not be read or saved data could not be written | Inspect partial status and the remote or file access failure before an explicit next action. |
@@ -201,7 +177,7 @@ Amendment publication keeps the underlying error code. Inspect saved publication
 | `invalid_state` | `incomplete_turn:` followed by the failure | Correction requires a completed successful inference turn. Inspect stopped work before continuation or incomplete publication. |
 | `invalid_state` | `interrupted_publication:` followed by incomplete, invalid or ambiguous physical PR history | Inspect physical PRs and saved intent before resuming publication. Do not create another request to bypass the refusal. |
 | `invalid_state` | `Saved amendment INPUT input differs or cannot be read.` | Restore the original input or declare a new exact commit with a new verification budget. |
-| `stale_approval` | Receipt, handoff, continuation, amendment or synchronization evidence differs from coordination authority | Inspect current approval, PR head and coordination evidence before acceptance. The owner must resolve changed authority. |
+| `stale_approval` | Receipt, handoff, continuation or amendment evidence differs from coordination authority | Inspect current approval, PR head and coordination evidence before acceptance. The owner must resolve changed authority. |
 | `stale_approval` | `Saved version-2 publication intent changed`, `Physical PR and remote branch disagree` or changed original authority | Preserve the saved run and inspect remote state. Do not overwrite the branch or edit authority to bypass validation. |
 | `verification_failed` | Correction or amendment owner verification failed or its budget was exhausted | Inspect saved verification results and declare a corrected exact commit with an explicit budget. |
 | `command_failed` | `No POST retry made.` after uncertain request evidence | Inspect remote comments and coordination state before resuming the same saved intent. No automatic POST retry is made. |
@@ -308,10 +284,10 @@ After owner recovery, repeat a pending publication with the same saved intent. D
 | --- | --- |
 | `GitHub has not started CI for this head yet. Use tokate checks --watch to wait for CI.` | `tokate checks PR --watch` |
 | `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | Owner: `gh pr view PR --web` |
-| `GitHub reports a conflict or requires an up-to-date branch. Ask the current donor to reconcile and verify the resulting exact commit. Further coding requires a new explicit budget.` | Donor: `tokate reconcile 42-1` |
+| `Merge the target branch into the saved checkout. Resolve conflicts, then run tokate amend with an explicit verification budget.` | Donor: merge the target, then run `tokate amend 42-1 --time 5m` |
 | `No published PR` with saved-publication guidance | `tokate status 42-1 --json` |
 
-Approve a fork workflow only after diff review. For a stale PR, refresh `tokate checks PR` and use synchronization above if required.
+Approve a fork workflow only after diff review. For a stale PR, refresh `tokate checks PR` and use the target update steps above if required.
 
 ### Access
 
