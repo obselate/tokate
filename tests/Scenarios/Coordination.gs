@@ -1748,9 +1748,86 @@ internal partial class CoordinationFlow : CoordinationFixture {
             !Check.Text(savedGuidance?["Linked documents"]).Contains("unsafe.md"),
             "Gratis listed a symlinked linked document"
         )
+        using let freeFlow = NativeFixture(Flow.Binary)
+        freeFlow.Initialize(access: false)
+        freeFlow.Git("-C", freeFlow.Upstream, "rm", ".github/tokate.json")
+        freeFlow.Commit("Accept harness selected work")
+        freeFlow.State["donation_stop"] = JsonValue.Create(
+            Path.Combine(freeFlow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/stop")
+        )
+        freeFlow.Save()
+        let free = Check
+            .Envelope(
+            freeFlow.Call(
+                []string{
+                    "work",
+                    "owner/project",
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--time",
+                    "30s",
+                    "--yes",
+                    "--json"
+                }
+            ),
+            "work",
+            "ok"
+        )["data"] ??
+            throw Exception("Missing free work report")
+        Check.That(Check.Text(free["tasks"]?[0]?["issue"]) == "0", "Free work did not let the harness choose")
+        Check.That(Check.Text(free["submitted"]) == "1", "Free work did not publish")
+        freeFlow.Reload()
+        Check.That((freeFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 1, "Free work did not open a PR")
+        Check.That(Check.Text(freeFlow.State["exec_count"]) == "1", "Free work repeated inference")
+        let freeDirectory = Check.Text(free["tasks"]?[0]?["run_directory"])
+        let freeRun = Check.Json(File.ReadAllText(Path.Combine(freeDirectory, "run.json")))
+        Check.That(freeRun["gratis_context"]?["guidance"]?.AsObject().Count == 0, "Free fixture has guidance")
 
         using let namedFlow = NativeFixture(Flow.Binary)
         namedFlow.Initialize(access: false)
+        Check.Envelope(
+            namedFlow.Call(
+                []string{
+                    "work",
+                    "owner/project#2,1",
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--json"
+                },
+                1
+            ),
+            "work",
+            "error",
+            "invalid_arguments"
+        )
+        Check.Envelope(
+            namedFlow.Call(
+                []string{
+                    "work",
+                    "owner/project#1",
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--review",
+                    "--json"
+                },
+                1
+            ),
+            "work",
+            "error",
+            "invalid_arguments"
+        )
         namedFlow.Git("-C", namedFlow.Upstream, "rm", ".github/tokate.json")
         File.WriteAllText(
             Path.Combine(namedFlow.Upstream, "CONTRIBUTING.md"),
@@ -1764,7 +1841,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         namedFlow.Save()
         let namedArgs = []string{
             "work",
-            "owner/project#2",
+            "owner/project#2,1",
             "--harness",
             "codex",
             "--model",
@@ -1773,12 +1850,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "high",
             "--time",
             "30s",
+            "--review",
             "--json"
         }
         let preview = namedFlow.Call(namedArgs, 1)
         Check.Envelope(preview, "work", "error", "confirmation_required")
-        Check.Contains(preview.Error, "owner/project#2")
-        Check.Contains(preview.Error, "Total: one task")
+        Check.Contains(preview.Error, "owner/project#2,1")
+        Check.Contains(preview.Error, "Total: 2 tasks")
         namedFlow.NoInference()
         Check.That(
             !Directory.Exists(Path.Combine(namedFlow.Temp.Env["HOME"], ".local/state/tokate/donations")),
@@ -1791,22 +1869,39 @@ internal partial class CoordinationFlow : CoordinationFixture {
             namedFlow.Save()
             let rejected = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
             Check.Contains(Check.Text(rejected["error"]?["message"]), "open, unlocked issue")
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "#2")
             namedIssue.AsObject().Remove(field)
             namedIssue["state"] = JsonValue.Create("open")
         }
+        let firstIssue = namedFlow.State["issues"]?["1"] ?? throw Exception("Missing first issue")
+        firstIssue["state"] = JsonValue.Create("closed")
+        namedIssue["locked"] = JsonValue.Create(true)
         namedFlow.Save()
+        let invalidList = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
+        Check.Contains(Check.Text(invalidList["error"]?["message"]), "#2, #1")
+        namedFlow.NoInference()
+        let restored = namedFlow.State["issues"] ?? throw Exception("Missing restored issues")
+        let restoredFirst = restored["1"] ?? throw Exception("Missing restored first issue")
+        let restoredSecond = restored["2"] ?? throw Exception("Missing restored second issue")
+        restoredFirst["state"] = JsonValue.Create("open")
+        restoredSecond.AsObject().Remove("locked")
+        namedFlow.Save()
+        let repeatHarness = Path.Combine(namedFlow.Bin, "codex-repeat")
+        File.Copy(Path.Combine(namedFlow.Bin, "codex-impl"), repeatHarness)
         let acceptedArgs = List[string](namedArgs)
-        acceptedArgs.Add("--yes")
-        let named = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")["data"] ??
-            throw Exception("Missing named issue report")
-        Check.That(Check.Text(named["prepared"]) == "1", "Named gratis issue was not prepared")
-        Check.That(Check.Text(named["reason"]) == "issue_completed", "Named donation did not stop")
-        Check.That(named["tasks"]?.AsArray().Count == 1, "Named donation ran more than one task")
-        Check.That(Check.Text(named["tasks"]?[0]?["issue"]) == "2", "Named donation selected another issue")
+        acceptedArgs.AddRange([]string{"--yes", "--harness-path", repeatHarness})
+        let reviewed = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")
+        let named = reviewed["data"] ?? throw Exception("Missing issue list report")
+        Check.That(Check.Text(named["prepared"]) == "2", "Review did not prepare both issues")
+        Check.That(Check.Text(named["reason"]) == "issues_completed", "Issue list did not stop")
+        Check.That(named["tasks"]?.AsArray().Count == 2, "Issue list ran the wrong task count")
+        Check.That(Check.Text(named["tasks"]?[0]?["issue"]) == "2", "Issue list changed the first issue")
+        Check.That(Check.Text(named["tasks"]?[1]?["issue"]) == "1", "Issue list changed the second issue")
+        Check.That(reviewed["next_actions"]?.AsArray().Count == 2, "Review omitted submit actions")
         namedFlow.Reload()
-        Check.That(Check.Text(namedFlow.State["exec_count"]) == "1", "Named donation repeated inference")
-        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Named work published a PR")
-        Check.That(Check.Text(named["tasks"]?[0]?["pr_url"]) == "", "Named work reported a published PR")
+        Check.That(Check.Text(namedFlow.State["exec_count"]) == "2", "Issue list repeated inference")
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Review published a PR")
+        Check.That(Check.Text(named["tasks"]?[0]?["pr_url"]) == "", "Review reported a published PR")
         let namedDirectory = Check.Text(named["tasks"]?[0]?["run_directory"])
         let savedRun = File.ReadAllText(Path.Combine(namedDirectory, "run.json"))
         namedFlow.ResetTraffic()
@@ -1871,6 +1966,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
             (namedFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0,
             "Named gratis work posted a claim"
         )
+        let autonomousArgs = List[string](namedArgs)
+        autonomousArgs[1] = "owner/project#1"
+        autonomousArgs.Remove("--review")
+        autonomousArgs.AddRange([]string{"--yes", "--harness-path", repeatHarness})
+        let autonomous = Check.Envelope(namedFlow.Call(autonomousArgs.ToArray()), "work", "ok")["data"]
+        Check.That(Check.Text(autonomous?["submitted"]) == "1", "One issue did not publish after start consent")
+        Check.That(autonomous?["tasks"]?.AsArray().Count == 1, "One issue did not end after one task")
+        namedFlow.Reload()
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 2, "One issue did not open its PR")
 
         using let failedFlow = NativeFixture(Flow.Binary)
         failedFlow.Initialize(access: false)

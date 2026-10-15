@@ -322,15 +322,21 @@ func Dispatch(options Args) int32 {
         }
 
         case "claim", "work" {
-            if Cli.RepositoryWork(options) ||
-                (
-                options.Command == "work" && options.Get("run") == "" && GitHub.Api(
+            if Cli.RepositoryWork(options) {
+                return Donate.Run(options)
+            }
+            if options.Command == "work" && options.Get("run") == "" {
+                let gratis = GitHub.Api(
                     "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
                     missing: true
                 )
                     .ValueKind == JsonValueKind.Undefined
-            ) {
-                return Donate.Run(options)
+                if !gratis && options.Get("review") == "true" {
+                    throw CliFailure("invalid_arguments", "--review requires a repository without a Tokate policy")
+                }
+                if gratis {
+                    return Donate.Run(options)
+                }
             }
             let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
             ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)

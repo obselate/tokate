@@ -104,13 +104,37 @@ dependency-blocked and already attempted issues are skipped. Each task uses clai
 Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.
 Stop waits for the current task and prints wall time, submitted, skipped and failed tasks, PR URLs and token totals.
 
-Without a Tokate policy, `tokate work OWNER/REPO#42 --yes --time 1h` donates to
-exactly that open, unlocked issue. It does not need `--total` and does not claim
-another issue. Consent names the issue. Work stops before publication.
-Use `tokate submit OWNER/REPO#42` to review the exact PR title, body and target,
-then `tokate submit OWNER/REPO#42 --yes` to publish. In a terminal, submit asks
-once. With `--json`, `--non-interactive` or no terminal, it previews without changes.
-A repository with a policy keeps the approved-issue flow.
+### Gratis selection
+
+Repositories without `.github/tokate.json` use gratis mode.
+
+```sh
+# Gratis free selection: let the harness choose tasks for one hour
+tokate work OWNER/REPO --time 1h --total 1h --yes
+
+# Gratis one issue: work issue 42, then publish
+tokate work OWNER/REPO#42 --time 1h --yes
+
+# Gratis issue list: work and publish each issue in this order
+tokate work OWNER/REPO#12,15,40 --time 1h --yes
+
+# Gratis review: stop each task before publication
+tokate work OWNER/REPO#42 --time 1h --review --yes
+# Preview the exact PR title and body, then publish
+tokate submit OWNER/REPO#42 --json
+tokate submit OWNER/REPO#42 --yes
+```
+
+Free selection always lets the harness choose, with or without guidance.
+One issue is a list of one. All listed issues must be open, unlocked and not PRs.
+Tokate checks the full list before consent. Consent names the list.
+After consent, each task publishes without another prompt.
+With `--review`, each task stops before publication and prints its `tokate submit` command.
+In a terminal, submit previews the exact text and asks once.
+With `--json`, `--non-interactive` or no terminal, submit previews without changes.
+Use `--yes` to publish the reviewed text.
+Free selection stops on refusal, no PR, the total budget, a stop request or three consecutive failures.
+A repository with a policy keeps the approved-issue flow and rejects issue lists and `--review`.
 In gratis mode, the harness can write `tokate-title.txt` in the checkout root to
 set the commit and PR title. Use one plain ASCII line of at most 100 characters.
 

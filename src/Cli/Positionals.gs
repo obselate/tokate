@@ -57,6 +57,24 @@ internal class Positionals {
                 return
             }
 
+            if args.Command == "work" && key == "issue" && word.Contains(",") {
+                let parts = word.Split('#')
+                if parts.Length > 2 {
+                    throw Exception("Use OWNER/REPO#N,N for an issue list")
+                }
+                if parts.Length == 2 {
+                    Repo(args, parts[0])
+                }
+                let numbers = List[string]()
+                for value in parts[parts.Length - 1].Split(',') {
+                    Number(args, "issue", value)
+                    numbers.Add(args.Get("issue"))
+                }
+                args.Values.Remove("--issue")
+                args.Values["--issues"] = String.Join(",", numbers)
+                return
+            }
+
             let match = Regex.Match(word, "^(?:([^#]+)#)?([0-9]+)(?:-([0-9]+))?\\z")
             let attempt = match.Groups[3].Value
 

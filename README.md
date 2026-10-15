@@ -67,15 +67,20 @@ tokate doctor
   tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
   tokate submit OWNER/REPO#42
 
-  # Donate to a repository without a Tokate policy for one hour, or stop early
+  # Gratis free selection: let the harness choose tasks for one hour
   tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
   tokate work OWNER/REPO stop
 
-  # Work one issue without a Tokate policy
+  # Gratis one issue: work issue 42, then publish
   tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
-  # Review the exact PR title and body before publication
-  tokate submit OWNER/REPO#42
-  # Publish the reviewed PR
+
+  # Gratis issue list: work and publish each issue in this order
+  tokate work OWNER/REPO#12,15,40 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
+
+  # Gratis review: stop each task before publication
+  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --review --yes
+  # Preview the exact PR title and body, then publish
+  tokate submit OWNER/REPO#42 --json
   tokate submit OWNER/REPO#42 --yes
   ```
 
