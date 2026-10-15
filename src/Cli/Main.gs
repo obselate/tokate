@@ -298,7 +298,7 @@ func Dispatch(options Args) int32 {
                         let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
                         if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
                             .ValueKind == JsonValueKind.Undefined {
-                            ApiTransport.PollWait()
+                            ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
                             Submission.ResetWorkflow()
                         } else {
                             Submission.Submit(options)

@@ -1109,6 +1109,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Pending workflow offered repeat submit"
         )
         baseline.Restore()
+        Flow.Reload()
+        Flow.State["ref_poll_interval"] = JsonValue.Create("300")
+        Flow.Save()
         let submitted = Flow.Acquire([]string{"submit", "--run", run})
         Check.Contains(submitted.Output, "Draft PR: https://github.com/owner/project/pull/10")
         Check.That(!submitted.Output.Contains("Exact request already posted"), "Submit reported its own request twice")
