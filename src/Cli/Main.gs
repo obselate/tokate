@@ -269,9 +269,15 @@ func Dispatch(options Args) int32 {
         case "submit" {
             Submission.Submit(options)
 
+            let directory = Path.GetFullPath(options.Need("run"))
+            var run = Data.Load(directory)
+
+            if PublicOutput.Enabled && !Donate.Active && run.Number("pr") == 0 && !run.Flag("gratis") {
+                PublicOutput.ResultData = PublicOutput.RunSummary(directory)
+                return 8
+            }
+
             if !PublicOutput.Enabled || Donate.Active {
-                let directory = Path.GetFullPath(options.Need("run"))
-                var run = Data.Load(directory)
                 let request = run.Number("pr") == 0 ? RequestData.FileData(
                     Path.Combine(directory, "request.json"),
                     8192
@@ -286,25 +292,21 @@ func Dispatch(options Args) int32 {
                             }
                             if !Donate.Active {
                                 Terminal.Message(guidance["action"]?.ToString() ?? "")
-                                return 0
+                                return 8
                             }
                         }
                         let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
                         if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
                             .ValueKind == JsonValueKind.Undefined {
                             ApiTransport.PollWait()
+                            Submission.ResetWorkflow()
+                        } else {
+                            Submission.Submit(options)
+                            run = Data.Load(directory)
                         }
-                        Submission.ResetWorkflow()
-                        Submission.Submit(options)
-                        run = Data.Load(directory)
                     }
                 } catch (error ApiDeadlineException) when !Donate.Active {
-                    Terminal.Message(
-                        "Submit pending. Run the same command again: " + Terminal.Command(
-                            []string{"tokate", "submit", "--run", directory}
-                        )
-                    )
-                    return 0
+                    return 8
                 } finally {
                     ApiTransport.EndDeadline()
                 }

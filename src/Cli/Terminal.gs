@@ -410,8 +410,12 @@ internal class Terminal {
 
                 Message("Saved artifacts: " + summary, "default", true)
 
-                for action in RunReference.Short(PublicOutput.Actions, false) {
-                    Message("Next: " + Hint(action), "default", true)
+                let actions = RunReference.Short(PublicOutput.Actions, false)
+                let failed = exitCode != 0 && exitCode != 8
+                let index = actions.FindIndex(next -> !failed && next.ElementAtOrDefault(1) != "status")
+
+                if actions.Count > 0 {
+                    Message("Next: " + Hint(actions[Math.Max(index, 0)]), "default", true)
                 }
             } catch (error Exception) { }
         }

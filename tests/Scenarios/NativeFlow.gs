@@ -154,8 +154,8 @@ internal partial class NativeFlow : NativeFixture {
             !work.Output.Contains("synthetic-raw") && !work.Output.Contains("synthetic-usage-secret"),
             "Inference output leaked"
         )
-        let submit = Call([]string{"submit", "--run", run, "--json"})
-        Check.Envelope(submit, "submit", "ok")
+        let submit = Call([]string{"submit", "--run", run, "--json"}, 8)
+        Check.Envelope(submit, "submit", "pending")
         Check.Contains(submit.Error, warning)
         Check.Contains(submit.Error, update)
         CoordinatePosted()

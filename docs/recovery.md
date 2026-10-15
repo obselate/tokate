@@ -296,7 +296,7 @@ Open the private verification artifact listed by status. Correct completed or pu
 
 | Symptom (message text) | Do (exact command) |
 | --- | --- |
-| `Submit pending. Run the same command again: tokate submit --run DIR` | No workflow result was available. Inspect `tokate status --run DIR` before `tokate submit --run DIR`. |
+| `Publication pending.` with `submit --run DIR` | No coordinator outcome was available. Inspect `tokate status --run DIR` before `tokate submit --run DIR`. |
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
 | `Tokate workflow failed. MESSAGE RUN_URL` or `GitHub could not start the Tokate workflow.` with Actions settings guidance and recovery text | Owner: use the pending request recovery above. |
 | `GitHub mutation failed (HTTP STATUS). GitHub reason: MESSAGE.` followed by uncertain-outcome guidance | Inspect remote state, then use `tokate submit --run DIR`. `STATUS` and `MESSAGE` contain the HTTP status and bounded GitHub message fields when present. No automatic retry is made. |

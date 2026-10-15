@@ -585,7 +585,7 @@ internal class PublicOutput {
                     if code != "stale_approval" && code != "invalid_state" {
                         if run.Number("pr") > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
-                        } else if !summary.ContainsKey("coordinator") &&
+                        } else if (next as Dictionary[string, Object?])?["role"]?.ToString() != "owner" &&
                             (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") {
                             Actions.Add([]string{"tokate", "submit", "--run", RunDirectory, "--json"})
                         }

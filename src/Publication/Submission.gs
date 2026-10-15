@@ -415,7 +415,11 @@ internal class Submission {
             let outcome = RequestData.Recorded(state.Value(), actor, value)
 
             if outcome.ValueKind != JsonValueKind.Undefined {
-                Terminal.Json(outcome, "Recorded request outcome; no comment posted")
+                if PublicOutput.Enabled {
+                    Terminal.Json(outcome, "")
+                } else {
+                    Terminal.Message("Recorded request outcome; no comment posted")
+                }
                 return
             }
 
@@ -728,8 +732,6 @@ internal class Submission {
                     ) {
                         Publication.SavePr(directory, run, pull)
                     }
-
-                    Terminal.Json(outcome, "Recorded publication outcome; no comment posted")
 
                     return
                 }

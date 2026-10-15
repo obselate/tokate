@@ -390,7 +390,7 @@ internal class AttemptContinuationChecks {
             Save(fresh, omitted)
             test.Flow.Call([]string{"submit", "--run", fresh}, 1)
             File.WriteAllText(Path.Combine(fresh, "run.json"), preserved)
-            test.Flow.Call([]string{"submit", "--run", fresh, "--json"})
+            test.Flow.Call([]string{"submit", "--run", fresh, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(fresh, "request.json")))
             let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
             Check.That(
