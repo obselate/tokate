@@ -13,8 +13,8 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-    uses: obselate/tokate/.github/workflows/tokate-shared.yml@8c8443705eb7dcda63f424e9f6e3a13e400d6887
+    uses: obselate/tokate/.github/workflows/tokate-shared.yml@ebce936c0091ba73154869e12b9bc85e0841d6d7
     with:
-      archive_url: 'https://api.github.com/repos/obselate/tokate/releases/assets/642621768'
-      archive_sha256: '0896068bfa38227661c8e7418268fb6282942ed5c74b6ebf5adc8909a4a6b1ea'
-      member: 'tokate-0.6.2-linux-x64/tokate'
+      archive_url: 'https://api.github.com/repos/obselate/tokate/releases/assets/642856982'
+      archive_sha256: '0127a4cc77177e2c57a1312bdf9b053eeb7ccae0a2318dcf9064123f77e04c4d'
+      member: 'tokate-0.6.3-linux-x64/tokate'
