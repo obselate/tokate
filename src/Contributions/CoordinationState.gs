@@ -125,6 +125,7 @@ internal class CoordinationState {
             J.Write(
                 map[string, Object?]{
                     "approval": approval,
+                    "base": J.Text(J.Get(state, "reservation"), "base"),
                     "policy": configuration.Item1.Value,
                     "template": configuration.Item2,
                     "issue": task

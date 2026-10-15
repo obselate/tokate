@@ -228,7 +228,7 @@ internal class AttemptContinuation {
                 RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) != actor || J.Text(
                 value,
                 "approval_id"
-            ) != J.Text(prior, "approval") || J.Text(approval, "base") != J.Text(prior, "base") {
+            ) != J.Text(prior, "approval") || J.Text(reservation, "base") != J.Text(prior, "base") {
                 throw CliFailure(
                     "stale_approval",
                     "Continuation needs unchanged authority and a fresh same-donor attempt"

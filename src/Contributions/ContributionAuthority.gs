@@ -69,7 +69,7 @@ internal class ContributionAuthority {
 
                 let approval = J.Get(record, "approval")
 
-                if run.Text("base") != J.Text(approval, "base") || run.Text("policy_hash") != J.Text(
+                if run.Text("base") != J.Text(reservation, "base") || run.Text("policy_hash") != J.Text(
                     approval,
                     "policy_hash"
                 ) ||

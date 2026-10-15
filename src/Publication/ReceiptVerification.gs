@@ -26,7 +26,7 @@ internal class ReceiptVerification {
             return VerifyCurrent(repo, number, pull, receipt, paths)
         }
 
-        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string) {
+        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string, base string) {
             for key in "version,issue,approval,donor,expected,reservation,incomplete,requested_model,reported_model"
                 .Split(',') {
                 if J.Get(receipt, key).ValueKind != JsonValueKind.Undefined {
@@ -34,9 +34,8 @@ internal class ReceiptVerification {
                 }
             }
 
-            for key in[]string{"base", "base_branch"} {
-                run.Fields[key] = J.Get(approval, key)
-            }
+            run.Fields["base"] = base
+            run.Fields["base_branch"] = J.Get(approval, "base_branch")
 
             run.Fields["authority_revision"] = revision
             run.Fields["receipt_hash"] = Data.Hash(RequestData.Canonical(receipt))
@@ -275,11 +274,11 @@ internal class ReceiptVerification {
                 throw CliFailure("stale_approval", "Receipt claims an amendment without coordination authority")
             }
 
-            let baseline = J.Text(amendment, "base") == "" ? J.Text(approval, "base"): J.Text(amendment, "base")
+            let baseline = J.Text(amendment, "base") == "" ? J.Text(reservation, "base"): J.Text(amendment, "base")
             if J.Text(amendment, "base") != J.Text(current, "base") {
                 throw CliFailure("stale_approval", "Amendment base differs from coordination authority")
             }
-            if baseline != J.Text(approval, "base") {
+            if baseline != J.Text(reservation, "base") {
                 GitHubPathEvidence.Target(repo, approval, baseline)
                 GitHubPathEvidence.Ancestor(repo, baseline, fork, exactHead)
             }
@@ -332,7 +331,7 @@ internal class ReceiptVerification {
                 run.Fields["public_summary"] = authority
             }
 
-            ReceiptVerification.Binding(run, receipt, approval, state.Sha)
+            ReceiptVerification.Binding(run, receipt, approval, state.Sha, J.Text(reservation, "base"))
             run.Fields["verified_target_revision"] = baseline
 
             return run

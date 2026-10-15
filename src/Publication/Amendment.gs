@@ -176,7 +176,7 @@ internal class Amendment {
                 "branch"
             ) != run.Text("branch") || run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
                 "base"
-            ) != J.Text(approval, "base") || run.Text("base_branch") != J.Text(approval, "base_branch") || run.Text(
+            ) != J.Text(reservation, "base") || run.Text("base_branch") != J.Text(approval, "base_branch") || run.Text(
                 "policy_hash"
             ) != J.Text(approval, "policy_hash") {
                 throw CliFailure("stale_approval", failure)
