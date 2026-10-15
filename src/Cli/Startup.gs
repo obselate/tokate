@@ -285,8 +285,9 @@ internal class Startup {
                     return
                 }
 
-                PublicOutput.Tools(Listed(blockers))
-                Show(Listed(blockers), true)
+                let listed = Listed(blockers)
+                PublicOutput.Tools(listed)
+                Show(listed, true)
 
                 for tool in blockers {
                     if tool.Code.StartsWith("namespace_", StringComparison.Ordinal) {
@@ -549,7 +550,8 @@ internal class Startup {
                 }
             }
 
-            PublicOutput.Tools(Listed(tools))
+            let listed = Listed(tools)
+            PublicOutput.Tools(listed)
 
             if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                 fields["scope"] = doctorScope
@@ -557,7 +559,7 @@ internal class Startup {
             }
 
             Terminal.Heading("Tokate " + doctorScope + " diagnostics")
-            Show(Listed(tools))
+            Show(listed)
 
             if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is JsonElement native {
                 let report = ClaudeCode.Gate(options, native)

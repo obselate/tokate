@@ -151,7 +151,6 @@ internal class PiChecks {
                     "doctor",
                     "ok"
                 )
-                File.Delete(Path.Combine(agent, "settings.json"))
                 Check.Contains(
                     diagnosis["data"]?["tools"]?.ToJsonString() ?? "",
                     "Pi settings: model fixture-model, effort off, provider local, endpoint " + catalog.Endpoint + "."
@@ -175,6 +174,7 @@ internal class PiChecks {
                 Check.Contains(Check.Text(refused["error"]?["message"]), "field node names a missing path")
                 flow.Call([]string{"defaults", "remove"})
             } finally {
+                File.Delete(Path.Combine(agent, "settings.json"))
                 File.Move(hiddenCodex, codex)
             }
             let installMarker = Path.Combine(flow.Temp.Root, "unexpected-install")

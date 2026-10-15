@@ -470,7 +470,7 @@ internal class Terminal {
 
                 if field.Value.ValueKind == JsonValueKind.Object {
                     Message(label + ":", "default")
-                    Fields(field.Value, prefix + "  ", field.Name == "profiles")
+                    Fields(field.Value, prefix + "  ", prefix == "" && field.Name == "profiles")
                 } else if field.Value.ValueKind == JsonValueKind.Array {
                     let items = J.Items(field.Value)
 

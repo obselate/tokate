@@ -484,19 +484,26 @@ internal class ClaudeCode {
         internal func Gate(args Args, runtime JsonElement) Object {
             let model = args.Need("model")
             let effort = args.Need("effort")
+            let path = args.Get(
+                "policy",
+                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
+            )
+            var text string
             var policy Policy
 
             try {
-                policy = Policy(
-                    File.ReadAllText(
-                        args.Get(
-                            "policy",
-                            Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
-                        )
-                    )
+                text = File.ReadAllText(path)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot read the policy at " + path + ". Pass --policy FILE or run in a checkout."
                 )
+            }
+
+            try {
+                policy = Policy(text)
                 policy.Validate("claude", "anthropic", model, effort, 1)
-            } catch (error Exception) when !(error is IOException || error is UnauthorizedAccessException) {
+            } catch (error Exception) {
                 throw CliFailure("verification_failed", error.Message)
             }
 
@@ -540,7 +547,7 @@ internal class ClaudeCode {
                         model,
                         effort
                     )
-                } catch (error Exception) when !(error is IOException || error is UnauthorizedAccessException) {
+                } catch (error Exception) {
                     throw CliFailure("verification_failed", error.Message)
                 }
             }

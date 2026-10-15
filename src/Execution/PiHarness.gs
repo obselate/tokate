@@ -255,7 +255,7 @@ internal class PiHarness {
                 ", provider " +
                 Value(provider) +
                 ", endpoint " +
-                Value(J.Text(J.Get(models, provider), "baseUrl")) +
+                Endpoint(J.Text(J.Get(models, provider), "baseUrl")) +
                 "."
         }
 
@@ -268,6 +268,19 @@ internal class PiHarness {
         }
 
         private func Value(text string) string -> text == "" ? "not set": text
+
+        private func Endpoint(value string) string {
+            var uri Uri
+
+            if !Uri.TryCreate(value, UriKind.Absolute, out uri) {
+                return value == "" ? "not set": "invalid"
+            }
+
+            return uri.GetComponents(
+                UriComponents.SchemeAndServer | UriComponents.Path | UriComponents.KeepDelimiter,
+                UriFormat.UriEscaped
+            )
+        }
 
         internal func ValidateSaved(run Data) {
             PiBoundary.Endpoint(run.Text("pi_endpoint"))
