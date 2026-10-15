@@ -269,9 +269,12 @@ func Dispatch(options Args) int32 {
 
             let directory = Path.GetFullPath(options.Need("run"))
             var run = Data.Load(directory)
+            if run.Flag("gratis") {
+                return 0
+            }
 
             if PublicOutput.Enabled && !Donate.Active {
-                pending = run.Number("pr") == 0 && !run.Flag("gratis")
+                pending = run.Number("pr") == 0
 
                 if pending {
                     Submission.FailedWorkflow(directory, run)
@@ -319,7 +322,14 @@ func Dispatch(options Args) int32 {
         }
 
         case "claim", "work" {
-            if Cli.RepositoryWork(options) {
+            if Cli.RepositoryWork(options) ||
+                (
+                options.Command == "work" && options.Get("run") == "" && GitHub.Api(
+                    "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
+                    missing: true
+                )
+                    .ValueKind == JsonValueKind.Undefined
+            ) {
                 return Donate.Run(options)
             }
             let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):

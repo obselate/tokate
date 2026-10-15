@@ -10,9 +10,10 @@ import System.Text.Json
 
 internal class GratisGuidance {
     shared {
-        internal func Prompt(source string) string {
+        internal func Prompt(source string, named bool) string {
             if source == "" {
-                return "Choose one useful task permitted by the repository guidance, or complete the selected issue."
+                return named ? "Complete the selected issue.":
+                "Choose one useful task permitted by the repository guidance, or complete the selected issue."
             }
             var text string
             var uri Uri
@@ -85,24 +86,19 @@ internal class GratisGuidance {
                 .ThenBy(path -> path, StringComparer.Ordinal)
                 .ToList()
             let guidance = Dictionary[string, Object?]()
-            var index int32
-            while index < ordered.Count {
-                let path = ordered[index]
-                index++
+            let linkedDocuments = List[string]()
+            for path in ordered {
                 let text = Text(repo, revision, path, tree)
-                if Rank(path) < 0 && Encoding.UTF8.GetByteCount(text) > 32768 {
-                    continue
-                }
-                Add(guidance, path, text)
-                if Rank(path) < 0 {
-                    continue
-                }
+                guidance[path] = text
                 for token in text.Split(" \t\r\n()<>\"`".ToCharArray(), StringSplitOptions.RemoveEmptyEntries) {
                     let linked = Relative(path, Uri.UnescapeDataString(token.Split('#')[0]))
                     let extension = Path.GetExtension(linked).ToLowerInvariant()
-                    if tree.ContainsKey(linked) && !ordered.Contains(linked) &&
+                    if tree.ContainsKey(linked) && J.Text(tree[linked], "mode") != "120000" && !ordered.Contains(
+                        linked
+                    ) &&
+                        !linkedDocuments.Contains(linked) &&
                         (extension == ".md" || extension == ".rst" || extension == ".txt") {
-                        ordered.Add(linked)
+                        linkedDocuments.Add(linked)
                     }
                 }
             }
@@ -133,7 +129,10 @@ internal class GratisGuidance {
                     }
                     section += lines[index] + "\n"
                 }
-                Add(guidance, path + " (contributing section)", section)
+                guidance[path + " (contributing section)"] = section
+            }
+            if linkedDocuments.Count > 0 {
+                guidance["Linked documents"] = String.Join("\n", linkedDocuments)
             }
             return guidance
         }
@@ -147,19 +146,12 @@ internal class GratisGuidance {
                 case "AGENTS.md": 0
                 case "CLAUDE.md": 2
                 case ".github/copilot-instructions.md": 3
-                default: path.EndsWith("/AGENTS.md", StringComparison.Ordinal) ? 1: rank >= 0 && Array.IndexOf(
+                default: path.EndsWith("/AGENTS.md", StringComparison.Ordinal) ? 1: Array.IndexOf(
                     names,
                     name
                 ) >= 0 ? 4 +
-                    rank: -1
+                    (rank >= 0 ? rank: 3): -1
             }
-        }
-
-        private func Add(guidance Dictionary[string, Object?], path string, text string) {
-            if Encoding.UTF8.GetByteCount(text) > 32768 {
-                throw CliFailure("invalid_state", "Guidance text exceeds 32 KiB: " + J.Write(path))
-            }
-            guidance[path] = text
         }
     }
 }

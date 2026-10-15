@@ -1651,6 +1651,18 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Path.Combine(gratisFlow.Upstream, "CONTRIBUTING.md"),
             "Add result.txt containing the fixture completion text.\n"
         )
+        File.WriteAllText(
+            Path.Combine(gratisFlow.Upstream, "AGENTS.md"),
+            "Read [design](design.md) before changes.\n" + String('x', 33000) + "\nFull guidance ends here.\n"
+        )
+        File.WriteAllText(
+            Path.Combine(gratisFlow.Upstream, "design.md"),
+            "Linked document body.\n" + String('y', 70000)
+        )
+        Directory.CreateDirectory(Path.Combine(gratisFlow.Upstream, "nested"))
+        File.WriteAllText(Path.Combine(gratisFlow.Upstream, "nested/CONTRIBUTING.md"), "Nested contribution rules.\n")
+        File.CreateSymbolicLink(Path.Combine(gratisFlow.Upstream, "unsafe.md"), "/proc/self/environ")
+        File.AppendAllText(Path.Combine(gratisFlow.Upstream, "AGENTS.md"), "Read [unsafe](unsafe.md).\n")
         gratisFlow.Commit("Welcome donated work without a policy")
         let instruction = Path.Combine(gratisFlow.Temp.Root, "donation.txt")
         File.WriteAllText(instruction, "Complete the task named by CONTRIBUTING.md.")
@@ -1714,6 +1726,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(prompt, "CONTRIBUTING.md")
         Check.Contains(prompt, "Complete the task named by CONTRIBUTING.md.")
         Check.Contains(prompt, "Add result.txt")
+        Check.Contains(prompt, "Full guidance ends here.")
+        Check.Contains(prompt, "Nested contribution rules.")
+        Check.Contains(prompt, "Linked documents")
+        Check.Contains(prompt, "design.md")
+        Check.Contains(prompt, "Read and follow all embedded guidance in full before work.")
+        Check.Contains(prompt, "read that file in the checkout before changing code")
+        Check.That(!prompt.Contains("Linked document body."), "Gratis embedded linked document text")
         Check.Contains(prompt, "tokate-refusal.txt")
         Check.Contains(prompt, "Open PR snapshot")
         let gratisDirectory = Check.Text(gratis["tasks"]?[0]?["run_directory"])
@@ -1722,5 +1741,149 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
             "Gratis ran repository verification"
         )
+        let savedGuidance = Check.Json(File.ReadAllText(Path.Combine(gratisDirectory, "run.json")))["gratis_context"]?[
+            "guidance"
+        ]
+        Check.That(
+            !Check.Text(savedGuidance?["Linked documents"]).Contains("unsafe.md"),
+            "Gratis listed a symlinked linked document"
+        )
+
+        using let namedFlow = NativeFixture(Flow.Binary)
+        namedFlow.Initialize(access: false)
+        namedFlow.Git("-C", namedFlow.Upstream, "rm", ".github/tokate.json")
+        File.WriteAllText(
+            Path.Combine(namedFlow.Upstream, "CONTRIBUTING.md"),
+            "Use Conventional Commit titles: type(scope): summary.\n"
+        )
+        namedFlow.Commit("Welcome named issue donations")
+        let selectedIssue = namedFlow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
+        selectedIssue["number"] = JsonValue.Create(2)
+        namedFlow.State["issues"] = Check.Map("1", namedFlow.State["issue"]?.DeepClone(), "2", selectedIssue)
+        namedFlow.State["gratis_title"] = JsonValue.Create("  fix(fixture): complete the named issue\n")
+        namedFlow.Save()
+        let namedArgs = []string{
+            "work",
+            "owner/project#2",
+            "--harness",
+            "codex",
+            "--model",
+            "gpt-6.1-sol",
+            "--effort",
+            "high",
+            "--time",
+            "30s",
+            "--json"
+        }
+        let preview = namedFlow.Call(namedArgs, 1)
+        Check.Envelope(preview, "work", "error", "confirmation_required")
+        Check.Contains(preview.Error, "owner/project#2")
+        Check.Contains(preview.Error, "Total: one task")
+        namedFlow.NoInference()
+        Check.That(
+            !Directory.Exists(Path.Combine(namedFlow.Temp.Env["HOME"], ".local/state/tokate/donations")),
+            "Named issue preview changed local state"
+        )
+        let namedIssue = namedFlow.State["issues"]?["2"] ?? throw Exception("Missing named issue")
+        for field in[]string{"state", "locked", "pull_request"} {
+            namedIssue[field] = field == "state" ? JsonValue.Create("closed"):
+            field == "locked" ? JsonValue.Create(true): Check.Map("url", "pull")
+            namedFlow.Save()
+            let rejected = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "open, unlocked issue")
+            namedIssue.AsObject().Remove(field)
+            namedIssue["state"] = JsonValue.Create("open")
+        }
+        namedFlow.Save()
+        let acceptedArgs = List[string](namedArgs)
+        acceptedArgs.Add("--yes")
+        let named = Check.Envelope(namedFlow.Call(acceptedArgs.ToArray()), "work", "ok")["data"] ??
+            throw Exception("Missing named issue report")
+        Check.That(Check.Text(named["prepared"]) == "1", "Named gratis issue was not prepared")
+        Check.That(Check.Text(named["reason"]) == "issue_completed", "Named donation did not stop")
+        Check.That(named["tasks"]?.AsArray().Count == 1, "Named donation ran more than one task")
+        Check.That(Check.Text(named["tasks"]?[0]?["issue"]) == "2", "Named donation selected another issue")
+        namedFlow.Reload()
+        Check.That(Check.Text(namedFlow.State["exec_count"]) == "1", "Named donation repeated inference")
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Named work published a PR")
+        Check.That(Check.Text(named["tasks"]?[0]?["pr_url"]) == "", "Named work reported a published PR")
+        let namedDirectory = Check.Text(named["tasks"]?[0]?["run_directory"])
+        let savedRun = File.ReadAllText(Path.Combine(namedDirectory, "run.json"))
+        namedFlow.ResetTraffic()
+        let submit = []string{"submit", "owner/project#2", "--json"}
+        let submitPreview = namedFlow.Call(submit)
+        let publication = Check.Envelope(submitPreview, "submit", "ok")["data"] ??
+            throw Exception("Missing submission preview")
+        Check.That(Check.Text(publication["applied"]) == "false", "Preview claimed publication")
+        Check.That(Check.Text(publication["repo"]) == "owner/project", "Preview names the wrong repository")
+        let proposed = publication["pull_request"] ?? throw Exception("Missing PR preview")
+        let title = "fix(fixture): complete the named issue"
+        let proposedBody = Check.Text(proposed["body"])
+        Check.That(Check.Text(proposed["title"]) == title, "Preview ignored the title artifact")
+        Check.That(Check.Text(proposed["base"]) == "main", "Preview names the wrong base")
+        Check.Contains(Check.Text(proposed["head"]), "donor:tokate/gratis-")
+        Check.Contains(proposedBody, "Fixes #2")
+        Check.Contains(submitPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
+        let plainPreview = namedFlow.Call([]string{"submit", "owner/project#2", "--non-interactive"})
+        Check.Contains(plainPreview.Error, "Title: " + title + "\nBody:\n" + proposedBody)
+        let rejected = TestTerminal.Pty(Flow.Binary, []string{"submit", "owner/project#2"}, namedFlow.Temp, 80, "\n")
+        Check.That(rejected.Code == 1, "Rejected publication succeeded")
+        Check.Contains(rejected.Output, "Publish this contribution? [y/N]")
+        Check.Contains(rejected.Output, "Nothing changed.")
+        namedFlow.Reload()
+        for call in namedFlow.State["api_calls"]?.AsArray() ?? throw Exception("Missing preview API evidence") {
+            Check.That(Check.Text(call["method"]) == "GET", "Submission preview made a GitHub write")
+        }
+        Check.That(
+            File.ReadAllText(Path.Combine(namedDirectory, "run.json")) == savedRun,
+            "Submission preview changed the saved run"
+        )
+        Check.That(!File.Exists(Path.Combine(namedDirectory, "publication.json")), "Preview saved publication")
+        let savedState = Check.Json(savedRun)
+        Check.That(
+            namedFlow.Git(
+                "--git-dir",
+                Path.Combine(namedFlow.Bin, "fork"),
+                "rev-parse",
+                Check.Text(savedState["branch"])
+            ) == Check.Text(savedState["base"]),
+            "Work or submission preview pushed the candidate"
+        )
+        Check.That((namedFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 0, "Preview opened a PR")
+        let published = Check.Envelope(
+            namedFlow.Call([]string{"submit", "owner/project#2", "--yes", "--json"}),
+            "submit",
+            "ok"
+        )["data"]
+        Check.That(Check.Text(published?["applied"]) == "true", "Confirmed submission did not publish")
+        namedFlow.Reload()
+        let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
+        Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR differs from preview title")
+        Check.That(Check.Text(namedPull["body"]) == proposedBody, "Gratis PR differs from preview body")
+        let checkout = Path.Combine(namedDirectory, "checkout")
+        Check.That(
+            namedFlow.Git("-C", checkout, "show", "-s", "--format=%s", "HEAD") == title,
+            "Gratis commit ignored the title artifact"
+        )
+        Check.That(!File.Exists(Path.Combine(checkout, "tokate-title.txt")), "Title artifact was not removed")
+        Check.Contains(Check.Text(namedFlow.State["prompts"]?[0]), "tokate-title.txt")
+        Check.That(
+            (namedFlow.State["request_comments"]?.AsArray() ?? JsonArray()).Count == 0,
+            "Named gratis work posted a claim"
+        )
+
+        using let failedFlow = NativeFixture(Flow.Binary)
+        failedFlow.Initialize(access: false)
+        failedFlow.Git("-C", failedFlow.Upstream, "rm", ".github/tokate.json")
+        failedFlow.Commit("Welcome named issue work without a policy")
+        failedFlow.State["mode"] = JsonValue.Create("model_failure")
+        failedFlow.Save()
+        let failedArgs = List[string](namedArgs)
+        failedArgs[1] = "owner/project#1"
+        failedArgs.Add("--yes")
+        let failed = Check.Envelope(failedFlow.Call(failedArgs.ToArray(), 1), "work", "error", "command_failed")["data"]
+        Check.That(Check.Text(failed?["reason"]) == "failed", "Failed named work claimed completion")
+        Check.That(Check.Text(failed?["failed"]) == "1", "Failed named work was not counted")
+        failedFlow.NoPr()
     }
 }
