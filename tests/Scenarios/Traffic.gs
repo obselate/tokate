@@ -322,22 +322,25 @@ internal class CommandTrafficChecks {
             flow.Flow.Save()
             flow.Flow.Mode("lost_request_response")
             flow.Flow.ResetTraffic()
-            let first = flow.Flow.Call([]string{"submit", "--run", run}, traffic: true)
+            let first = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
             Budgets(flow.Flow, first, 46, 1, 1)
-            Check.Contains(first.Output, "Submit pending. Run the same command again: tokate submit --run " + run)
+            Check.Contains(first.Error, "Publication pending. Run: " + run)
+            Check.Contains(first.Error, "Next: tokate submit --run " + run)
+            Check.That(!first.Output.Contains("Exact request already posted"), "Submit reported its own request twice")
             flow.Flow.Mode("")
             flow.Flow.ResetTraffic()
             let json = Check.Envelope(
-                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, traffic: true),
+                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 8, traffic: true),
                 "submit",
-                "ok"
+                "pending"
             )
             Check.That(Check.Text(json["data"]?["pr"]) == "", "JSON submit waited for publication")
+            Check.Contains(json["next_actions"]?.ToJsonString() ?? "", "\"submit\"")
             flow.Flow.Traffic(34, 0, 0)
             flow.Flow.ResetTraffic()
-            let duplicate = flow.Flow.Call([]string{"submit", "--run", run}, traffic: true)
+            let duplicate = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
             Budgets(flow.Flow, duplicate, 36, 0, 0)
-            Check.Contains(duplicate.Output, "Submit pending. Run the same command again: tokate submit --run " + run)
+            Check.Contains(duplicate.Error, "Next: tokate submit --run " + run)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             let pending = Check.Map(
@@ -350,7 +353,8 @@ internal class CommandTrafficChecks {
             flow.Flow.Faults("repos/owner/project/git/ref/heads/tokate/contributions/1", JsonArray(pending))
             let observed = flow.Flow.Call([]string{"submit", "--run", run})
             Check.Contains(observed.Output, "Draft PR: https://github.com/owner/project/pull/10")
-            Check.That(!observed.Output.Contains("Submit pending."), "Ready publication was delayed until the deadline")
+            Check.That(!observed.Output.Contains("{\"pr\""), "Submit printed raw JSON")
+            Check.That(observed.Error.Split("Next: ").Length == 2, "Submit printed more than one next action")
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 31, 0, 0)
             flow.Expire()

@@ -112,7 +112,7 @@ internal class ProgressChecks {
             )
             Check.Contains(result.Error, "Run: " + run)
             Check.Contains(result.Error, "Saved artifacts: run.json")
-            Check.Contains(result.Error, "Next: tokate status --run")
+            Check.That(result.Error.Split("Next: tokate ").Length == 2, "Expected one next action")
             return result
         }
 
@@ -128,6 +128,7 @@ internal class ProgressChecks {
             flow.ResetTraffic()
             let result = Live(flow, run, "Owner verification 1")
             Check.Envelope(result, "work", "ok")
+            Check.Contains(result.Error, "Next: tokate submit --run " + run)
             Check.Contains(result.Error, "Verification 1:")
             Check.Contains(result.Error, "Verification 2:")
             Check.That(result.Error.Split("passed (exit 0)").Length == 3, "Missing individual command results")
@@ -153,6 +154,7 @@ internal class ProgressChecks {
             flow.Save()
             let result = Live(flow, run, "Inference")
             Check.Envelope(result, "work", "ok")
+            Check.Contains(result.Error, "Next: tokate submit --run " + run)
             let samples = Regex.Matches(
                 result.Error,
                 "Inference: ([0-9]+)s elapsed, ([0-9]+)s remaining; total ([0-9]+)s left"
@@ -240,6 +242,9 @@ internal class ProgressChecks {
                 let result = Live(flow, run, "Inference", true)
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(result.Code == (mode == "complete" ? 0: 1), result.Output + result.Error)
+                if mode == "complete" {
+                    Check.Contains(result.Error, "Next: tokate submit --run " + run)
+                }
                 Check.That(
                     Check.Text(saved["state"]) == (mode == "complete" ? "generated": "failed"),
                     "Unlimited work returned the wrong state"
@@ -352,7 +357,7 @@ internal class ProgressChecks {
             Check.Contains(result.Output, "passed (exit 0)")
             let visible = Regex.Replace(result.Output, "\\x1b\\[[0-?]*[ -/]*[@-~]", "")
             Check.Contains(visible, "Run completed. Run: " + run)
-            Check.Contains(visible, "Next: tokate status --run " + run)
+            Check.Contains(visible, "Next: tokate submit --run " + run)
             Check.That(
                 !result.Output.Contains("INJECTED_TITLE") && !result.Output.Contains("\x1b]"),
                 "Tool output injected terminal controls"

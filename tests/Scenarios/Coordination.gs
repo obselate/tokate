@@ -272,7 +272,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.NoInference()
             File.WriteAllText(path, original)
             test.Flow.Call([]string{"work", "--run", run})
-            test.Flow.Call([]string{"submit", "--run", run, "--json"})
+            test.Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
             requestedTool["effort"] = JsonValue.Create("absent")
@@ -858,7 +858,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Unknown original attribution changed"
         )
         Flow.NoPr()
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Reload()
         let request = Check.PostedRequest(Flow.State)
         Check.That(Check.Text(request["metadata"]?["head"]) == final, "Submission reused failed head")
@@ -901,7 +901,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Imported external Git metadata"
         )
         Flow.CommitIdentity(Path.Combine(run, "checkout"), commit, "Donor", "donor@example.test")
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
         let path = Event(publish)
@@ -1072,7 +1072,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.NoPr()
         Flow.NoInference()
         baseline.Restore()
-        let waiting = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}).Output)
+        let waiting = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}, 8).Output)
         Check.That(waiting["data"]?["coordinator"] == nil, "Absent workflow changed submit guidance")
         Flow.Reload()
         Flow.State["workflow_runs"] = JsonArray(
@@ -1099,18 +1099,28 @@ internal partial class CoordinationFlow : CoordinationFixture {
             )
         )
         Flow.Save()
-        let observed = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}).Output)
-        let action = Check.Text(observed["data"]?["next"]?["action"])
+        let observed = Check.Envelope(
+            Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+            "submit",
+            "error",
+            "command_failed"
+        )
+        let action = Check.Text(observed["data"]?["run_state"]?["next"]?["action"])
         Check.Contains(action, "GitHub mutation failed (HTTP 422).")
         Check.Contains(action, "https://example.test/coordinator")
         Check.That(!action.Contains(String('x', 1025)), "Failure annotation exceeded its bound")
         Check.That(
             !(observed["next_actions"]?.ToJsonString() ?? "").Contains("\"submit\""),
-            "Pending workflow offered repeat submit"
+            "Failed workflow offered repeat submit"
         )
+        Check.Contains(Flow.Call([]string{"submit", "--run", run}, 1).Error, "GitHub mutation failed (HTTP 422).")
         baseline.Restore()
+        Flow.Reload()
+        Flow.State["ref_poll_interval"] = JsonValue.Create("300")
+        Flow.Save()
         let submitted = Flow.Acquire([]string{"submit", "--run", run})
         Check.Contains(submitted.Output, "Draft PR: https://github.com/owner/project/pull/10")
+        Check.That(!submitted.Output.Contains("Exact request already posted"), "Submit reported its own request twice")
         let published = Check.Json(File.ReadAllText(savedPath))
         Check.That(
             Check.Text(published["state"]) == "published" && Check.Text(published["pr"]) == "10",
@@ -1266,7 +1276,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         Flow.Mode("revoke_after_pr")
         Coordinate(Event(request), 1)
@@ -1282,7 +1292,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         let state = State()["state"] ?? throw Exception("Missing state")
         let reservation = state["reservation"] ?? throw Exception("Missing reservation")
         reservation["expires"] = JsonValue.Create(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 2)
@@ -1377,7 +1387,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"amend", "--run", run})
         let corrected = AmendmentFlow.Correct(Flow, run)
         AmendmentFlow.Rework(Flow, run, corrected, tools: Tools)
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Coordinate(Event(Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))))
         Flow.Call([]string{"submit", "--run", run})
         let published = File.ReadAllText(Path.Combine(run, "run.json"))
@@ -1424,7 +1434,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"})
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
         let declared = metadata["tools"]?.DeepClone() ?? throw Exception("Missing declared tools")

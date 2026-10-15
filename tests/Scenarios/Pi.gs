@@ -728,7 +728,7 @@ internal class PiChecks {
                     "Pi tool changes were lost"
                 )
                 if mode == "on" {
-                    flow.Flow.Call([]string{"submit", "--run", run})
+                    flow.Flow.Call([]string{"submit", "--run", run}, 8)
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
                     flow.Flow.Receipt("owner/project#10", owner: true)
