@@ -15,6 +15,13 @@ internal class OmpTool {
                 Console.WriteLine("omp/100.0.0")
                 return 0
             }
+            if String.Join(" ", args) == "config get modelRoles --json" {
+                Console.WriteLine(
+                    Check.Map("key", "modelRoles", "value", Check.Map("default", "openrouter/" + Model + ":high"))
+                        .ToJsonString()
+                )
+                return 0
+            }
             if String.Join(" ", args) == "models --json" {
                 Check.That(
                     !Directory.Exists(Path.Combine(Directory.GetCurrentDirectory(), ".git")),

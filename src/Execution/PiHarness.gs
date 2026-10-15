@@ -239,8 +239,35 @@ internal class PiHarness {
             Runtime(options)
             let versions = PiBoundary.Probe(options.Need("pi-root"), options.Need("node"))
             tool.Path = options.Need("pi-root")
-            tool.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node")
+            tool.Detail = "Pi " + J.Text(versions, "version") + ", Node " + J.Text(versions, "node") + ". " + Settings()
         }
+
+        private func Settings() string {
+            let directory = LocalPaths.PiDirectory()
+            let settings = Optional(Path.Combine(directory, "settings.json"))
+            let provider = J.Text(settings, "defaultProvider")
+            let models = J.Get(Optional(Path.Combine(directory, "models.json")), "providers")
+
+            return "Pi settings: model " +
+                Value(J.Text(settings, "defaultModel")) +
+                ", effort " +
+                Value(J.Text(settings, "defaultThinkingLevel")) +
+                ", provider " +
+                Value(provider) +
+                ", endpoint " +
+                Value(J.Text(J.Get(models, provider), "baseUrl")) +
+                "."
+        }
+
+        private func Optional(path string) JsonElement {
+            try {
+                return RequestData.FileData(path, 16 * 1024 * 1024)
+            } catch (error CliFailure) {
+                return JsonElement{}
+            }
+        }
+
+        private func Value(text string) string -> text == "" ? "not set": text
 
         internal func ValidateSaved(run Data) {
             PiBoundary.Endpoint(run.Text("pi_endpoint"))

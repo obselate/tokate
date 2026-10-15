@@ -142,10 +142,19 @@ internal class PiChecks {
             let hiddenCodex = Path.Combine(flow.Bin, "unused-codex")
             File.Move(codex, hiddenCodex)
             try {
+                File.WriteAllText(
+                    Path.Combine(agent, "settings.json"),
+                    "{\"defaultProvider\":\"local\",\"defaultModel\":\"fixture-model\",\"defaultThinkingLevel\":\"off\"}"
+                )
                 let diagnosis = Check.Envelope(
                     flow.Call([]string{"doctor", "managed", "pi", "--pi-root", root, "--node", node, "--json"}),
                     "doctor",
                     "ok"
+                )
+                File.Delete(Path.Combine(agent, "settings.json"))
+                Check.Contains(
+                    diagnosis["data"]?["tools"]?.ToJsonString() ?? "",
+                    "Pi settings: model fixture-model, effort off, provider local, endpoint " + catalog.Endpoint + "."
                 )
                 for tool in diagnosis["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Pi diagnostics required Codex")

@@ -286,6 +286,10 @@ internal class OmpChecks {
             )
             let ready = Check.Envelope(flow.Call([]string{"doctor", "managed", "omp", "--json"}), "doctor", "ok")
             Check.Contains(ready["data"]?["tools"]?.ToJsonString() ?? "", "OMP 100.0.0; 2 configured models")
+            Check.Contains(
+                ready["data"]?["tools"]?.ToJsonString() ?? "",
+                "Default role: provider openrouter, model " + OmpTool.Model + ", effort high."
+            )
             File.WriteAllText(Path.Combine(settings, "mode"), "empty")
             let empty = flow.Call([]string{"doctor", "managed", "omp", "--json"}, 1)
             Check.Contains(empty.Output, "OMP lists no models")

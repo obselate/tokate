@@ -47,7 +47,29 @@ internal class OmpHarness {
             }
             tool.Path = options.Need("harness-path")
             tool.Detail = "OMP " + J.Text(result, "version") + "; " + models.Count.ToString() +
-                " configured models listed without inference or credential checks."
+                " configured models listed without inference or credential checks. " +
+                Role(OmpRuntime.DefaultRole(tool.Path), models)
+        }
+
+        private func Role(selector string, models List[JsonElement]) string {
+            if selector == "" {
+                return "No default role model in OMP config."
+            }
+
+            var model = selector
+            var effort = "not set"
+            let split = selector.LastIndexOf(':')
+
+            if split > 0 && !models.Exists(entry -> J.Text(entry, "selector") == selector) {
+                model = selector.Substring(0, split)
+                effort = selector.Substring(split + 1)
+            }
+
+            let slash = model.IndexOf('/')
+            return "Default role: provider " +
+                (slash < 0 ? "not set": model.Substring(0, slash)) +
+                ", model " +
+                model.Substring(slash + 1) + ", effort " + effort + "."
         }
 
         internal func ValidateSaved(run Data) {
