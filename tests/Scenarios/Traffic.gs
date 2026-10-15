@@ -587,6 +587,21 @@ internal class CommandTrafficChecks {
             flow.Save()
             flow.ResetTraffic()
             Budgets(flow, Watch(flow, run, "10", 0, true), 135, 0, 0)
+            flow.Reload()
+            flow.State.AsObject().Remove("check_sequence")
+            flow.State["checks"] = JsonArray()
+            flow.State["poll_interval"] = JsonValue.Create("30")
+            flow.Save()
+            flow.ResetTraffic()
+            Watch(flow, run, "8")
+            flow.Reload()
+            var polls int32
+            for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                if Check.Text(call["path"]).Contains("/check-runs?") {
+                    polls++
+                }
+            }
+            Check.That(polls == 1, "Watch ignored the exact-head check poll hint")
         }
 
         private func WatchChanges(binary string) {
