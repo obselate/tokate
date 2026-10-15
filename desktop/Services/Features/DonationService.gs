@@ -18,6 +18,8 @@ class DonationService {
     private var approvalTimer IDisposable?
     private var approvalCheck CliClient?
     private var defaulted bool
+    private var repositoryTimer IDisposable?
+    private var repositoriesLoaded bool
     let Issues IssueSearchService
     var Current DonationState = DonationState.Initial
 
@@ -47,7 +49,13 @@ class DonationService {
     prop IsBrowsing bool -> Current.Step == DonationStep.Issue && Issues.Current.Loaded
 
     private func Set(next DonationState) {
-        Current = next.Settled()
+        let settled = next.Settled()
+        let selectionChanged = Current.Repository != settled.Repository || Current.RepositoryMode != settled.RepositoryMode ||
+            Current.PerTask != settled.PerTask || Current.Total != settled.Total || Current.Prompt != settled.Prompt ||
+            Current.IssueList != settled.IssueList || Current.ReviewEach != settled.ReviewEach ||
+            Current.Draft.Harness != settled.Draft.Harness || Current.Draft.Provider != settled.Draft.Provider ||
+            Current.Draft.Model != settled.Draft.Model || Current.Draft.Effort != settled.Draft.Effort || Current.Draft.Endpoint != settled.Draft.Endpoint
+        Current = selectionChanged ? settled with{Consent = "", ReviewedArguments = []string{}, ShowConsent = false}: settled
         changed()
     }
 
@@ -57,6 +65,8 @@ class DonationService {
 
     /// Stops checking for approval. Called when the window closes.
     func Stop() {
+        repositoryTimer?.Dispose()
+        repositoryTimer = nil
         approvalTimer?.Dispose()
         approvalTimer = nil
         approvalCheck?.Stop()
@@ -64,25 +74,77 @@ class DonationService {
     }
 
     func SetInput(value string) {
+        repositoryTimer?.Dispose()
         Issues.Reset("", IssueFilter.Approved)
         feedback.Clear()
-        Set(Current with{Input = value, Account = ""})
+        Set(Current with{Input = value, Account = "", RepositoryChecked = false, CheckingRepository = false, RepositoryStatus = "", Consent = "", ReviewedArguments = []string{}})
+        if value.Trim() == "" { return }
+        try {
+            let repository = RepositoryRef.Parse(value).FullName
+            Set(Current with{CheckingRepository = true})
+            repositoryTimer = window.Every(400, () -> {
+                repositoryTimer?.Dispose()
+                repositoryTimer = nil
+                go CheckRepository(value, repository)
+            })
+        } catch (error Exception) {
+            Set(Current with{RepositoryStatus = "Use owner/repository or a GitHub URL.", RepositoryTone = Tone.Need})
+        }
+    }
+
+    private func CheckRepository(input string, repository string) {
+        let exists = GitHubClient().Run[ProjectInfo](GitHubCommands.Repository(repository), value -> GitHubCodec.Project(repository, value), 20)
+        if exists.Outcome.Failure != "" || exists.Outcome.ExitCode != 0 {
+            window.Post(() -> {
+                if Current.Input == input {
+                    Set(Current with{CheckingRepository = false, RepositoryStatus = "Repository not found or unavailable. Check the name and GitHub sign-in.", RepositoryTone = Tone.Fail})
+                }
+            })
+            return
+        }
+        let policy = CliClient().Run[Policy](TokateCommands.Policy(repository), PolicyCodec.FromPolicyResult, 30)
+        window.Post(() -> {
+            if Current.Input != input { return }
+            if policy.Outcome.Failure != "" || policy.Outcome.ExitCode != 0 {
+                Set(Current with{CheckingRepository = false, RepositoryStatus = "Could not check repository policy. Try again.", RepositoryTone = Tone.Fail})
+                return
+            }
+            Set(Current with{Policy = policy.Value, RepositoryChecked = true, CheckingRepository = false})
+            Set(Current with{RepositoryStatus = policy.Value.Loaded ? "Owner policy · " + Current.LimitLabel + " per task": "Gratis · No Tokate policy", RepositoryTone = Tone.Done})
+        })
     }
 
     func SetRepositoryMode(value bool) {
         Issues.Reset("", IssueFilter.Approved)
-        Set(Current with{RepositoryMode = value, Policy = Policy.Empty, Account = "", Consent = ""})
+        Set(Current with{RepositoryMode = value, Account = "", Consent = "", ReviewedArguments = []string{}})
     }
 
-    func SetPerTask(value string) -> Set(Current with{PerTask = value})
+    func SetPerTask(value string) {
+        if int32.TryParse(value, out var minutes) && minutes > 0 && (Current.LimitMinutes == 0 || minutes <= Current.LimitMinutes) {
+            Set(Current with{PerTask = value})
+        }
+    }
 
     func SetTotal(value string) -> Set(Current with{Total = value})
 
     func SetPrompt(value string) -> Set(Current with{Prompt = value})
 
+    func SetIssueList(value string) -> Set(Current with{IssueList = value})
+
+    func SetReviewEach(value bool) -> Set(Current with{ReviewEach = value})
+
+    func ToggleConsent() -> Set(Current with{ShowConsent = !Current.ShowConsent})
+
+    func PickRepository(value string) {
+        SetInput(value)
+        Find()
+    }
+
     /// Lists the repository's approved issues, or goes straight to the issue an issue URL names.
     func Find() {
         try {
+            repositoryTimer?.Dispose()
+            repositoryTimer = nil
             let reference = RepositoryRef.Parse(Current.Input)
             let requested = reference.IssueNumber()
             let repository = reference.FullName
@@ -90,6 +152,7 @@ class DonationService {
             Set(
                 Current with{
                     Repository = repository,
+                    CheckingRepository = false,
                     Account = "",
                     Issue = "",
                     IssueTitle = "",
@@ -104,13 +167,7 @@ class DonationService {
                         return
                     }
                     Set(Current with{Account = user.Value ?? ""})
-                    if Current.RepositoryMode {
-                        Set(Current with{Step = DonationStep.Limits, Policy = Policy.Empty, Unready = HarnessDoctor.Known})
-                        LoadProfiles(() -> StartWithDefault())
-                        go CheckHarnesses()
-                    } else {
-                        LoadPolicy(repository, requested)
-                    }
+                    LoadPolicy(repository, requested)
                     return
                 }
             )
@@ -127,9 +184,24 @@ class DonationService {
                 if commands.Failed(reply.Outcome) {
                     return
                 }
-                Set(Current with{Policy = reply.Value})
+                let limit = reply.Value.MaxSeconds > 0 ? Math.Max(1, reply.Value.MaxSeconds / 60): 60
+                let total = Math.Min(60, limit)
+                let verification = Math.Min(30, Math.Max(1, total / 2))
+                Set(Current with{
+                    Policy = reply.Value, RepositoryChecked = true, CheckingRepository = false,
+                    PerTask = total.ToString(), IssueList = "", ReviewEach = false, Prompt = "",
+                    Draft = Current.Draft with{Coding = Math.Max(1, total - verification).ToString(), Verification = verification.ToString()},
+                })
+                RunStore.RememberRepository(repository)
+                Set(Current with{RecentRepositories = RunStore.ReadRepositories()})
+                if Current.RepositoryMode {
+                    Set(Current with{Step = DonationStep.Limits, Unready = HarnessDoctor.Known})
+                    LoadProfiles(() -> StartWithDefault())
+                    go CheckHarnesses()
+                    return
+                }
                 if !reply.Value.Loaded {
-                    feedback.Show("This repository has no valid Tokate policy. Ask the owner to finish setup.", Tone.Need)
+                    feedback.Show("No approved issues here. Choose Repository donation for Gratis work.", Tone.Need)
                     return
                 }
                 if requested == 0 {
@@ -234,9 +306,25 @@ class DonationService {
 
     /// Reads the saved profiles again when the donor returns to the limits.
     func Enter() {
+        if !repositoriesLoaded {
+            repositoriesLoaded = true
+            go LoadRepositories()
+        }
         if Current.Step == DonationStep.Limits {
             LoadProfiles(() -> StartWithDefault())
         }
+    }
+
+    private func LoadRepositories() {
+        let recent = RunStore.ReadRepositories()
+        let saved = List[string](RunStore.SavedRepositories())
+        let reply = GitHubClient().Run[[]ProjectChoice](GitHubCommands.Repositories(), GitHubCodec.Projects, 20)
+        if reply.Outcome.Failure == "" && reply.Outcome.ExitCode == 0 {
+            for project in reply.Value ?? []ProjectChoice{} {
+                if !saved.Contains(project.Repository) { saved.Add(project.Repository) }
+            }
+        }
+        window.Post(() -> Set(Current with{RecentRepositories = recent, SavedRepositories = saved.ToArray()}))
     }
 
     func SetModel(model string) -> SetDraft(Current.Draft.WithModel(model, Current.Catalog()))
@@ -248,13 +336,29 @@ class DonationService {
 
     func SetEndpoint(endpoint string) -> SetDraft(Current.Draft with{Endpoint = endpoint, Profile = ""})
 
-    func ChoosePreset(minutes string) -> SetDraft(Current.Draft with{Coding = minutes, Unlimited = false})
+    func SetCoding(minutes string) {
+        if int32.TryParse(minutes, out var total) {
+            let verification = Math.Min(Current.Draft.ReserveMinutes(), Math.Max(1, total - 1))
+            if total >= 2 && !Current.Policy.Exceeds(total * 60) {
+                SetDraft(Current.Draft with{Coding = (total - verification).ToString(), Verification = verification.ToString(), Unlimited = false})
+            }
+        }
+    }
 
-    func SetCoding(minutes string) -> SetDraft(Current.Draft with{Coding = minutes})
+    func SetVerification(minutes string) {
+        if int32.TryParse(minutes, out var reserve) {
+            let total = int32.Parse(Current.Draft.Coding) + Current.Draft.ReserveMinutes()
+            if reserve >= 1 && reserve < total {
+                SetDraft(Current.Draft with{Coding = (total - reserve).ToString(), Verification = minutes})
+            }
+        }
+    }
 
-    func SetVerification(minutes string) -> SetDraft(Current.Draft with{Verification = minutes})
-
-    func SetUnlimited(unlimited bool) -> SetDraft(Current.Draft with{Unlimited = unlimited})
+    func SetUnlimited(unlimited bool) {
+        if !unlimited || Current.Policy.AllowsUnlimited {
+            SetDraft(Current.Draft with{Unlimited = unlimited})
+        }
+    }
 
     func Back() {
         feedback.Clear()
@@ -563,10 +667,22 @@ class DonationService {
 
     private func PreviewRepository() {
         try {
-            let arguments = TokateCommands.RepositoryWork(Current.Repository, Current.Draft, Current.PerTask, Current.Total, Current.Prompt)
+            if !int32.TryParse(Current.PerTask, out var minutes) || minutes < 1 || (Current.LimitMinutes > 0 && minutes > Current.LimitMinutes) {
+                throw Exception("Choose a per-task time within the repository limit.")
+            }
+            if Current.Policy.Loaded && ((Current.IssueList ?? "") != "" || Current.ReviewEach || Current.Prompt != "") {
+                throw Exception("Issue lists, review and guidance require Gratis mode.")
+            }
+            let issueList = (Current.IssueList ?? "").Trim()
+            if issueList.Contains("#") && !String.Equals(issueList.Split('#')[0], Current.Repository, StringComparison.OrdinalIgnoreCase) {
+                throw Exception("Choose issues from this repository.")
+            }
+            let arguments = TokateCommands.RepositoryWork(Current.Repository, Current.Draft, Current.PerTask, Current.Total, Current.Prompt, issueList, Current.ReviewEach)
             commands.Cli(
                 arguments,
                 (outcome CommandOutcome) -> {
+                    let current = TokateCommands.RepositoryWork(Current.Repository, Current.Draft, Current.PerTask, Current.Total, Current.Prompt, Current.IssueList, Current.ReviewEach)
+                    if String.Join("\n", current) != String.Join("\n", arguments) { return }
                     if outcome.Failure != "" || outcome.Envelope?.Error?.Code != "confirmation_required" {
                         feedback.ShowError(outcome)
                         return
@@ -590,12 +706,14 @@ class DonationService {
             return
         }
         dialogs.Ask(
-            Confirmation{Title: "Start repository donation?", Heading: Current.Repository, Text: Current.Consent, ConfirmLabel: "Start repository donation"},
+            Confirmation{Title: "Start donation?", Text: Current.Repository + "\n" + ModelChoice.Tool(Current.Draft.Harness, Current.Draft.Provider) + " · " + Current.Draft.Model + "\nPer task: " + DonationState.Duration(int32.Parse(Current.PerTask)) + "\nTotal: " + (Current.Total == "" ? "Until stopped": DonationState.Duration(int32.Parse(Current.Total))), ConfirmLabel: "Confirm donation"},
             () -> WorkRepository()
         )
     }
 
     private func WorkRepository() {
+        let current = TokateCommands.RepositoryWork(Current.Repository, Current.Draft, Current.PerTask, Current.Total, Current.Prompt, Current.IssueList, Current.ReviewEach)
+        if Current.Consent == "" || String.Join("\n", current) != String.Join("\n", Current.ReviewedArguments) { return }
         output.Clear()
         let channel = chan[string](output.Limit)
         lines = channel
@@ -605,7 +723,7 @@ class DonationService {
             Step = DonationStep.Donation,
             Session = DonationSession{},
             StopRequested = false,
-            Progress = DonationProgress.Empty with{Started = true, Running = true, State = "Repository donation running", Tone = Tone.Need},
+            Progress = DonationProgress.Empty with{Started = true, Running = true, State = "Choosing and completing tasks. Each task uses the reviewed time limit.", Tone = Tone.Need},
         })
         commands.Stream[DonationSession](
             arguments.ToArray(), DonorCodec.Session, channel, seconds -> Collect(seconds),
@@ -655,6 +773,6 @@ class DonationService {
 
     func NewDonation() {
         feedback.Clear()
-        Set(Current with{Step = DonationStep.Issue, Progress = Current.Progress with{Started = false}})
+        Set(Current with{Step = DonationStep.Issue, Consent = "", ReviewedArguments = []string{}, Progress = Current.Progress with{Started = false}})
     }
 }

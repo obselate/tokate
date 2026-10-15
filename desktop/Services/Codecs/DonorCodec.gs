@@ -23,10 +23,22 @@ class DonorCodec {
                 Submitted: Json.Int(data, "submitted"),
                 Skipped: Json.Int(data, "skipped"),
                 Failed: Json.Int(data, "failed"),
-                Usage: Json.Raw(Json.Get(data, "usage")),
-                WallSeconds: Json.Text(data, "wall_seconds"),
+                Usage: Usage(Json.Get(data, "usage")),
+                WallSeconds: WallTime(Json.Text(data, "wall_seconds")),
                 Tasks: tasks.ToArray(),
             }
+        }
+
+        private func Tokens(count int64) string -> count >= 1000000 ? (float64(count) / 1000000).ToString("0.0") + "M": count >= 1000 ? (float64(count) / 1000).ToString("0.0") + "K": count.ToString()
+
+        func Usage(value JsonElement) string -> Json.IsObject(value) ?
+            Tokens(Json.Long(value, "input_tokens") ?? 0) + " input · " + Tokens(Json.Long(value, "cached_input_tokens") ?? 0) + " cached · " + Tokens(Json.Long(value, "output_tokens") ?? 0) + " output tokens": "Not reported"
+
+        func WallTime(value string) string {
+            if !float64.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds) {
+                return "Not reported"
+            }
+            return seconds < 60 ? seconds.ToString("0.#") + " s": seconds < 3600 ? (int32(seconds) / 60).ToString() + " min " + (int32(seconds) % 60).ToString() + " s": (int32(seconds) / 3600).ToString() + " h " + (int32(seconds) / 60 % 60).ToString() + " min"
         }
 
         /// The saved profiles. Tokate stores the default as a copy without a name, so a profile with the same

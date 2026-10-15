@@ -51,8 +51,8 @@ func DonationTests() {
     Regression.Equal(donation.Current.Draft.Profile, "", "editing leaves the profile")
 
     donation.SetUnlimited(true)
-    donation.ChoosePreset("15")
-    Regression.Check(!donation.Current.Draft.Unlimited && donation.Current.Draft.Coding == "15", "a preset ends unlimited")
+    donation.SetCoding("15")
+    Regression.Check(!donation.Current.Draft.Unlimited && donation.Current.Draft.BudgetSeconds(Policy.Empty) == 900, "a preset sets total time and ends unlimited")
 
     donation.Current = donation.Current with{Step = DonationStep.Review}
     donation.ChangeDetails()
@@ -102,4 +102,19 @@ func DonationTests() {
         "repository profile without total runs until stopped"
     )
     Regression.Equal(Regression.Args(TokateCommands.RepositoryStop("owner/repo")), "work owner/repo stop --yes", "repository stop waits through CLI")
+    Regression.Equal(
+        Regression.Args(TokateCommands.RepositoryWork("owner/repo", DonationDraft.Initial, "180", "", "", "12,15,40", true)),
+        "work owner/repo#12,15,40 --harness codex --model gpt-6.1-sol --effort high --non-interactive --time 180m --review",
+        "gratis issue list and review carry no artificial hour cap"
+    )
+    donation.Current = DonationState.Initial with{RepositoryMode = true, Repository = "owner/repo", Consent = "exact", ReviewedArguments = []string{"work"}, Policy = Policy.Empty with{MaxSeconds = 3600}}
+    donation.SetPerTask("120")
+    Regression.Equal(donation.Current.PerTask, "60", "policy rejects controls above its limit")
+    donation.SetPerTask("30")
+    Regression.Check(donation.Current.Consent == "" && donation.Current.ReviewedArguments.Length == 0, "a time change invalidates preview consent")
+    donation.Current = donation.Current with{Consent = "exact", ReviewedArguments = []string{"work"}}
+    donation.SetReviewEach(true)
+    Regression.Check(donation.Current.Consent == "" && donation.Current.ReviewedArguments.Length == 0, "a review change invalidates preview consent")
+    Regression.Equal(DonorCodec.Usage(Json.Parse("{\"input_tokens\":12345,\"cached_input_tokens\":2000,\"output_tokens\":321}")), "12.3K input · 2.0K cached · 321 output tokens", "usage is readable")
+    Regression.Equal(DonorCodec.WallTime("3725.5"), "1 h 2 min", "wall time is readable")
 }

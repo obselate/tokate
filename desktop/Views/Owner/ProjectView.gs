@@ -97,6 +97,12 @@ class ProjectView {
             return Stack{Gap: AppTheme.SectionGap, Children: body.ToArray()}.Build()
         }
         if !state.Open {
+            if state.DoctorReport != "" {
+                body.Add(Panel{Children: []Blob{
+                    IconHeading{Icon: "fact_check", Content: "Owner prerequisites"}.Build(),
+                    ReportText{Content: state.DoctorReport, MaxHeight: AppTheme.ReportMaxHeight}.Build(),
+                }}.Build())
+            }
             body.Add(
                 ProjectOpener{
                     Input: state.Input,

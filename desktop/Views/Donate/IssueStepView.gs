@@ -23,13 +23,18 @@ class IssueStepView {
                     Selected: state.RepositoryMode ? 1: 0,
                     OnChoose: index -> donation.SetRepositoryMode(index == 1),
                 }.Build(),
-                RepositoryFinder{
-                    RepositoryMode: state.RepositoryMode,
+                RepositoryPicker{
                     Input: state.Input,
-                    Account: state.Account,
+                    Recent: state.RecentRepositories,
+                    Saved: state.SavedRepositories,
+                    Status: state.RepositoryStatus,
+                    Tone: state.RepositoryTone,
+                    Loading: state.CheckingRepository,
+                    Invalid: !state.RepositoryChecked && !state.CheckingRepository && state.Input != "",
                     Button: page.Button,
                     Disabled: page.Busy,
                     OnInput: value -> donation.SetInput(value),
+                    OnChoose: value -> donation.PickRepository(value),
                     OnFind: () -> donation.Find(),
                 }.Build(),
             }
@@ -41,6 +46,7 @@ class IssueStepView {
                     (page.Button with{Label = "Change repository", Kind = ButtonKind.Quiet, OnClick = () -> donation.ChangeRepository()}).Build(),
                 },
             }.Build(),
+            Label{Content: "Owner policy · " + state.LimitLabel + " per task", Muted: true}.Build(),
             IssueSearchBar{
                 Listing: search.Current,
                 Button: page.Button,

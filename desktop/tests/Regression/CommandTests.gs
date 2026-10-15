@@ -136,7 +136,7 @@ func CommandTests() {
     )
     Regression.Equal(
         Regression.Args(TokateCommands.RunAction(RunAction.Submit, "/runs/1", amendment)),
-        "submit --run /runs/1",
+        "submit --run /runs/1 --yes",
         "submit arguments"
     )
     Regression.Check(TokateCommands.RunActionTimeout(RunAction.Amend, amendment) == 540, "amend timeout")

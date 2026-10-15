@@ -127,7 +127,7 @@ class OwnerService {
         LoadAccess(() -> Refresh())
     }
 
-    func Close() -> Set(Current with{Open = false})
+    func Close() -> Set(Current with{Open = false, DoctorReport = ""})
 
     func Refresh() {
         Set(Current with{Work = []IssueWork{}, Reviews = []DraftReview{}, Selected = nil})

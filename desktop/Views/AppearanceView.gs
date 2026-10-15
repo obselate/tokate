@@ -38,7 +38,7 @@ class AppearanceView {
                         }.Build(),
                         Check{
                             Label: "Animations",
-                            Detail: "Moves between themes, tabs and loading states with motion.",
+                            Detail: "Animate theme changes and loading states.",
                             Value: settings.Motion,
                             OnChange: value -> app.Theme.SetMotion(value),
                             Disabled: busy,

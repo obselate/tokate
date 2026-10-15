@@ -7,6 +7,48 @@ import System.IO
 /// Finds saved runs on disk. File access blocks, so call from a `go` worker.
 class RunStore {
     shared {
+        private func RepositoryFile() string {
+            let configured = Environment.GetEnvironmentVariable("XDG_STATE_HOME") ?? ""
+            let home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local/state")
+            return Path.Combine(Path.IsPathFullyQualified(configured) ? configured: home, "tokate-desktop", "repositories.json")
+        }
+
+        func ReadRepositories() []string {
+            try {
+                return Json.Strings(Json.ParseFile(RepositoryFile()))
+            } catch (error Exception) {
+                return []string{}
+            }
+        }
+
+        func RememberRepository(repository string) {
+            try {
+                let recent = List[string]{repository}
+                for saved in ReadRepositories() {
+                    if !String.Equals(saved, repository, StringComparison.OrdinalIgnoreCase) && recent.Count < 6 {
+                        recent.Add(saved)
+                    }
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(RepositoryFile())!!)
+                File.WriteAllText(RepositoryFile(), Json.StringArray(recent.ToArray()))
+            } catch (error Exception) {
+            }
+        }
+
+        func SavedRepositories() []string {
+            let result = HashSet[string](StringComparer.OrdinalIgnoreCase)
+            for directory in Discover("") {
+                try {
+                    let repository = Json.Text(Json.ParseFile(ClaimFile(directory)), "repo")
+                    if repository != "" {
+                        result.Add(repository)
+                    }
+                } catch (error Exception) {
+                }
+            }
+            return List[string](result).ToArray()
+        }
+
         /// Run directories under the XDG state home and the default state home, remembered run first, then
         /// the most recently changed first. Symbolic links are skipped.
         func Discover(remembered string) []string {

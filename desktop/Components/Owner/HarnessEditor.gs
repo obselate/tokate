@@ -52,26 +52,26 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             )
         }
         let children = List[Blob]{
-            IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "The coding tools that a donor can use."}.Build(),
+            IconHeading{Icon: "terminal", Content: "Harnesses", Detail: "Choose the coding tools donors may use."}.Build(),
             Row{Children: cards.ToArray()}.Build(),
         }
         children.Add(Rule{}.Build())
         children.Add(Heading{Content: "Command harness", Size: AppTheme.ItemSize}.Build())
         children.Add(Label{
-            Content: "Declare a fixed executable and JSON argv. Include {model}. Optional placeholders: {prompt_file}, {effort}, {checkout}. Add its allowed models below. The command runs without isolation.",
+            Content: "Use a fixed executable and JSON arguments with {model}. Optional: {prompt_file}, {effort}, {checkout}. Runs without isolation.",
             Size: AppTheme.SmallSize, Muted: true,
         }.Build())
         for tool in state.Setup.ToolModels {
             if tool.Tool.StartsWith("command/") && Array.IndexOf(pairs, tool.Tool) >= 0 {
                 let current = tool
                 children.Add(Row{Children: []Blob{
-                    Label{Content: tool.Tool + ": " + Json.StringArray(tool.Command) + " (" + tool.Output + ")"}.Build(),
-                    (input.Button with{Label = "Edit " + tool.Tool, OnClick = () -> {
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: AppTheme.ShortFieldWidth, Label{Content: tool.Tool + ": " + Json.StringArray(tool.Command) + " (" + tool.Output + ")", Mono: true}.Build()},
+                    (input.Button with{Label = "Edit", Name = "Edit " + tool.Tool, OnClick = () -> {
                         commandProvider = current.Tool.Substring(8)
                         commandArgv = Json.StringArray(current.Command)
                         commandOutput = current.Output
                     }}).Build(),
-                    (input.Button with{Label = "Remove " + tool.Tool, OnClick = () -> owner.RemoveCommandTool(current.Tool)}).Build(),
+                    (input.Button with{Label = "Remove", Name = "Remove " + tool.Tool, OnClick = () -> owner.RemoveCommandTool(current.Tool)}).Build(),
                 }}.Build())
             }
         }
@@ -83,15 +83,16 @@ open class HarnessEditor : Cell[HarnessEditorInput] {
             Label: "Command argv", Value: commandArgv, OnChange: value -> {commandArgv = value},
             Placeholder: "[\"my-tool\",\"--model\",\"{model}\",\"{prompt_file}\"]", Width: AppTheme.WideFieldWidth, Disabled: input.Busy,
         }.Build())
+        children.Add(Label{Content: "Output format", Size: AppTheme.LabelSize, Muted: true}.Build())
         children.Add(PresetGroup{
             Button: input.Button, Labels: []string{"codex", "claude", "session"},
             Selected: commandOutput == "codex" ? 0: commandOutput == "claude" ? 1: 2,
             OnChoose: index -> {commandOutput = index == 0 ? "codex": index == 1 ? "claude": "session"},
         }.Build())
-        children.Add((input.Button with{
+        children.Add(Row{Children: []Blob{(input.Button with{
             Label = "Save command harness", OnClick = () -> owner.AddCommandTool(commandProvider, commandArgv, commandOutput),
             Disabled = String.IsNullOrWhiteSpace(commandProvider) || String.IsNullOrWhiteSpace(commandArgv),
-        }).Build())
+        }).Build()}}.Build())
         if allowed.Count > 0 || state.OmpOpen {
             children.Add(Rule{}.Build())
             children.Add(Providers(input, state.OmpProviders(), allowed))

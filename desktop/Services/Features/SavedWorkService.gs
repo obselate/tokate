@@ -50,10 +50,10 @@ class SavedWorkService {
     /// Remembers the run a command just created or used, so it is listed first and opened by default.
     func Remember(path string) {
         StopUpdates()
-        Set(Current with{RunPath = path})
+        Set(Current with{RunPath = path, Review = nil})
     }
 
-    func SetRunPath(path string) -> Set(Current with{RunPath = path})
+    func SetRunPath(path string) -> Set(Current with{RunPath = path, Review = nil})
 
     func ToggleImport() -> Set(Current with{Importing = !Current.Importing})
 
@@ -241,6 +241,7 @@ class SavedWorkService {
                 RunPath = item.Path,
                 Actions = RunActions.From(item.Actions, run.State),
                 Amendment = Current.Amendment with{Open = false},
+                Review = nil,
                 Waiting = same,
                 Note = same || item.Path == Current.RunPath ? Current.Note: Feedback{Message: "", Report: ""},
             }
@@ -342,6 +343,10 @@ class SavedWorkService {
             OnWork?.Invoke(run, path)
             return
         }
+        if action == RunAction.Submit && run.Gratis {
+            ReviewSubmit()
+            return
+        }
         try {
             let amendment = Current.Amendment
             let seconds = TokateCommands.RunActionTimeout(action, amendment)
@@ -370,15 +375,21 @@ class SavedWorkService {
                     let files = summary == "" ? "": RunStore.WriteAmendment(summary, tools)
                     let arguments = TokateCommands.RunAction(action, path, amendment, run.Commit, files)
                     let since = DateTime.UtcNow
-                    let started = commands.Cli(
+                    let started = commands.Cli[bool](
                         arguments,
-                        (outcome CommandOutcome) -> {
+                        RunCodec.Applied,
+                        (reply Reply[bool]) -> {
+                            let outcome = reply.Outcome
                             if outcome.Failure != "" || (!(RunActions.Requests(action) && outcome.Pending) && commands.Failed(outcome)) {
                                 Discard(files)
                                 let reason = action == RunAction.Amend ? RunStore.AmendmentFailure(path, amendment.Commit, since): ""
                                 if reason != "" {
                                     feedback.Show(reason, Tone.Fail)
                                 }
+                                return
+                            }
+                            if action == RunAction.Submit && !reply.Value && !outcome.Pending {
+                                feedback.Show("The pull request was not published. Refresh status before trying again.", Tone.Need)
                                 return
                             }
                             if RunActions.Requests(action) && (action != RunAction.Submit || outcome.Pending) {
@@ -413,6 +424,79 @@ class SavedWorkService {
         }
     }
 
+    private func ReviewSubmit() {
+        let path = Current.RunPath
+        Set(Current with{Review = nil})
+        commands.Cli[PullRequestPreview](
+            []string{"submit", "--run", path},
+            RunCodec.PullRequestPreview,
+            (reply Reply[PullRequestPreview]) -> {
+                if commands.Failed(reply.Outcome) || Current.RunPath != path {
+                    return
+                }
+                if reply.Value.Title != "" {
+                    Set(Current with{Review = reply.Value})
+                } else {
+                    feedback.Show("No pull request preview was returned. Refresh the saved status before continuing.", Tone.Need)
+                }
+            },
+            seconds: 600
+        )
+    }
+
+    func PublishSubmit() {
+        guard let preview = Current.Review else {
+            return
+        }
+        let path = Current.RunPath
+        let run = Current.Run
+        dialogs.Ask(
+            Confirmation{
+                Title: "Publish pull request?",
+                Text: run.Identity + "\n\n" + preview.Title + "\n\n" + preview.Base + " <- " + preview.Head + "\n\nThe owner reviews and merges.",
+                ConfirmLabel: "Publish pull request",
+                Heading: "",
+            },
+            () -> {
+                if Current.RunPath != path || Current.Review == nil {
+                    return
+                }
+                let arguments = []string{"submit", "--run", path, "--yes"}
+                commands.Cli[bool](
+                    arguments,
+                    RunCodec.Applied,
+                    (reply Reply[bool]) -> {
+                        let outcome = reply.Outcome
+                        if outcome.Failure != "" || (!outcome.Pending && commands.Failed(outcome)) {
+                            return
+                        }
+                        if !reply.Value && !outcome.Pending {
+                            feedback.Show("The pull request was not published. Review it before trying again.", Tone.Need)
+                            return
+                        }
+                        Set(Current with{Review = nil})
+                        if outcome.Pending {
+                            Await(CoordinatorRequest{
+                                Action: RunAction.Submit,
+                                Path: path,
+                                Repo: run.Repo,
+                                Issue: run.Issue,
+                                Head: run.Commit,
+                                Arguments: arguments,
+                                Seconds: 600,
+                                Files: "",
+                                Since: DateTime.UtcNow,
+                            })
+                        }
+                        LoadRun()
+                    },
+                    seconds: 600,
+                    completeOnError: true
+                )
+            }
+        )
+    }
+
     private func Discard(files string) {
         if files != "" {
             RunStore.Remove(files)
@@ -421,6 +505,7 @@ class SavedWorkService {
 
     /// Repeats pending submit commands, or waits for a recorded amendment before saving its result.
     private func Await(sent CoordinatorRequest) {
+        feedback.Clear()
         request = sent
         Set(Current with{Waiting = true, Note = Feedback{Message: RunActions.Requested(sent.Action), Report: "", Tone: Tone.Wait}})
         requestTimer = window.Every(60000, () -> CheckRequest())
@@ -448,7 +533,7 @@ class SavedWorkService {
         if !Current.Selected || Current.RunPath != sent.Path {
             StopWaiting("")
         } else if (DateTime.UtcNow - sent.Since).TotalMinutes > 10 {
-            StopWaiting("The coordinator did not answer in 10 minutes. Do the action again later.")
+            StopWaiting("No response after 10 minutes. Refresh status before trying again.")
         } else if !activity.Busy && requestCheck == nil {
             let client = CliClient()
             requestCheck = client
@@ -479,11 +564,17 @@ class SavedWorkService {
         }
         requestTimer?.Dispose()
         requestTimer = nil
-        let started = commands.Cli(
+        let started = commands.Cli[bool](
             sent.Arguments,
-            (outcome CommandOutcome) -> {
+            RunCodec.Applied,
+            (reply Reply[bool]) -> {
+                let outcome = reply.Outcome
                 if outcome.Failure == "" && outcome.Pending {
                     Await(sent)
+                    return
+                }
+                if !reply.Value && outcome.Succeeded {
+                    StopWaiting("The pull request was not published. Review it before trying again.")
                     return
                 }
                 let failed = outcome.Failure != "" || commands.Failed(outcome)

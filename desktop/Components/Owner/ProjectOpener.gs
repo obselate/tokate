@@ -19,29 +19,40 @@ data struct ProjectOpener {
     func Build() Blob {
         let lines = List[Blob]()
         for project in Projects {
-            lines.Add(ProjectRow{Project: project, Disabled: Disabled, OnChoose: OnChoose}.Build())
+            if Input == "" || project.Repository.Contains(Input, StringComparison.OrdinalIgnoreCase) {
+                lines.Add(ProjectRow{Project: project, Disabled: Disabled, OnChoose: OnChoose}.Build())
+            }
+        }
+        if Loaded && Projects.Length > 0 && lines.Count == 0 {
+            lines.Add(EmptyMessage{Content: "No matching repositories", Icon: "search"}.Build())
         }
         if Loaded && Projects.Length == 0 {
             lines.Add(EmptyMessage{Content: "No repositories found", Icon: "folder_off"}.Build())
         } else if !Loaded && Disabled && Loader != nil {
             lines.Add(Loader!!("Reading your repositories"))
         }
-        return SectionPanel{
-            Title: "Your repositories",
-            Count: Projects.Length,
-            Trailing: []Blob{
-                InputField{
-                    Label: "GitHub repository",
-                    Bare: true,
-                    Value: Input,
-                    OnChange: OnInput,
-                    Placeholder: "owner/repository",
-                    Width: AppTheme.FieldWidth,
-                    Disabled: Disabled,
+        var status = ""
+        var tone = Tone.Done
+        if !String.IsNullOrWhiteSpace(Input) {
+            try {
+                status = "Ready to open " + RepositoryRef.Parse(Input).FullName + "."
+            } catch (error Exception) {
+                status = error.Message
+                tone = Tone.Fail
+            }
+        }
+        return Stack{
+            Gap: AppTheme.SectionGap,
+            Children: []Blob{
+                RepositoryPicker{
+                    Input: Input, Status: status, Tone: tone, Button: Button,
+                    Disabled: Disabled, OnInput: OnInput, OnChoose: OnChoose, OnFind: OnOpen,
                 }.Build(),
-                (Button with{Label = "Open project", OnClick = OnOpen, Disabled = Input == ""}).Build(),
+                SectionPanel{
+                    Title: "Your repositories", Count: Projects.Length,
+                    Children: lines.ToArray(),
+                }.Build(),
             },
-            Children: lines.ToArray(),
         }.Build()
     }
 }

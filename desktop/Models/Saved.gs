@@ -158,8 +158,8 @@ class RunActions {
         func Requests(action RunAction) bool -> action == RunAction.Submit || action == RunAction.Amend
 
         func Requested(action RunAction) string -> action == RunAction.Amend ?
-        "Tokate sent the amendment. The coordinator adds it to the pull request. This page updates when that is done.":
-        "Tokate sent the request. The coordinator opens the draft pull request. This page updates when that is done."
+        "Amendment sent. Waiting for the coordinator.":
+        "Request sent. The coordinator is opening the draft pull request."
 
         func Recorded(action RunAction) string -> action == RunAction.Amend ? "The pull request has the amendment.": ""
     }
@@ -217,7 +217,7 @@ data struct RunGuide {
             case "Initial donation failed": RunGuide{
                 Step: 1,
                 Heading: "The donation failed",
-                Text: "Inspect the saved work and status. A fresh claim or work attempt needs current approval and an explicit new time budget.",
+                Text: "Keep the saved work. Check the failure before starting another attempt with a new budget.",
             }
             case "Verification failed": RunGuide{
                 Step: 1,
@@ -228,7 +228,7 @@ data struct RunGuide {
             case "Ready to submit": RunGuide{
                 Step: 2,
                 Heading: "The work is ready to submit",
-                Text: "Verification passed. Submit the work as a draft pull request. The owner reviews and merges.",
+                Text: "Verification passed. Review the pull request before publication.",
                 Main: RunAction.Submit,
             }
             case "Awaiting review": RunGuide{
@@ -405,6 +405,13 @@ data struct AmendmentDraft {
     }
 }
 
+data struct PullRequestPreview {
+    var Title string
+    var Body string
+    var Base string
+    var Head string
+}
+
 /// Everything the saved work page shows: the discovered runs, the visible page, and the selected run with
 /// its actions and amendment settings.
 data struct SavedWorkState {
@@ -423,6 +430,7 @@ data struct SavedWorkState {
     /// True while the coordinator has a request of the selected run. `Note` tells the donor about it.
     var Waiting bool
     var Note Feedback
+    var Review PullRequestPreview?
 
     prop Browsing bool -> Loaded && !Selected && !Importing
 

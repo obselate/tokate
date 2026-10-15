@@ -24,7 +24,7 @@ class ProfilesView {
                 Children: []Blob{
                     Heading{Content: "Profiles", Size: AppTheme.DisplaySize}.Build(),
                     Spacer{}.Build(),
-                    (page.Button with{Label = "New profile", Icon = "add", OnClick = () -> profiles.New(), Disabled = state.Open}).Build(),
+                    (page.Button with{Label = "New profile", Icon = "add", Primary = !state.Open, OnClick = () -> profiles.New(), Disabled = state.Open}).Build(),
                 },
             }.Build(),
         }
@@ -36,6 +36,11 @@ class ProfilesView {
         }
         if state.Open {
             body.Add(Form(page, state))
+        }
+        if !state.Loaded && !state.Open && page.Busy {
+            if let loader = page.Loader {
+                body.Add(loader("Loading profiles"))
+            }
         }
         if state.Profiles.Length > 0 {
             body.Add(
@@ -54,7 +59,7 @@ class ProfilesView {
                 Panel{
                     Children: []Blob{
                         EmptyMessage{
-                            Content: "No saved profiles. A profile saves a harness, a model and a reasoning effort. Select \"New profile\" to save one.",
+                            Content: "No profiles yet. Save a harness and model with New profile.",
                             Icon: "bookmark_add",
                         }.Build(),
                     },
@@ -72,7 +77,7 @@ class ProfilesView {
                 IconHeading{
                     Icon: state.Editing != "" ? "edit": "bookmark_add",
                     Content: state.Editing != "" ? "Change " + state.Editing: "New profile",
-                    Detail: "A profile saves a harness, a model and a reasoning effort on this computer.",
+                    Detail: "Save a harness and model on this computer.",
                 }.Build(),
                 InputField{
                     Label: "Profile name",

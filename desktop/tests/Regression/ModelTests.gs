@@ -30,8 +30,6 @@ func ModelTests() {
         "Use whole coding minutes from 1 to 1440.",
         "coding minutes are validated"
     )
-    Regression.Check(draft.PresetAllowed(30, policy), "preset within the limit is allowed")
-    Regression.Check(!draft.PresetAllowed(60, policy), "preset over the limit is disabled")
     Regression.Equal(draft.ForHarness("pi").Model, "", "pi clears the model")
     Regression.Equal(draft.ForHarness("codex").Effort, "high", "codex restores the default effort")
     Regression.Equal(ModelChoice.EffortLabel("xhigh"), "Extra high", "xhigh effort label")

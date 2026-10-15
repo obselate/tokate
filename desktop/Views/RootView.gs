@@ -189,7 +189,7 @@ class RootView : Cell {
             return nil
         }
         let body = List[Blob]()
-        if confirmation.Heading != "" {
+        if !String.IsNullOrEmpty(confirmation.Heading) {
             body.Add(Heading{Content: confirmation.Heading}.Build())
         }
         if confirmation.Tiles.Length > 0 {
@@ -201,6 +201,9 @@ class RootView : Cell {
         }
         for detail in confirmation.Details {
             body.Add(DetailRow{Caption: detail.Label, Value: detail.Value}.Build())
+        }
+        if !String.IsNullOrEmpty(confirmation.Text) {
+            body.Add(Label{Content: confirmation.Text}.Build())
         }
         return Stack{Gap: AppTheme.Space16, Children: body.ToArray()}.Build()
     }

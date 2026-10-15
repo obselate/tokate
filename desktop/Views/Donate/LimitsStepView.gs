@@ -20,7 +20,8 @@ class LimitsStepView {
         let state = donation.Current
         let draft = state.Draft
         return []Blob{
-            Heading{Content: state.Identity + "  " + state.IssueTitle}.Build(),
+            Heading{Content: state.Identity + (state.IssueTitle == "" ? "": " · " + state.IssueTitle)}.Build(),
+            Label{Content: state.Policy.Loaded ? "Owner policy · " + state.LimitLabel + " per task": "Gratis · No Tokate policy", Muted: true}.Build(),
             Panel{
                 Name: "Harness settings",
                 Children: []Blob{
@@ -74,27 +75,31 @@ class LimitsStepView {
                         Name: "Repository donation limits",
                         Children: []Blob{
                             IconHeading{Icon: "schedule", Content: "Time"}.Build(),
-                            Label{Content: "Gratis repositories allow up to 60 minutes per task. Leave total time empty to run until stopped."}.Build(),
-                            InputField{Label: "Per-task minutes", Value: state.PerTask, Disabled: page.Busy, OnChange: value -> donation.SetPerTask(value)}.Build(),
-                            InputField{Label: "Total minutes (optional)", Value: state.Total, Disabled: page.Busy, OnChange: value -> donation.SetTotal(value)}.Build(),
-                            InputField{Label: "Prompt URL or file (gratis only)", Value: state.Prompt, Disabled: page.Busy, OnChange: value -> donation.SetPrompt(value)}.Build(),
+                            TimeBudget{Caption: "Per task", Minutes: int32.Parse(state.PerTask), Minimum: 1, Maximum: state.LimitMinutes, Hint: state.LimitLabel, Disabled: page.Busy, Button: page.Button, OnChange: value -> donation.SetPerTask(value)}.Build(),
+                            TimeBudget{Caption: "Total", Minutes: int32.TryParse(state.Total, out var total) ? total: 0, Minimum: 5, Optional: true, Hint: "Across all tasks.", Disabled: page.Busy, Button: page.Button, OnChange: value -> donation.SetTotal(value)}.Build(),
                         },
                     }.Build(): TimeLimits{
                         Draft: draft,
                         Policy: state.Policy,
                         Button: page.Button,
                         Disabled: page.Busy,
-                        OnPreset: minutes -> donation.ChoosePreset(minutes),
                         OnUnlimited: value -> donation.SetUnlimited(value),
                         OnCoding: value -> donation.SetCoding(value),
                         OnVerification: value -> donation.SetVerification(value),
                     }.Build(),
                 },
             }.Build(),
+            state.RepositoryMode ? Panel{Name: "Repository options", Children: state.Policy.Loaded ? []Blob{
+                Label{Content: "Issue lists and pull request review are available in Gratis mode only.", Muted: true}.Build(),
+            }: []Blob{
+                InputField{Label: "Issues (optional)", Value: state.IssueList ?? "", Placeholder: state.Repository + "#12,15,40", Disabled: page.Busy, OnChange: value -> donation.SetIssueList(value)}.Build(),
+                Check{Label: "Review each pull request before publishing", Value: state.ReviewEach, Disabled: page.Busy, OnChange: value -> donation.SetReviewEach(value)}.Build(),
+                InputField{Label: "Guidance file or URL (optional)", Value: state.Prompt, Disabled: page.Busy, OnChange: value -> donation.SetPrompt(value)}.Build(),
+            }}.Build(): Stack{Children: []Blob{}}.Build(),
             Row{
                 Children: []Blob{
                     (page.Button with{Label = "Back", OnClick = () -> donation.Back()}).Build(),
-                    (page.Button with{Label = "Check selection & review", OnClick = () -> donation.Review(), Primary = true}).Build(),
+                    (page.Button with{Label = "Review donation", OnClick = () -> donation.Review(), Primary = true}).Build(),
                 },
             }.Build(),
         }

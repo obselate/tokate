@@ -196,22 +196,23 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         File.WriteAllText(githubPath, github.Replace("{\"name\":\"tokate:approved\"}", ""))
         Require(window.PlatformInput.CommitText("https://github.com/owner/repo/issues/278"), "Cannot enter issue URL")
         Settle(host)
-        guard let lookup = Find(adapter.Root, AccessibilityRole.Button, "Find approved issues") else {
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Choose repository", enabled: true)
+        guard let lookup = Find(adapter.Root, AccessibilityRole.Button, "Choose repository") else {
             throw Exception("Missing lookup button")
         }
-        guard let heading = Find(adapter.Root, AccessibilityRole.Text, "Choose an issue") else {
+        guard let heading = Find(adapter.Root, AccessibilityRole.Text, "Choose a repository") else {
             throw Exception("Missing issue heading")
         }
         let lookupBounds = lookup.Bounds
         let headingBounds = heading.Bounds
-        Activate(window, adapter, "Find approved issues")
+        Activate(window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Cancel command")
         Require(
             Find(adapter.Root, AccessibilityRole.Button, "Cancel command")?.Bounds == lookupBounds,
             "Loading changed the action button bounds"
         )
         Require(
-            Find(adapter.Root, AccessibilityRole.Text, "Choose an issue")?.Bounds == headingBounds,
+            Find(adapter.Root, AccessibilityRole.Text, "Choose a repository")?.Bounds == headingBounds,
             "Loading shifted the page"
         )
         Require(
@@ -226,7 +227,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
             "Unapproved issue reached model selection"
         )
         File.WriteAllText(githubPath, github)
-        Activate(window, adapter, "Find approved issues")
+        Activate(window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.ComboBox, "Model", "GPT-6.1-Sol")
         Require(Find(adapter.Root, AccessibilityRole.Text, "Set your limits") != nil, "Step II heading missing")
         Require(Find(adapter.Root, AccessibilityRole.Text, "II") != nil, "Step II numeral missing")
@@ -237,9 +238,9 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         for width in[]int32{800, 1024, 1280, 1920, 800} {
             host.Resize(width, 600, width, 600)
             Settle(host)
-            for name in[]string{"Model", "Reasoning effort", "Coding minutes", "Verification minutes"} {
+            for name in[]string{"Model", "Reasoning effort", "More per task", "More verification share"} {
                 var found = Find(adapter.Root, AccessibilityRole.ComboBox, name)
-                found ??= Find(adapter.Root, AccessibilityRole.TextInput, name)
+                found ??= Find(adapter.Root, AccessibilityRole.Button, name)
                 guard let control = found else {
                     throw Exception("Missing donation control: " + name)
                 }
@@ -262,17 +263,11 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
             Find(adapter.Root, AccessibilityRole.Button, "Back")?.Bounds.Y >= tools.Bounds.Y + tools.Bounds.Height,
             "Navigation is inside a settings card"
         )
-        Require(
-            Find(adapter.Root, AccessibilityRole.Button, "60 min")?.Disabled == true,
-            "Preset exceeds the owner time limit"
-        )
-        Activate(window, adapter, "15 min")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "2 h")?.Disabled == true, "Preset exceeds the owner time limit")
+        donation.SetCoding("15")
         Settle(host)
-        Require(
-            Find(adapter.Root, AccessibilityRole.TextInput, "Coding minutes")?.Value == "15",
-            "Preset was not applied"
-        )
-        Activate(window, adapter, "30 min")
+        Require(donation.Current.Draft.BudgetSeconds(donation.Current.Policy) == 900, "Preset was not applied")
+        donation.SetCoding("30")
         Settle(host)
         Activate(window, adapter, "Model", AccessibilityRole.ComboBox)
         Settle(host)
@@ -309,7 +304,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
             Find(adapter.Root, AccessibilityRole.ComboBox, "Model")?.Value == "GPT-6.1-Sol",
             "Codex did not restore Sol"
         )
-        Activate(window, adapter, "Check selection & review")
+        Activate(window, adapter, "Review donation")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Change details")
         Require(Find(adapter.Root, AccessibilityRole.Text, "III") != nil, "Step III numeral missing")
         Require(
@@ -318,17 +313,11 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         )
         Activate(window, adapter, "Change details")
         Settle(host)
-        Activate(window, adapter, "Unlimited coding time", AccessibilityRole.Checkbox)
+        Activate(window, adapter, "Unlimited coding", AccessibilityRole.Checkbox)
         Settle(host)
-        Require(
-            Find(adapter.Root, AccessibilityRole.TextInput, "Coding minutes") == nil,
-            "Unlimited still requests coding minutes"
-        )
-        Require(
-            Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes") != nil,
-            "Unlimited lost its verification limit"
-        )
-        Activate(window, adapter, "Check selection & review")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "More per task")?.Disabled == true, "Unlimited still requests a bounded per-task time")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "More verification share") != nil, "Unlimited lost its verification limit")
+        Activate(window, adapter, "Review donation")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Reserve contribution")
         Activate(window, adapter, "Reserve contribution")
         Settle(host)
@@ -355,7 +344,7 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
         let claimed = File.ReadAllText(Path.Combine(fixture, "claim-args"))
         Require(
             claimed.Contains("--yes\n") && claimed.Contains("--unlimited\n") && !claimed.Contains("--time\n") && claimed.Contains(
-                "--verify-time\n30m\n"
+                "--verify-time\n14m\n"
             ),
             "Unlimited claim arguments do not match the CLI"
         )
@@ -461,8 +450,9 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
         ("printf '%s\\n' \"$$@\" >> FIXTURE/repository-calls\n" +
         "case \"$$1\" in\n" +
         "defaults) printf '%s' '{\"schema_version\":1,\"command\":\"defaults\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"profiles\":{}}}';;\n" +
+        "doctor) printf '%s' '{\"schema_version\":1,\"command\":\"doctor\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"policy\":null}}';;\n" +
         "work)\n" +
-        "if [ \"$$3\" = stop ]; then touch FIXTURE/stop-requested; while [ ! -e FIXTURE/task-done ]; do sleep .05; done\n" +
+        "if [ \"$$3\" = stop ]; then touch FIXTURE/stop-requested; while [ -d FIXTURE ] && [ ! -e FIXTURE/task-done ]; do sleep .05; done\n" +
         "else\n" +
         "yes=false; for arg in \"$$@\"; do [ \"$$arg\" = --yes ] && yes=true; done\n" +
         "if [ \"$$yes\" = false ]; then cat FIXTURE/consent.txt >&2; cat FIXTURE/preview.json; exit 1; fi\n" +
@@ -472,36 +462,40 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
         "while [ ! -e FIXTURE/release-task ]; do sleep .05; done\n" +
         "touch FIXTURE/task-done\n" +
         "fi\n" +
-        "printf '%s' '{\"schema_version\":1,\"command\":\"work\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"repo\":\"obselate/goo\",\"reason\":\"stopped\",\"submitted\":1,\"skipped\":1,\"failed\":0,\"usage\":{\"input_tokens\":120,\"cached_input_tokens\":20,\"output_tokens\":30},\"wall_seconds\":2.5,\"tasks\":[{\"issue\":42,\"result\":\"submitted\",\"pr_url\":\"https://github.com/obselate/goo/pull/43\",\"run_directory\":\"/fixture/run\"},{\"issue\":44,\"result\":\"skipped\",\"reason\":\"refused\",\"pr_url\":\"\",\"run_directory\":\"\"}]}}';;\n" +
+        "printf '%s' '{\"schema_version\":1,\"command\":\"work\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"repo\":\"obselate/goo\",\"reason\":\"stopped\",\"submitted\":1,\"skipped\":1,\"failed\":0,\"usage\":{\"input_tokens\":120,\"cached_input_tokens\":20,\"output_tokens\":30},\"wall_seconds\":2.5,\"tasks\":[{\"issue\":42,\"result\":\"submitted\",\"pr_url\":\"https://github.com/obselate/goo/pull/43\",\"run_directory\":\"/fixture/run\"},{\"issue\":44,\"result\":\"skipped\",\"reason\":\"refused\",\"pr_url\":\"\",\"run_directory\":\"\"},{\"issue\":45,\"result\":\"completed\",\"pr_url\":\"\",\"run_directory\":\"/fixture/review\"}]}}';;\n" +
         "*) exit 1;;\nesac\n")
             .Replace("FIXTURE", fixture)
     )
     donation.NewDonation()
     Settle(host)
     Choose(host, window, adapter, "Repository donation")
-    Edit(window, host, adapter, "GitHub repository or issue URL", "obselate/goo")
+    Edit(window, host, adapter, "GitHub repository", "obselate/goo")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Choose repository", enabled: true)
     Choose(host, window, adapter, "Choose repository")
-    AwaitControl(host, adapter, AccessibilityRole.TextInput, "Per-task minutes", enabled: true)
-    Edit(window, host, adapter, "Per-task minutes", "15")
-    Edit(window, host, adapter, "Total minutes (optional)", "30")
-    AwaitControl(host, adapter, AccessibilityRole.Button, "Check selection & review", enabled: true)
-    Choose(host, window, adapter, "Check selection & review")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Review donation", enabled: true)
+    donation.SetPerTask("15")
+    donation.SetTotal("30")
+    donation.SetIssueList("42,44")
+    donation.SetReviewEach(true)
+    Settle(host)
+    Choose(host, window, adapter, "Review donation")
     AwaitControl(host, adapter, AccessibilityRole.Button, "Start donating", enabled: true)
-    Require(FindText(adapter.Root, "Gratis mode. No owner approved the task."), "Repository review omitted gratis consent")
+    Require(FindText(adapter.Root, "Gratis"), "Repository review omitted gratis mode")
     Require(FindText(adapter.Root, "docs/native-authoring.md"), "Repository review omitted guidance files")
+    Require(!FindText(adapter.Root, "Preview only; use --yes"), "Raw CLI instructions leaked into structured consent")
     Require(!File.Exists(Path.Combine(fixture, "repository-started")), "Preview started work")
     Choose(host, window, adapter, "Start donating")
     Require(!File.Exists(Path.Combine(fixture, "repository-started")), "Work started without confirmation")
     Choose(host, window, adapter, "Go back")
     Choose(host, window, adapter, "Start donating")
-    Choose(host, window, adapter, "Start repository donation")
-    AwaitControl(host, adapter, AccessibilityRole.Button, "Stop repository donation", enabled: true)
+    Choose(host, window, adapter, "Confirm donation")
+    AwaitControl(host, adapter, AccessibilityRole.Button, "Stop after current task", enabled: true)
     let started = Stopwatch.StartNew()
     while !FindText(adapter.Root, "Repository task started") && started.Elapsed.TotalSeconds < 5 {
         Settle(host)
     }
     Require(FindText(adapter.Root, "Repository task started"), "Repository stderr did not stream")
-    Choose(host, window, adapter, "Stop repository donation")
+    Choose(host, window, adapter, "Stop after current task")
     Require(!File.Exists(Path.Combine(fixture, "stop-requested")), "Stop ran before confirmation")
     Choose(host, window, adapter, "Stop after current task")
     AwaitControl(host, adapter, AccessibilityRole.Button, "Stopping after current task")
@@ -514,12 +508,14 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     File.WriteAllText(Path.Combine(fixture, "release-task"), "")
     AwaitControl(host, adapter, AccessibilityRole.Button, "New donation", enabled: true)
     Require(FindText(adapter.Root, "Reason: stopped") && FindText(adapter.Root, "Submitted: 1"), "Session counts or stop reason missing")
-    Require(FindText(adapter.Root, "Wall time: 2.5") && FindText(adapter.Root, "input_tokens"), "Session usage or wall time missing")
-    Require(FindText(adapter.Root, "#44 skipped") && FindText(adapter.Root, "refused"), "Task results missing")
-    Require(Find(adapter.Root, AccessibilityRole.Button, "Open pull request") != nil, "Session PR link missing")
+    Require(FindText(adapter.Root, "Wall time: 2.5 s") && FindText(adapter.Root, "120 input"), "Session usage or wall time missing")
+    Require(FindText(adapter.Root, "#44") && FindText(adapter.Root, "skipped") && FindText(adapter.Root, "refused"), "Task results missing")
+    Require(Find(adapter.Root, AccessibilityRole.Button, "Open pull request 42") != nil, "Session PR link missing")
     let calls = File.ReadAllText(Path.Combine(fixture, "repository-calls"))
     Require(calls.Contains("stop\n--yes\n--json"), "Repository stop argv is incorrect")
-    Require(donation.Current.Session.Tasks.Length == 2, "Final session report was not decoded")
+    Require(calls.Contains("obselate/goo#42,44") && calls.Contains("--review"), "Gratis selection and review argv missing")
+    Require(donation.Current.Session.Tasks.Length == 3, "Final session report was not decoded")
+    Require(FindText(adapter.Root, "Ready to review") && Find(adapter.Root, AccessibilityRole.Button, "Open saved run 45") != nil, "Review task has no saved-run action")
 }
 
 func SubmitFlow(host TestHost, desktop DesktopApp) {
@@ -532,6 +528,8 @@ func SubmitFlow(host TestHost, desktop DesktopApp) {
             fixture,
             "tokate",
             "cd '" + fixture + "'\n" +
+                "if [ \"$1\" = submit ] && [ \"$4\" != --yes ]; then printf '%s' '{\"schema_version\":1,\"command\":\"submit\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"applied\":false,\"pull_request\":{\"title\":\"Ready for review\",\"body\":\"Summary\",\"base\":\"main\",\"head\":\"work\"}},\"next_actions\":[]}'; exit 0; fi\n" +
+                "if [ \"$1\" = submit ]; then printf '%s\\n' \"$4\" >> consent; fi\n" +
                 "n=0; [ ! -f calls ] || n=$$(cat calls)\n" +
                 "if [ \"$1\" = submit ]; then n=$$((n+1)); echo $$n > calls; fi\n" +
                 "state=generated; pr=0; code=0; status=ok; error=null\n" +
@@ -552,8 +550,14 @@ func SubmitFlow(host TestHost, desktop DesktopApp) {
             }
             let path = Path.Combine(fixture, fail ? "failed": "done")
             Directory.CreateDirectory(path)
-            desktop.Saved.Select(SavedRun.Pending(path) with{Run = Run.Empty with{Path = path, Repo = "owner/repo", Issue = 7, State = "generated", Commit = "head"}, Refreshed = true})
+            desktop.Saved.Select(SavedRun.Pending(path) with{Run = Run.Empty with{Path = path, Repo = "owner/repo", Issue = 7, State = "generated", Commit = "head", Gratis = true}, Refreshed = true})
             desktop.Saved.Act(RunAction.Submit)
+            let preview = Stopwatch.StartNew()
+            while desktop.Saved.Current.Review == nil && preview.Elapsed.TotalSeconds < 5 {
+                Settle(host)
+            }
+            Require(desktop.Saved.Current.Review != nil && !desktop.Saved.Current.Waiting, "Submit preview reported publication")
+            desktop.Saved.PublishSubmit()
             desktop.Dialogs.Confirm()
             let clock = Stopwatch.StartNew()
             var pending = false
@@ -566,6 +570,7 @@ func SubmitFlow(host TestHost, desktop DesktopApp) {
                 System.Threading.Thread.Sleep(10)
             }
             Require(pending && clock.Elapsed.TotalSeconds < 140, "Submit exit 8 did not keep polling and repeat submit")
+            Require(Array.TrueForAll(File.ReadAllLines(Path.Combine(fixture, "consent")), value -> value == "--yes"), "Pending submit lost publication consent")
             if fail {
                 Require(desktop.Feedback.Current.Message.Contains("Owner must update the coordinator"), "Submit failure hid owner guidance")
             } else {

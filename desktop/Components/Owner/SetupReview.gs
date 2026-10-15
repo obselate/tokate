@@ -38,38 +38,40 @@ data struct SetupReview {
         if Limit != "" {
             facts.Add(DetailRow{Caption: "Time limit", Value: Limit}.Build())
         }
+        let actions = List[Blob]{
+            (Button with{Label = "Preview setup", OnClick = OnPreview, Primary = !Previewed && !Report.Applied}).Build(),
+        }
+        if Report.Applied && !String.IsNullOrEmpty(Report.PullRequest) {
+            actions.Add((Button with{
+                Label = "Open setup PR", Icon = "open_in_new", Primary = true,
+                AllowWhileBusy = true, OnClick = () -> Browser.Open(Report.PullRequest),
+            }).Build())
+        } else {
+            actions.Add((Button with{Label = "Apply setup", OnClick = OnApply, Primary = Previewed && !Report.Applied, Disabled = !Previewed || Report.Applied}).Build())
+        }
         let review = Panel{
             Children: []Blob{
                 IconHeading{
                     Icon: "folder_open",
                     Content: "Project setup",
-                    Detail: "Tokate opens a setup PR with version 3 policy, per-tool model permissions and the coordinator pin update. " +
-                        "Preview first, then apply GitHub settings. Review and merge the PR before approving work.",
+                    Detail: "Preview the changes, then open a setup PR. Merge it before approving work.",
                 }.Build(),
                 Rule{}.Build(),
                 Stack{Gap: AppTheme.Space12, Children: facts.ToArray()}.Build(),
-                Row{
-                    Children: []Blob{
-                        (Button with{Label = "Preview setup", OnClick = OnPreview, Primary = !Previewed}).Build(),
-                        (Button with{Label = "Apply setup", OnClick = OnApply, Primary = Previewed, Disabled = !Previewed || Report.Applied}).Build(),
-                    },
-                }.Build(),
+                Row{Children: actions.ToArray()}.Build(),
             },
         }.Build()
         for change in Report.Changes ?? []SetupChange{} {
-            review.Children.Add(DetailRow{
-                Caption: change.Setting,
-                Value: "Current: " + (change.Current == "" ? "none": change.Current) + "\nProposed: " + change.Proposed,
-            }.Build())
+            let value = "Current: " + (change.Current == "" ? "none": change.Current) + "\nProposed: " + change.Proposed
+            review.Children.Add(change.Current.Contains('\n') || change.Proposed.Contains('\n') ?
+                Stack{Gap: AppTheme.Space8, Children: []Blob{
+                    Label{Content: change.Setting, Size: AppTheme.LabelSize, Muted: true}.Build(),
+                    ReportText{Content: value, MaxHeight: AppTheme.ReportMaxHeight}.Build(),
+                }}.Build():
+                DetailRow{Caption: change.Setting, Value: value}.Build())
         }
         for step in Report.Manual ?? []string{} {
             review.Children.Add(Label{Content: "Manual: " + step, Size: AppTheme.SmallSize}.Build())
-        }
-        if !String.IsNullOrEmpty(Report.PullRequest) {
-            review.Children.Add((Button with{
-                Label = "Open setup PR", Icon = "open_in_new", Kind = ButtonKind.Quiet,
-                AllowWhileBusy = true, OnClick = () -> Browser.Open(Report.PullRequest),
-            }).Build())
         }
         if Written != "" {
             review.Children.Add(ReportText{Content: Written, MaxHeight: AppTheme.ReportMaxHeight}.Build())

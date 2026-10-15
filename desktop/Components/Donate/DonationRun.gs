@@ -53,7 +53,7 @@ data struct DonationRun {
                 ActivityLogInput{
                     Lines: Progress.Output,
                     Revision: Progress.OutputRevision,
-                    Placeholder: Progress.Running ? "Starting donation...": "The donation gave no output.",
+                    Placeholder: Progress.Running ? "Waiting for task output...": "No output recorded.",
                     Name: "Donation output",
                     LineName: "Command output",
                     Running: Progress.Running,

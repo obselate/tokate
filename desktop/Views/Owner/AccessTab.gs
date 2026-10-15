@@ -16,6 +16,14 @@ class AccessTab {
         let state = owner.Current
         let canWrite = state.Project.CanWrite
         let body = List[Blob]()
+        if !state.Access.Loaded {
+            return Panel{Children: []Blob{
+                page.Busy && page.Loader != nil ? page.Loader!!("Reading donor access"): EmptyMessage{Content: "Access could not be loaded. Refresh to try again.", Icon: "group"}.Build(),
+            }}.Build()
+        }
+        if !canWrite {
+            body.Add(Callout{Message: "Write access is required to manage donors.", Tone: Tone.Wait}.Build())
+        }
         if state.Access.Loaded && state.Access.AccessSha == "" {
             body.Add(
                 Panel{
@@ -36,7 +44,7 @@ class AccessTab {
                 }.Build()
             )
         }
-        if state.Access.Pending.Length > 0 {
+        if state.Access.Loaded {
             body.Add(
                 AccessRequests{
                     Requests: state.Access.Pending,

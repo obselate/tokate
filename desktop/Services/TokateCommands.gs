@@ -3,7 +3,7 @@ package TokateDesktop
 import System
 import System.Collections.Generic
 
-/// Argument arrays for Tokate 0.6.0. An issue or pull request is named as OWNER/REPO#NUMBER and a time
+/// Argument arrays for Tokate 0.6.5. An issue or pull request is named as OWNER/REPO#NUMBER and a time
 /// limit takes a unit.
 class TokateCommands {
     shared {
@@ -79,14 +79,18 @@ class TokateCommands {
 
         func Work(run string) []string -> []string{"work", "--run", run, "--yes"}
 
-        func RepositoryWork(repo string, draft DonationDraft, perTask string, total string, prompt string) []string {
-            let args = Selection("work", repo, draft with{Profile = ""})
-            args.AddRange([]string{"--time", perTask.Trim() + "m"})
+        func RepositoryWork(repo string, draft DonationDraft, perTask string, total string, prompt string, issues string = "", review bool = false) []string {
+            let target = (issues ?? "").Trim()
+            let args = Selection("work", target == "" ? repo: target.Contains("#") ? target: repo + "#" + target, draft with{Profile = ""})
+            args.AddRange([]string{"--time", (perTask ?? "60").Trim() + "m"})
             if total.Trim() != "" {
                 args.AddRange([]string{"--total", total.Trim() + "m"})
             }
             if prompt.Trim() != "" {
                 args.AddRange([]string{"--prompt", prompt.Trim()})
+            }
+            if review {
+                args.Add("--review")
             }
             return args.ToArray()
         }
@@ -145,7 +149,7 @@ class TokateCommands {
         /// holds the written amendment files; without it the command has only the commit and budget.
         func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "", files string = "") []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
-            if action == RunAction.Claim {
+            if action == RunAction.Claim || action == RunAction.Submit {
                 args.Add("--yes")
             }
             if RunActions.NeedsBudget(action) {

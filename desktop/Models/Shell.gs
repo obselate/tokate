@@ -104,7 +104,7 @@ data struct Confirmation {
     var Tiles []ConfirmationTile
     var Details []ConfirmationDetail
 
-    prop HasSummary bool -> Heading != "" || Tiles.Length > 0 || Details.Length > 0
+    prop HasSummary bool -> !String.IsNullOrEmpty(Heading) || Tiles.Length > 0 || Details.Length > 0
 }
 
 data struct LayoutMetrics {

@@ -82,7 +82,7 @@ class SavedRunView {
                 Trailing: StatusBadge{Value: item.Status(), Tone: Statuses.ToneOf(item.Status())}.Build(),
                 Stacked: page.NarrowContent,
             }.Build(),
-            RunDetails{
+            state.Review == nil ? RunDetails{
                 Item: state.Chosen,
                 Actions: state.Actions,
                 Button: page.Button,
@@ -94,6 +94,11 @@ class SavedRunView {
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),
                 OnFollow: action -> saved.Follow(action),
+            }.Build(): PullRequestReview{
+                Preview: state.Review!!,
+                Button: page.Button,
+                Narrow: page.NarrowContent,
+                OnPublish: () -> saved.PublishSubmit(),
             }.Build(),
             RunFacts{Item: state.Chosen, Stacked: page.Metrics.ContentWidth < AppTheme.ColumnsBreakpoint}.Build(),
         }

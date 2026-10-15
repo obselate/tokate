@@ -2,68 +2,24 @@ package TokateDesktop
 
 import Goo
 import System
-import System.Collections.Generic
 
-/// Coding and verification minutes within the owner's limit.
+/// Total task time includes its reserved verification share.
 data struct TimeLimits {
     var Draft DonationDraft
     var Policy Policy
     var Button CommandButton
     var Disabled bool
-    var OnPreset Action[string]?
     var OnUnlimited Action[bool]?
     var OnCoding Action[string]?
     var OnVerification Action[string]?
 
     func Build() Container {
-        let preset = OnPreset
-        let labels = List[string]()
-        let unavailable = List[bool]()
-        var selected int32 = -1
-        for i in 0 ... DonationState.Presets.Length {
-            let minutes = DonationState.Presets[i]
-            labels.Add(minutes + " min")
-            unavailable.Add(!Draft.PresetAllowed(int32.Parse(minutes), Policy))
-            if !Draft.Unlimited && Draft.Coding == minutes {
-                selected = i
-            }
-        }
-        let children = List[Blob]{
+        let total = int32.Parse(Draft.Coding) + Draft.ReserveMinutes()
+        return Panel{Name: "Time limit settings", Children: []Blob{
             IconHeading{Icon: "schedule", Content: "Time"}.Build(),
-            PresetGroup{
-                Button: Button,
-                Labels: labels.ToArray(),
-                Selected: selected,
-                Unavailable: unavailable.ToArray(),
-                OnChoose: index -> preset?.Invoke(DonationState.Presets[index]),
-            }.Build(),
-        }
-        if Policy.MaxSeconds > 0 && !Draft.Unlimited {
-            children.Add(
-                Label{
-                    Content: "Coding + verification limit: " + (Policy.MaxSeconds / 60).ToString() + " minutes.",
-                    Size: AppTheme.SmallSize,
-                    Muted: true,
-                }.Build()
-            )
-        }
-        if Policy.AllowsUnlimited {
-            children.Add(Check{Label: "Unlimited coding time", Value: Draft.Unlimited, OnChange: OnUnlimited, Disabled: Disabled}.Build())
-        }
-        let budgets = List[Blob]()
-        if !Draft.Unlimited {
-            budgets.Add(InputField{Label: "Coding minutes", Value: Draft.Coding, OnChange: OnCoding, Width: AppTheme.ShortFieldWidth, Disabled: Disabled}.Build())
-        }
-        budgets.Add(
-            InputField{
-                Label: "Verification minutes",
-                Value: Draft.Verification,
-                OnChange: OnVerification,
-                Width: AppTheme.ShortFieldWidth,
-                Disabled: Disabled,
-            }.Build()
-        )
-        children.Add(Row{Children: budgets.ToArray()}.Build())
-        return Panel{Name: "Time limit settings", Children: children.ToArray()}.Build()
+            TimeBudget{Caption: "Per task", Minutes: total, Minimum: 2, Maximum: Policy.MaxSeconds > 0 ? Policy.MaxSeconds / 60: 0, Hint: Policy.MaxSeconds > 0 ? "Up to " + DonationState.Duration(Policy.MaxSeconds / 60): "No repository limit", Disabled: Disabled || Draft.Unlimited, Button: Button, OnChange: OnCoding}.Build(),
+            TimeBudget{Caption: "Verification share", Minutes: Draft.ReserveMinutes(), Minimum: 1, Maximum: total - 1, Hint: "Reserved within the per-task time.", Disabled: Disabled, Button: Button, OnChange: OnVerification}.Build(),
+            Policy.AllowsUnlimited ? Check{Label: "Unlimited coding", Value: Draft.Unlimited, OnChange: OnUnlimited, Disabled: Disabled}.Build(): Container{},
+        }}.Build()
     }
 }

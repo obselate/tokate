@@ -30,6 +30,7 @@ data struct RunDetails {
         let status = Item.Status()
         let tone = Statuses.ToneOf(status)
         let look = AppTheme.Look(tone)
+        let finished = status == "Merged" || status == "Closed without merge"
         let guide = RunGuide.For(status, run.Pr > 0)
         let children = List[Blob]{
             Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone, Narrow: Narrow}.Build(),
@@ -49,19 +50,22 @@ data struct RunDetails {
         }
         let shown = List[RunAction]()
         for action in Actions {
+            if finished {
+                continue
+            }
             shown.Add(action)
         }
-        if run.Pr > 0 || !run.External && (run.State == "generated" || run.FailureReason == "verification_failed") {
+        if !finished && (run.Pr > 0 || !run.External && (run.State == "generated" || run.FailureReason == "verification_failed")) {
             if !shown.Contains(RunAction.Amend) {
                 shown.Add(RunAction.Amend)
             }
         }
-        if run.Pr > 0 {
+        if !finished && run.Pr > 0 {
             shown.Add(RunAction.Reconcile)
         }
         var text = guide.Text
         if guide.Main != nil && !shown.Contains(guide.Main!!) {
-            text = run.External ? "This contribution uses external work. Continue it with the Tokate command line.": "No action is available now. Refresh the status to see a change."
+            text = run.External ? "Continue external work with the Tokate CLI.": "Refresh status to check the next action."
         }
         if text != "" {
             children.Add(Label{Content: text}.Build())
@@ -94,7 +98,7 @@ data struct RunDetails {
             let selected = shown[index]
             buttons.Add(
                 (Button with{
-                    Label = RunActions.ButtonLabel(selected),
+                    Label = selected == RunAction.Submit && run.Gratis ? "Review pull request": RunActions.ButtonLabel(selected),
                     OnClick = () -> {
                         if selected == RunAction.Amend {
                             amend?.Invoke()
@@ -112,27 +116,33 @@ data struct RunDetails {
         }
         for next in Item.Actions {
             let continuation = Array.IndexOf(next.Arguments, "--continue-from") >= 0
+            if finished {
+                continue
+            }
             if next.Command == "help" || next.Command == "sync" || (next.Command == "status" && !next.NamesRun && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
+                let followButtons = List[Blob]()
                 if continuation {
                     for command in []string{"pause", "resume"} {
                         let request = NextAction{Arguments: []string{"tokate", command, "--run", run.Path, "--json"}}
-                        children.Add((Button with{
+                        followButtons.Add((Button with{
                             Label = command == "pause" ? "Pause stopped attempt": "Resume reservation",
                             Disabled = Waiting,
                             OnClick = () -> follow?.Invoke(request),
                         }).Build())
                     }
                 }
-                children.Add(Label{Content: String.Join(" ", next.Arguments)}.Build())
-                children.Add((Button with{
+                children.Add(Label{Content: continuation ? "Continue saved work with a new time budget.": next.Command == "help" ? "Read recovery instructions before another attempt.": next.Command == "sync" ? "Review changes before synchronization.": "Check the current approval and permissions."}.Build())
+                followButtons.Insert(0, (Button with{
                     Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": next.Command == "sync" ? "Review synchronization": "Inspect authority",
                     Disabled = Waiting,
+                    Primary = continuation && lead < 0,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())
+                children.Add(Row{Children: followButtons.ToArray()}.Build())
             }
         }
         let failure = String.Join("\n", run.Guidance, run.ErrorMessage, LastMessage)
-        if failure.Contains("Tokate workflow failed.") || failure.Contains("GitHub could not start the Tokate workflow") {
+        if !finished && (failure.Contains("Tokate workflow failed.") || failure.Contains("GitHub could not start the Tokate workflow")) {
             let recovery = NextAction{Arguments: []string{"tokate", "recover-request", run.Repo + "#" + run.Issue.ToString(), "--json"}}
             children.Add(Label{Content: "Only an owner with repository write access can recover the pending request. Fix the workflow cause first."}.Build())
             children.Add((Button with{
@@ -146,4 +156,34 @@ data struct RunDetails {
         }
         return Panel{Children: children.ToArray()}.Build()
     }
+}
+
+data struct PullRequestReview {
+    var Preview PullRequestPreview
+    var Button CommandButton
+    var OnPublish Action?
+    var Narrow bool
+
+    func Build() Blob -> Panel{
+        Name: "Pull request review",
+        Children: []Blob{
+            Progression{Names: RunGuide.Steps, Current: 2, State: Tone.Need, Narrow: Narrow}.Build(),
+            Rule{}.Build(),
+            Heading{Content: Preview.Title}.Build(),
+            DetailRow{Caption: "Branches", Value: Preview.Base + " <- " + Preview.Head}.Build(),
+            Text{
+                Content: Preview.Body,
+                FontFamily: AppTheme.BodyFont,
+                FontSize: AppTheme.BodySize,
+                Color: AppTheme.Current.Ink,
+                MaxHeight: AppTheme.ReportMaxHeight,
+                OverflowY: Overflow.Scroll,
+                Focusable: true,
+                Focus: AppTheme.FocusStyle(),
+            },
+            Row{Children: []Blob{
+                (Button with{Label = "Publish pull request", Primary = true, OnClick = OnPublish}).Build(),
+            }}.Build(),
+        },
+    }.Build()
 }

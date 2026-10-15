@@ -5,6 +5,21 @@ import System.Text.Json
 
 class RunCodec {
     shared {
+        func Applied(data JsonElement) bool -> Json.BoolOrNil(data, "applied") ?? true
+
+        func PullRequestPreview(data JsonElement) PullRequestPreview {
+            let pr = Json.Get(data, "pull_request")
+            if Json.Bool(data, "applied") || Json.Text(pr, "title") == "" {
+                return PullRequestPreview{Title: "", Body: "", Base: "", Head: ""}
+            }
+            return PullRequestPreview{
+                Title: Json.Text(pr, "title"),
+                Body: Json.Text(pr, "body"),
+                Base: Json.Text(pr, "base"),
+                Head: Json.Text(pr, "head"),
+            }
+        }
+
         func Run(data JsonElement, path string = "") Run {
             let tools = Json.Items(data, "tools")
             let found = Json.Text(data, "run")
@@ -32,6 +47,7 @@ class RunCodec {
                 Commit: Json.Text(data, "commit"),
                 Checkout: Json.Text(Json.Get(data, "artifacts"), "checkout"),
                 External: Json.Text(data, "source") == "external",
+                Gratis: Json.Bool(data, "gratis"),
                 Amending: Json.Text(amendment, "state") == "requested" ? Json.Text(amendment, "commit"):
                 Json.Text(correction, "state") == "verified" && finish.Length > 1 && finish[1] == "amend" ? Json.Text(correction, "commit"): "",
                 Finish: finish,

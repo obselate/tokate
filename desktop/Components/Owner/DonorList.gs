@@ -50,6 +50,7 @@ open class DonorList : Cell[DonorListInput] {
                     (input.Button with{
                         Label = "Grant issue access",
                         OnClick = () -> owner.ChangeAccess("grant", donor, issue),
+                        Primary = true,
                         Disabled = !input.CanWrite || donor == "" || !valid,
                     }).Build(),
                     (input.Button with{

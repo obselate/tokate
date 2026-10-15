@@ -12,7 +12,7 @@ enum DonationStep {
 
 class DonationSteps {
     shared {
-        let Names []string = []string{"Issue", "Limits", "Review", "Donation"}
+        let Names []string = []string{"Repository", "Limits", "Review", "Donation"}
         let Numerals []string = []string{"I", "II", "III", "IV"}
 
         func Index(step DonationStep) int32 -> switch step {
@@ -23,7 +23,7 @@ class DonationSteps {
         }
 
         func Heading(step DonationStep) string -> switch step {
-            case DonationStep.Issue: "Choose an issue"
+            case DonationStep.Issue: "Choose a repository"
             case DonationStep.Limits: "Set your limits"
             case DonationStep.Review: "Review"
             default: "Donation"
@@ -186,8 +186,6 @@ data struct DonationDraft {
 
     func ReserveMinutes() int32 -> int32.TryParse(Verification, out var minutes) ? Math.Max(0, minutes): 0
 
-    func PresetAllowed(minutes int32, policy Policy) bool -> !policy.Exceeds((minutes + ReserveMinutes()) * 60)
-
     func BudgetSeconds(policy Policy) int32 {
         var minutes int32
         var reserve int32
@@ -326,6 +324,28 @@ data struct DonationState {
     var ReviewedArguments []string
     var Session DonationSession
     var StopRequested bool
+    var IssueList string
+    var ReviewEach bool
+    var ShowConsent bool
+    var RecentRepositories []string
+    var SavedRepositories []string
+    var RepositoryStatus string
+    var RepositoryTone Tone
+    var CheckingRepository bool
+    var RepositoryChecked bool
+
+    prop Gratis bool -> RepositoryChecked && !Policy.Loaded
+
+    prop LimitMinutes int32 -> Policy.MaxSeconds > 0 ? Policy.MaxSeconds / 60: 0
+
+    prop LimitLabel string -> Policy.MaxSeconds > 0 ? "Up to " + Duration(Policy.MaxSeconds / 60): "No repository limit"
+
+    func ConsentFact(label string, fallback string) string {
+        for line in (Consent ?? "").Split('\n') {
+            if line.StartsWith(label + ": ") { return line.Substring(label.Length + 2).Trim() }
+        }
+        return fallback
+    }
 
     prop Identity string -> RepositoryMode ? Repository: Repository + " #" + Issue
 
@@ -351,7 +371,7 @@ data struct DonationState {
     }
 
     shared {
-        let Presets []string = []string{"15", "30", "60"}
+        func Duration(minutes int32) string -> minutes >= 60 && minutes % 60 == 0 ? (minutes / 60).ToString() + " h": minutes.ToString() + " min"
 
         let Initial DonationState = DonationState{
             Step: DonationStep.Issue,
@@ -372,6 +392,10 @@ data struct DonationState {
             Prompt: "",
             Consent: "",
             ReviewedArguments: []string{},
+            IssueList: "",
+            RepositoryStatus: "",
+            RecentRepositories: []string{},
+            SavedRepositories: []string{},
         }
     }
 }

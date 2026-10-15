@@ -24,7 +24,7 @@ data struct SavedRow {
         let identity = Item.Identity(Index)
         let facts = List[string]()
         if Item.Error != "" {
-            facts.Add(Item.Error)
+            facts.Add("Could not read this run. Refresh to try again.")
         } else if let run = Item.Run {
             if Item.Title != "" {
                 facts.Add(identity)

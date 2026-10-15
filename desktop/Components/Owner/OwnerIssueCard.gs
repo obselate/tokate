@@ -37,10 +37,10 @@ data struct OwnerIssueCard {
                             FlexBasis: 0,
                             MinWidth: AppTheme.ShortFieldWidth,
                             Gap: AppTheme.Space4,
-                            Heading{Content: stale ? "Fresh owner approval required": approved ? "Approved for donation": "Not approved for donation", Size: AppTheme.ItemSize}.Build(),
+                            Heading{Content: stale ? "Approval expired": approved ? "Approved for donation": "Needs approval", Size: AppTheme.ItemSize}.Build(),
                             Label{
                                 Content: stale ? Work!!.NextAction: approved ?
-                                    "The tokate:approved label permits donors with access to reserve this issue.": "Donors cannot reserve this issue.",
+                                    "Donors with access can reserve this issue.": "Approve this issue to let donors reserve it.",
                                 Size: AppTheme.SmallSize,
                                 Muted: true,
                             }.Build(),
@@ -56,8 +56,7 @@ data struct OwnerIssueCard {
             },
         }.Build()
         approval.Children.Add(Label{
-            Content: "Approval binds verification, checks, protected paths, tool models, runtime limits and reservation duration. " +
-                "Changes to these task fields, the issue text or the PR template need fresh approval. Descriptive policy edits do not.",
+            Content: "Task or issue changes require fresh approval.",
             Size: AppTheme.SmallSize,
             Muted: true,
         }.Build())
@@ -84,7 +83,7 @@ data struct OwnerIssueCard {
                     Title: "Draft pull requests",
                     Count: Reading ? -1: drafts.Length,
                     Children: lines.ToArray(),
-                    Note: "Before you accept a pull request: verify the receipt, make sure that CI is green on the reviewed commit, and read the diff. You merge on GitHub.",
+                    Note: "Check the receipt, review the diff and require green CI on the reviewed commit. Merge on GitHub.",
                 }.Build(),
             },
         }.Build()
@@ -101,7 +100,7 @@ data struct OwnerIssueCard {
         }
         return ListRow{
             Children: []Blob{
-                Container{Width: 84, FlexShrink: 0, Label{Content: "PR #" + pr}.Build()},
+                Container{Width: AppTheme.ButtonMinWidth, FlexShrink: 0, Label{Content: "PR #" + pr}.Build()},
                 Result(known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt, known.Receipt == "", known.ReceiptTone),
                 Result(known.Ci == "" ? "CI not checked": "CI " + known.Ci, known.Ci == "", known.CiTone),
                 Spacer{}.Build(),

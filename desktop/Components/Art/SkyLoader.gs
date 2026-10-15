@@ -7,6 +7,7 @@ data struct SkyLoaderInput {
     var Message string
     var Sun ImageSource
     var Moon ImageSource
+    var Twilight float64
 }
 
 /// The loading state of a list: the painted sun, or the moon at night, rises and sets behind a horizon line
@@ -54,8 +55,8 @@ open class SkyLoader : Cell[SkyLoaderInput] {
                 Overflow: Overflow.Hidden,
                 BorderWidth: Edges{Bottom: 1},
                 BorderColor: AppTheme.Current.Line,
-                Orb(input.Sun, 1 - AppTheme.Twilight, left, top),
-                Orb(input.Moon, AppTheme.Twilight, left, top),
+                Orb(input.Sun, 1 - input.Twilight, left, top),
+                Orb(input.Moon, input.Twilight, left, top),
             },
             message,
         }
@@ -80,7 +81,7 @@ open class SkyLoader : Cell[SkyLoaderInput] {
         /// Mounts the loader in a container that fills the list, so it can sit among unkeyed siblings.
         func Mount(input SkyLoaderInput) Blob -> Container{
             FlexGrow: 1,
-            Children: []Blob{Cell.Mount[SkyLoaderInput, SkyLoader]("sky-loader", input)},
+            Children: []Blob{Cell.Mount[SkyLoaderInput, SkyLoader]("sky-loader", input with{Twilight = AppTheme.Twilight})},
         }
     }
 }

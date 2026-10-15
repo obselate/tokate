@@ -23,18 +23,17 @@ data struct HarnessPicker {
             if (!allowed || Array.IndexOf(Unready ?? []string{}, id) >= 0) && Selected != id {
                 continue
             }
-            cards.Add(
-                ChoiceCard{
-                    Title: option.Name,
-                    Detail: !allowed ? "Not allowed": id == "command" ? "Owner-defined argv. No isolation.": "",
-                    Icon: "terminal",
-                    Art: id == "command" ? nil: Logo?.Invoke(id),
-                    Compact: true,
-                    Selected: Selected == id,
-                    OnChoose: () -> choose?.Invoke(id),
-                    Disabled: Disabled || !allowed,
-                }.Build()
-            )
+            let card = ChoiceCard{
+                Title: option.Name + (!allowed ? " (not allowed)": ""),
+                Detail: "",
+                Icon: "terminal",
+                Art: id == "command" ? nil: Logo?.Invoke(id),
+                Compact: true,
+                Selected: Selected == id,
+                OnChoose: () -> choose?.Invoke(id),
+                Disabled: Disabled || !allowed,
+            }.Build()
+            cards.Add(Container{MinWidth: AppTheme.ChoiceMinWidth, FlexBasis: AppTheme.ChoiceMinWidth, FlexGrow: 1, card})
         }
         if cards.Count == 0 {
             return Callout{Message: "No harness that this repository allows is set up on this computer.", Tone: Tone.Wait}.Build()

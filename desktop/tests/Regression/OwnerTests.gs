@@ -93,4 +93,7 @@ func OwnerTests() {
     owner.Deselect()
     Regression.Check(owner.Current.Selected == nil, "deselect")
     Regression.Check(owner.Current.WorkFor("3") == nil, "no work before inspection")
+    owner.Current = owner.Current with{DoctorReport = "Repository health"}
+    owner.Close()
+    Regression.Check(!owner.Current.Open && owner.Current.DoctorReport == "", "changing projects clears repository health")
 }

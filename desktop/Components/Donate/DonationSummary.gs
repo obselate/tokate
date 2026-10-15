@@ -33,11 +33,11 @@ data struct DonationSummary {
                     Row{
                         Children: []Blob{
                             SummaryTile{
-                                Title: "Coding time",
-                                Value: Draft.Unlimited ? "Unlimited": Draft.Coding + " minutes",
+                                Title: "Per task",
+                                Value: Draft.Unlimited ? "Unlimited coding": DonationState.Duration(int32.Parse(Draft.Coding) + Draft.ReserveMinutes()),
                                 Icon: "schedule",
                             }.Build(),
-                            SummaryTile{Title: "Verification", Value: Draft.Verification + " minutes", Icon: "verified"}.Build(),
+                            SummaryTile{Title: "Verification share", Value: DonationState.Duration(Draft.ReserveMinutes()), Icon: "verified"}.Build(),
                         },
                     }.Build(),
                     DetailRow{Caption: "Account", Value: Account}.Build(),

@@ -69,16 +69,17 @@ class SetupTab {
             tools.Add(ComboBoxOption{Id: pair, Label: pair, Content: Label{Content: pair}.Build()})
         }
         let models = List[Blob]{
-            IconHeading{Icon: "tune", Content: "Models", Detail: "Model permissions apply to the selected tool."}.Build(),
+            IconHeading{Icon: "tune", Content: "Models", Detail: "Choose the models donors may use."}.Build(),
             Dropdown{
                 Caption: "Tool",
                 Value: setup.ModelTool,
                 Options: tools.ToArray(),
                 OnChange: tool -> owner.SetModelTool(tool),
                 Disabled: page.Busy,
+                Width: AppTheme.FieldWidth,
                 Popup: page.Popup,
             }.Build(),
-            Label{Content: setup.ModelTool.StartsWith("command/") ? "Command harnesses require selected models.": "Choose model permissions.", Size: AppTheme.SmallSize}.Build(),
+            Label{Content: setup.ModelTool.StartsWith("command/") ? "Select models for this command harness.": "Allow all models or select a list.", Size: AppTheme.SmallSize}.Build(),
         }
         if !setup.ModelTool.StartsWith("command/") {
             models.Add(ModelPolicyPicker{
@@ -168,9 +169,9 @@ class SetupTab {
         let health = List[Blob]{
             IconHeading{
                 Icon: "fact_check", Content: "Repository health",
-                Detail: "Check the coordinator pin, Actions settings, policy, access and pending requests without changing them.",
+                Detail: "Check policy, access and GitHub Actions.",
             }.Build(),
-            (page.Button with{Label = "Check repository health", OnClick = () -> owner.CheckPrerequisites()}).Build(),
+            Row{Children: []Blob{(page.Button with{Label = "Check repository health", OnClick = () -> owner.CheckPrerequisites(), Primary = true}).Build()}}.Build(),
         }
         if state.DoctorReport != "" {
             health.Add(ReportText{Content: state.DoctorReport, MaxHeight: AppTheme.ReportMaxHeight}.Build())

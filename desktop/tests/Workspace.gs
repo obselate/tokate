@@ -234,7 +234,7 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "My project")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh projects", enabled: true)
         Edit(window, host, adapter, "GitHub repository", "owner/repo")
-        Choose(host, window, adapter, "Open project")
+        Choose(host, window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #42: Issue 42", enabled: true)
         Require(IssueRowCount(adapter.Root) == 8, "Large issue search rendered more than one page")
         host.Resize(800, 600, 800, 600)
@@ -305,6 +305,7 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "Apply setup")
         Choose(host, window, adapter, "Confirm")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Open setup PR", enabled: true)
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Apply setup") == nil, "Applied setup retained the apply action")
         Require(File.Exists(Path.Combine(fixture, "applied")), "Confirm did not apply configuration")
         let args = File.ReadAllText(Path.Combine(fixture, "owner-args"))
         Require(
@@ -352,18 +353,24 @@ func WorkspaceFlow() {
         let withPolicy = File.ReadAllText(cliPath)
         File.WriteAllText(cliPath, withPolicy.Replace("\"policy\":{", "\"unavailable_policy\":{"))
         Choose(host, window, adapter, "Change project")
-        Choose(host, window, adapter, "Open project")
+        Choose(host, window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Preview setup", enabled: true)
         Require(FindText(adapter.Root, "No policy yet."), "Missing policy was not treated as initial setup")
         File.WriteAllText(cliPath, withPolicy)
         Choose(host, window, adapter, "Change project")
-        Choose(host, window, adapter, "Open project")
+        Script(bin, "tokate", "printf '%s' '{\"schema_version\":1,\"command\":\"doctor\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"tools\":[{\"name\":\"gh-auth\",\"status\":\"ready\",\"detail\":\"GitHub identity verified\"}]}}'\n")
+        Choose(host, window, adapter, "Check owner prerequisites")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Check owner prerequisites", enabled: true)
+        Require(FindText(adapter.Root, "GitHub identity verified"), "Owner prerequisites report was not displayed")
+        File.WriteAllText(cliPath, withPolicy)
+        Choose(host, window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Contributions", enabled: true)
         Choose(host, window, adapter, "Contributions")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #42: Issue 42", enabled: true)
         Choose(host, window, adapter, "Donate")
-        Edit(window, host, adapter, "GitHub repository or issue URL", "owner/repo")
-        Choose(host, window, adapter, "Find approved issues")
+        Edit(window, host, adapter, "GitHub repository", "owner/repo")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Choose repository", enabled: true)
+        Choose(host, window, adapter, "Choose repository")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Issue #42: Issue 42", enabled: true)
         Require(IssueRowCount(adapter.Root) == 8, "Donate did not use the bounded issue browser")
         let requests = File.ReadAllText(Path.Combine(fixture, "issue-calls"))
@@ -378,8 +385,9 @@ func WorkspaceFlow() {
         Require(requests.Contains("repos/owner/repo/issues/42"), "Number search scanned issue pages")
         TiledLayouts(host, window, adapter)
         Choose(host, window, adapter, "Issue #42: Issue 42")
-        AwaitControl(host, adapter, AccessibilityRole.TextInput, "Verification minutes", enabled: true)
-        Edit(window, host, adapter, "Verification minutes", "7")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "More verification share", enabled: true)
+        desktop.Donation.SetVerification("7")
+        Settle(host)
         Choose(host, window, adapter, "Saved work")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Saved owner/repo #43", enabled: true)
         Choose(host, window, adapter, "Saved owner/repo #43")
@@ -392,7 +400,7 @@ func WorkspaceFlow() {
         Edit(window, host, adapter, "Verification minutes", "11")
         Choose(host, window, adapter, "Donate")
         Require(
-            Find(adapter.Root, AccessibilityRole.TextInput, "Verification minutes")?.Value == "7",
+            desktop.Donation.Current.Draft.Verification == "7",
             "Amendment changed the donation budget"
         )
         Choose(host, window, adapter, "Saved work")
@@ -506,9 +514,54 @@ func WorkspaceFlow() {
             File.ReadAllText(Path.Combine(fixture, "amend-args")).Contains("--time\n9m\n--commit\n" + commits[1]),
             "Unpublished amendment did not verify the edited checkout HEAD"
         )
+        ReviewSubmitFlow(host, window, adapter, desktop, fixture, bin)
     } finally {
         Environment.SetEnvironmentVariable("PATH", previousPath)
         Environment.SetEnvironmentVariable("XDG_STATE_HOME", previousState)
         Directory.Delete(fixture, true)
+    }
+}
+
+func ReviewSubmitFlow(host TestHost, window Window, adapter TestAccessibility, desktop DesktopApp, fixture string, bin string) {
+    let executable = Path.Combine(bin, "tokate")
+    let previous = File.ReadAllText(executable)
+    let run = Path.Combine(fixture, "review-run")
+    Directory.CreateDirectory(run)
+    Script(bin, "tokate",
+        ("case \"$$1\" in\n" +
+        "submit)\n printf '%s\\n' \"$$@\" > FIXTURE/review-args\n" +
+        " if [ -e FIXTURE/review-refused ]; then data='{\"applied\":false}'; elif [ \"$$4\" = --yes ]; then touch FIXTURE/review-published; data='{\"applied\":true,\"pr\":9}'; else data='{\"applied\":false,\"pull_request\":{\"title\":\"Improve rendering\",\"body\":\"Changes\\nA plain text summary.\",\"base\":\"main\",\"head\":\"tokate/review\"}}'; fi;;\n" +
+        "status)\n pr=0; state=generated; if [ -e FIXTURE/review-published ]; then pr=9; state=published; fi\n data=\"{\\\"run\\\":\\\"RUN\\\",\\\"gratis\\\":true,\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":46,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr}\";;\n" +
+        "*) data='{}';;\nesac\n" +
+        "printf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"submit\",\"--run\",\"RUN\"]]}' \"$$1\" \"$$data\"\n")
+            .Replace("FIXTURE", fixture).Replace("RUN", run)
+    )
+    try {
+        desktop.Saved.SetRunPath(run)
+        desktop.Saved.LoadRun()
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Review pull request", enabled: true)
+        Choose(host, window, adapter, "Review pull request")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Publish pull request", enabled: true)
+        Require(FindText(adapter.Root, "Improve rendering") && FindText(adapter.Root, "main <- tokate/review") && FindText(adapter.Root, "A plain text summary."), "Review omitted pull request content")
+        Require(!File.Exists(Path.Combine(fixture, "review-published")), "Review published the pull request")
+        Require(!File.ReadAllText(Path.Combine(fixture, "review-args")).Contains("--yes"), "Review passed publication consent")
+        Require(desktop.Saved.Current.Run.Pr == 0 && desktop.Saved.Current.Review != nil, "Preview reported publication")
+        Choose(host, window, adapter, "Publish pull request")
+        Require(!File.Exists(Path.Combine(fixture, "review-published")), "Publish bypassed confirmation")
+        Choose(host, window, adapter, "Go back")
+        Require(desktop.Saved.Current.Review != nil, "Cancel discarded the review")
+        File.WriteAllText(Path.Combine(fixture, "review-refused"), "")
+        Choose(host, window, adapter, "Publish pull request")
+        desktop.Dialogs.Confirm()
+        AwaitControl(host, adapter, AccessibilityRole.Status, "The pull request was not published. Review it before trying again.")
+        Require(desktop.Saved.Current.Review != nil && desktop.Saved.Current.Run.Pr == 0, "Unapplied publish reported success")
+        File.Delete(Path.Combine(fixture, "review-refused"))
+        Choose(host, window, adapter, "Publish pull request")
+        desktop.Dialogs.Confirm()
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Open pull request", enabled: true)
+        Require(File.ReadAllText(Path.Combine(fixture, "review-args")).Contains("--yes"), "Publication omitted consent")
+        Require(desktop.Saved.Current.Review == nil, "Publication retained the preview")
+    } finally {
+        File.WriteAllText(executable, previous)
     }
 }
