@@ -68,6 +68,9 @@ internal class Positionals {
                 let numbers = List[string]()
                 for value in parts[parts.Length - 1].Split(',') {
                     Number(args, "issue", value)
+                    if numbers.Contains(args.Get("issue")) {
+                        throw Exception("Duplicate issue: #" + args.Get("issue"))
+                    }
                     numbers.Add(args.Get("issue"))
                 }
                 args.Values.Remove("--issue")

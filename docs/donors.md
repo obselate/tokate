@@ -134,6 +134,7 @@ In a terminal, submit previews the exact text and asks once.
 With `--json`, `--non-interactive` or no terminal, submit previews without changes.
 Use `--yes` to publish the reviewed text.
 Free selection stops on refusal, no PR, the total budget, a stop request or three consecutive failures.
+An issue list stops after its last issue, on refusal, the total budget, a stop request or three consecutive failures.
 A repository with a policy keeps the approved-issue flow and rejects issue lists and `--review`.
 In gratis mode, the harness can write `tokate-title.txt` in the checkout root to
 set the commit and PR title. Use one plain ASCII line of at most 100 characters.

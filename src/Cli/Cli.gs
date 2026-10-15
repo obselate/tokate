@@ -799,10 +799,10 @@ internal class Cli {
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )
             }
-            if args.Get("prompt") != "" && !RepositoryWork(args) && !args.Help {
+            if args.Get("prompt") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--prompt requires repository work")
             }
-            if args.Get("total") != "" && !RepositoryWork(args) && !args.Help {
+            if args.Get("total") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--total requires repository work")
             }
             if RepositoryWork(args) && args.Get("unlimited") == "true" && !args.Help {

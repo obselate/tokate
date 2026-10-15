@@ -1752,10 +1752,6 @@ internal partial class CoordinationFlow : CoordinationFixture {
         freeFlow.Initialize(access: false)
         freeFlow.Git("-C", freeFlow.Upstream, "rm", ".github/tokate.json")
         freeFlow.Commit("Accept harness selected work")
-        freeFlow.State["donation_stop"] = JsonValue.Create(
-            Path.Combine(freeFlow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/stop")
-        )
-        freeFlow.Save()
         let free = Check
             .Envelope(
             freeFlow.Call(
@@ -1769,7 +1765,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     "--effort",
                     "high",
                     "--time",
-                    "30s",
+                    "1h",
+                    "--total",
+                    "1h",
                     "--yes",
                     "--json"
                 }
@@ -1780,6 +1778,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
             throw Exception("Missing free work report")
         Check.That(Check.Text(free["tasks"]?[0]?["issue"]) == "0", "Free work did not let the harness choose")
         Check.That(Check.Text(free["submitted"]) == "1", "Free work did not publish")
+        Check.That(free["tasks"]?.AsArray().Count == 1, "Equal task and total budgets did not run one task")
+        Check.That(Check.Text(free["reason"]) == "total_exhausted", "Equal budgets did not stop after one task")
         freeFlow.Reload()
         Check.That((freeFlow.State["pulls"]?.AsArray() ?? JsonArray()).Count == 1, "Free work did not open a PR")
         Check.That(Check.Text(freeFlow.State["exec_count"]) == "1", "Free work repeated inference")
@@ -1857,6 +1857,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Envelope(preview, "work", "error", "confirmation_required")
         Check.Contains(preview.Error, "owner/project#2,1")
         Check.Contains(preview.Error, "Total: 2 tasks")
+        let duplicateArgs = List[string](namedArgs)
+        duplicateArgs[1] = "owner/project#2,02"
+        let duplicate = Check.Envelope(namedFlow.Call(duplicateArgs.ToArray(), 1), "work", "error", "invalid_arguments")
+        Check.Contains(Check.Text(duplicate["error"]?["message"]), "Duplicate issue: #2")
         namedFlow.NoInference()
         Check.That(
             !Directory.Exists(Path.Combine(namedFlow.Temp.Env["HOME"], ".local/state/tokate/donations")),
@@ -1988,6 +1992,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let failed = Check.Envelope(failedFlow.Call(failedArgs.ToArray(), 1), "work", "error", "command_failed")["data"]
         Check.That(Check.Text(failed?["reason"]) == "failed", "Failed named work claimed completion")
         Check.That(Check.Text(failed?["failed"]) == "1", "Failed named work was not counted")
+        failedArgs[1] = "owner/project"
+        let repeated = Check.Envelope(failedFlow.Call(failedArgs.ToArray(), 1), "work", "error", "command_failed")[
+            "data"
+        ]
+        Check.That(Check.Text(repeated?["reason"]) == "consecutive_failures", "Free work stopped before three failures")
+        Check.That(Check.Text(repeated?["failed"]) == "3", "Free work did not count three failures")
+        Check.That(repeated?["tasks"]?.AsArray().Count == 3, "Free work did not try three tasks")
+        failedFlow.Reload()
+        Check.That(Check.Text(failedFlow.State["exec_count"]) == "4", "Free work did not run all failure attempts")
         failedFlow.NoPr()
     }
 }

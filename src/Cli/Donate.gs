@@ -140,11 +140,11 @@ internal class Donate {
                 missing: true
             )
             let gratis = policyFile.ValueKind == JsonValueKind.Undefined
-            if !gratis && issues.Count > 0 {
-                throw CliFailure("invalid_arguments", "Issue lists require a repository without a Tokate policy")
-            }
             if !gratis && options.Get("review") == "true" {
                 throw CliFailure("invalid_arguments", "--review requires a repository without a Tokate policy")
+            }
+            if !gratis && issues.Count > 0 {
+                throw CliFailure("invalid_arguments", "Issue lists require a repository without a Tokate policy")
             }
             let invalid = List[string]()
             for number in issues {
@@ -226,6 +226,7 @@ internal class Donate {
             let tasks = List[Object]()
             let attempted = HashSet[int32]()
             var consecutive int32
+            var first bool = true
             let usage = map[string, Object?]{"input_tokens": 0L, "cached_input_tokens": 0L, "output_tokens": 0L}
             let session = Data(
                 map[string, Object?]{
@@ -243,16 +244,17 @@ internal class Donate {
             Active = true
             try {
                 while !File.Exists(marker) {
-                    if consecutive == 3 || seconds > total - timer.Elapsed.TotalSeconds {
+                    if consecutive == 3 || seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
                         session.Fields["reason"] = consecutive == 3 ? "consecutive_failures": "total_exhausted"
                         break
                     }
                     PublicOutput.RunDirectory = ""
                     let pulls = gratis ? Gratis.Snapshot(repo): List[Object]()
                     let issue = issues.Count > 0 ? issues[tasks.Count]: gratis ? 0: Pick(repo, attempted)
-                    if File.Exists(marker) || seconds > total - timer.Elapsed.TotalSeconds {
+                    if File.Exists(marker) || seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
                         continue
                     }
+                    first = false
                     if issue == 0 && !gratis {
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
                         let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
@@ -272,7 +274,7 @@ internal class Donate {
                         options,
                         issue,
                         gratis ? Gratis.Context(context, pulls): JsonElement{},
-                        !gratis || options.Get("review") != "true"
+                        options.Get("review") != "true"
                     )
                     tasks.Add(task)
                     let result = task["result"]?.ToString() ?? ""
@@ -293,7 +295,13 @@ internal class Donate {
                         break
                     }
                     let refused = task.GetValueOrDefault("reason")?.ToString() == "refused"
-                    if gratis && (refused || (issue == 0 && task["pr_url"]?.ToString() == "")) {
+                    if gratis &&
+                        (
+                        refused ||
+                            (
+                            issue == 0 && result != "failed" && result != "prepared" && task["pr_url"]?.ToString() == ""
+                        )
+                    ) {
                         session.Fields["reason"] = refused ? "refused": "no_pr"
                         break
                     }
