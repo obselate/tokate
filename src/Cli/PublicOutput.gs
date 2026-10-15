@@ -232,7 +232,8 @@ internal class PublicOutput {
             if run.Text("state") == "claim_pending" {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
-                    "action": "Your claim is pending. Check the coordinator outcome with tokate work.",
+                    "action": "Your claim is pending. Check the coordinator outcome with tokate work. If the Tokate workflow failed: " +
+                        ApiTransport.MutationRecovery,
                     "command": []string{"tokate", "work", "--run", directory, "--json"}
                 }
             }

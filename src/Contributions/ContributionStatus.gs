@@ -840,7 +840,8 @@ internal class ContributionStatus {
             row["next"] = Submission.PendingWorkflow(run.Location, Data.Load(run.Location)) ??
                 Next(
                 "donor",
-                "Your claim is pending. Check the coordinator outcome with tokate work.",
+                "Your claim is pending. Check the coordinator outcome with tokate work. If the Tokate workflow failed: " +
+                    ApiTransport.MutationRecovery,
                 []string{"tokate", "work", target}
             )
         } else if PublicOutput.RunSummary(run.Location).TryGetValue("next", out next) {
