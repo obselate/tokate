@@ -449,6 +449,7 @@ internal class Startup {
                         }
                     }
 
+                    DonorDefaults.CheckPaths(options, saved)
                     options.HarnessFromDefault = true
                 }
             }

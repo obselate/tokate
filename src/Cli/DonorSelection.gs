@@ -60,6 +60,7 @@ internal class DonorSelection {
             }
 
             DonorDefaults.Fill(args, saved)
+            DonorDefaults.CheckPaths(args, saved)
         }
 
         private func CodexChoices(

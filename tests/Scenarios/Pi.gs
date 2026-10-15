@@ -164,6 +164,15 @@ internal class PiChecks {
                 for tool in inherited["data"]?["tools"]?.AsArray() ?? JsonArray() {
                     Check.That(Check.Text(tool["name"]) != "codex", "Managed diagnostics ignored the chosen Pi default")
                 }
+                let stale = Path.Combine(flow.Temp.Root, "missing-node")
+                flow.Call([]string{"defaults", "set", "--harness", "pi", "--pi-root", root, "--node", stale})
+                let refused = Check.Envelope(
+                    flow.Call([]string{"defaults", "check", "owner/project", "--json"}, 1),
+                    "defaults",
+                    "error",
+                    "invalid_state"
+                )
+                Check.Contains(Check.Text(refused["error"]?["message"]), "field node names a missing path")
                 flow.Call([]string{"defaults", "remove"})
             } finally {
                 File.Move(hiddenCodex, codex)

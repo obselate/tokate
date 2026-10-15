@@ -45,6 +45,39 @@ internal class DonorDefaults {
             }
         }
 
+        internal func CheckPaths(args Args, saved JsonElement) {
+            let profile = args.Get("profile")
+            let owner = profile == "" ? "donor default": "donor profile " + profile
+
+            for key in[]string{"pi-root", "node", "harness-path", "claude-profile"} {
+                let path = J.Text(saved, key)
+                let fix = "tokate defaults set " + (profile == "" ? "": profile + " ") + "--harness " + J.Text(
+                    saved,
+                    "harness"
+                ) +
+                    " --" +
+                    key +
+                    " PATH"
+
+                if path != "" && args.Get(key) == path && !Path.Exists(path) {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Saved " +
+                            owner +
+                            " field " +
+                            key +
+                            " names a missing path: " +
+                            path +
+                            ". Run " +
+                            fix +
+                            ", or pass --" +
+                            key +
+                            " PATH. No inference started."
+                    )
+                }
+            }
+        }
+
         internal func Name(value string) string {
             if !Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\\z") {
                 throw Exception("Invalid profile name: use 1 to 64 letters, digits, dots, underscores or hyphens")
