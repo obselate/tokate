@@ -87,6 +87,8 @@ func DonationTests() {
     Regression.Check(DonationSteps.Index(DonationStep.Donation) == 3, "step index")
     let preview = CliCodec.Envelope(Regression.Fixture("donation-gratis-preview.json"))
     Regression.Check(preview.Error?.Code == "confirmation_required" && preview.ExitCode == 1, "real gratis preview requires consent")
+    let ownerPreview = CliCodec.Envelope(Regression.Fixture("donation-owner-preview.json"))
+    Regression.Check(ownerPreview.Error?.Code == "confirmation_required" && ownerPreview.ExitCode == 1, "released owner policy preview requires consent")
     let stop = CliCodec.Envelope(Regression.Fixture("donation-stop-preview.json"))
     Regression.Check(stop.Error?.Code == "confirmation_required" && stop.ExitCode == 1, "real stop preview requires consent")
     Regression.Equal(
