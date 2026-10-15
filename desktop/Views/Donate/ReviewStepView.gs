@@ -18,9 +18,9 @@ class ReviewStepView {
                 Heading{Content: state.Repository}.Build(),
                 Panel{Name: "Donation consent", Children: []Blob{
                     DetailRow{Caption: "Mode", Value: state.Policy.Loaded ? "Owner policy": "Gratis"}.Build(),
-                    DetailRow{Caption: "Harness", Value: state.ConsentFact("Harness", ModelChoice.Tool(state.Draft.Harness, state.Draft.Provider))}.Build(),
-                    DetailRow{Caption: "Model", Value: state.ConsentFact("Model", state.Draft.Model)}.Build(),
-                    DetailRow{Caption: "Effort", Value: state.ConsentFact("Effort", ModelChoice.EffortLabel(state.Draft.Effort))}.Build(),
+                    DetailRow{Caption: "Harness", Value: ModelChoice.Tool(state.Draft.Harness, state.Draft.Provider)}.Build(),
+                    DetailRow{Caption: "Model", Value: Array.Find(state.Catalog(), model -> model.Slug == state.Draft.Model).DisplayName ?? state.Draft.Model}.Build(),
+                    DetailRow{Caption: "Effort", Value: ModelChoice.EffortLabel(state.Draft.Effort)}.Build(),
                     DetailRow{Caption: "Per task", Value: DonationState.Duration(int32.Parse(state.PerTask))}.Build(),
                     DetailRow{Caption: "Total", Value: state.IssueList != "" ? state.ConsentFact("Total", "Selected issues"): state.Total == "" ? "Until stopped": DonationState.Duration(int32.Parse(state.Total))}.Build(),
                     DetailRow{Caption: "Issues", Value: String.IsNullOrWhiteSpace(state.IssueList) ? "Harness chooses": state.IssueList}.Build(),

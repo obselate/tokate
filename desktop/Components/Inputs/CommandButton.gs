@@ -108,9 +108,9 @@ data struct CommandButton {
         button.Height = height
         button.FlexDirection = FlexDirection.Row
         button.AlignItems = AlignItems.Center
-        button.JustifyContent = JustifyContent.Center
+        button.JustifyContent = Kind == ButtonKind.Quiet ? JustifyContent.FlexStart: JustifyContent.Center
         button.Gap = iconOnly ? 0: AppTheme.Space8
-        button.Padding = Edges{Left: iconOnly ? 0: AppTheme.Space16, Right: iconOnly ? 0: AppTheme.Space16}
+        button.Padding = Edges{Left: iconOnly || Kind == ButtonKind.Quiet ? 0: AppTheme.Space16, Right: iconOnly || Kind == ButtonKind.Quiet ? 0: AppTheme.Space16}
         if iconOnly {
             button.Width = AppTheme.ButtonHeight
         }

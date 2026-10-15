@@ -263,10 +263,14 @@ func DonateFlow(host TestHost, window Window, adapter TestAccessibility, donatio
             Find(adapter.Root, AccessibilityRole.Button, "Back")?.Bounds.Y >= tools.Bounds.Y + tools.Bounds.Height,
             "Navigation is inside a settings card"
         )
-        Require(Find(adapter.Root, AccessibilityRole.Button, "2 h")?.Disabled == true, "Preset exceeds the owner time limit")
+        donation.SetCoding("60")
+        Settle(host)
+        Require(Find(adapter.Root, AccessibilityRole.Button, "More per task")?.Disabled == true, "Stepper exceeds the owner time limit")
         donation.SetCoding("15")
         Settle(host)
-        Require(donation.Current.Draft.BudgetSeconds(donation.Current.Policy) == 900, "Preset was not applied")
+        Activate(window, adapter, "More per task")
+        Settle(host)
+        Require(donation.Current.Draft.BudgetSeconds(donation.Current.Policy) == 1200, "Time stepper was not applied")
         donation.SetCoding("30")
         Settle(host)
         Activate(window, adapter, "Model", AccessibilityRole.ComboBox)
@@ -473,6 +477,14 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     AwaitControl(host, adapter, AccessibilityRole.Button, "Choose repository", enabled: true)
     Choose(host, window, adapter, "Choose repository")
     AwaitControl(host, adapter, AccessibilityRole.Button, "Review donation", enabled: true)
+    Require(Find(adapter.Root, AccessibilityRole.Button, "Owner command") == nil, "Gratis offers an owner command without policy argv")
+    Require(Find(adapter.Root, AccessibilityRole.Button, "More total") == nil, "Until stopped shows a second total control")
+    Activate(window, adapter, "Until stopped", AccessibilityRole.Checkbox)
+    Settle(host)
+    Require(Find(adapter.Root, AccessibilityRole.Button, "More total")?.Bounds.X == Find(adapter.Root, AccessibilityRole.Button, "More per task")?.Bounds.X, "Time steppers use different columns")
+    Activate(window, adapter, "Until stopped", AccessibilityRole.Checkbox)
+    Settle(host)
+    Require(Find(adapter.Root, AccessibilityRole.Button, "More total") == nil, "Until stopped did not hide the total stepper")
     donation.SetPerTask("15")
     donation.SetTotal("30")
     donation.SetIssueList("42,44")
@@ -515,7 +527,7 @@ func RepositoryDonateFlow(host TestHost, window Window, adapter TestAccessibilit
     Require(calls.Contains("stop\n--yes\n--json"), "Repository stop argv is incorrect")
     Require(calls.Contains("obselate/goo#42,44") && calls.Contains("--review"), "Gratis selection and review argv missing")
     Require(donation.Current.Session.Tasks.Length == 3, "Final session report was not decoded")
-    Require(FindText(adapter.Root, "Ready to review") && Find(adapter.Root, AccessibilityRole.Button, "Open saved run 45") != nil, "Review task has no saved-run action")
+    Require(FindText(adapter.Root, "Ready to submit") && Find(adapter.Root, AccessibilityRole.Button, "Open saved run 45") != nil, "Review task has no saved-run action")
 }
 
 func SubmitFlow(host TestHost, desktop DesktopApp) {

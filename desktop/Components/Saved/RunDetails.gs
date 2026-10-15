@@ -106,7 +106,7 @@ data struct RunDetails {
                             act?.Invoke(selected)
                         }
                     },
-                    Primary = lead >= 0 && index == 0,
+                    Primary = Form == nil && lead >= 0 && index == 0,
                     Disabled = Waiting,
                 }).Build()
             )
@@ -135,7 +135,7 @@ data struct RunDetails {
                 followButtons.Insert(0, (Button with{
                     Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": next.Command == "sync" ? "Review synchronization": "Inspect authority",
                     Disabled = Waiting,
-                    Primary = continuation && lead < 0,
+                    Primary = Form == nil && continuation && lead < 0,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())
                 children.Add(Row{Children: followButtons.ToArray()}.Build())

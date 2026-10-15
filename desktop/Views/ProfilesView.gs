@@ -95,6 +95,7 @@ class ProfilesView {
                         HarnessPicker{
                             Selected: draft.Harness,
                             Policy: Policy.Empty,
+                            AllowCommand: true,
                             Unready: state.Unready,
                             Logo: id -> art.Logo(id).Render(),
                             Disabled: page.Busy,

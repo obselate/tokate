@@ -12,7 +12,7 @@ data struct PageTitle {
     var Stacked bool
 
     func Build() Container {
-        let links = Row{Children: []Blob{}, Gap: AppTheme.Space4}.Build()
+        let links = Row{Children: []Blob{}, Gap: AppTheme.Space16}.Build()
         if (Caption ?? "") != "" {
             links.Children.Add(Label{Content: Caption, Size: AppTheme.SmallSize, Muted: true}.Build())
         }

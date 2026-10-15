@@ -48,7 +48,7 @@ data struct Policy {
     }
 
     /// Whether a donor can select `harness`.
-    func AllowsHarness(harness string) bool -> !Loaded || Providers(harness).Length > 0
+    func AllowsHarness(harness string) bool -> harness == "command" ? Loaded && Providers(harness).Length > 0: !Loaded || Providers(harness).Length > 0
 
     /// Whether the owner allows only the listed models. A policy without the setting is a whitelist.
     prop RestrictsModels bool -> Loaded && ModelPolicy != "unrestricted"

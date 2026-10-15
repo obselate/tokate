@@ -157,9 +157,9 @@ class AppTheme {
                 Icon: "error",
             }
             default: ToneLook{
-                Fill: Current.Accent,
-                Ink: Current.Surface,
-                Line: Color.Transparent,
+                Fill: Mix(Current.Surface, Current.Accent, 0.10),
+                Ink: Current.Accent,
+                Line: Current.Accent,
                 Edge: Current.Accent,
                 Icon: "",
             }

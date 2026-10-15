@@ -26,7 +26,7 @@ data struct DonationTasks {
                 Children: []Blob{
                 Row{Children: []Blob{
                     Container{Width: AppTheme.IssueNumberWidth, FlexShrink: 0, Label{Content: task.Issue == "" ? "Task": "#" + task.Issue}.Build()},
-                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: AppTheme.ShortFieldWidth, Label{Content: ready ? "Ready to review": task.Result}.Build()},
+                    Container{FlexGrow: 1, FlexBasis: 0, MinWidth: AppTheme.ShortFieldWidth, Label{Content: ready ? "Ready to submit": task.Result}.Build()},
                     url != "" ? (Button with{Label = "Pull request", Name = "Open pull request " + task.Issue, Kind = ButtonKind.Quiet, OnClick = () -> Browser.Open(url)}).Build(): Container{},
                     path != "" ? (Button with{Label = ready ? "Review": "Saved run", Name = "Open saved run " + task.Issue, Kind = ButtonKind.Quiet, OnClick = () -> saved?.Invoke(path)}).Build(): Container{},
                 }}.Build(),

@@ -9,6 +9,7 @@ import System.Collections.Generic
 data struct HarnessPicker {
     var Selected string
     var Policy Policy
+    var AllowCommand bool
     var Unready []string
     var Logo Func[string, Blob]?
     var Disabled bool
@@ -19,7 +20,10 @@ data struct HarnessPicker {
         let cards = List[Blob]()
         for option in HarnessOption.All {
             let id = option.Id
-            let allowed = Policy.AllowsHarness(id)
+            let allowed = id == "command" && AllowCommand || Policy.AllowsHarness(id)
+            if id == "command" && !allowed {
+                continue
+            }
             if (!allowed || Array.IndexOf(Unready ?? []string{}, id) >= 0) && Selected != id {
                 continue
             }
