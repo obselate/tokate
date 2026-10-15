@@ -244,8 +244,8 @@ If the version check is unavailable, commands continue with a warning.
 | --- | --- |
 | `Claim pending.` with `work --run DIR` | Inspect status, then use `tokate work --run DIR`. External work starts no inference. If the workflow failed, use owner recovery below first. |
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
-| `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the linked failure and re-process the request after fixing its cause. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
-| `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the pinned shared workflow in Actions settings, then re-process the request. |
+| `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the failure, fix its cause, then trigger a new coordinator event. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
+| `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the shared workflow in Actions settings, then trigger a new coordinator event. |
 | `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by `Approval no longer matches current task fields.` or `PR template changed.` and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
@@ -254,17 +254,17 @@ If the version check is unavailable, commands continue with a warning.
 | `No saved runs.` | `tokate status OWNER/REPO#42` |
 | `The saved run or command state does not permit this operation. Inspect its artifacts.` | `tokate status 42-1 --json` |
 
-For a pending claim, inspect the failed workflow before resuming the saved command. A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator, then run:
-
-```sh
-tokate recover-request OWNER/REPO#42
-```
-
-This command uses the installed coordinator and the owner's current GitHub login.
-It requires repository write permission and processes the latest unprocessed request
-comment with the same validation as the workflow. Recorded requests cannot be
-recovered. Inspection is limited to 1000 issue comments and fails at that limit.
-Do not repost an identical request. After owner recovery, resume with the saved run.
+For a pending claim, inspect the failed workflow before resuming the saved command.
+A rerun uses the same coordinator version. If that version caused the failure,
+update the coordinator first. After fixing the cause, trigger a new coordinator
+event for the issue. For example, rerun the failed workflow or post a new `/tokate`
+request. Each event processes earlier unrecorded requests in comment order.
+Requests keep their UUID and expected state revision. Stale or invalid earlier
+requests cannot change authority or block later valid requests.
+The scan starts one second before the current approval time and reads at most
+1000 comments. It logs when that limit leaves comments unprocessed. Approvals
+from older versions have no capture time and use the same limit without a time filter.
+Do not repost an identical request. After owner recovery, resume the saved run.
 
 Formatting, eligibility and descriptive policy edits keep approvals valid. Current
 eligibility still controls donor access. Task-field or PR-template changes need

@@ -52,7 +52,6 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `update` | `tokate update [--yes]` | Show the current and latest stable version, then install it. Without a terminal, preview unless `--yes`. |
 | `uninstall` | `tokate uninstall [--yes]` | Show the files to remove, then remove the managed installation and keep runs. Without a terminal, preview unless `--yes`. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
-| `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
 | `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
 | `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
 | `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |

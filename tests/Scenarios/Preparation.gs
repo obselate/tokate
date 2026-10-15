@@ -1092,16 +1092,10 @@ internal class PreparationChecks {
             )
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", "work")
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
-            Check.Contains(
-                Check.Text(envelope["data"]?["next"]?["action"]),
-                "owner must update the coordinator, then re-process the request"
-            )
+            Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "trigger a new coordinator event")
             Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "donor runs the same saved command again")
             let status = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
-            Check.Contains(
-                Check.Text(status["data"]?["next"]?["action"]),
-                "owner must update the coordinator, then re-process the request"
-            )
+            Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "trigger a new coordinator event")
             Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "donor runs the same saved command again")
             Check.That(status["data"]?["coordinator"] == nil, "Absent workflow changed pending guidance")
             Check.Contains(result.Error, "Claim pending. Run:")
