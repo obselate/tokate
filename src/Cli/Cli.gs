@@ -169,6 +169,7 @@ internal class Cli {
             "commit SHA: Exact candidate commit to verify",
             "help: Show help (-h); no tools, network or inference",
             "prompt URL|FILE: Gratis task instruction from a bounded file or HTTPS URL",
+            "review: Gratis work stops each task before publication",
             "traffic: Print Tokate API counts on stderr; default: off",
             "json: Emit one schema-version-1 result on stdout; diagnostics on stderr",
             "plain: Plain human output without color, ornament or animation; --json takes precedence",
@@ -208,8 +209,8 @@ internal class Cli {
             CliCommand(
                 "work donate local_read,local_write,github_read,github_write,inference repo",
                 "[ISSUE|OWNER/REPO|RUN] [NAME] [--time PER_TASK] [--total TOTAL] [--prompt URL|FILE] [options]\nOWNER/REPO stop [--yes]",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,unlimited,fork,runs,run,continue-from",
-                "Code an approved issue with your harness and verify it. With a repository, donate until stopped. Repositories without a Tokate policy use gratis mode. Name one issue to donate only to it. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Donation consent asks once in a terminal unless --yes is set. Without a terminal, gratis work, repository work and stop preview without changes and require --yes.",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,review,unlimited,fork,runs,run,continue-from",
+                "Code an approved issue with your harness and verify it. Without a Tokate policy, OWNER/REPO lets the harness choose tasks until stopped, OWNER/REPO#N runs one issue, and OWNER/REPO#12,15,40 runs those issues in order. Gratis work publishes each task after start consent. Use --review to stop each task before publication, then tokate submit to preview its exact PR text and --yes to publish. Issue lists and --review require gratis mode. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Consent asks once in a terminal unless --yes is set. With --json, --non-interactive or no terminal, work and stop preview without changes and require --yes.",
                 "work 42 --model MODEL --effort high"
             ),
             CliCommand(
@@ -798,10 +799,10 @@ internal class Cli {
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )
             }
-            if args.Get("prompt") != "" && !RepositoryWork(args) && !args.Help {
+            if args.Get("prompt") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--prompt requires repository work")
             }
-            if args.Get("total") != "" && !RepositoryWork(args) && !args.Help {
+            if args.Get("total") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--total requires repository work")
             }
             if RepositoryWork(args) && args.Get("unlimited") == "true" && !args.Help {

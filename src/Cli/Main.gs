@@ -324,11 +324,13 @@ func Dispatch(options Args) int32 {
         case "claim", "work" {
             if Cli.RepositoryWork(options) ||
                 (
-                options.Command == "work" && options.Get("run") == "" && GitHub.Api(
-                    "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
-                    missing: true
+                options.Command == "work" && options.Get("run") == "" &&
+                    (
+                    options.Get("review") == "true" || options.Get("prompt") != "" || options.Get("total") != "" ||
+                        GitHub
+                        .Api("repos/" + options.Need("repo") + "/contents/.github/tokate.json", missing: true)
+                        .ValueKind == JsonValueKind.Undefined
                 )
-                    .ValueKind == JsonValueKind.Undefined
             ) {
                 return Donate.Run(options)
             }
