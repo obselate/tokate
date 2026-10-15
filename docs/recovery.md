@@ -99,7 +99,7 @@ Target movement alone does not fail checks. Merge the target only for conflicts 
 
 Checks accept a clean merge only when its new parent is on the owner's target branch and its tree matches the clean merge of the receipt head and that parent. Other later changes fail the receipt gate and need owner review.
 
-Amend checks donor changes against the merged target commit. That commit must descend from the approval base and remain on the target branch. Protected-path rules and the approval policy binding still apply. CI checks stay bound to the exact receipt head.
+Amend checks donor changes against the merged target commit. That commit must descend from the approval base and remain on the target branch. Protected-path rules and the approval policy binding still apply. CI checks use the exact current PR head. The receipt stays bound to the verified donor head.
 
 ## Continue stopped work
 

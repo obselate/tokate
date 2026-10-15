@@ -211,7 +211,7 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    gh pr merge 10
    ```
 
-Checks do not accept the task or merge the PR. Checks accept clean target-branch merges after the receipt head. Other later changes need owner review and a verified amendment. Required CI checks stay bound to the receipt head.
+Checks do not accept the task or merge the PR. Checks accept clean target-branch merges after the receipt head. Other later changes need owner review and a verified amendment. Required CI checks use the exact current PR head.
 
 ## Update the coordinator
 

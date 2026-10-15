@@ -82,7 +82,7 @@ internal class Checks {
 
             let snapshot = J.Write(
                 map[string, Object?]{
-                    "head": run.Text("commit"),
+                    "head": run.Text("checks_head") == "" ? run.Text("commit"): run.Text("checks_head"),
                     "status": facts["checks_status"],
                     "checks": observed,
                     "result": PublicOutput.ResultData
@@ -261,6 +261,9 @@ internal class Checks {
                     }
 
                     run = verified
+                    let checkHead = J.Text(J.Get(pull, "head"), "sha")
+                    run.Fields["checks_head"] = checkHead
+                    facts["checks_head"] = checkHead
                     let currentBinding = J.Write(J.Select(run.Element(), BindingFields))
                     facts["binding"] = J.Select(run.Element(), BindingFields)
                     gates["receipt"] = map[string, Object?]{"status": "passed"}
@@ -311,7 +314,7 @@ internal class Checks {
 
                     var rows JsonElement
                     try {
-                        rows = CommitChecks.Read(run.Text("repo"), run.Text("commit"), observed)
+                        rows = CommitChecks.Read(run.Text("repo"), checkHead, observed)
                     } catch (error Exception) when error.GetType() == typeof(Exception) &&
                         (
                         error.Message == "Cannot read complete commit checks" ||
@@ -324,7 +327,9 @@ internal class Checks {
 
                     for page in 1 ... 11 {
                         let response = GitHub.Api(
-                            "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + run.Text("commit") +
+                            "repos/" + run.Text("repo") +
+                                "/actions/runs?head_sha=" +
+                                checkHead +
                                 "&status=action_required&per_page=100&page=" +
                                 page.ToString()
                         )
@@ -336,7 +341,7 @@ internal class Checks {
                         }
 
                         for workflow in workflows.EnumerateArray() {
-                            if J.Text(workflow, "head_sha") != run.Text("commit") || J.Text(
+                            if J.Text(workflow, "head_sha") != checkHead || J.Text(
                                 workflow,
                                 "conclusion"
                             ) != "action_required" {
@@ -434,8 +439,7 @@ internal class Checks {
                     if missing && !approval {
                         let workflows = J.Get(
                             GitHub.Api(
-                                "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + run.Text("commit") +
-                                    "&per_page=1"
+                                "repos/" + run.Text("repo") + "/actions/runs?head_sha=" + checkHead + "&per_page=1"
                             ),
                             "workflow_runs"
                         )
@@ -628,7 +632,7 @@ internal class Checks {
                     throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
                 }
 
-                ApiTransport.PollWait("repos/" + run.Text("repo") + "/commits/" + run.Text("commit") + "/")
+                ApiTransport.PollWait("repos/" + run.Text("repo") + "/commits/" + run.Text("checks_head") + "/")
             }
         }
     }

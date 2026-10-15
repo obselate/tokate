@@ -568,8 +568,32 @@ internal class CheckGates {
                     Gate(merged, "checks", "passed")
                     Check.That(
                         Check.Text(merged["binding"]?["commit"]) == receipt,
-                        "Clean target merge changed exact-head CI binding"
+                        "Clean target merge changed receipt provenance"
                     )
+                    flow.Reload()
+                    flow.State["checks_by_head"] = Check.Map(
+                        receipt,
+                        Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]"),
+                        candidate,
+                        Check.Json("[{\"name\":\"verify\",\"bucket\":\"fail\"}]")
+                    )
+                    flow.Save()
+                    let failed = Data(Read(test, 1))
+                    Gate(failed, "receipt", "passed")
+                    Gate(failed, "checks", "failed")
+                    Check.That(
+                        Check.Text(failed["machine_status"]) == "failed" && Check.Text(
+                            failed["binding"]?["commit"]
+                        ) == receipt &&
+                            Check.Text(failed["checks_head"]) == candidate,
+                        "Green receipt head hid failing clean-merge head CI"
+                    )
+                    for call in flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                        let path = Check.Text(call["path"])
+                        if path.Contains("/actions/runs?head_sha=") {
+                            Check.Contains(path, "head_sha=" + candidate)
+                        }
+                    }
                 }
             }
             test.Restore()

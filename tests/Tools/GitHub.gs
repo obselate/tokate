@@ -679,7 +679,8 @@ internal partial class Fixture {
             }
             State["check_read_effect"] = nil
             let runs = JsonArray()
-            for check in State["checks"]?.AsArray() ?? JsonArray() {
+            let checks = State["checks_by_head"]?[tail.Split('/')[1]] ?? State["checks"]
+            for check in checks?.AsArray() ?? JsonArray() {
                 let bucket = Check.Text(check["bucket"])
                 runs.Add(
                     Check.Map(
