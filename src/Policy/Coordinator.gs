@@ -770,7 +770,7 @@ internal class Coordinator {
                     repo,
                     J.Get(record, "policy"),
                     J.Get(record, "approval"),
-                    J.Text(J.Get(record, "approval"), "base"),
+                    J.Text(J.Get(state, "reservation"), "base"),
                     history,
                     J.Text(metadata, "fork"),
                     J.Text(metadata, "head")
@@ -819,7 +819,7 @@ internal class Coordinator {
                 repo,
                 J.Get(record, "policy"),
                 J.Get(record, "approval"),
-                J.Text(J.Get(record, "approval"), "base"),
+                J.Text(record, "base"),
                 J.Text(metadata, "fork"),
                 J.Text(metadata, "head")
             )
@@ -839,7 +839,7 @@ internal class Coordinator {
             values["model"] = "see original donor-reported tools in report"
             values["effort"] = "per-tool declaration; not independently attested"
             values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
-            values["base"] = J.Text(J.Get(record, "approval"), "base")
+            values["base"] = J.Text(record, "base")
             values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
             values["usage"] = "per-tool donor declaration; not independently attested"
             values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"

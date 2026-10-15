@@ -969,8 +969,28 @@ internal partial class CoordinationFlow : CoordinationFixture {
     }
 
     internal func CanonicalExternal() {
+        using let baseline = FixtureSnapshot(Flow.Temp.Root)
+        let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
+        let policy = Check.Json(File.ReadAllText(policyPath))
+        policy["max_seconds"] = JsonValue.Create(3599)
+        File.WriteAllText(policyPath, policy.ToJsonString())
+        Flow.Commit("Change policy after approval")
+        let stale = Flow.Call(
+            []string{"claim", "owner/project#1", "--source", "external", "--tools", Tools, "--json"},
+            1
+        )
+        Check.Contains(stale.Output + stale.Error, "stale_approval")
+        baseline.Restore()
+        File.WriteAllText(Path.Combine(Flow.Upstream, "advanced.txt"), "Advance before claim\n")
+        Flow.Commit("Advance target after approval")
+        let base = Flow.Git("-C", Flow.Upstream, "rev-parse", "HEAD")
         let claim = Claim()
+        Check.That(Check.Text(State()["state"]?["reservation"]?["base"]) == base, "Claim did not record the target tip")
         let run = Prepare()
+        Check.That(
+            Check.Text(Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["base"]) == base,
+            "Preparation did not use the claim base"
+        )
         let benign = Candidate(claim)
         let work = Path.Combine(Flow.Temp.Root, "donor-work")
         File.AppendAllText(Path.Combine(work, ".github/tokate-pr.md"), "\nhidden protected change\n")

@@ -108,6 +108,29 @@ internal class LeaseLifecycle {
                     )
                 }
 
+                let approval = J.Get(value, "approval")
+                let repo = J.Text(value, "repo")
+                let base = GitHub.Branch(repo, J.Text(approval, "base_branch"))
+                let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
+                if Policy.Load(repo, base).Digest != J.Text(approval, "policy_hash") {
+                    throw CoordinationState.ApprovalFailure(repo, J.Number(value, "issue"), "Target policy changed.")
+                }
+                if base != approved {
+                    let comparison = GitHub.Api(
+                        "repos/" + repo + "/compare/" + approved + "..." + repo.Split('/')[0] + ":" + base
+                    )
+                    if J.Text(comparison, "status") != "ahead" || J.Text(
+                        J.Get(comparison, "merge_base_commit"),
+                        "sha"
+                    ) != approved {
+                        throw CoordinationState.ApprovalFailure(
+                            repo,
+                            J.Number(value, "issue"),
+                            "Target no longer descends from the approved base."
+                        )
+                    }
+                }
+
                 let same = Supported(value) && RepositoryIdentity.PositiveId(
                     J.Get(identity, "actor")
                 ) == RepositoryIdentity.PositiveId(actor)
@@ -133,6 +156,7 @@ internal class LeaseLifecycle {
 
                 let outcome = map[string, Object?]{
                     "reservation": id,
+                    "base": base,
                     "lease": uuid,
                     "donor": donor,
                     "actor": actor,

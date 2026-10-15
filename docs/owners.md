@@ -147,6 +147,10 @@ Re-approve open tasks after the setup PR is merged. Old whole-text approvals bec
    is used when this flag is absent. Replacing an active reservation or published PR
    asks once in a terminal, or requires `--yes` in non-terminal use.
 
+   At claim, the coordinator records the target tip in the reservation. Work and
+   receipts use that base. The tip must descend from the approved revision.
+   A changed policy at the tip makes the approval stale. Approve the issue again.
+
 You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
 that the label sender has write, maintain or admin permission, then records approval.
 It keeps the previous non-revoked target branch, or uses the default branch.

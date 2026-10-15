@@ -34,7 +34,7 @@ internal class ReceiptVerification {
             return VerifyCurrent(repo, number, pull, receipt, ready, paths, pending)
         }
 
-        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string) {
+        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string, base string) {
             for key in "version,issue,approval,donor,expected,reservation,incomplete,requested_model,reported_model"
                 .Split(',') {
                 if J.Get(receipt, key).ValueKind != JsonValueKind.Undefined {
@@ -42,9 +42,8 @@ internal class ReceiptVerification {
                 }
             }
 
-            for key in[]string{"base", "base_branch"} {
-                run.Fields[key] = J.Get(approval, key)
-            }
+            run.Fields["base"] = base
+            run.Fields["base_branch"] = J.Get(approval, "base_branch")
 
             run.Fields["authority_revision"] = revision
             run.Fields["receipt_hash"] = Data.Hash(RequestData.Canonical(receipt))
@@ -222,7 +221,7 @@ internal class ReceiptVerification {
                     repo,
                     policy.Value,
                     approval,
-                    J.Text(approval, "base"),
+                    J.Text(reservation, "base"),
                     history,
                     fork,
                     physicalHead
@@ -364,7 +363,7 @@ internal class ReceiptVerification {
                     repo,
                     policy.Value,
                     approval,
-                    J.Text(approval, "base"),
+                    J.Text(reservation, "base"),
                     history,
                     J.Text(metadata, "fork"),
                     exactHead
@@ -374,7 +373,7 @@ internal class ReceiptVerification {
                     repo,
                     J.Get(record, "policy"),
                     approval,
-                    J.Text(approval, "base"),
+                    J.Text(reservation, "base"),
                     J.Text(metadata, "fork"),
                     exactHead
                 )
@@ -431,7 +430,7 @@ internal class ReceiptVerification {
                 run.Fields["public_summary"] = authority
             }
 
-            ReceiptVerification.Binding(run, receipt, approval, state.Sha)
+            ReceiptVerification.Binding(run, receipt, approval, state.Sha, J.Text(reservation, "base"))
             Synchronization.Keep(run.Fields, history)
 
             return run

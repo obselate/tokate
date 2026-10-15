@@ -210,6 +210,7 @@ internal class ContributionPreparation {
 
         private func Bind(run Data, state CoordinationState) {
             let reservation = J.Get(state.Value(), "reservation")
+            run.Fields["base"] = RepositoryIdentity.CommitSha(J.Text(reservation, "base"))
             run.Fields["id"] = J.Text(reservation, "reservation")
             run.Fields["state_sha"] = state.Sha
             run.Fields["attempt"] = J.Text(reservation, "attempt")
