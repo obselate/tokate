@@ -182,7 +182,8 @@ func CodecTests() {
     let work = IssueCodec.Work(Json.Get(Regression.Fixture("issue-work.json"), "data"))
     Regression.Check(work.Length == 1 && work[0].Issue == "642" && work[0].Drafts[0] == "654", "real owner work retains issue and draft PR")
     let closedData = Json.Get(Regression.Fixture("issue-closed.json"), "data")
-    Regression.Check(IssueCodec.Work(closedData).Length == 0, "real unavailable discovery keeps work empty")
+    let closedWork = IssueCodec.Work(closedData)
+    Regression.Check(closedWork.Length == 1 && closedWork[0].Issue == "646" && closedWork[0].State == "closed", "real closed issue status keeps its work row")
     let closedCoordination = Json.Get(closedData, "coordination")
     Regression.Check(Json.Int(closedCoordination, "issue") == 646 && Json.Text(Json.Get(closedCoordination, "contribution"), "head") != "", "closed issue retains coordination and contribution head")
 
