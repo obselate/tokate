@@ -177,7 +177,7 @@ internal class RepositoryIdentityChecks {
             File.WriteAllText(savedPath, saved.ToJsonString())
             let commit = test.Candidate(claim)
             flow.Call([]string{"external", "--run", run, "--commit", commit})
-            flow.Call([]string{"submit", "--run", run})
+            flow.Call([]string{"submit", "--run", run}, 8)
             flow.Reload()
             let request = Check.PostedRequest(flow.State)
             eventPath = test.Event(request)

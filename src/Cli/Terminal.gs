@@ -390,7 +390,8 @@ internal class Terminal {
                     stage = "Inference"
                 } else if code == "verification_failed" {
                     stage = "Verification"
-                } else if run.Text("state") == "generated" && exitCode != 0 {
+                } else if (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") &&
+                    exitCode != 0 {
                     stage = "Publication"
                 }
 

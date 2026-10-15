@@ -152,7 +152,7 @@ internal class PublicDescriptions {
             Check.That(!Directory.Exists(Path.Combine(run, "checkout")), "Stale summary reached verification")
             File.WriteAllText(path, usable)
             flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path})
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--run", run}, 8)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             let event = flow.Event(request)

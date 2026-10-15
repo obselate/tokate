@@ -234,7 +234,7 @@ internal open class NativeFixture : IDisposable {
     }
 
     internal func Publish(run string) {
-        Call([]string{"submit", "--run", run})
+        Call([]string{"submit", "--run", run}, 8)
         CoordinatePosted()
         Call([]string{"submit", "--run", run})
     }
