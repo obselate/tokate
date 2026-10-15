@@ -63,6 +63,7 @@ main() {
     case "$tokate_action" in install|update|uninstall) ;; *) fail 'Use install, update, or uninstall.' ;; esac
     [ "$#" -le 3 ] || fail 'Too many arguments.'
     tokate_option=${3:-}
+    case "$tokate_action:$tokate_option" in install:|update:*|uninstall:|uninstall:preview) ;; *) fail 'Use a release tag only with update.' ;; esac
     tokate_os=$(uname -s)
     [ "$tokate_os" = Linux ] || fail "Unsupported operating system: $tokate_os. Tokate requires Linux x86_64 with glibc 2.34+ or Alpine musl; Windows and macOS are not supported."
     [ -n "${HOME:-}" ] && [ "${HOME#/}" != "$HOME" ] || fail 'HOME must be an absolute path.'
@@ -81,8 +82,9 @@ main() {
             IFS= read -r tokate_fish < "$tokate_data/path-fish"
         fi
         if [ "$tokate_option" = preview ]; then
-            printf '%s\n' "$tokate_bin" "$tokate_data/env" "$tokate_data/installed"
-            [ -z "$tokate_fish" ] || printf '%s\n' "$tokate_fish" "$tokate_data/path-fish"
+            for tokate_path in "$tokate_bin" "$tokate_data/env" "$tokate_data/installed" "$tokate_fish" "$tokate_data/path-fish"; do
+                [ ! -e "$tokate_path" ] || printf '%s\n' "$tokate_path"
+            done
             return
         fi
         rm -f "$tokate_bin" "$tokate_data/env" "$tokate_data/installed"

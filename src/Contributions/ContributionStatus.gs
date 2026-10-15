@@ -57,7 +57,11 @@ internal class ContributionStatus {
     private func Issue(task JsonElement) Dictionary[string, Object?] {
         let issue = J.Number(task, "number")
 
-        if issue < 1 || J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined {
+        if issue < 1 {
+            throw CliFailure("invalid_state", "Expected an issue number")
+        }
+
+        if J.Get(task, "pull_request").ValueKind != JsonValueKind.Undefined {
             throw CliFailure("invalid_state", "Choose an issue, not a pull request")
         }
 
@@ -100,6 +104,23 @@ internal class ContributionStatus {
             return row
         }
 
+        if J.Text(task, "state") != "open" {
+            let drafts = List[Object]()
+            row["state"] = "closed"
+            row["drafts"] = drafts
+            row["next"] = Next("owner", "The issue is closed. Reopen it to accept more work.")
+            if approval.ValueKind != JsonValueKind.Undefined {
+                Observe(row, "drafts", async () -> Drafts(issue, row, state, approval, policy, drafts))
+            }
+            for item in drafts {
+                if Text(item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft"), "lifecycle") ==
+                "merged" {
+                    row["next"] = nil
+                }
+            }
+            return row
+        }
+
         if approval.ValueKind == JsonValueKind.Undefined {
             row["approval_status"] = "absent"
             row["drafts_status"] = "absent"
@@ -117,8 +138,7 @@ internal class ContributionStatus {
             "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
         )
 
-        let valid = J.Text(task, "state") == "open" &&
-            Observe(
+        let valid = Observe(
             row,
             "approval",
             async () -> {
@@ -971,12 +991,7 @@ internal class ContributionStatus {
             "discovery",
             async () -> {
                 if issue != 0 {
-                    let task = GitHub.Api("repos/" + Repo + "/issues/" + issue.ToString())
-                    let row = Issue(task)
-                    if J.Text(task, "state") != "open" {
-                        row["state"] = "closed"
-                        row["next"] = Next("owner", "The issue is closed. Reopen it to accept more work.")
-                    }
+                    Issue(GitHub.Api("repos/" + Repo + "/issues/" + issue.ToString()))
                 } else {
                     let issues = GitHub.Api(
                         "repos/" +

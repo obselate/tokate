@@ -196,6 +196,31 @@ internal class Installer {
             temp.Env["GH_TOKEN"] = "fixture-secret"
             temp.Env["OPENAI_API_KEY"] = "fixture-secret"
             state["clean"] = JsonValue.Create(true)
+            File.WriteAllText(statePath, state.ToJsonString())
+            let current = Check.Envelope(
+                TestProcess.Run(installed, []string{"update", "--json", "--yes"}, temp.Env),
+                "update",
+                "ok"
+            )
+            Check.That(
+                Check.Text(current["data"]?["applied"]) == "false" && Check.Text(
+                    current["data"]?["target_version"]
+                ) == version,
+                "Update reinstalled the current version"
+            )
+            let newer = "tokate-99.0.0-" + ReleaseTools.Runtime()
+            let stub = Path.Combine(temp.Root, newer, "tokate")
+            Directory.CreateDirectory(Path.Combine(temp.Root, newer))
+            File.WriteAllText(stub, "#!/bin/sh\nprintf 'tokate 99.0.0\\n'\n")
+            File.SetUnixFileMode(stub, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
+            Check.Success(
+                TestProcess.Run(
+                    "/usr/bin/tar",
+                    []string{"-czf", Path.Combine(tools, "release.tar.gz"), "-C", temp.Root, newer},
+                    temp.Env
+                )
+            )
+            state["tag"] = JsonValue.Create("v99.0.0")
             state["mode"] = JsonValue.Create("checksum-fail")
             File.WriteAllText(statePath, state.ToJsonString())
             let preview = Check.Envelope(
@@ -206,20 +231,23 @@ internal class Installer {
             Check.That(
                 Check.Text(preview["data"]?["applied"]) == "false" && Check.Text(
                     preview["data"]?["target_version"]
-                ) == version,
+                ) == "99.0.0",
                 "Update without --yes did not preview"
             )
             Check.That(
                 !Check.Success(TestProcess.Run(installed, []string{"update"}, temp.Env)).Contains("Downloading"),
                 "Update without a terminal downloaded"
             )
+            Check.That(Check.Hash(installed) == Check.Hash(binary), "Update without --yes changed binary")
             state["mode"] = JsonValue.Create("")
             File.WriteAllText(statePath, state.ToJsonString())
             Check.Envelope(TestProcess.Run(installed, []string{"update", "--json", "--yes"}, temp.Env), "update", "ok")
+            Check.That(Check.Hash(installed) == Check.Hash(stub), "Update did not install the newer release")
             Check.That(File.ReadAllText(profile) == hook, "Update duplicated shell setup")
             if loginHook != "" {
                 Check.That(File.ReadAllText(bashProfile) == loginHook, "Update duplicated login shell setup")
             }
+            File.Copy(binary, installed, true)
             for mode in[]string{"checksum-fail", "download-fail"} {
                 state["mode"] = JsonValue.Create(mode)
                 File.WriteAllText(statePath, state.ToJsonString())

@@ -21,10 +21,14 @@ internal class Installation {
             let shell = LocalPaths.NeedSystemTool("sh")
             let script = ApplicationInfo.Resource("install.sh")
             let preview = List[string]()
-            let checked = Execute(shell, []string{"-s", "--", command, path, "preview"}, script, true, lines: preview)
+            let checked = Execute(shell, []string{"-s", "--", command, path, "preview"}, script, lines: preview)
 
             if checked != 0 {
                 return checked
+            }
+
+            if preview.Count == 0 {
+                throw CliFailure("command_failed", "The installer preview listed no changes. Nothing changed.")
             }
 
             let version = ApplicationInfo.Version()
@@ -38,6 +42,10 @@ internal class Installation {
 
             if command == "update" {
                 result["target_version"] = preview[0]
+                if preview[0] == version {
+                    Terminal.Message("Tokate " + version + " is current at " + path + ". Nothing changed.", error: true)
+                    return 0
+                }
                 Terminal.Message("Update Tokate " + version + " to " + preview[0] + " at " + path + ".", "yellow", true)
             } else {
                 result["removes"] = preview
@@ -78,8 +86,8 @@ internal class Installation {
 
             info.UseShellExecute = false
             info.RedirectStandardInput = input != nil
-            info.RedirectStandardOutput = PublicOutput.Enabled || capture
-            info.RedirectStandardError = PublicOutput.Enabled || capture
+            info.RedirectStandardOutput = PublicOutput.Enabled || capture || lines != nil
+            info.RedirectStandardError = PublicOutput.Enabled || capture || lines != nil
 
             for arg in args {
                 info.ArgumentList.Add(arg)
