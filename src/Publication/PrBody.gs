@@ -63,11 +63,10 @@ internal class PrBody {
         }
 
         internal func OriginalProvenance(metadata JsonElement) string {
-            let requested = J.Get(metadata, "reported_model").ValueKind == JsonValueKind.Null
             var report = "\n\n- Original source: " +
                 (J.Text(metadata, "source") == "tokate" ? "managed Tokate": "external") +
                 "; coding execution and usage are donor-reported to the coordinator." +
-                PublicSummary.Tools(J.Get(metadata, "tools"), "Original donor-reported tools", requested)
+                PublicSummary.Tools(J.Get(metadata, "tools"), "Original donor-reported tools")
 
             let correction = J.Get(metadata, "correction")
 

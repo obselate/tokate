@@ -326,7 +326,7 @@ internal class PublicSummary {
             return String.Join(" | ", counts)
         }
 
-        internal func Tools(tools JsonElement, label string, requested bool = false) string {
+        internal func Tools(tools JsonElement, label string) string {
             var result = "\n\n| " +
                 label +
                 " | Model / effort | Coding time | Input tokens | Output tokens | Cached tokens |\n" +
@@ -352,7 +352,6 @@ internal class PublicSummary {
                     cells[2] +
                     " / " +
                     cells[3] +
-                    (requested ? " (requested)": "") +
                     " | " +
                     (
                     J.Get(tool, "coding_seconds").ValueKind == JsonValueKind.Number ?
