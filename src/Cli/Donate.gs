@@ -29,7 +29,9 @@ internal class Donate {
             }
             for task in J.Items(J.Get(saved.Element(), "tasks")) {
                 let directory = J.Text(task, "run_directory")
-                let run = directory == "" ? nil: Data.Load(directory)
+                let run = directory != "" && File.Exists(Path.Combine(directory, "run.json")) ? Data.Load(
+                    directory
+                ): nil
                 let result = run == nil ? J.Text(task, "result"): switch run.Text("state") {
                     case "published": "submitted"
                     case "generated": "prepared"
@@ -331,8 +333,8 @@ internal class Donate {
             }
             return consecutive == 3 ||
                 (
-                issues.Count > 0 && J.Items(J.Get(session.Element(), "tasks")).Exists(
-                    task -> J.Text(task, "result") == "failed"
+                issues.Count > 0 && tasks.Exists(
+                    task -> task is Dictionary[string, Object?]item && item["result"]?.ToString() == "failed"
                 )
             ) ? 1: 0
         }

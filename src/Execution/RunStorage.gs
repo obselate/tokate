@@ -47,13 +47,22 @@ internal class RunStorage {
         internal func Lease(directory string) FileStream {
             ControlPaths(directory)
             let timer = Stopwatch.StartNew()
+            var lease FileStream
 
             while true {
                 try {
-                    return Lock(directory)
+                    lease = Lock(directory)
+                    break
                 } catch (error IOException) when timer.ElapsedMilliseconds < 500 {
                     Thread.Sleep(20)
                 }
+            }
+            try {
+                Data.Migrate(directory)
+                return lease
+            } catch (error Exception) {
+                lease.Dispose()
+                throw error
             }
         }
 

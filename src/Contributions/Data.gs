@@ -26,31 +26,30 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
 
     internal func Transition(next string) {
         let current = Text("state")
+        if current != "" && next == current {
+            return
+        }
         let allowed = switch current {
             case "": next == "claim_pending" || next == "preparing" || next == "validating"
-            case "claim_pending": next == current || next == "preparing"
-            case "preparing": next == current || next == "claimed"
-            case "claimed": next == current || next == "running" || next == "verifying" || next == "failed"
-            case "running": next == current ||
-                next == "generated" ||
+            case "claim_pending": next == "preparing"
+            case "preparing": next == "claimed"
+            case "claimed": next == "running" || next == "verifying" || next == "failed"
+            case "running":
+            next == "generated" ||
                 next == "failed" ||
                 next == "incomplete_generated" ||
                 next == "refused" ||
                 next == "skipped"
-            case "failed": next == current ||
-                next == "verifying" ||
-                next == "generated" ||
-                next == "incomplete_generated"
-            case "validating": next == current || next == "verifying" || next == "failed"
-            case "verifying": next == current || next == "verified" || next == "generated" || next == "failed"
-            case "verified": next == current || next == "publishing" || next == "published"
-            case "publishing": next == current || next == "requested" || next == "published"
-            case "requested": next == current || next == "published"
-            case "generated": next == current || next == "published"
-            case "incomplete_generated": next == current || next == "published" || next == "generated"
-            case "skipped": next == current || next == "published"
-            case "published": next == current
-            case "refused": next == current
+            case "failed":
+            next == "verifying" || next == "generated" || next == "incomplete_generated"
+            case "validating": next == "verifying" || next == "failed"
+            case "verifying": next == "verified" || next == "generated" || next == "failed"
+            case "verified": next == "publishing" || next == "published"
+            case "publishing": next == "requested" || next == "published"
+            case "requested": next == "published"
+            case "generated": next == "published"
+            case "incomplete_generated": next == "published" || next == "generated"
+            case "skipped": next == "published"
             default: false
         }
         if !allowed {
@@ -78,9 +77,13 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
-            let run = Read(Path.Combine(directory, "run.json"))
+            return Read(Path.Combine(directory, "run.json"))
+        }
+
+        internal func Migrate(directory string) {
             let legacy = Path.Combine(directory, "correction.json")
             if File.Exists(legacy) {
+                let run = Load(directory)
                 RunStorage.ControlFile(directory, "correction.json")
                 let change = Read(legacy)
                 let commit = change.Text("commit")
@@ -97,14 +100,43 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                             " and restore its original record and artifacts before retrying."
                     )
                 }
-                let source = Path.Combine(directory, "correction-" + id)
-                let target = Path.Combine(directory, "amendments", commit)
-                if Directory.Exists(source) && !Directory.Exists(target) {
+                for source in Directory.EnumerateDirectories(directory, "correction-*") {
                     LocalPaths.DirectoryPath(source)
+                    RunStorage.ControlFile(source, "record.json")
+                    if !File.Exists(Path.Combine(source, "record.json")) {
+                        continue
+                    }
+                    let attempt = Read(Path.Combine(source, "record.json"))
+                    let attemptId = attempt.Text("uuid")
+                    var attemptUuid Guid
+                    let attemptCommit = attempt.Text("commit")
+                    let attemptState = attempt.Text("state")
+                    if attempt.Number("version") != 1 || !Guid.TryParse(attemptId, out attemptUuid) || attempt.Text(
+                        "id"
+                    ) != attemptId ||
+                        Path.GetFileName(source) != "correction-" + attemptId || !Regex.IsMatch(
+                        attemptCommit,
+                        "^[0-9a-f]{40}\\z"
+                    ) ||
+                        (
+                        attemptState != "validating" &&
+                            attemptState != "verifying" &&
+                            attemptState != "verified" &&
+                            attemptState != "failed"
+                    ) {
+                        continue
+                    }
+                    let destination = Path.Combine(directory, "amendments", attemptCommit)
                     Directory.CreateDirectory(Path.Combine(directory, "amendments"))
                     LocalPaths.DirectoryPath(Path.Combine(directory, "amendments"))
-                    Directory.Move(source, target)
+                    if !Directory.Exists(destination) {
+                        Directory.Move(source, destination)
+                        RunStorage.ControlPaths(destination)
+                        File.Move(Path.Combine(destination, "record.json"), Path.Combine(destination, "run.json"))
+                    }
                 }
+                let source = Path.Combine(directory, "correction-" + id)
+                let target = Path.Combine(directory, "amendments", commit)
                 if Directory.Exists(target) {
                     RunStorage.ControlPaths(target)
                 }
@@ -130,7 +162,6 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                 File.Delete(Path.Combine(target, "record.json"))
                 File.Delete(legacy)
             }
-            return run
         }
 
         internal func Read(path string) Data {
