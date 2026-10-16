@@ -25,7 +25,7 @@ internal class Positionals {
             var parsed int32
 
             if !Int32.TryParse(value, out parsed) || parsed < 1 {
-                throw Exception("Invalid positive number: " + Cli.Label(key))
+                throw Exception("Invalid positive number: " + Args.Label(key))
             }
 
             args.Values["--" + key] = parsed.ToString()
@@ -98,7 +98,7 @@ internal class Positionals {
 
             if key != "repo" && !word.Contains("/") {
                 throw Exception(
-                    "Use " + Cli.Label(key) + " as a number, OWNER/REPO#N or a GitHub URL; unexpected: " + word
+                    "Use " + Args.Label(key) + " as a number, OWNER/REPO#N or a GitHub URL; unexpected: " + word
                 )
             }
 

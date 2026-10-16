@@ -58,7 +58,7 @@ internal class PrBody {
 
                 return text
             } catch (error FormatException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 

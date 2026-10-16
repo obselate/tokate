@@ -41,7 +41,7 @@ internal class ContributionStatus {
     }
 
     private func Failed(error Exception) CliFailure -> error as CliFailure ??
-        CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+        CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
 
     private func Next(role string, action string, command[]string = nil) Dictionary[string, Object?] -> map[
         string,
@@ -68,7 +68,7 @@ internal class ContributionStatus {
 
         let row = map[string, Object?]{
             "issue": issue,
-            "title": PublicOutput.Prose(J.Text(task, "title"), ref Truncated),
+            "title": Tokate.Output.Prose(J.Text(task, "title"), ref Truncated),
             "url": "https://github.com/" + Repo + "/issues/" + issue.ToString(),
             "approval_status": "unknown",
             "eligibility_status": "unknown",
@@ -577,7 +577,7 @@ internal class ContributionStatus {
             } else {
                 displayed.Add(
                     map[string, Object?]{
-                        "name": PublicOutput.Prose(J.Text(check, "name"), ref Truncated),
+                        "name": Tokate.Output.Prose(J.Text(check, "name"), ref Truncated),
                         "state": J.Text(check, "state"),
                         "bucket": bucket,
                         "link": J.Text(check, "link")
@@ -608,7 +608,7 @@ internal class ContributionStatus {
             pending = pending || status == "pending" || status == "missing"
             required.Add(
                 map[string, Object?]{
-                    "name": PublicOutput.Prose(name.GetString() ?? "", ref Truncated),
+                    "name": Tokate.Output.Prose(name.GetString() ?? "", ref Truncated),
                     "status": status
                 }
             )
@@ -1380,7 +1380,7 @@ internal class ContributionStatus {
         }
 
         private func Cell(label string, value string, color string) -> Terminal.Line(
-            Terminal.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
+            Tokate.Output.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
             color,
             false
         )

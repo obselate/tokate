@@ -311,7 +311,7 @@ internal class Amendment {
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -671,7 +671,7 @@ internal class Amendment {
                     error.GetType() == typeof(Exception) {
                     throw CliFailure(
                         "invalid_state",
-                        "Saved amendment " + Cli.Label(key) +
+                        "Saved amendment " + Args.Label(key) +
                             " input differs or cannot be read. Restore the original input to continue, or start a new amendment with a new --commit and --time."
                     )
                 }
@@ -735,7 +735,7 @@ internal class Amendment {
                         throw CliFailure("verification_failed", "Amendment verification budget exhausted")
                     }
                     Save(directory, change)
-                    let result = Terminal.Verify(
+                    let result = Verification.Verify(
                         location,
                         results,
                         command,
@@ -827,7 +827,7 @@ internal class Amendment {
                     "command_failed",
                     error.Message +
                         " Saved amendment retained. Re-run the same amend command to continue only the saved publication intent after inspection.",
-                    summary: PublicOutput.Message("command_failed")
+                    summary: CliFailure.Message("command_failed")
                 )
             }
         }

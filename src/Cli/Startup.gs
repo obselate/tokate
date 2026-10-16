@@ -566,7 +566,7 @@ internal class Startup {
 
                 throw CliFailure(
                     code,
-                    code == "verification_failed" ? "Required sandbox diagnostics failed. Follow the sandbox repair instructions above.": PublicOutput.Message(
+                    code == "verification_failed" ? "Required sandbox diagnostics failed. Follow the sandbox repair instructions above.": CliFailure.Message(
                         code
                     )
                 )

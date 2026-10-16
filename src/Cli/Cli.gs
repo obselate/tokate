@@ -470,6 +470,92 @@ internal class Cli {
         internal func TimeKey(name string) string -> name == "time" || name == "max-time" ? "seconds":
         name == "verify-time" ? "verification-reserve": name == "reservation-time" ? "reservation-seconds": name
 
+        internal func Parse(options Args, args[]string) {
+            var i int32 = 0
+
+            while i < args.Length && Cli.Global(args[i]) {
+                if options.Values.ContainsKey(args[i]) {
+                    throw Exception("Duplicate option: " + args[i])
+                }
+
+                options.Values.Add(args[i], "true")
+                i++
+            }
+
+            if i == args.Length {
+                options.Help = true
+
+                return
+            }
+
+            options.Command = args[i] == "--help" ||
+                args[i] == "-h" ? "help": args[i] == "version" ? "--version": args[i]
+            Cli.Find(options.Command)
+            i++
+
+            while i < args.Length {
+                let word = args[i]
+
+                if options.Command == "help" && word == "--version" && options.Words.Count == 0 {
+                    options.Words.Add(word)
+                    i++
+                    continue
+                }
+
+                if !word.StartsWith("-") {
+                    options.Words.Add(word)
+                    i++
+                    continue
+                }
+
+                let equal = word.IndexOf('=')
+                let key = word == "-h" ? "--help": (equal < 0 ? word: word.Substring(0, equal))
+
+                if !key.StartsWith("--") {
+                    throw Exception("Unknown option for " + options.Command + ": " + key)
+                }
+
+                if options.Values.ContainsKey(key) {
+                    throw Exception("Duplicate option: " + key)
+                }
+
+                let option = Cli.OptionFor(options.Command, key.Substring(2))
+
+                if option.Value == "" {
+                    if equal >= 0 {
+                        throw Exception("Flag does not take a value: " + key)
+                    }
+
+                    options.Values.Add(key, "true")
+                } else {
+                    var value = equal < 0 ? "": word.Substring(equal + 1)
+
+                    if equal < 0 {
+                        i++
+
+                        if i < args.Length && !args[i].StartsWith("-") {
+                            value = args[i]
+                        }
+                    }
+
+                    if String.IsNullOrWhiteSpace(value) {
+                        throw Exception("Missing value for " + key)
+                    }
+
+                    if option.Value == "TIME" {
+                        options.Values.Add("--" + Cli.TimeKey(option.Name), Cli.Seconds(value, option.Name))
+                    } else {
+                        options.Values.Add(key, value)
+                    }
+                }
+
+                i++
+            }
+
+            options.Help = options.Command == "help" || options.Get("help") == "true"
+            Positionals.Bind(options)
+        }
+
         internal func Seconds(value string, name string) string {
             let match = Regex.Match(value, "^([0-9]{1,7})([smhd])\\z")
             let unit = match.Groups[2].Value
@@ -481,21 +567,6 @@ internal class Cli {
             }
 
             return seconds.ToString()
-        }
-
-        internal func Label(key string) string -> switch key {
-            case "issue": "ISSUE"
-            case "pr": "PR"
-            case "prs": "PR..."
-            case "donor": "LOGIN"
-            case "run": "RUN"
-            case "attempt": "RUN"
-            case "repo": "OWNER/REPO"
-            case "profile": "NAME"
-            case "seconds": "--time"
-            case "verification-reserve": "--verify-time"
-            case "reservation-seconds": "--reservation-time"
-            default: "--" + key
         }
 
         internal func Usage(name string) string -> "Usage: " + String.Join("\n       ", Find(name).Lines)
@@ -786,7 +857,7 @@ internal class Cli {
 
                 for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
                     if args.Get(key) != "" {
-                        throw Exception("External claims exclude " + Label(key))
+                        throw Exception("External claims exclude " + Args.Label(key))
                     }
                 }
 
@@ -803,7 +874,9 @@ internal class Cli {
                     "availability"
                 } {
                     if args.Get(key) != "" {
-                        throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
+                        throw Exception(
+                            "External declarations use --tools; selection option conflicts: " + Args.Label(key)
+                        )
                     }
                 }
             }
@@ -820,7 +893,7 @@ internal class Cli {
 
             for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
                 if name != "repo" && args.Get(TimeKey(name)) == "" {
-                    missing.Add(Label(TimeKey(name)))
+                    missing.Add(Args.Label(TimeKey(name)))
                 }
             }
 
@@ -948,9 +1021,9 @@ internal class Cli {
                 for key in args.Values.Keys {
                     if command.ConflictsWithRun(key.Substring(2)) {
                         throw Exception(
-                            (args.Run == "" ? "--run": "Saved run " + args.Run) +
-                                " conflicts with " +
-                                Label(key.Substring(2))
+                            (args.Run == "" ? "--run": "Saved run " + args.Run) + " conflicts with " + Args.Label(
+                                key.Substring(2)
+                            )
                         )
                     }
                 }

@@ -14,7 +14,7 @@ internal class Submission {
                 let run = Data.Load(directory)
                 CommitPrepared(directory, run)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -357,7 +357,7 @@ internal class Submission {
 
                 Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -510,7 +510,7 @@ internal class Submission {
                         code,
                         "Uncertain request write; no unique canonical evidence. No POST retry made. " + error.Message,
                         action: error is CliFailure actionable ? actionable.Action: []string{},
-                        summary: PublicOutput.Message(code),
+                        summary: CliFailure.Message(code),
                         attemptInvalidated: error is CliFailure invalidated && invalidated.AttemptInvalidated,
                         httpStatus: error is CliFailure transport ? transport.HttpStatus: 0
                     )
@@ -603,7 +603,7 @@ internal class Submission {
                 let code = (
                     error is IOException || error is UnauthorizedAccessException
                 ) ? "invalid_state": "command_failed"
-                throw CliFailure(code, error.Message, summary: PublicOutput.Message(code))
+                throw CliFailure(code, error.Message, summary: CliFailure.Message(code))
             }
         }
 
@@ -756,7 +756,7 @@ internal class Submission {
                 writer.Flush()
                 file.Flush(true)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -793,7 +793,7 @@ internal class Submission {
                         throw error
                     }
 
-                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                    throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
                 }
 
                 CommitPrepared(directory, run)

@@ -111,7 +111,7 @@ internal class PublicSummary {
 
                 return value
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -143,7 +143,7 @@ internal class PublicSummary {
 
                 run.Save(directory)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 

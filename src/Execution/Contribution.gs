@@ -141,7 +141,7 @@ internal class Contribution {
                         run.Fields["verification"] = verification
                         run.Save(directory)
 
-                        let check = Terminal.Verify(
+                        let check = Verification.Verify(
                             directory,
                             verification,
                             command,

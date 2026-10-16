@@ -5,6 +5,8 @@ import System.IO
 import System.Text.Json
 
 func Main(args[]string) int32 {
+    Output.Sink = CliOutput()
+    Args.Parse = Cli.Parse
     Terminal.Initialize()
 
     for argument in args {
@@ -66,7 +68,7 @@ func Main(args[]string) int32 {
                 PublicOutput.Actions.Add(failure.Action)
             }
         } else {
-            message = !validated ? error.Message: PublicOutput.Message(code)
+            message = !validated ? error.Message: CliFailure.Message(code)
         }
 
         if error is CliFailure invalidation &&
@@ -106,7 +108,10 @@ func Main(args[]string) int32 {
     } finally {
         DonationView.Close()
         if traffic {
-            ApiTransport.Report()
+            Console.Error.WriteLine("Tokate API traffic: " + J.Write(ApiTransport.Report()))
+            Console.Error.WriteLine(
+                "Counts measure Tokate gh-api operations; exclude unseen GitHub CLI/Git requests and workflow executions."
+            )
         }
     }
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {

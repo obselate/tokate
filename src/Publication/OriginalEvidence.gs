@@ -45,7 +45,7 @@ internal class OriginalEvidence {
 
                 input.CopyTo(output)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -90,7 +90,7 @@ internal class OriginalEvidence {
                     }
                 }
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -147,7 +147,7 @@ internal class OriginalEvidence {
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -180,7 +180,7 @@ internal class OriginalEvidence {
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -403,7 +403,7 @@ internal class OriginalEvidence {
 
                 return original
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
     }

@@ -4,8 +4,6 @@ import Gsharp.Concurrency
 import Spectre.Console
 import System
 import System.Collections.Generic
-import System.Diagnostics
-import System.Globalization
 import System.IO
 import System.Linq
 import System.Text
@@ -22,7 +20,7 @@ internal class TerminalProgress : IDisposable {
     private let Live bool
 
     internal init(phase string, budget RuntimeBudget, total RuntimeBudget? = nil) {
-        Phase = Terminal.Clean(phase).Replace('\n', ' ')
+        Phase = Tokate.Output.Clean(phase).Replace('\n', ' ')
         Budget = budget
         Total = total
         Live = DonationView.Start()
@@ -96,26 +94,6 @@ internal class Terminal {
             } finally {
                 Environment.SetEnvironmentVariable("TERM", term)
             }
-        }
-
-        internal func Clean(value string) string {
-            let stripped = Regex.Replace(
-                value,
-                "(?:\\x1b\\[|\\x9b)[0-?]*[ -/]*[@-~]|(?:\\x1b\\]|\\x9d)[^\\x07\\x1b\\x9c]*(?:\\x07|\\x1b\\\\|\\x9c)|\\x1b[@-_]",
-                ""
-            )
-
-            let text = StringBuilder()
-
-            for c in stripped {
-                if c == '\t' {
-                    text.Append("    ")
-                } else if c == '\n' || (!Char.IsControl(c) && Char.GetUnicodeCategory(c) != UnicodeCategory.Format) {
-                    text.Append(c)
-                }
-            }
-
-            return text.ToString()
         }
 
         internal func Rich(error bool = false) bool -> !PublicOutput.Enabled &&
@@ -196,7 +174,7 @@ internal class Terminal {
             }
 
             let stderr = error || PublicOutput.Enabled
-            let value = Clean(PublicOutput.Enabled ? PublicOutput.Prose(text): text)
+            let value = Tokate.Output.Clean(PublicOutput.Enabled ? Tokate.Output.Prose(text): text)
             let width = (stderr ? Console.IsErrorRedirected: Console.IsOutputRedirected) ? int32.MaxValue: Width(stderr)
 
             for source in value.Split('\n') {
@@ -246,7 +224,7 @@ internal class Terminal {
 
             for row in rows.Where(row -> row.Length > 1) {
                 for i in 0 ... row.Length {
-                    row[i] = Clean(row[i]).Replace('\n', ' ').Trim()
+                    row[i] = Tokate.Output.Clean(row[i]).Replace('\n', ' ').Trim()
 
                     if widths.Count == i {
                         widths.Add(0)
@@ -263,7 +241,11 @@ internal class Terminal {
 
             for row in rows {
                 if row.Length == 1 {
-                    Line(String(' ', widths[0] + 2) + Clean(row[0]).Replace('\n', ' ').Trim(), "default", error)
+                    Line(
+                        String(' ', widths[0] + 2) + Tokate.Output.Clean(row[0]).Replace('\n', ' ').Trim(),
+                        "default",
+                        error
+                    )
                     continue
                 }
 
@@ -322,65 +304,8 @@ internal class Terminal {
         }
 
         private func CommandText(words StringBuilder, flatten bool) string {
-            let text = Clean(words.ToString())
+            let text = Tokate.Output.Clean(words.ToString())
             return flatten ? text.Replace('\n', ' '): text
-        }
-
-        internal func Verify(
-            storage string,
-            results List[Object],
-            command JsonElement,
-            directory string,
-            seconds int32,
-            budget RuntimeBudget? = nil,
-            progressBudget RuntimeBudget? = nil,
-            workspace VerificationWorkspace? = nil
-        ) CommandResult {
-            let name = "Verification " + (results.Count + 1).ToString() + ": " + PublicOutput.Prose(Command(command))
-            let timing = progressBudget ?? budget ?? RuntimeBudget(Stopwatch.StartNew(), seconds)
-
-            try {
-                workspace?.CheckCancellation()
-
-                var result CommandResult
-
-                Message(name, "cyan", true)
-                {
-                    using let progress = TerminalProgress(
-                        "Owner verification " + (results.Count + 1).ToString(),
-                        timing
-                    )
-                    result = Verification.Check(
-                        storage,
-                        results,
-                        command,
-                        workspace?.Checkout ?? directory,
-                        seconds,
-                        budget
-                    )
-                }
-
-                Message(
-                    name + " - " + (result.Code == 0 ? "passed": "failed") + " (exit " + result.Code.ToString() +
-                        "); " +
-                        timing.Status(),
-                    result.Code == 0 ? "green": "red",
-                    true
-                )
-
-                return result
-            } catch (error Exception) {
-                Message(
-                    name + " - interrupted or failed; verification_failed. Details: " + Path.Combine(
-                        storage,
-                        "verification.json"
-                    ),
-                    "red",
-                    true
-                )
-
-                throw error
-            }
         }
 
         internal func RunOutcome(exitCode int32, code string) {
@@ -446,7 +371,7 @@ internal class Terminal {
             }
 
             if Rich(error) {
-                Output(error).WriteLine(Clean(title), Style.Parse("bold"))
+                Output(error).WriteLine(Tokate.Output.Clean(title), Style.Parse("bold"))
             } else {
                 Message(title, "default", error)
             }
@@ -458,8 +383,8 @@ internal class Terminal {
         }
 
         internal func Row(label string, value string, color string = "default", error bool = false) {
-            let name = Clean(label)
-            let text = Clean(value)
+            let name = Tokate.Output.Clean(label)
+            let text = Tokate.Output.Clean(value)
             let redirected = error ? Console.IsErrorRedirected: Console.IsOutputRedirected
 
             if redirected || (name.Length + text.Length + 2 <= Width(error) && !text.Contains('\n')) {
@@ -499,7 +424,9 @@ internal class Terminal {
                     for i in 0 ... items.Count {
                         if field.Name == "allowed_tools" {
                             Line(
-                                Clean("  " + J.Text(items[i], "harness") + " / " + J.Text(items[i], "provider")),
+                                Tokate.Output.Clean(
+                                    "  " + J.Text(items[i], "harness") + " / " + J.Text(items[i], "provider")
+                                ),
                                 "default",
                                 false
                             )
@@ -508,7 +435,7 @@ internal class Terminal {
                             let text = command.Count == 3 && command[0].ToString() == "/bin/sh" &&
                                 command[1].ToString() == "-c" ?
                             command[2].ToString(): Command(items[i], false)
-                            Line(Clean("  " + text), "default", false)
+                            Line(Tokate.Output.Clean("  " + text), "default", false)
                         } else if items[i].ValueKind == JsonValueKind.Object {
                             Message("  " + (i + 1).ToString() + ".", "default")
                             Fields(items[i], "    ")
