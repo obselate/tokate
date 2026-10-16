@@ -245,7 +245,7 @@ internal class ContinuationImport {
             try {
                 return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", 1024 * 1024))
             } catch (error DecoderFallbackException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -328,7 +328,7 @@ internal class ContinuationImport {
             try {
                 return Convert.FromBase64String(value)
             } catch (error FormatException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -695,7 +695,7 @@ internal class ContinuationImport {
             try {
                 manifest = J.Parse(text)
             } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
 
             if J.Number(manifest, "version") != 1 || !RequestData.Same(

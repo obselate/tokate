@@ -241,7 +241,7 @@ internal class Checks {
                         throw error
                     }
 
-                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                    throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
                 }
 
                 ApiTransport.PollWait(

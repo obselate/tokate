@@ -70,7 +70,7 @@ internal class Overlaps {
 
         private func Failure(facts Dictionary[string, Object?], key string, error Exception) {
             facts[key + "_status"] = "unknown"
-            facts[key + "_error"] = error is CliFailure failure ? PublicOutput.Message(
+            facts[key + "_error"] = error is CliFailure failure ? CliFailure.Message(
                 failure.Code
             ): "Evidence unavailable, incomplete or changed; owner review required."
         }

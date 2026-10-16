@@ -366,7 +366,7 @@ internal class ExternalContribution {
                             throw ExecutionFailure.Create("verification_failed", "Verification budget exhausted")
                         }
 
-                        let result = Terminal.Verify(
+                        let result = Verification.Verify(
                             directory,
                             results,
                             command,

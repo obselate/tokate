@@ -30,7 +30,7 @@ internal class RequestData {
                 Unique(value)
                 return value
             } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -99,9 +99,9 @@ internal class RequestData {
 
                 return Parse(Encoding.UTF8.GetString(bytes.ToArray()), limit)
             } catch (error IOException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             } catch (error UnauthorizedAccessException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 

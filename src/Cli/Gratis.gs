@@ -234,7 +234,7 @@ internal class Gratis {
                 consent += "\nDiscussion title: " + discussionTitle + "\nDiscussion body:\n" + discussionBody
             }
             PublicOutput.ResultData = preview
-            Terminal.Message(Terminal.Clean(consent), error: true)
+            Terminal.Message(Tokate.Output.Clean(consent), error: true)
             if !OwnerSetup.Confirm(args, "Publish this contribution?") {
                 if OwnerSetup.Unattended(args) {
                     PublicOutput.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})

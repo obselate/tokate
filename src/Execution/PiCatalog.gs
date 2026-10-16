@@ -38,7 +38,7 @@ internal class PiCatalog {
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("endpoint_unavailable", PublicOutput.Message("endpoint_unavailable"))
+                throw CliFailure("endpoint_unavailable", CliFailure.Message("endpoint_unavailable"))
             } finally {
                 Directory.Delete(storage.FullName, true)
             }
