@@ -467,34 +467,7 @@ internal class Submission {
                 expires = CoordinationState.Unix(J.Get(state.Value(), "reservation"), "expires")
             }
 
-            try {
-                using let file = FileStream(
-                    journal,
-                    FileStreamOptions{
-                        Mode: FileMode.CreateNew,
-                        Access: FileAccess.Write,
-                        Share: FileShare.None,
-                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
-                    }
-                )
-                using let writer = StreamWriter(file)
-
-                writer.WriteLine(
-                    J.Write(
-                        map[string, Object?]{
-                            "repo": repo,
-                            "issue": issue,
-                            "actor": actor,
-                            "binding": binding,
-                            "request": value
-                        }
-                    )
-                )
-                writer.Flush()
-                file.Flush(true)
-            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
-            }
+            WritePostingJournal(journal, repo, issue, actor, binding, value)
 
             WriteRequest(repo, issue, actor, value, expires)
 
@@ -664,43 +637,7 @@ internal class Submission {
                 args.Values["--yes"] = "true"
             }
 
-            if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
-                "failure_reason"
-            ) == "public_summary_invalid" &&
-                run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 && args.Get(
-                "incomplete"
-            ) != "true" {
-                let record = ContributionAuthority.Recheck(run)
-                let timer = Stopwatch.StartNew()
-                let elapsed = run.Number("elapsed_seconds")
-
-                try {
-                    Contribution.Finish(
-                        directory,
-                        run,
-                        record,
-                        J.Select(J.Get(run.Element(), "usage"), "input_tokens,cached_input_tokens,output_tokens"),
-                        timer,
-                        run.Number("seconds"),
-                        run.Number("verification_reserve"),
-                        elapsed
-                    )
-                } catch (error Exception) when ExecutionFailure.Handled(error) {
-                    run.Transition("failed")
-                    run.Fields["error"] = error.Message
-                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
-
-                    run.Save(directory)
-
-                    if error is CliFailure {
-                        throw error
-                    }
-
-                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
-                }
-
-                CommitPrepared(directory, run)
-            }
+            RetrySummary(args, directory, run)
 
             if args.Get("incomplete") == "true" {
                 Partial(directory, run)
@@ -713,60 +650,8 @@ internal class Submission {
 
             let path = Path.Combine(directory, "request.json")
 
-            if run.Text("publication_uuid") != "" && File.Exists(path) {
-                let saved = RequestData.FileData(path, 8192)
-                let expected = PublicationRequest(run)
-
-                if RequestData.Canonical(saved) != RequestData.Canonical(expected) {
-                    throw CliFailure("stale_approval", "Saved publication UUID binding changed")
-                }
-
-                let viewer = GitHub.Api("user")
-
-                if J.Get(viewer, "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
-                    throw CliFailure("stale_approval", "Saved publication belongs to another authenticated actor")
-                }
-
-                let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), saved)
-
-                if outcome.ValueKind != JsonValueKind.Undefined {
-                    if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(
-                        J.Get(state.Value(), "reservation"),
-                        "reservation"
-                    ) != run.Text("id") {
-                        throw CliFailure("stale_approval", "Saved publication has stale coordination authority")
-                    }
-
-                    state.Reservation(J.Get(viewer, "id"))
-                    state.Check(
-                        RepositoryIdentity.Repo(run.Text("repo")),
-                        run.Number("issue"),
-                        run.Text("donor"),
-                        J.Get(viewer, "id")
-                    )
-
-                    let repo = RepositoryIdentity.Repo(run.Text("repo"))
-                    let number = J.Number(outcome, "pr")
-                    let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString())
-                    let published = ReceiptVerification.Verify(repo, number, pull)
-
-                    if published.Text("commit") != run.Text("commit") || published.Text("approval") != run.Text(
-                        "approval"
-                    ) ||
-                        published.Text("reservation") != run.Text("id") {
-                        throw CliFailure("stale_approval", "Published receipt differs from this saved contribution")
-                    }
-
-                    if run.Text("state") != "published" || run.Number("pr") != number || run.Text("pr_url") != J.Text(
-                        pull,
-                        "html_url"
-                    ) {
-                        Publication.SavePr(directory, run, pull)
-                    }
-
-                    return
-                }
+            if RestorePublication(directory, run, path) {
+                return
             }
 
             let record = ContributionAuthority.Recheck(run)
@@ -835,6 +720,143 @@ internal class Submission {
             File.WriteAllText(path, J.Write(request) + "\n")
 
             Request(Args([]string{"request", run.Text("repo") + "#" + run.Number("issue").ToString(), "--file", path}))
+        }
+
+        private func WritePostingJournal(
+            journal string,
+            repo string,
+            issue int32,
+            actor JsonElement,
+            binding string,
+            value JsonElement
+        ) {
+            try {
+                using let file = FileStream(
+                    journal,
+                    FileStreamOptions{
+                        Mode: FileMode.CreateNew,
+                        Access: FileAccess.Write,
+                        Share: FileShare.None,
+                        UnixCreateMode: UnixFileMode.UserRead | UnixFileMode.UserWrite
+                    }
+                )
+                using let writer = StreamWriter(file)
+
+                writer.WriteLine(
+                    J.Write(
+                        map[string, Object?]{
+                            "repo": repo,
+                            "issue": issue,
+                            "actor": actor,
+                            "binding": binding,
+                            "request": value
+                        }
+                    )
+                )
+                writer.Flush()
+                file.Flush(true)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            }
+        }
+
+        private func RetrySummary(args Args, directory string, run Data) {
+            if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
+                "failure_reason"
+            ) == "public_summary_invalid" &&
+                run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 && args.Get(
+                "incomplete"
+            ) != "true" {
+                let record = ContributionAuthority.Recheck(run)
+                let timer = Stopwatch.StartNew()
+                let elapsed = run.Number("elapsed_seconds")
+
+                try {
+                    Contribution.Finish(
+                        directory,
+                        run,
+                        record,
+                        J.Select(J.Get(run.Element(), "usage"), "input_tokens,cached_input_tokens,output_tokens"),
+                        timer,
+                        run.Number("seconds"),
+                        run.Number("verification_reserve"),
+                        elapsed
+                    )
+                } catch (error Exception) when ExecutionFailure.Handled(error) {
+                    run.Transition("failed")
+                    run.Fields["error"] = error.Message
+                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+
+                    run.Save(directory)
+
+                    if error is CliFailure {
+                        throw error
+                    }
+
+                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                }
+
+                CommitPrepared(directory, run)
+            }
+        }
+
+        private func RestorePublication(directory string, run Data, path string) bool {
+            if run.Text("publication_uuid") != "" && File.Exists(path) {
+                let saved = RequestData.FileData(path, 8192)
+                let expected = PublicationRequest(run)
+
+                if RequestData.Canonical(saved) != RequestData.Canonical(expected) {
+                    throw CliFailure("stale_approval", "Saved publication UUID binding changed")
+                }
+
+                let viewer = GitHub.Api("user")
+
+                if J.Get(viewer, "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
+                    throw CliFailure("stale_approval", "Saved publication belongs to another authenticated actor")
+                }
+
+                let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
+                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), saved)
+
+                if outcome.ValueKind != JsonValueKind.Undefined {
+                    if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(
+                        J.Get(state.Value(), "reservation"),
+                        "reservation"
+                    ) != run.Text("id") {
+                        throw CliFailure("stale_approval", "Saved publication has stale coordination authority")
+                    }
+
+                    state.Reservation(J.Get(viewer, "id"))
+                    state.Check(
+                        RepositoryIdentity.Repo(run.Text("repo")),
+                        run.Number("issue"),
+                        run.Text("donor"),
+                        J.Get(viewer, "id")
+                    )
+
+                    let repo = RepositoryIdentity.Repo(run.Text("repo"))
+                    let number = J.Number(outcome, "pr")
+                    let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString())
+                    let published = ReceiptVerification.Verify(repo, number, pull)
+
+                    if published.Text("commit") != run.Text("commit") || published.Text("approval") != run.Text(
+                        "approval"
+                    ) ||
+                        published.Text("reservation") != run.Text("id") {
+                        throw CliFailure("stale_approval", "Published receipt differs from this saved contribution")
+                    }
+
+                    if run.Text("state") != "published" || run.Number("pr") != number || run.Text("pr_url") != J.Text(
+                        pull,
+                        "html_url"
+                    ) {
+                        Publication.SavePr(directory, run, pull)
+                    }
+
+                    return true
+                }
+            }
+            return false
         }
     }
 }
