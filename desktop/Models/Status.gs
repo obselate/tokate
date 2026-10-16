@@ -8,6 +8,7 @@ class Statuses {
         let Need []string = []string{
             "Ready to submit",
             "Needs amendment",
+            "Conflicts",
             "Claimed, not started",
             "Access requested",
             "Needs approval",

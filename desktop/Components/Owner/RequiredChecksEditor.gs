@@ -19,7 +19,7 @@ open class RequiredChecksEditor : Cell[SetupEditorInput] {
             IconHeading{
                 Icon: "verified",
                 Content: "Required CI checks",
-                Detail: "Checks required on each pull request",
+                Detail: "Optional checks required on each pull request",
             }.Build(),
         }
         if tags.Count > 0 {

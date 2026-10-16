@@ -22,6 +22,7 @@ class PullRequestCodec {
                 ReviewDecision: Json.Text(value, "reviewDecision"),
                 Checks: checks.ToArray(),
                 Url: Json.Text(value, "url"),
+                Conflicts: Json.Text(value, "mergeable") == "CONFLICTING",
             }
         }
 
@@ -35,6 +36,7 @@ class PullRequestCodec {
             return DraftReview{
                 Receipt: receipt == "passed" ? "verified": receipt,
                 Ci: ChecksStatus(data).Replace('_', ' '),
+                NeedsAmendment: Json.Get(data, "mergeable").ValueKind == JsonValueKind.False,
             }
         }
     }

@@ -239,7 +239,7 @@ class SavedWorkService {
                 Chosen = item,
                 Run = run,
                 RunPath = item.Path,
-                Actions = RunActions.From(item.Actions, run.State),
+                Actions = run.OwnerRecovery ? []RunAction{}: RunActions.From(item.Actions, run.State),
                 Amendment = Current.Amendment with{Open = false},
                 Review = nil,
                 Waiting = same,

@@ -101,19 +101,25 @@ class TokateCommands {
 
         func OwnerDoctor() []string -> []string{"doctor", "external", "--auth"}
 
-        func Approve(repo string, issue string, branch string) []string ->
-        []string{"approve", repo + "#" + issue, "--base-branch", branch, "--yes"}
+        func Approve(repo string, issue string, branch string, donor string = "") []string {
+            let args = List[string]{"approve", repo + "#" + issue}
+            if donor != "" {
+                args.Add(donor)
+            }
+            args.AddRange([]string{"--base-branch", branch, "--yes"})
+            return args.ToArray()
+        }
 
         func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue}
 
         func PullRequestCheck(repo string, pr string) []string -> []string{"checks", repo + "#" + pr}
 
-        func Access(repo string, operation string, donor string = "", issue string = "") []string {
+        func Access(repo string, operation string, donor string = "") []string {
             let args = List[string]{"access", operation}
             if donor != "" {
                 args.Add(donor)
             }
-            args.Add(issue == "" ? repo: repo + "#" + issue)
+            args.Add(repo)
             return args.ToArray()
         }
 
@@ -138,6 +144,9 @@ class TokateCommands {
             if draft.Eligibility.Trim() != "" {
                 args.Add("--eligibility")
                 args.Add(draft.Eligibility)
+            }
+            if draft.Pin {
+                args.Add("--pin")
             }
             if yes {
                 args.Add("--yes")
@@ -191,7 +200,7 @@ class GitHubCommands {
         func Issue(repo string, number string) []string -> []string{"api", "repos/" + repo + "/issues/" + number}
 
         func PullRequest(repo string, pr string) []string ->
-        []string{"pr", "view", pr, "--repo", repo, "--json", "state,reviewDecision,statusCheckRollup,url"}
+        []string{"pr", "view", pr, "--repo", repo, "--json", "state,reviewDecision,statusCheckRollup,url,mergeable"}
 
         /// One batch of `IssueListing.BatchPages` pages of matching issues.
         func SearchIssues(repo string, listing IssueListing, batch int32) []string {

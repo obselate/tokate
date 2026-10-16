@@ -32,7 +32,7 @@ data struct NextAction {
     prop NamesRun bool -> Arguments.Length > 2 && System.Text.RegularExpressions.Regex.IsMatch(
         Arguments[2],
         "^[^/#]+/[^/#]+#[0-9]+-[0-9]+$"
-    )
+    ) || Arguments.Length > 3 && Arguments[2] == "--run" && Arguments[3] != ""
 }
 
 data struct Envelope {

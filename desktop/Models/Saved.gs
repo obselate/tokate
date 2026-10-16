@@ -48,12 +48,18 @@ data struct SavedRun {
         guard let run = Run else {
             return "Loading"
         }
+        if run.OwnerRecovery {
+            return "Owner recovery needed"
+        }
         if RemoteError && run.Pr > 0 && PullRequest == nil {
             return "Review unavailable"
         }
         if let remote = PullRequest {
             if remote.Merged {
                 return "Merged"
+            }
+            if remote.Conflicts {
+                return "Conflicts"
             }
             if remote.ChangesRequested {
                 return "Needs amendment"
@@ -81,8 +87,7 @@ enum RunAction {
     Claim,
     Submit,
     Checks,
-    Amend,
-    Reconcile
+    Amend
 }
 
 class RunActions {
@@ -92,8 +97,7 @@ class RunActions {
             case RunAction.Claim: "claim"
             case RunAction.Submit: "submit"
             case RunAction.Checks: "checks"
-            case RunAction.Amend: "amend"
-            default: "reconcile"
+            default: "amend"
         }
 
         func Parse(command string) RunAction? -> switch command {
@@ -132,7 +136,6 @@ class RunActions {
             case RunAction.Submit: "Submit draft PR"
             case RunAction.Checks: "Check PR and CI"
             case RunAction.Amend: "Amend contribution"
-            case RunAction.Reconcile: "Update workspace"
             default: "Run verification again"
         }
 
@@ -140,7 +143,6 @@ class RunActions {
 
         func DialogTitle(action RunAction) string -> switch action {
             case RunAction.Amend: "Publish amendment"
-            case RunAction.Reconcile: "Update workspace"
             case RunAction.Checks: "Check pull request"
             default: "Continue contribution"
         }
@@ -148,7 +150,6 @@ class RunActions {
         func DialogDetail(action RunAction) string -> switch action {
             case RunAction.Amend: "Publish verified changes to GitHub. The owner reviews and merges."
             case RunAction.Submit: "Publish verified changes to GitHub. The owner reviews and merges."
-            case RunAction.Reconcile: "Merge the current target into this saved workspace."
             default: "Inspect and continue this contribution."
         }
 
@@ -192,6 +193,11 @@ data struct RunGuide {
 
         /// The guide for a status label. `submitted` places a status that is not listed.
         func For(status string, submitted bool) RunGuide -> switch status {
+            case "Owner recovery needed": RunGuide{
+                Step: submitted ? 3: 0,
+                Heading: "The owner must re-run the workflow",
+                Text: "The owner must fix the workflow cause and re-run the failed workflow in GitHub Actions. No donor action is needed.",
+            }
             case "Awaiting reservation": RunGuide{
                 Step: 0,
                 Heading: "Waiting for approval",
@@ -247,6 +253,12 @@ data struct RunGuide {
                 Step: 3,
                 Heading: "The owner requested changes",
                 Text: "Make the changes in the run directory and commit them. Then publish the amendment.",
+                Main: RunAction.Amend,
+            }
+            case "Conflicts": RunGuide{
+                Step: 3,
+                Heading: "Resolve the pull request conflicts",
+                Text: "Merge the target into the saved checkout, resolve conflicts and commit. Then amend with a verification budget.",
                 Main: RunAction.Amend,
             }
             case "Closed without merge": RunGuide{

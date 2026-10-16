@@ -59,6 +59,7 @@ class ContributionsTab {
                 }}.Build(),
                 OwnerIssueCard{
                     Issue: issue,
+                    Repository: repository,
                     Work: work,
                     Reading: work == nil && page.Busy,
                     Reviews: state.Reviews,

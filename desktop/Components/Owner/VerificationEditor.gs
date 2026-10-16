@@ -22,7 +22,7 @@ open class VerificationEditor : Cell[SetupEditorInput] {
             IconHeading{
                 Icon: "checklist",
                 Content: "Verification",
-                Detail: "Commands to verify each contribution",
+                Detail: "Optional commands to verify each contribution",
             }.Build(),
         }
         let commands = input.Setup.Commands

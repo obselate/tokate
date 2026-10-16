@@ -10,12 +10,12 @@ func CodecTests() {
     Regression.Check(!CliCodec.Matches(pending, 8, "status"), "envelope rejects a different exit code")
     Regression.Check(pending.Error == nil, "null error decodes as none")
     Regression.Equal(pending.NextActions[0].Command, "status", "pending run next action")
-    Regression.Equal(String.Join(" ", pending.NextActions[0].Arguments), "tokate status foxholt/tokate-demo#5-1 --json", "exact saved action arguments")
+    Regression.Equal(String.Join(" ", pending.NextActions[0].Arguments), "tokate status --run /home/xaz/.local/state/tokate/runs/foxholt-tokate-demo-5-1 --json", "exact saved action arguments")
     Regression.Check(pending.NextActions[0].NamesRun, "saved status names an exact attempt")
     let authority = NextAction{Arguments: []string{"tokate", "status", "owner/repo#42"}}
     Regression.Check(!authority.NamesRun, "authority status is not a saved attempt")
     Regression.Equal(CliCodec.RunPath(Regression.Fixture("envelope-pending.json")), "/home/xaz/.local/state/tokate/runs/foxholt-tokate-demo-5-1", "run path")
-    Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("Do not repost"), "pending claim preserves recovery guidance")
+    Regression.Check(RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data")).Guidance.Contains("owner reruns"), "pending claim preserves recovery guidance")
     let published = CliCodec.Envelope(Regression.Fixture("run-published.json"))
     Regression.Check(published.NextActions.Length == 1 && published.NextActions[0].NamesRun, "finished run retains only exact saved status")
     Regression.Check(RunActions.From(published.NextActions, "published").Length == 0, "finished run offers no work or checks actions")
@@ -49,17 +49,20 @@ func CodecTests() {
     let policy = PolicyCodec.FromPolicyResult(policyData)
     Regression.Check(policy.Loaded && policy.Version == 3 && policy.Verification.Length == 1, "released doctor decodes version 3 policy")
     Regression.Check(Json.Text(policyData, "scope") == "repo" && PolicyCodec.OwnerHealth(policyData).Contains("policy: ok"), "released repository diagnostics retain healthy policy")
+    let stable = Json.Parse("{\"checks\":[{\"check\":\"coordinator\",\"status\":\"ok\",\"pin\":\"v0\",\"matches_cli\":true,\"version\":\"\",\"cli_version\":\"0.7.0\",\"message\":\"Coordinator follows stable-major releases at v0.\"},{\"check\":\"access\",\"status\":\"ok\",\"present\":false,\"member_count\":0,\"trusted_count\":0,\"message\":\"Empty access record. Members 0, trusted 0.\"}]}")
+    let stableReport = PolicyCodec.OwnerHealth(stable)
+    Regression.Check(stableReport.Contains("stable-major releases at v0") && !stableReport.Contains("CLI") && stableReport.Contains("Empty access record"), "stable workflow and missing access ref need no repair")
+    let failedCoordinator = Json.Parse("{\"checks\":[{\"check\":\"last_run\",\"status\":\"problem\",\"conclusion\":\"failure\",\"html_url\":\"https://github.com/o/r/actions/runs/7\"}]}")
+    Regression.Equal(PolicyCodec.FailedCoordinatorRun(failedCoordinator, "o/r"), "https://github.com/o/r/actions/runs/7", "failed coordinator links its exact run")
+    Regression.Equal(PolicyCodec.FailedCoordinatorRun(Json.Parse("{\"checks\":[{\"check\":\"last_run\",\"conclusion\":\"failure\"}]}"), "o/r"), "https://github.com/o/r/actions", "failed coordinator falls back to repository Actions")
+    Regression.Equal(PolicyCodec.FailedCoordinatorRun(stable, "o/r"), "", "healthy checks do not offer a rerun")
     let external = Json.Get(Regression.Fixture("doctor-external.json"), "data")
     Regression.Check(PolicyCodec.OwnerHealth(external).Contains("curl: ready") && PolicyCodec.OwnerHealth(external).Contains("tar: ready"), "real owner prerequisites include curl and tar")
     Regression.Check(!PolicyCodec.Policy(JsonElement{}).Loaded, "missing policy is not loaded")
-    let legacy = PolicyCodec.Policy(Json.Parse(
-        "{\"version\":2,\"model_policy\":\"whitelist\",\"models\":{\"gpt\":[\"high\"]},\"eligibility\":\"manual\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}]}"
-    ))
-    Regression.Check(legacy.ModelsFor("codex", "openai").Length == 1 && legacy.Eligibility == "trusted", "legacy model and eligibility permissions survive migration")
     let noPolicy = PolicyCodec.FromPolicyResult(Json.Parse("{\"scope\":\"repo\",\"checks\":[{\"check\":\"policy\",\"status\":\"problem\",\"message\":\"No policy\"}]}"))
     Regression.Check(!noPolicy.Loaded && noPolicy.Verification.Length == 0, "successful doctor without a policy means no policy yet")
     let setup = PolicyCodec.Setup(Json.Parse(
-        "{\"applied\":false,\"changes\":[{\"change\":\"Setup PR\",\"old\":\"\",\"new\":\"Set up Tokate\"}],\"manual\":[\"Review branch protection\"],\"pull_request\":\"https://github.com/o/r/pull/2\"}"
+        "{\"applied\":false,\"changes\":[{\"change\":\"Setup PR\",\"old\":\"\",\"new\":\"Set up Tokate\"}],\"manual\":[\"Review and merge the setup PR\"],\"pull_request\":\"https://github.com/o/r/pull/2\"}"
     ))
     Regression.Check(!setup.Applied && setup.Manual.Length == 1 && setup.PullRequest.EndsWith("/2"), "setup preview and PR fields")
     Regression.Check(setup.Changes[0].Setting == "Setup PR" && setup.Changes[0].Current == "" && setup.Changes[0].Proposed == "Set up Tokate", "setup changes decode source change old new fields")
@@ -71,6 +74,12 @@ func CodecTests() {
     Regression.Check(draft.Receipt == "verified" && draft.Ci == DraftReview.NeedsApproval, "released draft retains verified receipt and workflow approval")
     let combined = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"pending\"}"))
     Regression.Check(combined.Receipt == "verified" && combined.Ci == "pending", "receipt can pass while CI is pending")
+    let conflict = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"passed\",\"mergeable\":false,\"target_merge_required\":true}"))
+    Regression.Check(conflict.NeedsAmendment, "conflicting target merges need donor amendment")
+    let clean = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"passed\",\"mergeable\":true,\"target_moved\":true}"))
+    Regression.Check(!clean.NeedsAmendment && clean.Receipt == "verified", "clean target merges retain verified receipt")
+    let optional = PolicyCodec.Policy(Json.Parse("{\"version\":3,\"eligibility\":\"trusted\"}"))
+    Regression.Check(optional.Verification.Length == 0 && optional.RequiredChecks.Length == 0, "optional policy fields use 0.7.0 defaults")
     let commandPolicy = PolicyCodec.Policy(Json.Parse(
         "{\"version\":3,\"allowed_tools\":[{\"harness\":\"command\",\"provider\":\"custom\",\"command\":[\"tool\",\"{model}\",\"{prompt_file}\"],\"output\":\"session\",\"models\":{\"custom-model\":[\"high\"]}}]}"
     ))
@@ -105,6 +114,10 @@ func CodecTests() {
     Regression.Equal(access.Pending[0].Issue, "42", "numeric issue text")
     Regression.Equal(access.Members[0].Badge, "Trusted", "trusted badge")
     Regression.Equal(access.Members[1].Badge, "Denied", "denied badge")
+    let denied = AccessCodec.Access(Json.Parse("{\"access_sha\":\"\",\"pending\":[{\"donor\":\"Eve\",\"issue\":42}],\"members\":[{\"donor\":\"eve\",\"trusted\":true,\"denied\":true}]}"))
+    Regression.Check(denied.Pending.Length == 0 && denied.Members[0].Badge == "Denied", "deny wins over trust and requests")
+    let emptyAccess = AccessCodec.Access(Json.Parse("{\"access_sha\":\"\",\"members\":[],\"pending\":[]}"))
+    Regression.Check(emptyAccess.Loaded && emptyAccess.Members.Length == 0, "missing access ref is a loaded empty record")
 
     let profiles = DonorCodec.Profiles(Json.Get(Regression.Fixture("profiles.json"), "data"))
     Regression.Check(profiles.Length == 2 && profiles[0].Name == "local", "profiles")

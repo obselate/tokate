@@ -52,6 +52,7 @@ class RunCodec {
                 Json.Text(correction, "state") == "verified" && finish.Length > 1 && finish[1] == "amend" ? Json.Text(correction, "commit"): "",
                 Finish: finish,
                 Guidance: Json.Text(Json.Get(data, "next"), "action"),
+                OwnerRecovery: Json.Text(Json.Get(data, "next"), "role") == "owner" && Json.Text(data, "coordinator") != "",
                 Warning: "",
             }
         }

@@ -83,6 +83,11 @@ func OwnerTests() {
     owner.Current = owner.Current with{SetupPreviewed = true}
     owner.SetMinutes("31")
     Regression.Check(!owner.Current.SetupPreviewed, "editing setup invalidates the preview")
+    owner.Current = owner.Current with{SetupPreviewed = true}
+    owner.SetPin(true)
+    Regression.Check(owner.Current.Setup.Pin && !owner.Current.SetupPreviewed, "pin choice invalidates setup preview")
+    Regression.Check(!IssueWork{}.CoordinatorFailed, "unchecked contributions have no failed coordinator")
+    Regression.Check(IssueWork{NextAction: "Tokate workflow failed."}.CoordinatorFailed, "failed coordinator requires owner action")
 
     owner.SelectTab(OwnerTab.Setup)
     Regression.Check(!owner.Current.Browsing, "setup is not browsing")

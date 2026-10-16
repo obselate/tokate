@@ -21,6 +21,7 @@ class AccessCodec {
                     }
                 )
             }
+            pending.RemoveAll(request -> members.Exists(member -> member.Denied && String.Equals(member.Donor, request.Donor, StringComparison.OrdinalIgnoreCase)))
             return AccessList{
                 Loaded: true,
                 AccessSha: Json.Text(data, "access_sha"),

@@ -49,7 +49,7 @@ class PolicyCodec {
                 Verification: commands.ToArray(),
                 Models: models.ToArray(),
                 ModelPolicy: Json.Text(value, "model_policy"),
-                Eligibility: Json.Text(value, "eligibility") == "manual" ? "trusted": Json.Text(value, "eligibility"),
+                Eligibility: Json.Text(value, "eligibility"),
                 AllowedTools: tools.ToArray(),
                 ToolProviders: providers.ToArray(),
                 ToolModels: toolModels.ToArray(),
@@ -70,6 +70,23 @@ class PolicyCodec {
                 Applied: Json.Bool(data, "applied"), Changes: changes.ToArray(),
                 Manual: Json.Strings(data, "manual"), PullRequest: Json.Text(data, "pull_request"),
             }
+        }
+
+        func FailedCoordinatorRun(data JsonElement, repository string) string {
+            for check in Json.Items(data, "checks") {
+                if Json.Text(check, "check") == "last_run" && (
+                    Json.Text(check, "conclusion") == "failure" || Json.Text(check, "conclusion") == "startup_failure"
+                ) {
+                    let url = Json.Text(check, "html_url")
+                    return url == "" ? "https://github.com/" + repository + "/actions": url
+                }
+            }
+            return ""
+        }
+
+        func Health(data JsonElement) OwnerHealthResult -> OwnerHealthResult{
+            Report: OwnerHealth(data),
+            CoordinatorRun: FailedCoordinatorRun(data, Json.Text(data, "repo")),
         }
 
         func OwnerHealth(data JsonElement) string {

@@ -17,6 +17,8 @@ data struct SetupReview {
     var Report SetupReport
     var Previewed bool
     var Disabled bool
+    var Pin bool
+    var OnPin Action[bool]?
     var Button CommandButton
     var OnApply Action?
     var OnPreview Action?
@@ -76,6 +78,13 @@ data struct SetupReview {
         if Written != "" {
             review.Children.Add(ReportText{Content: Written, MaxHeight: AppTheme.ReportMaxHeight}.Build())
         }
+        review.Children.Add(Check{
+            Label: "Pin the coordinator to this release",
+            Detail: Pin ? "Exact release commit": "Follow stable v0 releases",
+            Value: Pin,
+            Disabled: Disabled,
+            OnChange: OnPin,
+        }.Build())
         review.Children.Add(ActionBar{Children: actions.ToArray()}.Build())
         return review
     }
@@ -90,10 +99,10 @@ data struct OwnerHealthReport {
             let lines = entry.Split('\n', 2)
             let heading = lines[0].Split(':', 2)
             rows.Add(ListRow{Children: []Blob{
-                Stack{Gap: AppTheme.Space8, Children: []Blob{
+                Container{Width: Percent(100), Gap: AppTheme.Space8, Children: []Blob{
                     heading.Length == 2 ? DetailRow{Caption: heading[0], Value: heading[1].Trim()}.Build(): Label{Content: lines[0]}.Build(),
                     lines.Length == 2 ? Label{Content: lines[1], Size: AppTheme.SmallSize, Muted: true}.Build(): Container{},
-                }}.Build(),
+                }},
             }}.Build())
         }
         return ListSection{Title: "Checks", Count: rows.Count, Children: rows.ToArray()}.Build()

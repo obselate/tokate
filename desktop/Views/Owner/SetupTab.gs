@@ -156,6 +156,8 @@ class SetupTab {
             Report: state.SetupReport,
             Previewed: state.SetupPreviewed,
             Disabled: page.Busy,
+            Pin: setup.Pin,
+            OnPin: value -> owner.SetPin(value),
             Button: page.Button,
             OnApply: () -> owner.Apply(),
             OnPreview: () -> owner.PreviewSetup(),
@@ -173,6 +175,15 @@ class SetupTab {
         }
         if state.DoctorReport != "" {
             health.Add(OwnerHealthReport{Report: state.DoctorReport}.Build())
+        }
+        if !String.IsNullOrEmpty(state.CoordinatorRun) {
+            health.Add(ActionBar{Children: []Blob{
+                (page.Button with{
+                    Label = "Re-run in Actions",
+                    Icon = "open_in_new",
+                    OnClick = () -> Browser.Open(state.CoordinatorRun),
+                }).Build(),
+            }}.Build())
         }
         return Stack{
             Gap: AppTheme.SectionGap,

@@ -4,6 +4,7 @@ import Goo
 import Goo.Widgets.Icons
 import System
 import System.Collections.Generic
+import System.Text.RegularExpressions
 
 /// One issue for its owner: the approval with its action, then one line for each draft pull request with
 /// the last receipt and CI results and the actions to check and review it.
@@ -18,6 +19,7 @@ data struct OwnerIssueCard {
     var Button CommandButton
     var OnApproval Action?
     var OnReview Action[string]?
+    var Repository string
     var OnChecks Action[string]?
 
     func Build() Blob {
@@ -64,6 +66,16 @@ data struct OwnerIssueCard {
         if !stale && (Work?.NextAction ?? "") != "" {
             approval.Children.Add(Label{Content: Work!!.NextAction, Size: AppTheme.SmallSize}.Build())
         }
+        if Work?.CoordinatorFailed ?? false {
+            let url = Regex.Match(Work!!.NextAction, "https://github\\.com/[^\\s]+/actions/runs/[0-9]+").Value
+            approval.Children.Add(ActionBar{Children: []Blob{
+                (Button with{
+                    Label = "Re-run in Actions",
+                    Icon = "open_in_new",
+                    OnClick = () -> Browser.Open(url == "" ? "https://github.com/" + Repository + "/actions": url),
+                }).Build(),
+            }}.Build())
+        }
         let drafts = Work?.Drafts ?? []string{}
         let lines = List[Blob]()
         for draft in drafts {
@@ -100,7 +112,7 @@ data struct OwnerIssueCard {
         return ListRow{
             Children: []Blob{
                 Container{Width: AppTheme.ButtonMinWidth, FlexShrink: 0, Label{Content: "PR #" + pr}.Build()},
-                Result(known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt, known.Receipt == "", known.ReceiptTone),
+                Result(known.NeedsAmendment ? "Donor must amend": known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt, !known.NeedsAmendment && known.Receipt == "", known.NeedsAmendment ? Tone.Need: known.ReceiptTone),
                 Result(known.Ci == "" ? "CI not checked": "CI " + known.Ci, known.Ci == "", known.CiTone),
                 Spacer{}.Build(),
                 (Button with{Label = "Check receipt and CI", Name = "Check PR #" + pr, OnClick = () -> checks?.Invoke(pr)}).Build(),

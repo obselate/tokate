@@ -4,16 +4,16 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// The pending requests for issue access, one line for each, with the owner's grant and trust actions.
+/// The pending requests for issue access, one line for each, with the owner's approve and trust actions.
 data struct AccessRequests {
     var Requests []AccessRequest
     var CanWrite bool
     var Button CommandButton
-    var OnGrant Action[AccessRequest]?
+    var OnApprove Action[AccessRequest]?
     var OnTrust Action[AccessRequest]?
 
     func Build() Blob {
-        let grant = OnGrant
+        let approve = OnApprove
         let trust = OnTrust
         let lines = List[Blob]()
         for request in Requests {
@@ -25,10 +25,10 @@ data struct AccessRequests {
                         Label{Content: "Requests issue #" + request.Issue, Size: AppTheme.SmallSize, Muted: true}.Build(),
                         Spacer{}.Build(),
                         (Button with{
-                            Label = "Grant #" + request.Issue,
-                            Name = "Grant #" + request.Issue + " to " + request.Donor,
+                            Label = "Approve #" + request.Issue,
+                            Name = "Approve #" + request.Issue + " for " + request.Donor,
                             Tone = ButtonTone.Positive,
-                            OnClick = () -> grant?.Invoke(selected),
+                            OnClick = () -> approve?.Invoke(selected),
                             Disabled = !CanWrite,
                         }).Build(),
                         (Button with{

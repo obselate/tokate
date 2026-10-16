@@ -13,7 +13,7 @@ data struct DonorListInput {
 }
 
 /// The donors with access, one line for each, with the owner's trust and deny actions. "Add donor" opens a
-/// row that grants a donor access to one issue or trusts them for every issue. Holds the typed donor and
+/// row that approves one issue for a donor or trusts them for every issue. Holds the typed donor and
 /// issue. Mounted in its own container so it can sit among unkeyed siblings.
 open class DonorList : Cell[DonorListInput] {
     private var adding bool
@@ -39,8 +39,8 @@ open class DonorList : Cell[DonorListInput] {
                     }.Build(),
                     StatusChip{Value: issue == "" ? "Choose an issue below": "Issue #" + issue, Tone: Tone.Wait}.Build(),
                     (input.Button with{
-                        Label = "Grant issue access",
-                        OnClick = () -> owner.ChangeAccess("grant", donor, issue),
+                        Label = "Approve issue access",
+                        OnClick = () -> owner.ApproveAccess(donor, issue),
                         Primary = true,
                         Tone = ButtonTone.Positive,
                         Disabled = !input.CanWrite || donor == "" || !valid,

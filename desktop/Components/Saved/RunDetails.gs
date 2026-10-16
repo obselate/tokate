@@ -13,7 +13,6 @@ data struct RunDetails {
     /// A narrow panel names only the current step.
     var Narrow bool
     var Form Blob?
-    var LastMessage string
     var Waiting bool
     var OnAction Action[RunAction]?
     var OnToggleAmendment Action?
@@ -28,6 +27,7 @@ data struct RunDetails {
         let tone = Statuses.ToneOf(status)
         let look = AppTheme.Look(tone)
         let finished = status == "Merged" || status == "Closed without merge"
+        let blocked = run.OwnerRecovery
         let guide = RunGuide.For(status, run.Pr > 0)
         let children = List[Blob]{
             Progression{Names: RunGuide.Steps, Current: guide.Step, State: tone, Narrow: Narrow}.Build(),
@@ -47,18 +47,15 @@ data struct RunDetails {
         }
         let shown = List[RunAction]()
         for action in Actions {
-            if finished {
+            if finished || blocked {
                 continue
             }
             shown.Add(action)
         }
-        if !finished && (run.Pr > 0 || !run.External && (run.State == "generated" || run.FailureReason == "verification_failed")) {
+        if !finished && !blocked && (run.Pr > 0 || !run.External && (run.State == "generated" || run.FailureReason == "verification_failed")) {
             if !shown.Contains(RunAction.Amend) {
                 shown.Add(RunAction.Amend)
             }
-        }
-        if !finished && run.Pr > 0 {
-            shown.Add(RunAction.Reconcile)
         }
         var text = guide.Text
         if guide.Main != nil && !shown.Contains(guide.Main!!) {
@@ -102,10 +99,10 @@ data struct RunDetails {
         }
         for next in Item.Actions {
             let continuation = Array.IndexOf(next.Arguments, "--continue-from") >= 0
-            if finished {
+            if finished || blocked {
                 continue
             }
-            if next.Command == "help" || next.Command == "sync" || (next.Command == "status" && !next.NamesRun && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
+            if next.Command == "help" || (next.Command == "status" && !next.NamesRun && Array.IndexOf(next.Arguments, "--run") < 0) || continuation {
                 let followButtons = List[Blob]()
                 if continuation {
                     for command in []string{"pause", "resume"} {
@@ -117,25 +114,15 @@ data struct RunDetails {
                         }).Build())
                     }
                 }
-                children.Add(Label{Content: continuation ? "Continue saved work with a new time budget.": next.Command == "help" ? "Read recovery instructions before another attempt.": next.Command == "sync" ? "Review changes before synchronization.": "Check the current approval and permissions."}.Build())
+                children.Add(Label{Content: continuation ? "Continue saved work with a new time budget.": next.Command == "help" ? "Read recovery instructions before another attempt.": "Check the current approval and permissions."}.Build())
                 followButtons.Add((Button with{
-                    Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": next.Command == "sync" ? "Review synchronization": "Inspect authority",
+                    Label = continuation ? "Continue with a new budget": next.Command == "help" ? "Read failure help": "Inspect authority",
                     Disabled = Waiting,
                     Primary = Form == nil && continuation && lead < 0,
                     OnClick = () -> follow?.Invoke(next),
                 }).Build())
                 children.Add(ActionBar{Children: followButtons.ToArray()}.Build())
             }
-        }
-        let failure = String.Join("\n", run.Guidance, run.ErrorMessage, LastMessage)
-        if !finished && (failure.Contains("Tokate workflow failed.") || failure.Contains("GitHub could not start the Tokate workflow")) {
-            let recovery = NextAction{Arguments: []string{"tokate", "recover-request", run.Repo + "#" + run.Issue.ToString(), "--json"}}
-            children.Add(Label{Content: "Only an owner with repository write access can recover the pending request. Fix the workflow cause first."}.Build())
-            children.Add((Button with{
-                Label = "Owner: recover request",
-                Disabled = Waiting,
-                OnClick = () -> follow?.Invoke(recovery),
-            }).Build())
         }
         if let form = Form {
             children.Add(form)

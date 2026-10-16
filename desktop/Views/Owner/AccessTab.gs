@@ -4,7 +4,7 @@ import Goo
 import System
 import System.Collections.Generic
 
-/// Donor access: pending requests, then the donors with access and direct grants.
+/// Donor access: pending requests, then the donors with access.
 class AccessTab {
     private let owner OwnerService
 
@@ -21,34 +21,13 @@ class AccessTab {
                 page.Busy && page.Loader != nil ? page.Loader!!("Reading donor access"): EmptyMessage{Content: "Access could not be loaded. Refresh to try again.", Icon: "group"}.Build(),
             }}.Build()
         }
-        if state.Access.Loaded && state.Access.AccessSha == "" {
-            body.Add(
-                Panel{
-                    Children: []Blob{
-                        Row{
-                            Children: []Blob{
-                                Label{Content: "Access is not set up for this project"}.Build(),
-                                Spacer{}.Build(),
-                                (page.Button with{
-                                    Label = "Initialize access",
-                                    OnClick = () -> owner.ChangeAccess("init", ""),
-                                    Primary = true,
-                                    Tone = ButtonTone.Positive,
-                                    Disabled = !canWrite,
-                                }).Build(),
-                            },
-                        }.Build(),
-                    },
-                }.Build()
-            )
-        }
         if state.Access.Loaded {
             body.Add(
                 AccessRequests{
                     Requests: state.Access.Pending,
                     CanWrite: canWrite,
                     Button: page.Button,
-                    OnGrant: request -> owner.ChangeAccess("grant", request.Donor, request.Issue),
+                    OnApprove: request -> owner.ApproveAccess(request.Donor, request.Issue),
                     OnTrust: request -> owner.ChangeAccess("trust", request.Donor),
                 }.Build()
             )

@@ -59,11 +59,13 @@ func CommandTests() {
     Regression.Equal(Regression.Args(TokateCommands.IssueStatus("o/r", "42")), "status o/r#42", "coordination uses issue status")
     Regression.Equal(Regression.Args(TokateCommands.RunAction(RunAction.Claim, "/runs/1", AmendmentDraft.Initial)), "claim --run /runs/1 --yes", "saved claim resumes without inference")
     Regression.Equal(
-        Regression.Args(TokateCommands.Access("o/r", "grant", "alice", "42")),
-        "access grant alice o/r#42",
-        "access arguments"
+        Regression.Args(TokateCommands.Approve("o/r", "42", "main", "alice")),
+        "approve o/r#42 alice --base-branch main --yes",
+        "issue access uses positional login"
     )
     Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "list")), "access list o/r", "access list")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "trust", "alice")), "access trust alice o/r", "trust donor")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "history")), "access history o/r", "access history")
 
     let tricky = []string{"a\"b", "ü", "<b>&", "line\nbreak", "back\\slash"}
     Regression.Equal(Json.StringArray(tricky), NodeArray(tricky).ToJsonString(), "string arrays match the previous encoder")
@@ -115,6 +117,11 @@ func CommandTests() {
         Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}), false)),
         "init o/r --non-interactive",
         "setup preview does not apply"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.Init("o/r", SetupDraft.From(Policy.Empty with{Loaded = true}) with{Pin = true, CommandsChanged = true, ChecksChanged = true}, false)),
+        "init o/r --non-interactive --verification [] --required-checks [] --pin",
+        "cleared optional checks are sent as empty lists"
     )
 
     let amendment = AmendmentDraft.Initial with{

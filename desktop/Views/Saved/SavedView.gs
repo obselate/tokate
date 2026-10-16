@@ -23,7 +23,7 @@ class SavedView {
         let notice = page.Feedback
         let body = List[Blob]()
         if state.Selected {
-            body.AddRange(details.Build(page, notice))
+            body.AddRange(details.Build(page))
         } else {
             body.Add(
                 Row{

@@ -17,6 +17,7 @@ data struct PullRequest {
     var ReviewDecision string
     var Checks []CheckRun
     var Url string
+    var Conflicts bool
 
     prop Merged bool -> State == "MERGED"
 

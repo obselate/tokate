@@ -33,6 +33,7 @@ data struct Run {
     var Finish []string
     var Guidance string
     var Warning string
+    var OwnerRecovery bool
 
     prop Identity string -> Repo + " #" + Issue.ToString()
 

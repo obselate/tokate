@@ -89,7 +89,7 @@ class OwnerService {
         }
         Issues.Reset(reply.Value.Repository, IssueFilter.All)
         Set(Current with{
-            Open = true, Selected = nil, Project = reply.Value, Written = "", DoctorReport = "",
+            Open = true, Selected = nil, Project = reply.Value, Written = "", DoctorReport = "", CoordinatorRun = "",
             SetupPreviewed = false, SetupReport = SetupReport{},
         })
         activity.Activate("Refresh project")
@@ -127,7 +127,7 @@ class OwnerService {
         LoadAccess(() -> Refresh())
     }
 
-    func Close() -> Set(Current with{Open = false, DoctorReport = ""})
+    func Close() -> Set(Current with{Open = false, DoctorReport = "", CoordinatorRun = ""})
 
     func Refresh() {
         Set(Current with{Work = []IssueWork{}, Reviews = []DraftReview{}, Selected = nil})
@@ -136,12 +136,16 @@ class OwnerService {
 
     func CheckPrerequisites() {
         let repository = Current.Open ? Repository: ""
-        commands.Cli[string](
+        commands.Cli[OwnerHealthResult](
             Current.Open ? TokateCommands.Policy(Repository): TokateCommands.OwnerDoctor(),
-            PolicyCodec.OwnerHealth,
-            (reply Reply[string]) -> {
+            PolicyCodec.Health,
+            (reply Reply[OwnerHealthResult]) -> {
                 let outcome = reply.Outcome
-                Set(Current with{DoctorReport = !String.IsNullOrEmpty(reply.Value) ? reply.Value: outcome.Report})
+                let report = reply.Value.Report
+                Set(Current with{
+                    DoctorReport = !String.IsNullOrEmpty(report) ? report: outcome.Report,
+                    CoordinatorRun = reply.Value.CoordinatorRun,
+                })
                 if !commands.Failed(outcome) {
                     feedback.Show(repository == "" ? "Owner prerequisites checked.": "Owner repository health checked.", Tone.Done)
                 }
@@ -215,10 +219,10 @@ class OwnerService {
             TokateCommands.PullRequestCheck(Repository, pr),
             PullRequestCodec.Review,
             (reply Reply[DraftReview]) -> {
-                if commands.Failed(reply.Outcome) && !reply.Outcome.Pending {
+                if commands.Failed(reply.Outcome) && !reply.Outcome.Pending && !reply.Value.NeedsAmendment {
                     return
                 }
-                if String.IsNullOrEmpty(reply.Value.Receipt) && String.IsNullOrEmpty(reply.Value.Ci) {
+                if String.IsNullOrEmpty(reply.Value.Receipt) && String.IsNullOrEmpty(reply.Value.Ci) && !reply.Value.NeedsAmendment {
                     return
                 }
                 if reply.Value.Ci == DraftReview.NeedsApproval {
@@ -249,11 +253,19 @@ class OwnerService {
         )
     }
 
-    func ChangeAccess(operation string, donor string, issue string = "") -> Confirm(
+    func ApproveAccess(donor string, issue string) -> Confirm(
+        "Approve issue #" + issue + " for " + donor,
+        TokateCommands.Approve(Repository, issue, Current.Project.Branch, donor),
+        "Permit " + donor + " to claim issue #" + issue + " without trusting them for other issues." +
+            "\n\nThis replaces any earlier reservation or contribution authority for this issue.",
+        true, ButtonTone.Positive
+    )
+
+    func ChangeAccess(operation string, donor string) -> Confirm(
         AccessOperations.Title(operation, donor),
-        TokateCommands.Access(Repository, operation, donor, issue),
-        AccessOperations.Detail(operation, issue),
-        true, operation == "deny" || operation == "untrust" || operation == "revoke" ? ButtonTone.Danger: ButtonTone.Positive
+        TokateCommands.Access(Repository, operation, donor),
+        AccessOperations.Detail(operation),
+        true, operation == "deny" || operation == "untrust" ? ButtonTone.Danger: ButtonTone.Positive
     )
 
     private func Confirm(title string, arguments []string, detail string, access bool, tone ButtonTone) {
@@ -305,6 +317,8 @@ class OwnerService {
     }
 
     func SetEligibility(mode string) -> EditSetup(Current.Setup with{Eligibility = mode})
+
+    func SetPin(pin bool) -> EditSetup(Current.Setup with{Pin = pin})
 
     /// Allows or removes a harness with one provider. OMP opens its provider list, or removes all its
     /// providers. At least one pair stays allowed.
@@ -481,9 +495,8 @@ class OwnerService {
         dialogs.Ask(
             Confirmation{
                 Title: "Apply project setup?",
-                Text: Repository + "\n\nCreate or update the setup PR with the policy and pinned coordinator workflow. " +
-                    "Tokate also updates the Actions workflow allowlist and event policy, allows Actions to create and approve pull requests, " +
-                    "adds required checks to target-branch protection, and initializes the donor access record when missing." +
+                Text: Repository + "\n\nCreate or update the setup PR with the policy and coordinator workflow. " +
+                    "Tokate also updates the Actions workflow allowlist and event policy, and allows Actions to create and approve pull requests." +
                     "\n\nReview and merge the setup PR before approving work. Complete the reported manual steps. Existing checks are preserved unless you explicitly replaced them.",
                 ConfirmLabel: "Confirm", Heading: "",
                 Tone: ButtonTone.Positive,

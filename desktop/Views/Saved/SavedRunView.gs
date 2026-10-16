@@ -12,7 +12,7 @@ class SavedRunView {
         this.saved = saved
     }
 
-    func Build(page PageContext, notice Feedback) []Blob {
+    func Build(page PageContext) []Blob {
         let state = saved.Current
         let run = state.Run
         let amendment = state.Amendment
@@ -83,7 +83,6 @@ class SavedRunView {
                 Button: page.Button,
                 Narrow: page.NarrowContent,
                 Form: form,
-                LastMessage: notice.Message,
                 Waiting: state.Waiting,
                 OnAction: action -> saved.Act(action),
                 OnToggleAmendment: () -> saved.ToggleAmendment(),

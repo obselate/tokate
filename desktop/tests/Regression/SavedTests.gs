@@ -73,14 +73,14 @@ func SavedTests() {
     saved.Follow(continuation)
     Regression.Equal(dialogs.Current?.Text ?? "", Regression.Args(continuation.Arguments), "continuation confirmation preserves exact argv")
     dialogs.Dismiss()
-    for operation in []string{"authorize", "revoke"} {
-        let sync = NextAction{Arguments: []string{"tokate", "sync", "owner/repo#2", operation, "--json"}}
-        Regression.Check(!sync.NamesRun && RunActions.From([]NextAction{sync}, "published").Length == 0, "sync is not a saved-run action")
-        saved.Follow(sync)
-        Regression.Equal(dialogs.Current?.Text ?? "", Regression.Args(sync.Arguments), "sync confirmation preserves operation argv")
-        dialogs.Dismiss()
-    }
     Regression.Check(RunGuide.For("Initial donation failed", false).Main == nil, "failed inference is not restarted in the same attempt")
+    let conflict = SavedRun.Pending("/runs/conflict") with{Run = run, PullRequest = PullRequest{Conflicts: true}}
+    Regression.Equal(conflict.Status(), "Conflicts", "conflicts use the amendment guide")
+    Regression.Check(RunGuide.For(conflict.Status(), true).Main == RunAction.Amend, "conflicts offer normal amendment")
+    let recovery = RunCodec.Run(Json.Get(Regression.Fixture("envelope-pending.json"), "data"))
+    saved.Select(SavedRun.Pending("/runs/recovery") with{Run = recovery})
+    Regression.Check(recovery.OwnerRecovery && saved.Current.Actions.Length == 0, "failed coordinator has no donor action")
+    Regression.Equal(saved.Current.Chosen.Status(), "Owner recovery needed", "failed coordinator names the owner")
 
     saved.Select(SavedRun.Pending("/runs/b") with{Run = run})
     Regression.Check(

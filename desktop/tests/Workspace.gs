@@ -121,7 +121,7 @@ func WorkspaceFlow() {
     Script(
         bin,
         "tokate",
-        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason=''; extra=',\"commit\":\"PUBLISHED\",\"artifacts\":{\"checkout\":\"FIXTURE/checkout\"}'; if [ -e FIXTURE/waiting ]; then extra=\"$$extra\"',\"amendment\":{\"state\":\"requested\",\"previous\":\"PUBLISHED\",\"commit\":\"CORRECTION\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"FIXTURE/tokate/runs/amend\",\"--commit\",\"CORRECTION\",\"--time\",\"300s\",\"--summary\",\"/gone/summary.json\",\"--json\"]}'; fi;;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"$$extra}\"\n    ;;\n  *) data='{\"work\":[],\"access_status\":\"observed\",\"coordination\":{\"contribution\":{\"head\":\"CORRECTION\"}}}';;\n  esac;;\ndoctor) data='{\"scope\":\"repo\",\"checks\":[],\"policy\":{\"version\":3,\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) data='{\"access_sha\":\"existing\",\"members\":[],\"pending\":[]}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Setup PR includes the coordinator pin\\n' >&2\n  applied=false\n  for arg in \"$$@\"; do if [ \"$$arg\" = --yes ]; then applied=true; touch FIXTURE/applied; fi; done\n  data=\"{\\\"applied\\\":$$applied,\\\"changes\\\":[{\\\"change\\\":\\\"Setup PR\\\",\\\"old\\\":\\\"\\\",\\\"new\\\":\\\"Policy and coordinator pin\\\"}],\\\"manual\\\":[\\\"Review and merge the setup PR\\\"]}\"\n  if [ \"$$applied\" = true ]; then data=$${data%\\}}',\"pull_request\":\"https://github.com/owner/repo/pull/10\"}'; fi;;\napprove) touch FIXTURE/approved; data='{}';;\namend)\n  printf '%s\\n' \"$$@\" > FIXTURE/amend-args\n  echo amend >> FIXTURE/amend-calls\n  rm -f FIXTURE/waiting\n  for arg in \"$$@\"; do case \"$$arg\" in */summary.json) cp \"$$arg\" FIXTURE/amend-summary;; esac; done\n  data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\",\"owner/repo#%s-1\"]]}' \"$$1\" \"$$data\" \"$${issue:-42}\"\n"
+        "case \"$$1\" in\nstatus)\n  case \"$$2\" in\n  --run)\n    name=$${3##*/}\n    printf '%s\\n' \"$$3\" >> FIXTURE/saved-reads\n    if [ \"$$name\" = page-004 ]; then\n      touch FIXTURE/slow-started\n      trap 'exit 1' INT\n      while [ ! -e FIXTURE/release-page ]; do sleep .05; done\n    fi\n    case \"$$name\" in\n    claimed) state=claimed; issue=41; pr=0; reason='';;\n    failed) state=failed; issue=42; pr=0; reason=inference_failed;;\n    amend) state=published; issue=43; pr=3; reason=''; extra=',\"commit\":\"PUBLISHED\",\"artifacts\":{\"checkout\":\"FIXTURE/checkout\"}'; if [ -e FIXTURE/waiting ]; then extra=\"$$extra\"',\"amendment\":{\"state\":\"requested\",\"previous\":\"PUBLISHED\",\"commit\":\"CORRECTION\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"FIXTURE/tokate/runs/amend\",\"--commit\",\"CORRECTION\",\"--time\",\"300s\",\"--summary\",\"/gone/summary.json\",\"--json\"]}'; fi;;\n    merged) state=published; issue=44; pr=4; reason='';;\n    page-*) state=claimed; issue=50; pr=0; reason='';;\n    *) exit 1;;\n    esac\n    data=\"{\\\"run\\\":\\\"$$3\\\",\\\"repo\\\":\\\"owner/repo\\\",\\\"issue\\\":$$issue,\\\"state\\\":\\\"$$state\\\",\\\"pr\\\":$$pr,\\\"model\\\":\\\"gpt-6.1-sol\\\",\\\"effort\\\":\\\"high\\\",\\\"failure_reason\\\":\\\"$$reason\\\"$$extra}\"\n    ;;\n  *) data='{\"work\":[{\"issue\":42,\"state\":\"owner_review\",\"drafts\":[{\"pr\":7}],\"next\":{\"role\":\"owner\",\"action\":\"Tokate workflow failed. https://github.com/owner/repo/actions/runs/7\"}}],\"access_status\":\"observed\",\"coordination\":{\"contribution\":{\"head\":\"CORRECTION\"}}}';;\n  esac;;\ndoctor) data='{\"scope\":\"repo\",\"checks\":[{\"check\":\"coordinator\",\"status\":\"ok\",\"pin\":\"v0\",\"matches_cli\":true,\"version\":\"\",\"cli_version\":\"0.7.0\",\"message\":\"Coordinator follows stable-major releases at v0.\"}],\"policy\":{\"version\":3,\"eligibility\":\"trusted\",\"allowed_tools\":[{\"harness\":\"codex\",\"provider\":\"openai\"}],\"verification\":[[\"dotnet\",\"test\"]],\"required_checks\":[\"build\"],\"max_seconds\":3600}}';;\naccess) case \"$$2\" in grant|remove|init) exit 1;; esac; data='{\"access_sha\":\"\",\"members\":[{\"donor\":\"eve\",\"trusted\":true,\"denied\":true}],\"pending\":[{\"donor\":\"alice\",\"issue\":42},{\"donor\":\"eve\",\"issue\":42}]}';;\nchecks) data='{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"passed\",\"mergeable\":false,\"target_merge_required\":true}';;\ninit)\n  printf '%s\\n' \"$$@\" > FIXTURE/owner-args\n  printf 'Setup PR includes the coordinator pin\\n' >&2\n  applied=false\n  for arg in \"$$@\"; do if [ \"$$arg\" = --yes ]; then applied=true; touch FIXTURE/applied; fi; done\n  data=\"{\\\"applied\\\":$$applied,\\\"changes\\\":[{\\\"change\\\":\\\"Setup PR\\\",\\\"old\\\":\\\"\\\",\\\"new\\\":\\\"Policy and coordinator pin\\\"}],\\\"manual\\\":[\\\"Review and merge the setup PR\\\"]}\"\n  if [ \"$$applied\" = true ]; then data=$${data%\\}}',\"pull_request\":\"https://github.com/owner/repo/pull/10\"}'; fi;;\napprove) printf '%s\\n' \"$$@\" > FIXTURE/approve-args; touch FIXTURE/approved; data='{}';;\namend)\n  printf '%s\\n' \"$$@\" > FIXTURE/amend-args\n  echo amend >> FIXTURE/amend-calls\n  rm -f FIXTURE/waiting\n  for arg in \"$$@\"; do case \"$$arg\" in */summary.json) cp \"$$arg\" FIXTURE/amend-summary;; esac; done\n  data='{}';;\n*) data='{}';;\nesac\nprintf '{\"schema_version\":1,\"command\":\"%s\",\"exit_code\":0,\"status\":\"ok\",\"data\":%s,\"next_actions\":[[\"tokate\",\"work\",\"owner/repo#%s-1\"]]}' \"$$1\" \"$$data\" \"$${issue:-42}\"\n"
             .Replace("FIXTURE", fixture)
             .Replace("PUBLISHED", commits[0])
             .Replace("CORRECTION", commits[1])
@@ -231,6 +231,20 @@ func WorkspaceFlow() {
             File.ReadAllLines(Path.Combine(fixture, "saved-reads")).Length == reads.Length,
             "Page changes read cached runs again"
         )
+        let browsing = desktop.Saved.Current
+        let savedRun = Run.Empty with{Path = Path.Combine(storage, "amend"), Repo = "owner/repo", Issue = 43, State = "published", Pr = 3}
+        desktop.Saved.Select(SavedRun.Pending(savedRun.Path) with{Run = savedRun, PullRequest = PullRequest{State: "OPEN", Conflicts: true}, Refreshed = true})
+        Settle(host)
+        Require(FindText(adapter.Root, "Resolve the pull request conflicts"), "Conflicts have no amendment guidance")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Amend contribution") != nil, "Conflicts have no normal amendment action")
+        let recovery = savedRun with{Pr = 0, State = "claim_pending", OwnerRecovery = true}
+        desktop.Saved.Select(SavedRun.Pending(recovery.Path) with{Run = recovery, Refreshed = true})
+        Settle(host)
+        Require(FindText(adapter.Root, "The owner must re-run the workflow"), "Workflow failure does not name owner recovery")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Check reservation") == nil && Find(adapter.Root, AccessibilityRole.Button, "Amend contribution") == nil, "Workflow failure offers a donor action")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Refresh status") != nil, "Owner recovery cannot refresh status")
+        desktop.Saved.Current = browsing
+        desktop.Root.Refresh()
         Choose(host, window, adapter, "My project")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Refresh projects", enabled: true)
         Edit(window, host, adapter, "GitHub repository", "owner/repo")
@@ -278,7 +292,21 @@ func WorkspaceFlow() {
         Settle(host)
         Require(!File.Exists(Path.Combine(fixture, "approved")), "Approval ran before confirmation")
         Choose(host, window, adapter, "Go back")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Check PR #7", enabled: true)
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Re-run in Actions") != nil, "Failed coordinator has no Actions recovery")
+        Choose(host, window, adapter, "Check PR #7")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Check PR #7", enabled: true)
+        Require(FindText(adapter.Root, "Donor must amend"), "Conflicting target merge did not require donor amendment")
         Choose(host, window, adapter, "Back to issues")
+        Choose(host, window, adapter, "Access")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Approve #42 for alice", enabled: true)
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Initialize access") == nil, "Empty access ref requires initialization")
+        Require(Find(adapter.Root, AccessibilityRole.Button, "Approve #42 for eve") == nil && FindText(adapter.Root, "Denied"), "Denied donor request overrides deny")
+        Choose(host, window, adapter, "Approve #42 for alice")
+        Require(!File.Exists(Path.Combine(fixture, "approved")), "Issue access ran before confirmation")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Approve #42 for alice", enabled: true)
+        Require(File.ReadAllText(Path.Combine(fixture, "approve-args")).Contains("approve\nowner/repo#42\nalice\n--base-branch\nmain\n--yes"), "Issue access approval lost positional login")
         Choose(host, window, adapter, "Setup")
         Settle(host)
         Require(FindText(adapter.Root, "dotnet test"), "Existing verification command was lost")
@@ -292,6 +320,8 @@ func WorkspaceFlow() {
         )
         Choose(host, window, adapter, "Review setup")
         Require(Find(adapter.Root, AccessibilityRole.TextInput, "Local checkout") == nil, "Setup still asks for a checkout")
+        Activate(window, adapter, "Pin the coordinator to this release", AccessibilityRole.Checkbox)
+        Settle(host)
         Choose(host, window, adapter, "Preview setup")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Apply setup", enabled: true)
         Require(!File.Exists(Path.Combine(fixture, "applied")), "Preview applied configuration")
@@ -299,6 +329,7 @@ func WorkspaceFlow() {
         Require(!FindText(adapter.Root, "Setup PR includes the coordinator pin"), "Preview duplicated stderr diagnostics")
         let previewArgs = File.ReadAllText(Path.Combine(fixture, "owner-args"))
         Require(!previewArgs.Contains("--yes") && !previewArgs.Contains("--path"), "Preview arguments apply or require a checkout")
+        Require(previewArgs.Contains("--pin"), "Exact release option omitted the pin flag")
         Choose(host, window, adapter, "Apply setup")
         Choose(host, window, adapter, "Go back")
         Require(!File.Exists(Path.Combine(fixture, "applied")), "Cancel applied configuration")

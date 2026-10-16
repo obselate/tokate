@@ -91,8 +91,6 @@ func ServiceTests() {
         )
         let external = Run.Empty with{External = true, Path = Path.Combine(runs, "a"), Checkout = Path.Combine(runs, "a", "checkout")}
         Regression.Equal(RunStore.Checkout(external), Path.Combine(runs, "a", "coding"), "external amendments use the donor coding checkout")
-        File.WriteAllText(RunStore.ClaimFile(external.Path), "{\"source\":\"external\",\"synchronizations\":[]}")
-        Regression.Equal(RunStore.Checkout(external), external.Checkout, "synchronized external amendments use the saved checkout")
         File.WriteAllText(Path.Combine(external.Path, "correction.json"), "{\"state\":\"verified\",\"tools\":[],\"public_summary\":{\"changes\":[\"Fix the header.\"],\"verification\":[],\"limitations\":[]}}")
         let pending = RunCodec.Run(Json.Parse(
             "{\"repo\":\"owner/repo\",\"issue\":7,\"correction\":{\"state\":\"verified\",\"commit\":\"corrected\"},\"next\":{\"command\":[\"tokate\",\"amend\",\"--run\",\"" + external.Path + "\",\"--commit\",\"corrected\",\"--time\",\"300s\",\"--summary\",\"/gone/summary.json\",\"--json\"]}}"

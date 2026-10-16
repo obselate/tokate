@@ -40,6 +40,9 @@ data struct IssueWork {
     var ApprovalStatus string
     var NextAction string
 
+    prop CoordinatorFailed bool -> !String.IsNullOrEmpty(NextAction) && (
+        NextAction.Contains("workflow failed", StringComparison.OrdinalIgnoreCase) || NextAction.Contains("reruns the failed coordinator", StringComparison.OrdinalIgnoreCase)
+    )
     prop NeedsApproval bool -> ApprovalStatus == "stale"
 }
 
@@ -48,6 +51,7 @@ data struct DraftReview {
     var Pr string
     var Receipt string
     var Ci string
+    var NeedsAmendment bool
 
     prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" ? Tone.Wait: Tone.Fail
 
@@ -95,6 +99,7 @@ data struct SetupDraft {
     var Tools string
     var Eligibility string
     var Minutes string
+    var Pin bool
     var CommandsChanged bool
     var ChecksChanged bool
     var PermissionsChanged bool
@@ -173,6 +178,11 @@ data struct SetupReport {
     var PullRequest string
 }
 
+data struct OwnerHealthResult {
+    var Report string
+    var CoordinatorRun string
+}
+
 /// Everything the owner page shows. Text typed into the setup editors lives in their components.
 data struct OwnerState {
     var Input string
@@ -198,6 +208,7 @@ data struct OwnerState {
     var SetupPreviewed bool
     var SetupReport SetupReport
     var DoctorReport string
+    var CoordinatorRun string
 
     prop Browsing bool -> Open && Tab == OwnerTab.Contributions && Selected == nil
 
@@ -261,16 +272,15 @@ class Eligibility {
 
         func Label(mode string) string -> mode == "open" ? "Everyone": "Trusted donors"
 
-        func Detail(mode string) string -> mode == "open" ? "All donors not denied.": "Donors that you trust."
+        func Detail(mode string) string -> mode == "open" ? "Anyone not denied": "Trusted donors or donors approved for an issue"
     }
 }
 
 class AccessOperations {
     shared {
-        func Title(operation string, donor string) string -> operation == "init" ? "Initialize donor access": operation + " " + donor
+        func Title(operation string, donor string) string -> operation + " " + donor
 
-        func Detail(operation string, issue string) string -> operation == "trust" ?
-        "Permit this donor to claim issues with trusted eligibility.": operation == "grant" ?
-        "Permit this donor to claim issue #" + issue + ".": "Change this project's donor access."
+        func Detail(operation string) string -> operation == "trust" ?
+        "Permit this donor to claim issues with trusted eligibility.": "Change this project's donor access."
     }
 }
