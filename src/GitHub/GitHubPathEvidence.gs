@@ -79,18 +79,32 @@ internal class GitHubPathEvidence {
             Directory.CreateDirectory(checkout)
             try {
                 Commands.Git(checkout, "init", "--quiet", "--bare")
-                Commands.Git(
+                let fetched = Commands.GitResult(
                     checkout,
-                    "fetch",
-                    "--quiet",
-                    "--filter=blob:none",
-                    "--no-tags",
-                    "--no-recurse-submodules",
-                    "--",
-                    "https://github.com/" + RepositoryIdentity.Repo(fork) + ".git",
-                    RepositoryIdentity.CommitSha(head)
+                    []string{
+                        "fetch",
+                        "--quiet",
+                        "--filter=blob:none",
+                        "--no-tags",
+                        "--no-recurse-submodules",
+                        "--",
+                        "https://github.com/" + RepositoryIdentity.Repo(fork) + ".git",
+                        RepositoryIdentity.CommitSha(head)
+                    }
                 )
-                Commands.Git(checkout, "merge-base", "--is-ancestor", RepositoryIdentity.CommitSha(receipt), head)
+                if fetched.Code != 0 {
+                    throw CliFailure(
+                        "evidence_pending",
+                        "PR head is not yet available for verification. Wait for GitHub to expose the pushed head, then run tokate checks again."
+                    )
+                }
+                if Commands.GitResult(
+                    checkout,
+                    []string{"merge-base", "--is-ancestor", RepositoryIdentity.CommitSha(receipt), head}
+                )
+                    .Code != 0 {
+                    throw CliFailure("stale_approval", "Later PR commits need owner review and a verified amendment")
+                }
                 var previous = receipt
                 for merge in Commands.Git(checkout, "rev-list", "--first-parent", "--reverse", receipt + ".." + head)
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries) {

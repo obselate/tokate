@@ -52,51 +52,49 @@ internal class Publication {
             )
         }
 
-        internal func Match(run Data, pull JsonElement, expectedReceipt JsonElement) {
-            let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
-            let body = J.Text(pull, "body")
+        internal func Match(run Data, pull JsonElement, expectedReceipt JsonElement, newIntent bool = false) {
             let failure = "interrupted_publication: physical PR differs from exact saved run/head/receipt"
-            let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
-
-            if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
-                throw CliFailure("invalid_state", failure)
-            }
-
-            let comparable = Dictionary[string, Object?]()
-
-            for field in receipt.EnumerateObject() {
-                comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
-            }
-
-            if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
-                body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) {
-                throw CliFailure("invalid_state", failure)
-            }
-
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
-
-            if J.Text(head, "sha") != run.Text("commit") || J.Text(head, "ref") != run.Text("branch") ||
-                !RepositoryIdentity
-                .SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
-                throw CliFailure("invalid_state", failure)
-            }
-
-            let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
             let mergedAt = J.Get(pull, "merged_at").ValueKind
-
-            if J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
-                baseRepo,
+            if J.Text(head, "ref") != run.Text("branch") || !RepositoryIdentity.SameRepo(
+                J.Text(J.Get(head, "repo"), "full_name"),
+                run.Text("head_repo")
+            ) ||
+                J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
+                J.Text(J.Get(base, "repo"), "full_name"),
                 run.Text("repo")
             ) ||
                 J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) ||
-                J.Number(pull, "number") < 1 {
+                J.Number(pull, "number") < 1 || J.Get(J.Get(pull, "user"), "id").ToString() != J.Get(
+                run.Element(),
+                "donor_id"
+            )
+                .ToString() {
+                throw CliFailure("invalid_state", failure)
+            }
+            if newIntent {
+                return
+            }
+            let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
+            let body = J.Text(pull, "body")
+            let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+            if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
+                throw CliFailure("invalid_state", failure)
+            }
+            let comparable = Dictionary[string, Object?]()
+            for field in receipt.EnumerateObject() {
+                comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
+            }
+            if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
+                body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) ||
+                J.Text(head, "sha") != J.Text(expectedReceipt, "head") {
                 throw CliFailure("invalid_state", failure)
             }
         }
 
-        internal func Find(run Data, expectedReceipt JsonElement) JsonElement {
+        internal func Find(run Data, expectedReceipt JsonElement, newIntent bool = false) JsonElement {
             let pulls = Pulls(run)
 
             if pulls.Count > 1 {
@@ -107,25 +105,88 @@ internal class Publication {
                 return JsonElement{}
             }
 
-            Match(run, pulls[0], expectedReceipt)
+            Match(run, pulls[0], expectedReceipt, newIntent)
 
             return pulls[0]
         }
 
-        internal func SavePr(directory string, run Data, pull JsonElement, maintainerEdits bool = false) {
-            if maintainerEdits && !J.Bool(pull, "maintainer_can_modify") {
-                let updated = GitHub.Api(
+        internal func PullRequest(run Data, title string, body string, draft bool, maintainerEdits bool) Dictionary[
+            string,
+            Object?
+        ] {
+            let fields = map[string, Object?]{
+                "title": title,
+                "body": body,
+                "head": run.Text("head_repo").Split('/')[0] + ":" + run.Text("branch"),
+                "base": run.Text("base_branch"),
+                "draft": draft
+            }
+            if !RepositoryIdentity.SameRepo(run.Text("head_repo"), run.Text("repo")) {
+                fields["maintainer_can_modify"] = maintainerEdits
+            }
+            return fields
+        }
+
+        internal func Prepare(run Data, record JsonElement, request JsonElement, newIntent bool = false) JsonElement {
+            let receipt = ContributionReceipt.Publication(
+                run.Text("repo"),
+                run.Number("issue"),
+                request,
+                run.Text("id"),
+                run.Text("donor")
+            )
+            let body = PrBody.Coordinated(
+                record,
+                J.Get(request, "metadata"),
+                run.Text("donor"),
+                receipt,
+                "<!-- tokate-v2:" + run.Text("id") + " -->"
+            )
+            RepositoryAccess.ValidateFork(
+                run.Text("repo"),
+                J.Get(request, "metadata"),
+                J.Get(run.Element(), "donor_id")
+            )
+            let expected = J.Parse(J.Write(receipt))
+            var pull = Find(run, expected, newIntent)
+            if pull.ValueKind == JsonValueKind.Undefined {
+                pull = GitHub.Api(
+                    "repos/" + run.Text("repo") + "/pulls",
+                    PullRequest(
+                        run,
+                        (RequestData.Incomplete(J.Get(request, "metadata")) ? "Incomplete: ": "") + J.Text(
+                            J.Get(record, "issue"),
+                            "title"
+                        ),
+                        body,
+                        true,
+                        Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits
+                    )
+                )
+                Match(run, pull, expected)
+            }
+            if newIntent && J.Text(pull, "body") != body {
+                pull = GitHub.Api(
                     "repos/" + run.Text("repo") + "/pulls/" + J.Number(pull, "number").ToString(),
-                    map[string, Object?]{"maintainer_can_modify": true},
+                    map[string, Object?]{"body": body},
                     "PATCH"
                 )
-                if !J.Bool(updated, "maintainer_can_modify") {
-                    throw CliFailure("invalid_state", "PR did not enable policy maintainer edits")
-                }
+                Match(run, pull, expected)
             }
+            let metadata = Dictionary[string, Object?]()
+            for field in J.Get(request, "metadata").EnumerateObject() {
+                metadata[field.Name] = field.Value
+            }
+            metadata["pr"] = J.Number(pull, "number")
+            let fields = J.Select(request, "uuid,expected,approval,action")
+            fields["metadata"] = metadata
+            return J.Parse(J.Write(fields))
+        }
+
+        internal func SavePr(directory string, run Data, pull JsonElement) {
             run.Fields["pr"] = J.Number(pull, "number")
             run.Fields["pr_url"] = J.Text(pull, "html_url")
-            run.Fields["state"] = "published"
+            run.Transition("published")
 
             run.Save(directory)
 

@@ -125,7 +125,7 @@ internal class Gratis {
         internal func Outcome(directory string, checkout string, run Data, budget RuntimeBudget) bool {
             let refusal = Artifact(checkout, "tokate-refusal.txt")
             if refusal != "" {
-                run.Fields["state"] = "refused"
+                run.Transition("refused")
                 run.Fields["refusal"] = refusal
             } else {
                 let home = Environment.GetEnvironmentVariable("HOME") ?? ""
@@ -166,7 +166,7 @@ internal class Gratis {
                 if budget.Git(checkout, "status", "--porcelain") != "" {
                     return false
                 }
-                run.Fields["state"] = "skipped"
+                run.Transition("skipped")
             }
             run.Fields.Remove("failure_stage")
             run.Fields.Remove("failure_reason")
@@ -200,10 +200,9 @@ internal class Gratis {
                 donor +
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
-            let marker = "<!-- tokate-receipt:" + J.Write(receipt) + " -->"
-            let report = PrBody.Report(
-                PublicSummary.Report(summary, "Tokate ran no repository checks. Checks below are donor-reported.")
-            )
+            let receiptText = J.Write(receipt)
+            let marker = "<!-- tokate-receipt:" + receiptText + " -->"
+            let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
             let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
                 report +
                 "\n\n" +
@@ -212,15 +211,13 @@ internal class Gratis {
                 id +
                 " -->\n" +
                 marker
-            let pullRequest = map[string, Object?]{
-                "title": run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"):
-                run.Text("gratis_title"),
-                "body": body,
-                "head": donor + ":" + run.Text("branch"),
-                "base": run.Text("base_branch"),
-                "draft": !run.Flag("ready"),
-                "maintainer_can_modify": true
-            }
+            let pullRequest = Publication.PullRequest(
+                run,
+                run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"): run.Text("gratis_title"),
+                body,
+                !run.Flag("ready"),
+                true
+            )
             let findings = run.Text("findings")
             let discussionTitle = "Tokate donation findings"
             let discussionBody = findings == "" ? "": findings + "\n\n" + attribution + "\n\n" + marker
@@ -293,7 +290,7 @@ internal class Gratis {
                 Require(url != "", "Discussion publication failed")
                 preview["applied"] = true
                 run.Fields["discussion_url"] = url
-                run.Fields["state"] = "published"
+                run.Transition("published")
             } catch (error Exception) when !(error is CommandInterrupted) {
                 run.Fields["discussion_error"] = error.Message
                 if run.Number("pr") == 0 {

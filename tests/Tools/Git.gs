@@ -106,10 +106,10 @@ internal partial class Fixture {
             }
         }
         let push = command.IndexOf("push")
-        let correctionPath = Path.Combine(
-            Path.GetDirectoryName(Directory.GetCurrentDirectory()) ?? "",
-            "correction.json"
-        )
+        let runDirectory = Path.GetDirectoryName(Directory.GetCurrentDirectory()) ?? ""
+        let runPath = Path.Combine(runDirectory, "run.json")
+        let amendment = File.Exists(runPath) ? Check.Text(Check.Json(File.ReadAllText(runPath))["amendment"]): ""
+        let correctionPath = Path.Combine(runDirectory, "amendments", amendment, "run.json")
         if Check.Text(State["mode"]).StartsWith("change_checked_") && command.Contains("rev-parse") && command.Contains(
             "HEAD"
         ) &&

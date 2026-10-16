@@ -166,6 +166,13 @@ internal class SavedRuns {
                             )
                         }
 
+                        reason = "Cannot load this run. Inspect it with tokate status --run " + directory + "."
+                        let correction = Path.Combine(directory, "correction.json")
+                        if File.Exists(correction) {
+                            RunStorage.ControlFile(directory, "correction.json")
+                            Data.LegacyCorrection(correction)
+                        }
+
                         let row = SavedRun(directory, value, root == RunStorage.Root())
                         Rows.Add(row)
 

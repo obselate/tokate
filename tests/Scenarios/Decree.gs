@@ -438,7 +438,10 @@ internal class DecreeFlow : IDisposable {
                 let publication = coordination.PublishRequest(claim, commit)
                 let result = coordination.Coordinate(coordination.Event(publication), 1)
                 Check.Contains(result.Error, "changes approved root DECREE.md")
-                test.Flow.NoPr()
+                Check.That(
+                    coordination.State()["state"]?["contribution"] == nil,
+                    "DECREE edit gained publication authority"
+                )
                 test.Flow.NoInference()
             }
         }

@@ -556,6 +556,13 @@ internal class AmendmentFlow {
         private func V2(binary string, mode string = "", native bool = false, modelPolicy string = "") {
             using let flow = CoordinationFixture(binary)
             let run = PublishedContribution.PublishRun(flow, native, modelPolicy)
+            if native {
+                flow.Flow.Reload()
+                let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
+                pull["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")
+                pull["maintainer_can_modify"] = JsonValue.Create(false)
+                flow.Flow.Save()
+            }
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let contribution = Check.Text(flow.State()["state"]?["contribution"])
             Review(flow.Flow)
@@ -998,7 +1005,7 @@ internal class AmendmentFlow {
             ): ""
             let prepared = Check.Envelope(flow.Call([]string{"amend", "--run", run, "--json"}), "amend", "ok")
             Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Preparation rewrote saved work")
-            Check.That(!File.Exists(Path.Combine(run, "correction.json")), "Preparation created an attempt")
+            Check.That(Read(run)["amendment"] == nil, "Preparation created an attempt")
             let archive = Path.Combine(run, "original-evidence")
             Check.That(
                 Check.Text(prepared["data"]?["artifacts"]?["original_evidence"]) == archive,
@@ -1146,8 +1153,8 @@ internal class AmendmentFlow {
             let commit = Correct(flow, run)
             let tree = flow.Git("-C", checkout, "rev-parse", "HEAD^{tree}")
             ReworkAndSubmit(flow, run, commit, seconds: "120")
-            let correction = Read(run, "correction.json")
-            let patch = Path.Combine(run, "correction-" + Check.Text(correction["uuid"]), "candidate.patch")
+            let correction = Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")
+            let patch = Path.Combine(run, "amendments", Check.Text(correction["commit"]), "candidate.patch")
             Reconstruct(flow, run, patch, tree, "corrected-replay")
             Check.That(Check.Text(correction["tree"]) == tree, "Correction bound another binary tree")
             flow.Git("-C", checkout, "config", "diff.renames", "false")
@@ -1201,16 +1208,62 @@ internal class AmendmentFlow {
                 Check.Text(rejected["data"]?["run_state"]?["correction"]?["state"]) == "failed",
                 "JSON correction lost failed attempt"
             )
-            let attempt = Read(run, "correction.json")
+            let attempt = Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")
             Check.That(
                 attempt["verification"]?.AsArray().Count == 2,
                 "Correction skipped an original owner command after failure"
             )
             Check.Contains(Check.Text(attempt["verification"]?[1]?["output"]), "second-original-check")
-            let savedAttempt = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let savedAttempt = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
+            let legacyCorrection = Path.Combine(run, "correction.json")
+            let legacyArtifacts = Path.Combine(run, "correction-" + Check.Text(attempt["uuid"]))
+            Directory.Move(Path.Combine(run, "amendments", failing), legacyArtifacts)
+            File.Move(Path.Combine(legacyArtifacts, "run.json"), Path.Combine(legacyArtifacts, "record.json"))
+            let patch = File.ReadAllText(Path.Combine(legacyArtifacts, "candidate.patch"))
+            let earlier = attempt.DeepClone()
+            let earlierCommit = String('b', 40)
+            let earlierId = Guid.NewGuid().ToString("D")
+            earlier["commit"] = JsonValue.Create(earlierCommit)
+            earlier["uuid"] = JsonValue.Create(earlierId)
+            earlier["id"] = JsonValue.Create(earlierId)
+            let earlierArtifacts = Path.Combine(run, "correction-" + earlierId)
+            Directory.CreateDirectory(earlierArtifacts)
+            File.WriteAllText(Path.Combine(earlierArtifacts, "record.json"), earlier.ToJsonString())
+            File.WriteAllText(Path.Combine(earlierArtifacts, "candidate.patch"), "earlier-patch")
+            let parent = Read(run)
+            parent.AsObject().Remove("amendment")
+            File.WriteAllText(Path.Combine(run, "run.json"), parent.ToJsonString())
+            File.WriteAllText(legacyCorrection, attempt.ToJsonString())
+            Check.Envelope(ReworkAndSubmit(flow, run, failing, 1, json: true), "amend", "error", "verification_failed")
+            Check.That(
+                !File.Exists(legacyCorrection) && !Directory.Exists(legacyArtifacts) && Check.Text(
+                    Read(run)["amendment"]
+                ) == failing,
+                "Leased amendment did not migrate the legacy correction"
+            )
+            Check.That(
+                JsonNode.DeepEquals(Read(run, "amendments/" + failing + "/run.json"), attempt) && File.ReadAllText(
+                    Path.Combine(run, "amendments", failing, "candidate.patch")
+                ) == patch,
+                "Migration changed correction data or artifacts"
+            )
+            Check.That(
+                !Directory.Exists(earlierArtifacts) && JsonNode.DeepEquals(
+                    Read(run, "amendments/" + earlierCommit + "/run.json"),
+                    earlier
+                ) &&
+                    File.ReadAllText(
+                    Path.Combine(run, "amendments", earlierCommit, "candidate.patch")
+                ) == "earlier-patch",
+                "Migration lost an earlier correction attempt"
+            )
             ReworkAndSubmit(flow, run, failing, 1)
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == savedAttempt,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == savedAttempt,
                 "Failed correction retried implicitly"
             )
             let commit = Correct(flow, run)
@@ -1235,7 +1288,10 @@ internal class AmendmentFlow {
                 File.ReadAllText(Path.Combine(run, "original-evidence/verification.json")) == failed,
                 "Original failed checks replaced"
             )
-            Check.That(Directory.GetDirectories(run, "correction-*").Length == 2, "Failed attempt evidence lost")
+            Check.That(
+                Directory.GetDirectories(Path.Combine(run, "amendments")).Length == 3,
+                "Failed attempt evidence lost"
+            )
         }
 
         private func OriginalTimeout(binary string) {
@@ -1264,8 +1320,11 @@ internal class AmendmentFlow {
                 "Commit changed the original candidate patch"
             )
             Rework(flow, run, commit)
-            Once(flow)
-            Check.That(Check.Text(Read(run, "correction.json")["tree"]) == tree, "Correction verified a different tree")
+            Once(flow, 1)
+            Check.That(
+                Check.Text(Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["tree"]) == tree,
+                "Correction verified a different tree"
+            )
             for path in[]string{"candidate.patch", "original-evidence/candidate.patch"} {
                 Check.That(File.ReadAllText(Path.Combine(run, path)) == original, "Original candidate was replaced")
             }
@@ -1325,8 +1384,10 @@ internal class AmendmentFlow {
                 } else {
                     Check.Contains(ReworkAndSubmit(flow, run, commit, 1).Error, "physical PR")
                     Check.That(
-                        !File.Exists(Path.Combine(run, "correction.json")) ||
-                            Read(run, "correction.json")["verification"] == nil,
+                        Read(run)["amendment"] == nil ||
+                            Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")[
+                            "verification"
+                        ] == nil,
                         "Published work reached checks"
                     )
                 }
@@ -1396,14 +1457,18 @@ internal class AmendmentFlow {
                 ) == "Amend requires a clean checkout at the declared exact commit",
                 "JSON correction lost the exact checkout reason"
             )
-            let current = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let current = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
             flow.Reload()
             let issue = flow.State["issue"] ?? throw Exception("Missing issue")
             issue["labels"] = JsonArray()
             flow.Save()
             ReworkAndSubmit(flow, run, commit, 1)
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == current,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == current,
                 "Revocation changed correction progress"
             )
             Check.That(
@@ -1499,7 +1564,9 @@ internal class AmendmentFlow {
                     )
                 }
                 Check.That(
-                    Read(protectedRun, "correction.json")["verification"] == nil,
+                    Read(protectedRun, "amendments/" + Check.Text(Read(protectedRun)["amendment"]) + "/run.json")[
+                        "verification"
+                    ] == nil,
                     "Refused correction reached verification"
                 )
                 Check.That(
@@ -1519,7 +1586,11 @@ internal class AmendmentFlow {
             let commit = Correct(flow, run)
             Check.Contains(ReworkAndSubmit(flow, run, commit, 1).Error, "candidate_changed")
             Check.That(
-                Check.Text(Read(run, "correction.json")["verification"]?[0]?["exit_code"]) == "0",
+                Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]?[0]?[
+                        "exit_code"
+                    ]
+                ) == "0",
                 "Expected check to pass before exact-candidate refusal"
             )
             Once(flow)
@@ -1551,7 +1622,7 @@ internal class AmendmentFlow {
             Prepared(flow, run)
             let commit = Correct(flow, run)
             Check.Contains(Rework(flow, run, commit, 1, seconds: "1").Error, "verification_failed")
-            let failed = Read(run, "correction.json")
+            let failed = Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")
             Check.That(
                 failed["verification"]?.AsArray().Count == 2,
                 "Interrupted verification lost prior or active check results"
@@ -1565,16 +1636,23 @@ internal class AmendmentFlow {
                 !Directory.Exists(Path.Combine(run, "checkout/build-output")),
                 "Interrupted correction build output retained"
             )
-            let evidence = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let evidence = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
             Rework(flow, run, commit, 1, seconds: "1")
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == evidence,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == evidence,
                 "Interrupted verification retried implicitly"
             )
             let corrected = Correct(flow, run)
             Rework(flow, run, corrected)
-            Check.That(Directory.GetDirectories(run, "correction-*").Length == 2, "Interrupted attempt evidence lost")
-            Once(flow)
+            Check.That(
+                Directory.GetDirectories(Path.Combine(run, "amendments")).Length == 2,
+                "Interrupted attempt evidence lost"
+            )
+            Once(flow, 1)
         }
 
         private func ChangedCandidate(binary string) {
@@ -1593,7 +1671,7 @@ internal class AmendmentFlow {
                 flow.Reload()
                 flow.Mode(mode)
                 Check.Contains(Rework(flow, run, commit, 1).Error, "candidate_changed")
-                let correction = Read(run, "correction.json")
+                let correction = Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")
                 Check.That(
                     Check.Text(correction["commit"]) == commit && Check.Text(correction["tree"]) == tree,
                     "Candidate binding changed during verification"
@@ -1615,19 +1693,23 @@ internal class AmendmentFlow {
             flow.Call([]string{"work", "--run", run}, 1)
             let head = flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD")
             Check.Contains(Rework(flow, run, head, 1).Error, "original-evidence")
-            Check.That(!File.Exists(Path.Combine(run, "correction.json")), "Missing archive accepted a candidate")
+            Check.That(Read(run)["amendment"] == nil, "Missing archive accepted a candidate")
             Prepared(flow, run)
             let commit = Correct(flow, run)
             flow.Mode("push_fail")
             Rework(flow, run, commit, 1)
             flow.Mode("")
-            let evidence = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let evidence = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
             let archive = Path.Combine(run, "original-evidence")
             let held = Path.Combine(run, "held-evidence")
             Directory.Move(archive, held)
             Check.Contains(Rework(flow, run, commit, 1).Error, "original-evidence")
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == evidence,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == evidence,
                 "Missing archive accepted a candidate"
             )
             Check.That(!Directory.Exists(archive), "Missing archive was silently reconstructed")
@@ -1643,12 +1725,14 @@ internal class AmendmentFlow {
             File.AppendAllText(reportPath, "Archive was changed\n")
             Check.Contains(Rework(flow, run, commit, 1).Error, "archive changed")
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == evidence,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == evidence,
                 "Changed archive accepted a candidate"
             )
             File.WriteAllText(reportPath, report)
             Rework(flow, run, commit)
-            Once(flow)
+            Once(flow, 1)
         }
 
         private func AuthorityChanges(binary string) {
@@ -1718,7 +1802,9 @@ internal class AmendmentFlow {
         }
 
         private func ManagedRefusals(flow CoordinationFixture, run string, commit string) {
-            let saved = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let saved = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
             let baselineComment = flow.Comment
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for change in[]string{"expiry", "revocation", "identity", "attempt"} {
@@ -1747,7 +1833,9 @@ internal class AmendmentFlow {
                 }
                 Rework(flow.Flow, run, commit, 1)
                 Check.That(
-                    File.ReadAllText(Path.Combine(run, "correction.json")) == saved,
+                    File.ReadAllText(
+                        Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                    ) == saved,
                     "Refused recovery rewrote correction"
                 )
                 flow.Flow.Call([]string{"submit", "--run", run}, 1)
@@ -1761,6 +1849,31 @@ internal class AmendmentFlow {
         }
 
         private func Managed(binary string) {
+            {
+                using let rejected = CoordinationFlow(binary)
+                rejected.Initialize()
+                let saved = ManagedRun(rejected, "")
+                rejected.Flow.Call([]string{"submit", "--run", saved}, 8)
+                var previous = Read(saved, "request.json")
+                rejected.Flow.Call([]string{"amend", "--run", saved})
+                for text in[]string{"First corrected intent\n", "Second corrected intent\n"} {
+                    rejected.Lifecycle("renew")
+                    rejected.Coordinate(rejected.Event(previous), 1)
+                    let head = Correct(rejected.Flow, saved, text)
+                    Rework(rejected.Flow, saved, head)
+                    rejected.Flow.Reload()
+                    let request = Check.PostedRequest(rejected.Flow.State)
+                    Check.That(
+                        Check.Text(request["uuid"]) != Check.Text(previous["uuid"]),
+                        "Correction reused rejected intent"
+                    )
+                    previous = request
+                }
+                rejected.Coordinate(rejected.Event(previous))
+                rejected.Flow.Call([]string{"submit", "--run", saved})
+                Once(rejected.Flow, 1)
+                rejected.Flow.Receipt("owner/project#10", owner: true)
+            }
             using let flow = CoordinationFlow(binary)
             flow.Initialize()
             flow.Flow.ProtectedPolicy()
@@ -1779,15 +1892,19 @@ internal class AmendmentFlow {
                 "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-4-6\",\"effort\":\"unknown\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]"
             )
             Rework(flow.Flow, run, commit, tools: flow.Tools)
-            Once(flow.Flow)
+            Once(flow.Flow, 1)
             Check.That(Read(run)["public_summary"] == nil, "Recovery without a summary retained the original summary")
             Check.That(Read(run)["summary_patch_sha256"] == nil, "Recovery retained the original summary patch binding")
             Check.That(Read(run)["publication_uuid"] == nil, "Recovery posted a v2 publication")
             Check.That(Check.Text(Read(run)["tools"]) == originalTools, "Correction replaced original source/tools")
-            let results = Check.Text(Read(run, "correction.json")["verification"])
+            let results = Check.Text(
+                Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+            )
             Rework(flow.Flow, run, commit, tools: flow.Tools)
             Check.That(
-                Check.Text(Read(run, "correction.json")["verification"]) == results,
+                Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                ) == results,
                 "Repeated v2 correction reran checks"
             )
             flow.Flow.Call([]string{"submit", "--run", run}, 8)
@@ -1826,7 +1943,9 @@ internal class AmendmentFlow {
                 "Submit silently rewrote reservation revision"
             )
             Check.That(
-                Check.Text(Read(run, "correction.json")["verification"]) == results,
+                Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                ) == results,
                 "v2 publication replay reran checks"
             )
             flow.Flow.Receipt("owner/project#10", owner: true)
@@ -1867,7 +1986,9 @@ internal class AmendmentFlow {
             )
             Check.That(Check.Text(Read(run)["state"]) == "generated", "Inconsistent response published a run")
             Check.That(
-                Check.Text(Read(run, "correction.json")["publication"]?["stage"]) == "request_pending",
+                Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["publication"]?["stage"]
+                ) == "request_pending",
                 "Inconsistent successful POST was recorded as requested"
             )
             flow.Flow.Reload()
@@ -1896,19 +2017,26 @@ internal class AmendmentFlow {
                     "Response recovery changed " + field
                 )
             }
-            Once(flow.Flow)
+            Once(flow.Flow, 1)
         }
 
         private func PublicationOutcomes(flow CoordinationFixture, run string) {
             flow.Flow.Reload()
             flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
+            flow.Flow.Reload()
+            let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
+            Check.That(Check.Text(pull["user"]?["id"]) == "123", "Recorded PR lost donor authorship")
+            pull["maintainer_can_modify"] = JsonValue.Create(false)
+            flow.Flow.Save()
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for fault in[]string{"duplicate", "binding", "outcome"} {
                 baseline.Restore()
                 flow.Flow.Reload()
                 let state = flow.State()["state"] ?? throw Exception("Missing published state")
                 let outcomes = state["outcomes"]?.AsArray() ?? throw Exception("Missing outcomes")
-                let uuid = Check.Text(Read(run, "correction.json")["publication_uuid"])
+                let uuid = Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["publication_uuid"]
+                )
                 var recorded JsonNode? = nil
                 for row in outcomes {
                     if Check.Text(row["uuid"]) == uuid {
@@ -1928,7 +2056,9 @@ internal class AmendmentFlow {
                     }
                 }
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
-                let checks = Check.Text(Read(run, "correction.json")["verification"])
+                let checks = Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                )
                 flow.Flow.Reload()
                 flow.Flow.State["coordination_state_override"] = JsonValue.Create(state.ToJsonString())
                 flow.Flow.Save()
@@ -1943,7 +2073,9 @@ internal class AmendmentFlow {
                 flow.Flow.Call([]string{"submit", "--run", run})
                 Check.That(Check.Text(Read(run)["state"]) == "published", "Exact recorded outcome was not recovered")
                 Check.That(
-                    Check.Text(Read(run, "correction.json")["verification"]) == checks,
+                    Check.Text(
+                        Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                    ) == checks,
                     "Outcome recovery reran checks"
                 )
                 flow.Flow.Reload()
@@ -1966,8 +2098,14 @@ internal class AmendmentFlow {
                 flow.Flow.Reload()
                 flow.Flow.Mode(mode)
                 Rework(flow.Flow, run, commit, 1)
-                let intent = Check.Text(Read(run, "correction.json")["publication"]?["request"])
-                let checks = Check.Text(Read(run, "correction.json")["verification"])
+                let intent = Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["publication"]?[
+                        "request"
+                    ]
+                )
+                let checks = Check.Text(
+                    Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                )
                 flow.Flow.Mode("")
                 flow.Flow.Call([]string{"submit", "--run", run}, mode == "request_fail_before_write" ? 1: 8)
                 flow.Flow.Reload()
@@ -1975,12 +2113,26 @@ internal class AmendmentFlow {
                     Check.Text(flow.Flow.State["request_count"]) == (mode == "request_fail_before_write" ? "": "1"),
                     "Interrupted submit duplicated a request"
                 )
+                let preparedRequest = Check.Json(intent)
+                (preparedRequest["metadata"] ?? throw Exception("Missing publication metadata"))[
+                    "pr"
+                ] = JsonValue.Create(10)
                 Check.That(
-                    Check.Text(Read(run, "correction.json")["publication"]?["request"]) == intent,
+                    JsonNode.DeepEquals(
+                        Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["publication"]?[
+                            "request"
+                        ],
+                        preparedRequest
+                    ),
                     "Submit changed saved UUID/revision/metadata"
                 )
-                Check.That(Check.Text(Read(run, "correction.json")["verification"]) == checks, "Submit reran checks")
-                Once(flow.Flow)
+                Check.That(
+                    Check.Text(
+                        Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
+                    ) == checks,
+                    "Submit reran checks"
+                )
+                Once(flow.Flow, 1)
                 if mode != "request_fail_before_write" {
                     let posted = Check.PostedRequest(flow.Flow.State)
                     let path = flow.Event(posted)
@@ -2127,21 +2279,19 @@ internal class AmendmentFlow {
             test.Flow.Mode("staged_whitespace")
             test.Flow.Call([]string{"work", "--run", run}, 1)
             let archive = Prepared(test.Flow, run)
-            let original = File.ReadAllText(Path.Combine(run, "run.json"))
+            let original = Read(run)
             let decree = Path.Combine(run, "checkout/DECREE.md")
             File.WriteAllText(decree, "Corrected instruction edit\n")
             var commit = Correct(test.Flow, run)
             Check.Contains(Rework(test.Flow, run, commit, 1).Error, "approved root DECREE.md")
-            let refused = Read(run, "correction.json")
+            let refused = Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")
             Check.That(refused["verification"] == nil, "Protected correction reached verification")
             Check.That(
                 Check.Text(refused["failure_stage"]) == "candidate_validation",
                 "Protected correction passed candidate validation"
             )
-            Check.That(
-                File.ReadAllText(Path.Combine(run, "run.json")) == original,
-                "Refused correction rewrote original run"
-            )
+            original["amendment"] = JsonValue.Create(commit)
+            Check.That(JsonNode.DeepEquals(Read(run), original), "Refused correction rewrote original run")
             test.Flow.NoPr()
             File.WriteAllText(decree, "Approved owner instructions\n")
             commit = Correct(test.Flow, run)
@@ -2153,7 +2303,9 @@ internal class AmendmentFlow {
             coordinator.Coordinate(coordinator.Event(request))
             test.Flow.Call([]string{"submit", "--run", run})
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
-            let correction = File.ReadAllText(Path.Combine(run, "correction.json"))
+            let correction = File.ReadAllText(
+                Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+            )
             let previous = Check.Text(Read(run)["commit"])
             File.WriteAllText(decree, "Amended instruction edit\n")
             commit = Correct(test.Flow, run, "Amendment with instruction edit\n")
@@ -2165,7 +2317,9 @@ internal class AmendmentFlow {
             )
             Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == saved, "Refused amendment rewrote saved run")
             Check.That(
-                File.ReadAllText(Path.Combine(run, "correction.json")) == correction,
+                File.ReadAllText(
+                    Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
+                ) == correction,
                 "Refused amendment changed correction evidence"
             )
             test.Flow.Reload()

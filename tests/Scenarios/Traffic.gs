@@ -323,7 +323,7 @@ internal class CommandTrafficChecks {
             flow.Flow.Mode("lost_request_response")
             flow.Flow.ResetTraffic()
             let first = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
-            Budgets(flow.Flow, first, 46, 1, 1)
+            Budgets(flow.Flow, first, 50, 2, 1)
             Check.Contains(first.Error, "Publication pending. Run: " + run)
             Check.Contains(first.Error, "Next: tokate submit --run " + run)
             Check.That(!first.Output.Contains("Exact request already posted"), "Submit reported its own request twice")
@@ -336,10 +336,10 @@ internal class CommandTrafficChecks {
             )
             Check.That(Check.Text(json["data"]?["pr"]) == "", "JSON submit waited for publication")
             Check.Contains(json["next_actions"]?.ToJsonString() ?? "", "\"submit\"")
-            flow.Flow.Traffic(34, 0, 0)
+            flow.Flow.Traffic(38, 0, 0)
             flow.Flow.ResetTraffic()
             let duplicate = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
-            Budgets(flow.Flow, duplicate, 36, 0, 0)
+            Budgets(flow.Flow, duplicate, 40, 0, 0)
             Check.Contains(duplicate.Error, "Next: tokate submit --run " + run)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
@@ -623,7 +623,8 @@ internal class CommandTrafficChecks {
                     let result = Watch(flow, run, "5", 1, direct)
                     Check.Contains(
                         result.Error,
-                        kind == "head" ? "current exact-commit coordination authority": "Approval revoked or task changed"
+                        kind == "head" ? "PR head, target, receipt or lifecycle changed while reading checks":
+                        "Approval revoked or task changed"
                     )
                     Budgets(flow, result, kind == "head" ? 36: 28, 0, 0)
                 }

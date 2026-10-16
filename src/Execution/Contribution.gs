@@ -149,7 +149,7 @@ internal class Contribution {
 
             run.Fields["usage"] = usage
             run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
-            run.Fields["state"] = "generated"
+            run.Transition("generated")
             run.Fields.Remove("failure_reason")
             run.Fields.Remove("failure_stage")
 

@@ -187,8 +187,68 @@ internal open class CoordinationFixture : IDisposable {
         Flow.Git("-C", Flow.Upstream, "update-ref", "refs/heads/tokate/contributions/1", next, previous)
     }
 
-    internal func PublishRequest(claim JsonNode, commit string) JsonNode {
+    internal func PublishRequest(claim JsonNode, commit string, createPr bool = true) JsonNode {
         let state = State()
+        Flow.Reload()
+        let pulls = Flow.State["pulls"]?.AsArray() ?? JsonArray()
+        let branch = "tokate/v2-" + Check.Text(claim["uuid"])
+        var number = 10 + pulls.Count
+        for pull in pulls {
+            if Check.Text(pull["head"]?["ref"]) == branch {
+                number = Int32.Parse(Check.Text(pull["number"]))
+            }
+        }
+        if createPr && number == 10 + pulls.Count {
+            pulls.Add(
+                Check.Map(
+                    "number",
+                    number,
+                    "html_url",
+                    "https://github.com/owner/project/pull/" + number.ToString(),
+                    "title",
+                    "External result",
+                    "body",
+                    "",
+                    "state",
+                    "open",
+                    "draft",
+                    true,
+                    "merged",
+                    false,
+                    "merged_at",
+                    nil,
+                    "user",
+                    Check.Map("id", 123, "login", "donor"),
+                    "maintainer_can_modify",
+                    true,
+                    "head",
+                    Check.Map(
+                        "sha",
+                        commit,
+                        "ref",
+                        branch,
+                        "repo",
+                        Check.Map(
+                            "id",
+                            2,
+                            "full_name",
+                            "donor/project",
+                            "owner",
+                            Check.Map("login", "donor", "id", 123)
+                        )
+                    ),
+                    "base",
+                    Check.Map(
+                        "ref",
+                        Check.Text(state["state"]?["approval"]?["base_branch"]),
+                        "repo",
+                        Check.Map("id", 1, "full_name", "owner/project")
+                    )
+                )
+            )
+            Flow.State["pulls"] = pulls
+            Flow.Save()
+        }
         return Check.Map(
             "uuid",
             Guid.NewGuid().ToString("D"),
@@ -200,6 +260,8 @@ internal open class CoordinationFixture : IDisposable {
             "publish",
             "metadata",
             Check.Map(
+                "pr",
+                number,
                 "fork",
                 "donor/project",
                 "branch",

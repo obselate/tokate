@@ -41,7 +41,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     test.Flow.Receipt("owner/project#10", owner: true)
                 } else {
                     Check.Contains(test.Coordinate(test.Event(publication), 1).Error, "protected owner path")
-                    test.Flow.NoPr()
+                    test.Flow.Reload()
+                    Check.That(test.Flow.State["pulls"]?.AsArray().Count == 1, "Coordinator changed donor PR count")
                     Check.That(test.State()["state"]?["contribution"] == nil, "Protected contribution gained authority")
                 }
                 test.Flow.NoInference()
@@ -277,7 +278,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
             requestedTool["effort"] = JsonValue.Create("absent")
             test.Coordinate(test.Event(request), 1)
-            test.Flow.NoPr()
+            Check.That(test.State()["state"]?["contribution"] == nil, "Invalid effort gained publication authority")
             requestedTool["effort"] = JsonValue.Create("high")
             test.Coordinate(test.Event(request))
             test.Flow.Receipt("owner/project#10", owner: true)
@@ -909,15 +910,102 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Imported external Git metadata"
         )
         Flow.CommitIdentity(Path.Combine(run, "checkout"), commit, "Donor", "donor@example.test")
+        Flow.Mode("pr_fail_after_create")
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 1)
+        Flow.Mode("")
+        Flow.Reload()
+        let originalPulls = Flow.State["pulls"]?.DeepClone() ?? throw Exception("Missing interrupted PR")
+        (Flow.State["pulls"] ?? throw Exception("Missing PRs")).AsArray().Add(originalPulls[0]?.DeepClone())
+        Flow.Save()
+        Check.Contains(Flow.Call([]string{"submit", "--run", run, "--json"}, 1).Output, "ambiguous physical PRs")
+        Flow.Reload()
+        Flow.State["pulls"] = originalPulls
+        let edited = Flow.State["pulls"]?[0] ?? throw Exception("Missing interrupted draft")
+        edited["body"] = JsonValue.Create("Donor note before adoption\n" + Check.Text(edited["body"]))
+        Flow.Save()
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
         let path = Event(publish)
-        Flow.Mode("pr_fail_after_create")
+        let pull = Flow.State["pulls"]?[0]?.DeepClone() ?? throw Exception("Missing donor PR")
+        Check.That(Check.Text(pull["user"]?["id"]) == "123", "Submit did not use the donor token")
+        Check.That(Check.Text(pull["maintainer_can_modify"]) == "true", "Submit disabled maintainer edits")
+        let reasons = Check.Map(
+            "author",
+            "author",
+            "sha",
+            "head SHA",
+            "repo",
+            "head repository",
+            "ref",
+            "head repository",
+            "base",
+            "reserved target",
+            "closed",
+            "open draft",
+            "ready",
+            "open draft",
+            "maintainer",
+            "maintainer edits"
+        )
+        for fault in[]string{"author", "sha", "repo", "ref", "base", "closed", "ready", "maintainer"} {
+            Flow.Reload()
+            let forged = pull.DeepClone()
+            switch fault {
+                case "author" {
+                    (forged["user"] ?? throw Exception("Missing author"))["id"] = JsonValue.Create(999)
+                }
+                case "sha" {
+                    (forged["head"] ?? throw Exception("Missing head"))["sha"] = JsonValue.Create(String('a', 40))
+                }
+                case "repo" {
+                    (forged["head"]?["repo"] ?? throw Exception("Missing head repo"))["full_name"] = JsonValue.Create(
+                        "other/project"
+                    )
+                }
+                case "ref" {
+                    (forged["head"] ?? throw Exception("Missing head"))["ref"] = JsonValue.Create("other")
+                }
+                case "base" {
+                    (forged["base"] ?? throw Exception("Missing base"))["ref"] = JsonValue.Create("other")
+                }
+                case "closed" {
+                    forged["state"] = JsonValue.Create("closed")
+                }
+                case "ready" {
+                    forged["draft"] = JsonValue.Create(false)
+                }
+                case "maintainer" {
+                    forged["maintainer_can_modify"] = JsonValue.Create(false)
+                }
+            }
+            Flow.State["pulls"] = JsonArray(forged)
+            Flow.Save()
+            Check.Contains(Coordinate(path, 1).Error, Check.Text(reasons[fault]))
+            Check.That(State()["state"]?["contribution"] == nil, "Forged PR was adopted")
+        }
+        Flow.Reload()
+        Flow.State["pulls"] = JsonArray(pull)
+        pull["body"] = JsonValue.Create("Donor body changed before adoption")
+        pull["title"] = JsonValue.Create("Donor changed title")
+        Flow.Save()
+        Flow.Mode("body_fail")
         Coordinate(path, 1)
-        Flow.Mode("")
+        Check.That(State()["state"]?["contribution"] == nil, "Failed adoption PATCH gained authority")
+        Flow.Mode("lost_body_response")
+        Coordinate(path, 1)
+        Check.That(State()["state"]?["contribution"] == nil, "Lost adoption PATCH gained authority")
         Coordinate(path)
         Flow.Reload()
+        Check.That(
+            Check.Text(Flow.State["pulls"]?[0]?["body"]) != "Donor body changed before adoption",
+            "Coordinator did not restore canonical body"
+        )
+        Check.That(
+            Check.Text(Flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
+            "Coordinator did not restore canonical title"
+        )
         Check.That(Flow.State["pulls"]?.AsArray().Count == 1, "Interrupted publication duplicated PR")
         Check.That(
             Check.Text(State()["state"]?["contribution"]?["metadata"]?["head"]) == commit,
@@ -1171,7 +1259,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
         Prepare(code: 1)
         Flow.NoInference()
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Expired publication gained authority")
     }
 
     internal func InvalidEvents() {
@@ -1447,21 +1535,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
         tool[unrestricted ? "effort": "model"] = JsonValue.Create(unrestricted ? "invalid": "disallowed-model")
         metadata["tools"] = invalid
         Coordinate(Event(request), 1)
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Invalid declaration gained publication authority")
         if !unrestricted {
             let swapped = declared.DeepClone()
             let first = swapped[0] ?? throw Exception("Missing declared tool")
             first["model"] = declared[1]?["model"]?.DeepClone()
             metadata["tools"] = swapped
             Check.Contains(Coordinate(Event(request), 1).Error, "Model/effort pair")
-            Flow.NoPr()
+            Check.That(State()["state"]?["contribution"] == nil, "Invalid model gained publication authority")
         }
 
         metadata["tools"] = declared.DeepClone()
         let source = Check.Text(metadata["source"])
         metadata["source"] = JsonValue.Create("tokate")
         Coordinate(Event(request), 1)
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Invalid source gained publication authority")
         metadata["source"] = JsonValue.Create(source)
         Coordinate(Event(request))
         Flow.Receipt("owner/project#10", owner: true)
@@ -1637,6 +1725,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Check.Text(task["pr_url"]), "/pull/10")
         let last = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
         Check.That(JsonNode.DeepEquals(summary, last), "Stopped session report changed")
+        let missingRun = Path.Combine(Check.Text(task["run_directory"]), "run.json")
+        let runRecord = File.ReadAllText(missingRun)
+        File.Delete(missingRun)
+        let fallback = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
+        Check.That(Check.Text(fallback?["submitted"]) == "1", "Missing run lost the saved task result")
+        Check.That(JsonNode.DeepEquals(fallback?["tasks"], summary["tasks"]), "Missing run changed saved tasks")
+        File.WriteAllText(missingRun, runRecord)
         Check.That(!File.Exists(marker), "Stop marker was not removed")
         let current = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
         Check.That(current == reserved, "Reservation changed")
@@ -1743,6 +1838,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(prompt, "tokate-refusal.txt")
         Check.Contains(prompt, "Open PR snapshot")
         let gratisDirectory = Check.Text(gratis["tasks"]?[0]?["run_directory"])
+        let session = Check.Json(
+            File.ReadAllText(
+                Path.Combine(gratisFlow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/session.json")
+            )
+        )
+        for key in[]string{"submitted", "skipped", "failed", "prepared", "wall_seconds", "usage"} {
+            Check.That(session[key] == nil, "Session stored a derived counter: " + key)
+        }
         Check.That(File.Exists(Path.Combine(gratisDirectory, "open-prs.json")), "Missing saved PR snapshot")
         Check.That(
             File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
@@ -1879,8 +1982,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
             field == "locked" ? JsonValue.Create(true): Check.Map("url", "pull")
             namedFlow.Save()
             let rejected = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
-            Check.Contains(Check.Text(rejected["error"]?["message"]), "open, unlocked issue")
-            Check.Contains(Check.Text(rejected["error"]?["message"]), "#2")
+            Check.Contains(
+                Check.Text(rejected["error"]?["message"]),
+                field == "state" ? "closed": field == "locked" ? "locked": "a pull request"
+            )
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "owner/project#2")
             namedIssue.AsObject().Remove(field)
             namedIssue["state"] = JsonValue.Create("open")
         }
@@ -1889,7 +1995,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         namedIssue["locked"] = JsonValue.Create(true)
         namedFlow.Save()
         let invalidList = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
-        Check.Contains(Check.Text(invalidList["error"]?["message"]), "#2, #1")
+        Check.Contains(
+            Check.Text(invalidList["error"]?["message"]),
+            "owner/project#2 is locked, owner/project#1 is closed"
+        )
         namedFlow.NoInference()
         let restored = namedFlow.State["issues"] ?? throw Exception("Missing restored issues")
         let restoredFirst = restored["1"] ?? throw Exception("Missing restored first issue")
@@ -1975,6 +2084,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "ok"
         )["data"]
         Check.That(Check.Text(published?["applied"]) == "true", "Confirmed submission did not publish")
+        let refreshed = Check.Envelope(
+            namedFlow.Call([]string{"work", "owner/project", "stop", "--yes", "--json"}),
+            "work",
+            "ok"
+        )["data"]
+        Check.That(
+            Check.Text(refreshed?["submitted"]) == "1" && Check.Text(refreshed?["prepared"]) == "1",
+            "Session did not derive current run outcomes"
+        )
         namedFlow.Reload()
         let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
         Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR differs from preview title")

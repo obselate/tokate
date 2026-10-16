@@ -80,7 +80,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.ReadAllText(Path.Combine(run, "run.json")) == saved,
             "Renewal rewrote saved budgets or execution"
         )
-        let late = PublishRequest(claim, String('0', 40))
+        let late = PublishRequest(claim, String('0', 40), createPr: false)
         Lifecycle("pause")
         Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
         Coordinate(Event(late), 1)
@@ -100,7 +100,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Resume replaced contribution identity"
         )
         Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
-        let staleFence = PublishRequest(claim, String('0', 40))
+        let staleFence = PublishRequest(claim, String('0', 40), createPr: false)
         let metadata = staleFence["metadata"] ?? throw Exception("Missing metadata")
         metadata["attempt"] = JsonValue.Create(Check.Text(claim["uuid"]))
         Check.Contains(Coordinate(Event(staleFence), 1).Error, "attempt fence")
@@ -274,6 +274,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let path = Path.Combine(run, "request.json")
         let saved = File.ReadAllText(path)
         let request = Check.Json(saved)
+        Flow.Reload()
+        let drafts = Flow.State["pulls"]?.ToJsonString()
         Lifecycle("renew")
         Flow.Call([]string{"submit", "--run", run}, 8)
         Check.That(File.ReadAllText(path) == saved, "Renewal rebound a saved publication UUID")
@@ -283,7 +285,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"request", "owner/project#1", "--file", path}, 1)
         File.WriteAllText(path, saved)
         Flow.NoInference()
-        Flow.NoPr()
+        Flow.Reload()
+        Check.That(Flow.State["pulls"]?.ToJsonString() == drafts, "Stale publication changed donor drafts")
+        Check.That(State()["state"]?["contribution"] == nil, "Stale publication gained authority")
     }
 
     internal func LeaseReplayAndLegacy() {

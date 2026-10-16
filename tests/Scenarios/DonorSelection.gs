@@ -488,8 +488,28 @@ internal class DonorSelectionChecks {
             Select(flow, []string{"--effort", "xhigh"})
             let unavailable = Select(flow, []string{"--availability", "unavailable"}, 1)
             Check.Contains(Check.Text(unavailable["error"]), "donor-reported unavailable")
-            let unsupported = Select(flow, []string{"--model", "outside-catalog", "--effort", "high"}, 1)
-            Check.Contains(Check.Text(unsupported["error"]), "offline native Codex catalog")
+            flow.Approve()
+            let unsupported = flow.Call(
+                []string{
+                    "claim",
+                    "owner/project#1",
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-5.1-codex-mini",
+                    "--effort",
+                    "low",
+                    "--json"
+                },
+                1
+            )
+            let rejected = Check.Envelope(unsupported, "claim", "error", "command_failed")
+            let message = Check.Text(rejected["error"]?["message"])
+            Check.Contains(message, "gpt-5.1-codex-mini / low is not in the offline native Codex catalog")
+            Check.Contains(message, "Eligible pairs: gpt-6-sol / high, gpt-6.1-sol / high, gpt-6.1-sol / xhigh")
+            Check.Contains(message, "No inference started")
+            Check.That(!message.Contains("Explicit donor choice required"), "Explicit choice requested twice")
+            flow.NoInference()
             for effort in[]string{"absent", "unknown"} {
                 let settings = Check.Json(File.ReadAllText(Settings(flow)))
                 settings["effort"] = JsonValue.Create(effort)

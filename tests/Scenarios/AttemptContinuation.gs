@@ -404,6 +404,8 @@ internal class AttemptContinuationChecks {
             old.AsObject().Remove("predecessor")
             old.AsObject().Remove("import_manifest_sha256")
             test.Coordinate(test.Event(late), 1)
+            test.Flow.Reload()
+            let drafts = test.Flow.State["pulls"]?.ToJsonString()
             for mode in[]string{"missing-hash", "donor", "lineage", "same-attempt", "external"} {
                 let changed = request.DeepClone()
                 changed["uuid"] = JsonValue.Create(Guid.NewGuid().ToString("D"))
@@ -427,7 +429,12 @@ internal class AttemptContinuationChecks {
                     }
                 }
                 test.Coordinate(test.Event(changed), 1)
-                test.Flow.NoPr()
+                test.Flow.Reload()
+                Check.That(
+                    test.Flow.State["pulls"]?.ToJsonString() == drafts,
+                    "Rejected continuation changed donor drafts"
+                )
+                Check.That(test.State()["state"]?["contribution"] == nil, "Rejected continuation gained authority")
             }
             test.Coordinate(test.Event(request))
             test.Flow.Receipt("owner/project#10", owner: true)

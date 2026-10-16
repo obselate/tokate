@@ -58,7 +58,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `--version` | `tokate --version` | Print the installed version. |
 | `request` | `tokate request ISSUE --file FILE` | Post a strict claim or publication request. |
 | `admit` | `tokate admit [OWNER/REPO] --event FILE` | Owner workflow: close unauthorized PRs. |
-| `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: update state and publish accepted requests. |
+| `coordinate` | `tokate coordinate [OWNER/REPO] --event FILE` | Owner workflow: verify donor PRs and record accepted requests. |
 
 ## Issue and run names
 

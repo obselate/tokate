@@ -34,7 +34,7 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
    `--reservation-time TIME` and `--allowed-tools JSON` to change choices.
    Existing policy values are kept unless a flag changes them. Omitted optional fields stay omitted.
    Set `"maintainer_edits": false` in the policy to prevent maintainer edits. The default is true.
-   Donor submit completion enables maintainer edits after the coordinator creates the PR.
+   The donor creates the draft PR with this setting. The coordinator verifies and records the PR.
 
    Init checks GitHub authentication and write access. Before a change, it lists:
 
@@ -203,6 +203,10 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    ```sh
    tokate checks 10 --watch
    ```
+
+   If GitHub reports a pushed PR head before Git can fetch it, checks returns pending
+   with exit 8. Run checks again after the head is available. Direct code commits
+   after the receipt need owner review and a verified amendment.
 
 4. Review scope, acceptance criteria, limitations and conflicts.
 5. Mark the accepted draft ready.

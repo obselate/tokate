@@ -53,13 +53,15 @@ It uses the completed work without new inference. Do not start another run.
    tokate amend 42 --time 5m
    ```
 
-4. After the coordinator publishes the draft, record its result.
+4. After the coordinator adopts the donor's draft PR, record its result.
 
    ```sh
    tokate submit 42
    ```
 
 `--commit` defaults to HEAD of the saved checkout. This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
+If a request was rejected, correction reuses your open draft on the reservation branch.
+The coordinator must verify the new request before the draft has publication authority.
 
 ## Amend a published PR
 
@@ -280,8 +282,11 @@ After owner recovery, repeat a pending publication with the same saved intent. D
 | `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | Owner: `gh pr view PR --web` |
 | `Merge the target branch into the saved checkout. Resolve conflicts, then run tokate amend with an explicit verification budget.` | Donor: merge the target, then run `tokate amend 42-1 --time 5m` |
 | `No published PR` with saved-publication guidance | `tokate status 42-1 --json` |
+| `Cannot migrate the legacy correction.` or `Cannot map legacy correction artifacts safely.` | Inspect the named record and artifact directories. Restore the original data, then retry the command. |
 
 Approve a fork workflow only after diff review. For a stale PR, refresh `tokate checks PR` and use the target update steps above if required.
+
+Corrections use `amendments/COMMIT/run.json`. The saved run selects the current correction with `amendment`. Commands that lock an old run move its valid correction records and artifacts to this location and remove `correction.json`. Status does not migrate runs. Invalid legacy corrections affect only that run. Status lists the other runs.
 
 ### Access
 

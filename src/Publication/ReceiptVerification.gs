@@ -242,14 +242,11 @@ internal class ReceiptVerification {
             if current.GetRawText() != contribution.GetRawText() {
                 Amendment.ValidateReceipt(amendment, policy, exactHead)
 
-                let report = Amendment.Summary(
-                    J.Text(amendment, "previous"),
-                    exactHead,
-                    J.Number(amendment, "seconds"),
-                    J.Get(amendment, "tools"),
-                    J.Get(current, "summary"),
-                    metadata
-                )
+                let reportData = J.Select(amendment, "previous,seconds")
+                reportData["head"] = exactHead
+                reportData["tools"] = J.Get(amendment, "tools")
+                PublicSummary.Attach(reportData, J.Get(current, "summary"))
+                let report = PrBody.PublicReport(J.Parse(J.Write(reportData)), metadata)
 
                 if !RequestData.Same(J.Get(amendment, "summary"), J.Get(current, "summary")) {
                     throw CliFailure("stale_approval", "PR amendment summary differs from coordination authority")
@@ -328,7 +325,7 @@ internal class ReceiptVerification {
             J.Get(metadata, "summary"): J.Get(current, "summary")
 
             if current.GetRawText() == contribution.GetRawText() {
-                run.Fields["public_report"] = PrBody.CoordinatedReport(metadata).Trim()
+                run.Fields["public_report"] = PrBody.PublicReport(metadata).Trim()
             }
 
             if authority.ValueKind != JsonValueKind.Undefined {

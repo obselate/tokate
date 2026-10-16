@@ -282,7 +282,7 @@ internal class ContributionPreparation {
 
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
 
-            run.Fields["state"] = "claim_pending"
+            run.Transition("claim_pending")
 
             if run.Text("source") != "external" {
                 DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)

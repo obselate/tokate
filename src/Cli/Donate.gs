@@ -19,10 +19,42 @@ internal class Donate {
             }
         }
 
-        private func Report(session JsonElement) {
-            PublicOutput.ResultData = session
+        private func Report(saved Data) {
+            let session = Data.From(saved.Element())
+            let usage = map[string, Object?]{"input_tokens": 0L, "cached_input_tokens": 0L, "output_tokens": 0L}
+            session.Fields["usage"] = usage
+            session.Fields["wall_seconds"] = 0
+            for key in[]string{"submitted", "skipped", "failed", "prepared"} {
+                session.Fields[key] = 0
+            }
+            for task in J.Items(J.Get(saved.Element(), "tasks")) {
+                let directory = J.Text(task, "run_directory")
+                let run = directory != "" && File.Exists(Path.Combine(directory, "run.json")) ? Data.Load(
+                    directory
+                ): nil
+                let result = run == nil ? J.Text(task, "result"): switch run.Text("state") {
+                    case "published": "submitted"
+                    case "generated": "prepared"
+                    case "skipped": "skipped"
+                    case "refused": "skipped"
+                    default: "failed"
+                }
+                session.Fields[result] = session.Number(result) + 1
+                session.Fields["wall_seconds"] = session.Number("wall_seconds") + Math.Max(
+                    run?.Number("elapsed_seconds") ?? 0,
+                    run?.Number("execution_seconds") ?? 0
+                )
+                let taskUsage = J.Get(run?.Element() ?? default(JsonElement), "usage")
+                for key in usage.Keys {
+                    let count = J.Get(taskUsage, key)
+                    if count.ValueKind == JsonValueKind.Number {
+                        usage[key] = Convert.ToInt64(usage[key]) + count.GetInt64()
+                    }
+                }
+            }
+            PublicOutput.ResultData = session.Element()
             if !PublicOutput.Enabled {
-                Terminal.Json(session, "Donation report")
+                Terminal.Json(session.Element(), "Donation report")
             }
         }
 
@@ -45,7 +77,7 @@ internal class Donate {
             let path = Path.Combine(directory, "session.json")
             PublicOutput.ResultData = map[string, Object?]{"repo": repo}
             if File.Exists(path) {
-                Report(Data.Read(path).Element())
+                Report(Data.Read(path))
             }
             return 0
         }
@@ -149,16 +181,14 @@ internal class Donate {
             let invalid = List[string]()
             for number in issues {
                 let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString(), missing: true)
-                if J.Text(issue, "state") != "open" || J.Bool(issue, "locked") || J.Get(issue, "pull_request")
-                    .ValueKind != JsonValueKind.Undefined {
-                    invalid.Add("#" + number.ToString())
+                let reason = J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined ? "a pull request":
+                J.Text(issue, "state") != "open" ? "closed": J.Bool(issue, "locked") ? "locked": ""
+                if reason != "" {
+                    invalid.Add(repo + "#" + number.ToString() + " is " + reason)
                 }
             }
             if invalid.Count > 0 {
-                throw CliFailure(
-                    "invalid_state",
-                    "Gratis work requires an open, unlocked issue, not a pull request: " + String.Join(", ", invalid)
-                )
+                throw CliFailure("invalid_state", "Gratis work cannot use these issues: " + String.Join(", ", invalid))
             }
             if gratis && options.Get("unlimited") == "true" {
                 throw CliFailure("invalid_arguments", "Gratis work uses --time, not --unlimited")
@@ -227,18 +257,7 @@ internal class Donate {
             let attempted = HashSet[int32]()
             var consecutive int32
             var first bool = true
-            let usage = map[string, Object?]{"input_tokens": 0L, "cached_input_tokens": 0L, "output_tokens": 0L}
-            let session = Data(
-                map[string, Object?]{
-                    "repo": repo,
-                    "tasks": tasks,
-                    "usage": usage,
-                    "reason": "stopped",
-                    "submitted": 0,
-                    "skipped": 0,
-                    "failed": 0
-                }
-            )
+            let session = Data(map[string, Object?]{"repo": repo, "tasks": tasks, "reason": "stopped"})
             let sessionPath = Path.Combine(directory, "session.json")
             session.Write(sessionPath)
             Active = true
@@ -278,16 +297,7 @@ internal class Donate {
                     )
                     tasks.Add(task)
                     let result = task["result"]?.ToString() ?? ""
-                    session.Fields[result] = session.Number(result) + 1
                     consecutive = result == "failed" ? consecutive + 1: 0
-                    let runDir = task["run_directory"]?.ToString() ?? ""
-                    let taskUsage = runDir == "" ? JsonElement{}: J.Get(Data.Load(runDir).Element(), "usage")
-                    for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                        let count = J.Get(taskUsage, key)
-                        if count.ValueKind == JsonValueKind.Number {
-                            usage[key] = Convert.ToInt64(usage[key]) + count.GetInt64()
-                        }
-                    }
                     session.Write(sessionPath)
                     if issues.Count > 0 && tasks.Count == issues.Count {
                         session.Fields["reason"] = result == "prepared" || result == "submitted" ? "issues_completed":
@@ -311,9 +321,8 @@ internal class Donate {
                 File.Delete(marker)
                 PublicOutput.RunDirectory = ""
                 PublicOutput.Actions.Clear()
-                session.Fields["wall_seconds"] = timer.Elapsed.TotalSeconds
                 session.Write(sessionPath)
-                Report(session.Element())
+                Report(session)
                 for item in tasks {
                     if item is Dictionary[string, Object?]task && task["result"]?.ToString() == "prepared" {
                         let next = []string{"tokate", "submit", "--run", task["run_directory"]?.ToString() ?? ""}
@@ -322,7 +331,12 @@ internal class Donate {
                     }
                 }
             }
-            return consecutive == 3 || (issues.Count > 0 && session.Number("failed") > 0) ? 1: 0
+            return consecutive == 3 ||
+                (
+                issues.Count > 0 && tasks.Exists(
+                    task -> task is Dictionary[string, Object?]item && item["result"]?.ToString() == "failed"
+                )
+            ) ? 1: 0
         }
     }
 }

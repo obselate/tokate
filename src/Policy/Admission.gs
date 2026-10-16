@@ -212,10 +212,19 @@ internal class Admission {
                 issue = J.Number(state.Value(), "issue")
             } else {
                 if issue == 0 {
-                    return false
+                    if !J.Bool(pull, "draft") {
+                        return false
+                    }
+                    state = BoundState(repo, pull)
+                    if state.Sha == "" || J.Get(state.Value(), "contribution")
+                        .ValueKind == JsonValueKind.Object ||
+                        RepositoryIdentity.PositiveId(J.Get(J.Get(state.Value(), "reservation"), "actor")) != actor {
+                        return false
+                    }
+                    issue = J.Number(state.Value(), "issue")
+                } else {
+                    state = CoordinationState.Load(repo, issue, missing: true)
                 }
-
-                state = CoordinationState.Load(repo, issue, missing: true)
             }
 
             if state.Sha == "" {

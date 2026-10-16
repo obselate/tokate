@@ -4,6 +4,8 @@ Gratis mode donates work to a public GitHub repository that has no `.github/toka
 No owner approves the task. You consent once at the start. Tokate then runs your harness,
 commits as you, pushes to your fork and opens a draft PR.
 
+Session reports derive task counts, token usage and time from saved runs. `wall_seconds` sums saved task time and excludes idle time. Keep the session runs to report their results.
+
 ## Commands
 
 ```sh
@@ -38,6 +40,7 @@ Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [loc
 | Title | If the guidance sets a title format, the harness writes `tokate-title.txt`. Tokate uses it for the commit subject and PR title. Otherwise it uses the issue title. |
 | Publication | Draft PR from your fork with maintainer edits allowed. It is a ready PR only when the guidance allows it and the harness writes `tokate-ready.txt`. |
 | PR body | `Fixes #N`, the harness summary, the donor-reported checks, an attribution line and a hidden receipt. Tokate itself runs no repository checks. |
+| Status | `tokate status OWNER/REPO` and `tokate status OWNER/REPO#N` show the latest saved gratis run state. Without a saved run, they show the issue state. No owner approval is required. |
 | Stop | Free selection stops on refusal, no PR, the total budget, a stop request or three consecutive failures. A list stops after its last issue or on the same conditions. |
 
 ## Check first
@@ -101,7 +104,7 @@ Never post comments in the repository unless I approve the exact text.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Gratis work requires an open, unlocked issue, not a pull request: #N` | The issue is closed, locked or is a PR | Check it with `gh api repos/OWNER/REPO/issues/N`. Pick another issue. |
+| `Gratis work cannot use these issues: OWNER/REPO#N is closed`, `locked` or `a pull request` | The named issue cannot accept gratis work | Pick another open, unlocked issue that is not a PR. |
 | `Guidance and PR snapshot exceed 64 KiB` | Tokate older than 0.6.3 copied linked docs into the prompt | Run `tokate update`. |
 | CI runs show `action_required` | The repository requires maintainer approval for first-time contributors | Wait for a maintainer. Do not push again to start CI. |
 | The PR title check fails | The harness did not follow the title format | Fix it with `gh pr edit N -R OWNER/REPO --title "TITLE"`. Add the format to `--prompt` next time. |
@@ -110,6 +113,5 @@ Never post comments in the repository unless I approve the exact text.
 | The session stops with `no_pr` | The harness found no task that no open PR covers | Read the report. Name issues instead. |
 | The session stops with `refused` | The guidance forbids AI work or requires approval | Respect it. Do not donate to this repository. |
 | `--time 1h --total 1h` runs no task | Tokate older than 0.6.4 | Run `tokate update`. |
-| `tokate status OWNER/REPO#N` shows `approval_waiting` | Known defect: status applies the approved flow to gratis issues | Ignore it. Use `tokate status` for saved gratis runs. |
 | A maintainer asks for changes | Revisions through Tokate are not available yet | Commit in the run checkout and push to the fork branch from the PR. Add commits. Do not force push. |
 | The harness summary contains debugging history | Tokate older than 0.6.5 | Run `tokate update`. Edit the PR body with `gh pr edit` if needed. |

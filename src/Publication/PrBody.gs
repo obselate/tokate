@@ -8,6 +8,28 @@ import System.Text.RegularExpressions
 
 internal class PrBody {
     shared {
+        internal func Coordinated(
+            record JsonElement,
+            metadata JsonElement,
+            donor string,
+            receipt Object,
+            marker string
+        ) string {
+            let values = Dictionary[string, string]()
+            values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
+            values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
+            values["donor"] = donor
+            values["model"] = "see original donor-reported tools in report"
+            values["effort"] = "per-tool declaration; not independently attested"
+            values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
+            values["base"] = J.Text(record, "base")
+            values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
+            values["usage"] = "per-tool donor declaration; not independently attested"
+            values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"
+
+            return PrBody.Render(J.Text(record, "template"), values, J.Get(record, "policy"))
+        }
+
         internal func ValidateTemplate(text string) {
             for key in[]string{"issue", "report", "donor", "base", "policy", "receipt"} {
                 if !text.Contains("{{" + key + "}}") {
@@ -47,19 +69,33 @@ internal class PrBody {
             return Regex.Replace(text, "\\{\\{([a-z_]+)\\}\\}", (match Match) -> values[match.Groups[1].Value])
         }
 
-        internal func CoordinatedReport(metadata JsonElement) string {
+        internal func PublicReport(metadata JsonElement, original JsonElement = default(JsonElement)) string {
             let summary = J.Get(metadata, "summary")
             if summary.ValueKind != JsonValueKind.Undefined {
                 PublicSummary.Validate(summary, J.Text(metadata, "head"))
             }
 
-            return PublicSummary.Report(
-                summary,
-                RequestData.Incomplete(
-                    metadata
-                ) ? "Incomplete draft: independent owner verification has not passed. This work is not ready for acceptance.": "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
-            ) +
-                OriginalProvenance(metadata)
+            let gratis = J.Text(metadata, "mode") == "gratis"
+            let amendment = J.Text(metadata, "previous") != ""
+            let verification = gratis ? "Tokate ran no repository checks. Checks below are donor-reported.":
+            amendment ? "Donor-reported: all original owner checks passed locally; coordinator did not observe execution.":
+            RequestData.Incomplete(
+                metadata
+            ) ? "Incomplete draft: independent owner verification has not passed. This work is not ready for acceptance.":
+            "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
+            var report = PublicSummary.Report(summary, verification)
+            if amendment {
+                report += "\n\n- Review amendment: " + J.Text(metadata, "previous") + " → " + J.Text(metadata, "head") +
+                    "; separate " +
+                    J
+                    .Number(metadata, "seconds").ToString() +
+                    " second verification budget; no inference launched by amend.\n" +
+                    "- Original execution and usage cover original work only." +
+                    PublicSummary.Tools(J.Get(metadata, "tools"), "Amendment donor-reported tools")
+            }
+            let provenance = amendment ? original: metadata
+            return report +
+                (gratis || provenance.ValueKind == JsonValueKind.Undefined ? "": OriginalProvenance(provenance))
         }
 
         internal func OriginalProvenance(metadata JsonElement) string {

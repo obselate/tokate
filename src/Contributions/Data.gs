@@ -6,6 +6,7 @@ import System.IO
 import System.Security.Cryptography
 import System.Text
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class Data(fields Dictionary[string, Object?]? = nil) {
     internal let Fields Dictionary[string, Object?] = fields ?? Dictionary[string, Object?]()
@@ -22,6 +23,40 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     }
 
     internal func Element() JsonElement -> J.Parse(J.Write(Fields))
+
+    internal func Transition(next string) {
+        let current = Text("state")
+        if current != "" && next == current {
+            return
+        }
+        let allowed = switch current {
+            case "": next == "claim_pending" || next == "preparing" || next == "validating"
+            case "claim_pending": next == "preparing"
+            case "preparing": next == "claimed"
+            case "claimed": next == "running" || next == "verifying" || next == "failed"
+            case "running":
+            next == "generated" ||
+                next == "failed" ||
+                next == "incomplete_generated" ||
+                next == "refused" ||
+                next == "skipped"
+            case "failed":
+            next == "verifying" || next == "generated" || next == "incomplete_generated"
+            case "validating": next == "verifying" || next == "failed"
+            case "verifying": next == "verified" || next == "generated" || next == "failed"
+            case "verified": next == "publishing" || next == "published"
+            case "publishing": next == "requested" || next == "published"
+            case "requested": next == "published"
+            case "generated": next == "published"
+            case "incomplete_generated": next == "published" || next == "generated"
+            case "skipped": next == "published"
+            default: false
+        }
+        if !allowed {
+            throw CliFailure("invalid_state", "Invalid run state transition: " + current + " -> " + next)
+        }
+        Fields["state"] = next
+    }
 
     internal func Save(directory string) {
         RunStorage.ControlPaths(directory)
@@ -43,6 +78,96 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
             return Read(Path.Combine(directory, "run.json"))
+        }
+
+        internal func LegacyCorrection(path string) Data {
+            let change = Read(path)
+            let state = change.Text("state")
+            var uuid Guid
+            if change.Number("version") != 1 || !Guid.TryParse(change.Text("uuid"), out uuid) || change.Text(
+                "id"
+            ) != change.Text("uuid") || !Regex.IsMatch(change.Text("commit"), "^[0-9a-f]{40}\\z") ||
+                (state != "validating" && state != "verifying" && state != "verified" && state != "failed") {
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot migrate the legacy correction. Inspect " +
+                        path +
+                        " and restore its original record and artifacts before retrying."
+                )
+            }
+            return change
+        }
+
+        internal func Migrate(directory string) {
+            let legacy = Path.Combine(directory, "correction.json")
+            if File.Exists(legacy) {
+                let run = Load(directory)
+                RunStorage.ControlFile(directory, "correction.json")
+                let change = LegacyCorrection(legacy)
+                let commit = change.Text("commit")
+                let id = change.Text("uuid")
+                for source in Directory.EnumerateDirectories(directory, "correction-*") {
+                    LocalPaths.DirectoryPath(source)
+                    RunStorage.ControlFile(source, "record.json")
+                    if !File.Exists(Path.Combine(source, "record.json")) {
+                        continue
+                    }
+                    let attempt = Read(Path.Combine(source, "record.json"))
+                    let attemptId = attempt.Text("uuid")
+                    var attemptUuid Guid
+                    let attemptCommit = attempt.Text("commit")
+                    let attemptState = attempt.Text("state")
+                    if attempt.Number("version") != 1 || !Guid.TryParse(attemptId, out attemptUuid) || attempt.Text(
+                        "id"
+                    ) != attemptId ||
+                        Path.GetFileName(source) != "correction-" + attemptId || !Regex.IsMatch(
+                        attemptCommit,
+                        "^[0-9a-f]{40}\\z"
+                    ) ||
+                        (
+                        attemptState != "validating" &&
+                            attemptState != "verifying" &&
+                            attemptState != "verified" &&
+                            attemptState != "failed"
+                    ) {
+                        continue
+                    }
+                    let destination = Path.Combine(directory, "amendments", attemptCommit)
+                    Directory.CreateDirectory(Path.Combine(directory, "amendments"))
+                    LocalPaths.DirectoryPath(Path.Combine(directory, "amendments"))
+                    if !Directory.Exists(destination) {
+                        Directory.Move(source, destination)
+                        RunStorage.ControlPaths(destination)
+                        File.Move(Path.Combine(destination, "record.json"), Path.Combine(destination, "run.json"))
+                    }
+                }
+                let source = Path.Combine(directory, "correction-" + id)
+                let target = Path.Combine(directory, "amendments", commit)
+                if Directory.Exists(target) {
+                    RunStorage.ControlPaths(target)
+                }
+                if Directory.Exists(source) || !Directory.Exists(target) ||
+                    (
+                    File.Exists(Path.Combine(target, "run.json")) && !RequestData.Same(
+                        Read(Path.Combine(target, "run.json")).Element(),
+                        change.Element()
+                    )
+                ) {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Cannot map legacy correction artifacts safely. Inspect " +
+                            source +
+                            " and " +
+                            target +
+                            " before retrying."
+                    )
+                }
+                change.Save(target)
+                run.Fields["amendment"] = commit
+                run.Save(directory)
+                File.Delete(Path.Combine(target, "record.json"))
+                File.Delete(legacy)
+            }
         }
 
         internal func Read(path string) Data {
