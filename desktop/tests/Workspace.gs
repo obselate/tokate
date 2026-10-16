@@ -237,6 +237,19 @@ func WorkspaceFlow() {
         Settle(host)
         Require(FindText(adapter.Root, "Resolve the pull request conflicts"), "Conflicts have no amendment guidance")
         Require(Find(adapter.Root, AccessibilityRole.Button, "Amend contribution") != nil, "Conflicts have no normal amendment action")
+        let interrupted = savedRun with{Pr = 0, State = "failed", FailureReason = "inference_interrupted"}
+        desktop.Saved.Select(SavedRun.Pending(interrupted.Path) with{Run = interrupted, Refreshed = true, Actions = []NextAction{
+            NextAction{Arguments: []string{"tokate", "work", "owner/repo#43", "--continue-from", interrupted.Path, "--time", "30m", "--verify-time", "5m"}},
+        }})
+        Settle(host)
+        Require(FindText(adapter.Root, "Interrupted") && Find(adapter.Root, AccessibilityRole.Button, "Continue with a new budget") != nil, "Interrupted work has no continuation")
+        Choose(host, window, adapter, "Continue with a new budget")
+        Choose(host, window, adapter, "Go back")
+        desktop.Saved.Select(SavedRun.Pending(savedRun.Path) with{Run = savedRun, PullRequest = PullRequest{State: "CLOSED", Conflicts: true}, Refreshed = true, Actions = []NextAction{
+            NextAction{Arguments: []string{"tokate", "checks", "--run", savedRun.Path}},
+        }})
+        Settle(host)
+        Require(FindText(adapter.Root, "The owner closed the pull request") && Find(adapter.Root, AccessibilityRole.Button, "Check PR and CI") == nil, "Closed work still offers checks")
         let recovery = savedRun with{Pr = 0, State = "claim_pending", OwnerRecovery = true}
         desktop.Saved.Select(SavedRun.Pending(recovery.Path) with{Run = recovery, Refreshed = true})
         Settle(host)
@@ -295,8 +308,34 @@ func WorkspaceFlow() {
         AwaitControl(host, adapter, AccessibilityRole.Button, "Check PR #7", enabled: true)
         Require(Find(adapter.Root, AccessibilityRole.Button, "Re-run in Actions") != nil, "Failed coordinator has no Actions recovery")
         Choose(host, window, adapter, "Check PR #7")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Confirm", enabled: true)
+        Choose(host, window, adapter, "Confirm")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Check PR #7", enabled: true)
         Require(FindText(adapter.Root, "Donor must amend"), "Conflicting target merge did not require donor amendment")
+        File.Move(Path.Combine(bin, "tokate"), Path.Combine(bin, "tokate-base"))
+        Script(bin, "tokate",
+            "if [ \"$$1\" = checks ]; then\n printf '%s\\n' \"$$@\" > 'FIXTURE/check-args'\n printf '%s' '{\"schema_version\":1,\"command\":\"checks\",\"status\":\"pending\",\"exit_code\":8,\"data\":{\"gates\":{\"receipt\":{\"status\":\"pending\"}},\"checks_status\":\"unread\"},\"next_actions\":[]}'\n exit 8\nfi\nexec 'BIN/tokate-base' \"$$@\"\n".Replace("FIXTURE", fixture).Replace("BIN", bin))
+        Choose(host, window, adapter, "Check PR #7")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Confirm", enabled: true)
+        Require(!File.Exists(Path.Combine(fixture, "check-args")), "Checks ran before confirmation")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Check PR #7", enabled: true)
+        Require(FindText(adapter.Root, "PR #7 is not ready to check yet. Check again in a minute"), "Owner pending copy is missing")
+        Require(File.ReadAllText(Path.Combine(fixture, "check-args")).Contains("--yes"), "Owner checks lost consent")
+        desktop.Saved.Select(SavedRun.Pending(savedRun.Path) with{Run = savedRun, Refreshed = true, Actions = []NextAction{
+            NextAction{Arguments: []string{"tokate", "checks", "--run", savedRun.Path}},
+        }})
+        desktop.Navigation.Go(Destination.Saved)
+        Settle(host)
+        Choose(host, window, adapter, "Check PR and CI")
+        Choose(host, window, adapter, "Confirm")
+        AwaitControl(host, adapter, AccessibilityRole.Status, "PR #3 is not ready to check yet. Check again in a minute")
+        Require(desktop.Saved.Current.Note.Tone == Tone.Wait, "Saved checks pending became a failure")
+        desktop.Saved.Current = browsing
+        desktop.Navigation.Go(Destination.Project)
+        Settle(host)
+        File.Delete(Path.Combine(bin, "tokate"))
+        File.Move(Path.Combine(bin, "tokate-base"), Path.Combine(bin, "tokate"))
         Choose(host, window, adapter, "Back to issues")
         Choose(host, window, adapter, "Access")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Approve #42 for alice", enabled: true)
@@ -487,6 +526,8 @@ func WorkspaceFlow() {
         Choose(host, window, adapter, "Welcome")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Continue owner/repo #43", enabled: true)
         Choose(host, window, adapter, "Continue owner/repo #43")
+        AwaitControl(host, adapter, AccessibilityRole.Button, "Confirm", enabled: true)
+        Choose(host, window, adapter, "Confirm")
         let saved = "{\"head\":\"" + commits[1] + "\",\"changes\":[\"Fix the table header again.\"],\"verification\":[],\"limitations\":[]}"
         let resumed = System.Diagnostics.Stopwatch.StartNew()
         while File.ReadAllText(Path.Combine(fixture, "amend-summary")) != saved && resumed.Elapsed.TotalSeconds < 20 {
@@ -507,7 +548,7 @@ func WorkspaceFlow() {
         Script(
             bin,
             "tokate",
-            "if [ \"$$1\" = status ] && [ \"$$3\" = 'RUN' ]; then\n  printf '%s' '{\"schema_version\":1,\"command\":\"status\",\"exit_code\":0,\"status\":\"ok\",\"data\":{\"run\":\"RUN\",\"repo\":\"owner/repo\",\"issue\":45,\"state\":\"failed\",\"failure_reason\":\"verification_failed\",\"pr\":0,\"commit\":\"ORIGINAL\",\"artifacts\":{\"checkout\":\"CHECKOUT\"}},\"next_actions\":[]}'\nelif [ \"$$1\" = amend ] && [ \"$$3\" = 'RUN' ] && [ \"$$4\" = --json ]; then\n  printf '%s\\n' \"$$@\" > 'FIXTURE/archive-args'\n  printf '%s' '{\"schema_version\":1,\"command\":\"amend\",\"exit_code\":0,\"status\":\"ok\",\"data\":{},\"next_actions\":[]}'\nelse\n  exec 'BIN/tokate-published' \"$$@\"\nfi\n"
+            "if [ \"$$1\" = status ] && [ \"$$3\" = 'RUN' ]; then\n  printf '%s' '{\"schema_version\":1,\"command\":\"status\",\"exit_code\":0,\"status\":\"ok\",\"data\":{\"run\":\"RUN\",\"repo\":\"owner/repo\",\"issue\":45,\"state\":\"failed\",\"failure_reason\":\"verification_failed\",\"pr\":0,\"commit\":\"ORIGINAL\",\"artifacts\":{\"checkout\":\"CHECKOUT\"}},\"next_actions\":[]}'\nelif [ \"$$1\" = amend ] && [ \"$$3\" = 'RUN' ] && [ \"$$4\" = --yes ] && [ \"$$5\" = --json ]; then\n  printf '%s\\n' \"$$@\" > 'FIXTURE/archive-args'\n  printf '%s' '{\"schema_version\":1,\"command\":\"amend\",\"exit_code\":0,\"status\":\"ok\",\"data\":{},\"next_actions\":[]}'\nelse\n  exec 'BIN/tokate-published' \"$$@\"\nfi\n"
                 .Replace("RUN", unpublished)
                 .Replace("ORIGINAL", commits[0])
                 .Replace("CHECKOUT", checkout)
@@ -523,9 +564,10 @@ func WorkspaceFlow() {
         AwaitControl(host, adapter, AccessibilityRole.Button, "Saved owner/repo #45", enabled: true)
         Choose(host, window, adapter, "Saved owner/repo #45")
         Choose(host, window, adapter, "Amend contribution")
+        Choose(host, window, adapter, "Confirm")
         AwaitControl(host, adapter, AccessibilityRole.Button, "Check again", enabled: true)
         Require(
-            File.ReadAllText(Path.Combine(fixture, "archive-args")) == "amend\n--run\n" + unpublished + "\n--json\n",
+            File.ReadAllText(Path.Combine(fixture, "archive-args")) == "amend\n--run\n" + unpublished + "\n--yes\n--json\n",
             "Unpublished amendment did not archive evidence without a commit or budget"
         )
         Require(
@@ -540,10 +582,14 @@ func WorkspaceFlow() {
         Edit(window, host, adapter, "Verification minutes", "9")
         Choose(host, window, adapter, "Verify and publish amendment")
         Choose(host, window, adapter, "Confirm")
+        let verified = System.Diagnostics.Stopwatch.StartNew()
+        while desktop.Saved.Current.Note.Message != "The pull request has the amendment." && verified.Elapsed.TotalSeconds < 75 {
+            Settle(host)
+        }
         AwaitControl(host, adapter, AccessibilityRole.Status, "The pull request has the amendment.")
         Require(
             File.ReadAllText(Path.Combine(fixture, "amend-args")).Contains("--time\n9m\n--commit\n" + commits[1]),
-            "Unpublished amendment did not verify the edited checkout HEAD"
+            "Unpublished amendment did not verify the edited checkout HEAD: " + File.ReadAllText(Path.Combine(fixture, "amend-args"))
         )
         ReviewSubmitFlow(host, window, adapter, desktop, fixture, bin)
     } finally {

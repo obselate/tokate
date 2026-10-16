@@ -37,6 +37,7 @@ data struct IssueWork {
     var Issue string
     var State string
     var Drafts []string
+    var Reviews []DraftReview
     var ApprovalStatus string
     var NextAction string
 
@@ -52,6 +53,8 @@ data struct DraftReview {
     var Receipt string
     var Ci string
     var NeedsAmendment bool
+    var State string
+    var Applied bool
 
     prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" || Receipt == "pending" ? Tone.Wait: Tone.Fail
 

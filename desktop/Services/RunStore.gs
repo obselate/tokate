@@ -158,6 +158,9 @@ class RunStore {
                     arguments.Add(option == "--summary" ? SummaryFile(files): option == "--tools" ? ToolsFile(files): value)
                 }
             }
+            if !arguments.Contains("--yes") {
+                arguments.Add("--yes")
+            }
             return CoordinatorRequest{
                 Action: RunAction.Amend,
                 Path: path,

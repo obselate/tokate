@@ -58,6 +58,9 @@ data struct SavedRun {
             if remote.Merged {
                 return "Merged"
             }
+            if remote.Closed {
+                return "Closed without merge"
+            }
             if remote.Conflicts {
                 return "Conflicts"
             }
@@ -69,9 +72,6 @@ data struct SavedRun {
             }
             if remote.ChecksPending {
                 return "CI pending"
-            }
-            if remote.Closed {
-                return "Closed without merge"
             }
         }
         return run.Status
@@ -219,6 +219,11 @@ data struct RunGuide {
                 Step: 1,
                 Heading: "A donation runs for this contribution",
                 Text: "No action is necessary. Refresh the status to see the result.",
+            }
+            case "Interrupted": RunGuide{
+                Step: 1,
+                Heading: "The donation was interrupted",
+                Text: "",
             }
             case "Initial donation failed": RunGuide{
                 Step: 1,

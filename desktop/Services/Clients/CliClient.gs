@@ -41,6 +41,9 @@ class CliClient : Cancellable {
                         RunPath = CliCodec.RunPath(root),
                     }
                     value = decode(Json.Get(root, "data"))
+                    if outcome.Succeeded && !RunCodec.Applied(Json.Get(root, "data")) && Array.IndexOf(arguments, "--yes") >= 0 && arguments[0] != "submit" && arguments[0] != "init" {
+                        outcome = outcome with{Failure = "The action was not applied. Refresh status before trying again."}
+                    }
                 }
             }
         } catch (error Exception) {

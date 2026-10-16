@@ -248,7 +248,10 @@ class SavedWorkService {
         )
         Read([]SavedRun{item})
         if request == nil && run.Amending != "" {
-            go Resume(run, item.Path)
+            dialogs.Ask(
+                Confirmation{Title: "Finish saved amendment?", Text: run.Identity + "\n\nWait for the coordinator and save the confirmed amendment.", ConfirmLabel: "Confirm", Heading: ""},
+                () -> { go Resume(run, item.Path) }
+            )
         }
     }
 
@@ -309,6 +312,21 @@ class SavedWorkService {
         if arguments.Length < 2 || arguments[0] != "tokate" {
             return
         }
+        let confirmed = List[string]()
+        for index in 1 ... arguments.Length {
+            let argument = arguments[index]
+            if Array.IndexOf(arguments, "--continue-from") >= 0 && (argument == "--verify-time" || index > 1 && arguments[index - 1] == "--verify-time") {
+                continue
+            }
+            if argument != "--json" {
+                confirmed.Add(argument)
+            }
+        }
+        if action.Command == "claim" || action.Command == "work" || action.Command == "pause" || action.Command == "resume" || action.Command == "renew" || action.Command == "release" || action.Command == "external" || action.Command == "checks" || action.Command == "amend" || action.Command == "submit" {
+            if !confirmed.Contains("--yes") {
+                confirmed.Add("--yes")
+            }
+        }
         dialogs.Ask(
             Confirmation{
                 Title: "Follow the next step?",
@@ -317,7 +335,7 @@ class SavedWorkService {
                 Heading: Current.Run.Identity,
             },
             () -> commands.Cli(
-                Array.FindAll(ArraySegment[string](arguments, 1, arguments.Length - 1).ToArray(), argument -> argument != "--json"),
+                confirmed.ToArray(),
                 (outcome CommandOutcome) -> {
                     if !commands.Failed(outcome) {
                         if action.Command == "help" || action.Command == "status" {
@@ -376,11 +394,22 @@ class SavedWorkService {
                     let files = summary == "" ? "": RunStore.WriteAmendment(summary, tools)
                     let arguments = TokateCommands.RunAction(action, path, amendment, run.Commit, files)
                     let since = DateTime.UtcNow
-                    let started = commands.Cli[bool](
+                    let started = commands.Cli[DraftReview](
                         arguments,
-                        RunCodec.Applied,
-                        (reply Reply[bool]) -> {
+                        PullRequestCodec.Review,
+                        (reply Reply[DraftReview]) -> {
                             let outcome = reply.Outcome
+                            if action == RunAction.Checks {
+                                if outcome.Envelope?.Error?.Code == "invalid_state" {
+                                    LoadRun()
+                                    return
+                                }
+                                if outcome.Pending && reply.Value.Receipt == "pending" {
+                                    feedback.Clear()
+                                    Set(Current with{Note = Feedback{Message: "PR #" + run.Pr.ToString() + " is not ready to check yet. Check again in a minute", Report: "", Tone: Tone.Wait}})
+                                    return
+                                }
+                            }
                             if outcome.Failure != "" || (!(RunActions.Requests(action) && outcome.Pending) && commands.Failed(outcome)) {
                                 Discard(files)
                                 let reason = action == RunAction.Amend ? RunStore.AmendmentFailure(path, amendment.Commit, since): ""
@@ -389,8 +418,9 @@ class SavedWorkService {
                                 }
                                 return
                             }
-                            if action == RunAction.Submit && !reply.Value && !outcome.Pending {
-                                feedback.Show("The pull request was not published. Refresh status before trying again.", Tone.Need)
+                            if !reply.Value.Applied && !outcome.Pending {
+                                Discard(files)
+                                feedback.Show("The action was not applied. Refresh status before trying again.", Tone.Need)
                                 return
                             }
                             if RunActions.Requests(action) && (action != RunAction.Submit || outcome.Pending) {
@@ -599,16 +629,19 @@ class SavedWorkService {
         let opening = !Current.Amendment.Open
         if opening && Current.Run.Pr == 0 && !Current.Run.External {
             let path = Current.RunPath
-            commands.Cli(
-                []string{"amend", "--run", path},
-                (outcome CommandOutcome) -> {
-                    if !commands.Failed(outcome) && Current.RunPath == path {
-                        SetAmendment(Current.Amendment with{Open = true, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
-                        feedback.Show("Original evidence preserved. Edit and commit the checkout, then select Check again.")
-                        ReadCorrection(true)
-                    }
-                },
-                seconds: 600
+            dialogs.Ask(
+                Confirmation{Title: "Prepare amendment?", Text: Current.Run.Identity + "\n\nPreserve the original evidence before editing.", ConfirmLabel: "Confirm", Heading: ""},
+                () -> commands.Cli(
+                    []string{"amend", "--run", path, "--yes"},
+                    (outcome CommandOutcome) -> {
+                        if !commands.Failed(outcome) && Current.RunPath == path {
+                            SetAmendment(Current.Amendment with{Open = true, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})
+                            feedback.Show("Original evidence preserved. Edit and commit the checkout, then select Check again.")
+                            ReadCorrection(true)
+                        }
+                    },
+                    seconds: 600
+                )
             )
         } else {
             SetAmendment(Current.Amendment with{Open = opening, Summary = PublicSummary.Empty, Edited = EditedBy.Hand})

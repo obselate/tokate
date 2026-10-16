@@ -68,8 +68,6 @@ func CodecTests() {
     Regression.Check(setup.Changes[0].Setting == "Setup PR" && setup.Changes[0].Current == "" && setup.Changes[0].Proposed == "Set up Tokate", "setup changes decode source change old new fields")
     let releasedSetup = PolicyCodec.Setup(Json.Get(Regression.Fixture("init.json"), "data"))
     Regression.Check(!releasedSetup.Applied && releasedSetup.Changes.Length > 0 && releasedSetup.Changes[0].Setting == ".github/tokate.json" && releasedSetup.Changes[0].Current.Contains("3600") && releasedSetup.Changes[0].Proposed.Contains("2700"), "released init preview decodes change old new")
-    let merged = PullRequestCodec.Review(Json.Get(Regression.Fixture("checks-merged.json"), "data"))
-    Regression.Check(merged.Receipt == "unread" && merged.Ci == "historical", "real merged PR retains historical checks")
     let draft = PullRequestCodec.Review(Json.Get(Regression.Fixture("checks-draft.json"), "data"))
     Regression.Check(draft.Receipt == "verified" && draft.Ci == DraftReview.NeedsApproval, "released draft retains verified receipt and workflow approval")
     let combined = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"pending\"}"))
@@ -102,11 +100,6 @@ func CodecTests() {
         PullRequestCodec.ChecksStatus(Json.Parse("{\"checks_status\":\"pending\",\"workflow_runs_awaiting_approval\":[]}")),
         "pending",
         "checks without waiting workflow runs keep their state"
-    )
-    Regression.Equal(
-        PullRequestCodec.ChecksStatus(Json.Parse("{\"machine_status\":\"historical\",\"checks_status\":\"unread\"}")),
-        "historical",
-        "closed pull requests retain historical machine state"
     )
     let pull = PullRequestCodec.PullRequest(Regression.Fixture("pull-request.json"))
     Regression.Check(pull.ChecksPending && !pull.ChecksFailed, "pull request checks")

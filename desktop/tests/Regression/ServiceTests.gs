@@ -45,6 +45,12 @@ func ServiceTests() {
         let failed = CliClient(failing).Run(TokateCommands.Status("/runs/a"))
         Regression.Check(failed.Failure == "" && failed.ExitCode == 1 && !failed.Succeeded, "failed command keeps its envelope")
         Regression.Equal(failed.ErrorMessage(), "first problem", "failed command falls back to diagnostics")
+        let unapplied = Script(directory, "unapplied", "printf '{\"schema_version\":1,\"command\":\"revoke\",\"status\":\"ok\",\"exit_code\":0,\"data\":{\"applied\":false}}'")
+        Regression.Check(!CliClient(unapplied).Run(TokateCommands.Revoke("o/r", "7")).Succeeded, "an unapplied confirmed command cannot succeed")
+        let noisyJson = Script(directory, "noisy-json", "printf 'noise\\n{\"schema_version\":1,\"command\":\"status\",\"status\":\"ok\",\"exit_code\":0,\"data\":{}}'")
+        Regression.Check(!CliClient(noisyJson).Run(TokateCommands.Status("/runs/a")).Succeeded, "stdout noise is not a JSON envelope")
+        let twoObjects = Script(directory, "two-objects", "printf '{\"schema_version\":1,\"command\":\"status\",\"status\":\"ok\",\"exit_code\":0,\"data\":{}}\\n{}'")
+        Regression.Check(!CliClient(twoObjects).Run(TokateCommands.Status("/runs/a")).Succeeded, "stdout must contain exactly one object")
 
         let missing = CliClient(Path.Combine(directory, "absent")).Run(TokateCommands.Status("/runs/a"))
         Regression.Check(missing.Failure != "", "missing executable is reported")
@@ -100,6 +106,7 @@ func ServiceTests() {
             Regression.Check(request.Seconds == 420 && request.Head == "corrected", "unpublished pending amendment preserves its head and budget")
             Regression.Check(File.ReadAllText(RunStore.SummaryFile(request.Files)).Contains("\"head\":\"corrected\""), "unpublished pending amendment restores its exact summary")
             Regression.Check(Array.IndexOf(request.Arguments, RunStore.SummaryFile(request.Files)) >= 0, "unpublished pending amendment replaces the missing summary file")
+            Regression.Check(Array.IndexOf(request.Arguments, "--yes") >= 0, "confirmed restored amendments retain consent")
         } finally {
             RunStore.Remove(request.Files)
         }

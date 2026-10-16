@@ -63,9 +63,13 @@ func CommandTests() {
         "approve o/r#42 alice --base-branch main --yes",
         "issue access uses positional login"
     )
+    Regression.Equal(Regression.Args(TokateCommands.Revoke("o/r", "42")), "revoke o/r#42 --yes", "revoke requires confirmation")
     Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "list")), "access list o/r", "access list")
-    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "trust", "alice")), "access trust alice o/r", "trust donor")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "trust", "alice")), "access trust alice o/r --yes", "trust donor")
     Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "history")), "access history o/r", "access history")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "untrust", "alice")), "access untrust alice o/r --yes", "untrust donor requires confirmation")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "deny", "alice")), "access deny alice o/r --yes", "deny donor requires confirmation")
+    Regression.Equal(Regression.Args(TokateCommands.Access("o/r", "restore", "alice")), "access restore alice o/r --yes", "restore donor requires confirmation")
 
     let tricky = []string{"a\"b", "ü", "<b>&", "line\nbreak", "back\\slash"}
     Regression.Equal(Json.StringArray(tricky), NodeArray(tricky).ToJsonString(), "string arrays match the previous encoder")
@@ -107,7 +111,7 @@ func CommandTests() {
     )
     Regression.Equal(Regression.Args(TokateCommands.Policy("o/r")), "doctor repo o/r", "policy comes from repository doctor")
     Regression.Equal(Regression.Args(TokateCommands.OwnerDoctor()), "doctor external --auth", "owner prerequisites")
-    Regression.Equal(Regression.Args(TokateCommands.PullRequestCheck("o/r", "7")), "checks o/r#7", "combined receipt and CI check")
+    Regression.Equal(Regression.Args(TokateCommands.PullRequestCheck("o/r", "7")), "checks o/r#7 --yes", "combined receipt and CI check")
     Regression.Equal(
         Regression.Args(TokateCommands.Approve("o/r", "42", "main")),
         "approve o/r#42 --base-branch main --yes",
@@ -131,20 +135,25 @@ func CommandTests() {
     }
     Regression.Equal(
         Regression.Args(TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment, files: "/tmp/a")),
-        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/a/tools.json",
+        "amend --run /runs/1 --yes --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/a/tools.json",
         "amend arguments"
     )
     Regression.Equal(
         Regression.Args(
             TokateCommands.RunAction(RunAction.Amend, "/runs/1", amendment with{Edited = EditedBy.Other, Tools = "/tmp/tools.json"}, files: "/tmp/a")
         ),
-        "amend --run /runs/1 --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/tools.json",
+        "amend --run /runs/1 --yes --time 7m --commit 0123456789abcdef0123456789abcdef01234567 --summary /tmp/a/summary.json --tools /tmp/tools.json",
         "amend arguments with a tool declarations file"
     )
     Regression.Equal(
         Regression.Args(TokateCommands.RunAction(RunAction.Submit, "/runs/1", amendment)),
         "submit --run /runs/1 --yes",
         "submit arguments"
+    )
+    Regression.Equal(
+        Regression.Args(TokateCommands.RunAction(RunAction.Checks, "/runs/1", amendment)),
+        "checks --run /runs/1 --yes",
+        "checks action requires confirmation"
     )
     Regression.Check(TokateCommands.RunActionTimeout(RunAction.Amend, amendment) == 540, "amend timeout")
     Regression.Check(TokateCommands.RunActionTimeout(RunAction.Checks, amendment) == 600, "default timeout")

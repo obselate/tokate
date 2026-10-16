@@ -215,10 +215,37 @@ class OwnerService {
     )
 
     func CheckPullRequest(pr string) {
+        commands.GitHub[PullRequest](
+            GitHubCommands.PullRequest(Repository, pr),
+            PullRequestCodec.PullRequest,
+            (reply Reply[PullRequest]) -> {
+                if commands.Failed(reply.Outcome) {
+                    return
+                }
+                if reply.Value.Closed || reply.Value.Merged {
+                    let reviews = List[DraftReview](Current.Reviews)
+                    reviews.RemoveAll(existing -> existing.Pr == pr)
+                    reviews.Add(DraftReview{Pr: pr, State: reply.Value.Merged ? "Merged": "Closed", Receipt: "", Ci: ""})
+                    Set(Current with{Reviews = reviews.ToArray()})
+                    return
+                }
+                dialogs.Ask(
+                    Confirmation{Title: "Check pull request?", Text: Repository + " PR #" + pr, ConfirmLabel: "Confirm", Heading: ""},
+                    () -> CheckOpenPullRequest(pr)
+                )
+            }
+        )
+    }
+
+    private func CheckOpenPullRequest(pr string) {
         commands.Cli[DraftReview](
             TokateCommands.PullRequestCheck(Repository, pr),
             PullRequestCodec.Review,
             (reply Reply[DraftReview]) -> {
+                if reply.Outcome.Envelope?.Error?.Code == "invalid_state" {
+                    CheckPullRequest(pr)
+                    return
+                }
                 if commands.Failed(reply.Outcome) && !reply.Outcome.Pending && !reply.Value.NeedsAmendment {
                     return
                 }
@@ -232,7 +259,7 @@ class OwnerService {
                     )
                 }
                 if reply.Outcome.Pending && reply.Value.Receipt == "pending" {
-                    feedback.Show("PR #" + pr + " is still updating on GitHub. Check again in a minute", Tone.Wait)
+                    feedback.Clear()
                 }
                 let reviews = List[DraftReview](Current.Reviews)
                 reviews.RemoveAll(existing -> existing.Pr == pr)

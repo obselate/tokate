@@ -52,7 +52,8 @@ data struct Run {
         case "claimed": "Claimed, not started"
         case "preparing": "Preparing workspace"
         case "running": "Donation in progress"
-        case "failed": FailureReason == "verification_failed" ? "Verification failed": "Initial donation failed"
+        case "failed": FailureReason == "inference_interrupted" ? "Interrupted": FailureReason == "verification_failed" ? "Verification failed": "Initial donation failed"
+        case "inference_interrupted": "Interrupted"
         case "generated": "Ready to submit"
         case "published": "Awaiting review"
         default: State.Replace('_', ' ')

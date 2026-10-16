@@ -104,18 +104,28 @@ data struct OwnerIssueCard {
         let review = OnReview
         let checks = OnChecks
         var known = DraftReview{Pr: pr, Receipt: "", Ci: ""}
-        for item in Reviews {
+        for item in Work?.Reviews ?? []DraftReview{} {
             if item.Pr == pr {
                 known = item
             }
         }
+        for item in Reviews {
+            if item.Pr == pr && String.IsNullOrEmpty(known.State) {
+                known = item
+            }
+        }
+        let state = known.State ?? ""
+        let receipt = state != "" ? state: known.NeedsAmendment ? "Donor must amend": known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt
         return ListRow{
             Children: []Blob{
                 Container{Width: AppTheme.ButtonMinWidth, FlexShrink: 0, Label{Content: "PR #" + pr}.Build()},
-                Result(known.NeedsAmendment ? "Donor must amend": known.Receipt == "" ? "Receipt not checked": "Receipt " + known.Receipt, !known.NeedsAmendment && known.Receipt == "", known.NeedsAmendment ? Tone.Need: known.ReceiptTone),
-                Result(known.Ci == "" ? "CI not checked": "CI " + known.Ci, known.Ci == "", known.CiTone),
-                Spacer{}.Build(),
-                (Button with{Label = "Check receipt and CI", Name = "Check PR #" + pr, OnClick = () -> checks?.Invoke(pr)}).Build(),
+                known.Receipt == "pending" ? Container{
+                    FlexGrow: 1, FlexBasis: 0, MinWidth: 0,
+                    Label{Content: "PR #" + pr + " is not ready to check yet. Check again in a minute", Ink: AppTheme.Look(Tone.Wait).Edge}.Build(),
+                }: Result(receipt, state == "" && !known.NeedsAmendment && known.Receipt == "", state == "Merged" ? Tone.Done: known.NeedsAmendment ? Tone.Need: known.ReceiptTone),
+                state != "" || known.Receipt == "pending" ? Container{}: Result(known.Ci == "" ? "CI not checked": "CI " + known.Ci, known.Ci == "", known.CiTone),
+                known.Receipt == "pending" ? Container{}: Spacer{}.Build(),
+                state == "" ? (Button with{Label = "Check receipt and CI", Name = "Check PR #" + pr, OnClick = () -> checks?.Invoke(pr)}).Build(): Container{},
                 (Button with{
                     Label = "Review",
                     Name = "Review PR #" + pr,

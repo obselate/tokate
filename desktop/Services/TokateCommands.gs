@@ -110,9 +110,9 @@ class TokateCommands {
             return args.ToArray()
         }
 
-        func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue}
+        func Revoke(repo string, issue string) []string -> []string{"revoke", repo + "#" + issue, "--yes"}
 
-        func PullRequestCheck(repo string, pr string) []string -> []string{"checks", repo + "#" + pr}
+        func PullRequestCheck(repo string, pr string) []string -> []string{"checks", repo + "#" + pr, "--yes"}
 
         func Access(repo string, operation string, donor string = "") []string {
             let args = List[string]{"access", operation}
@@ -120,6 +120,9 @@ class TokateCommands {
                 args.Add(donor)
             }
             args.Add(repo)
+            if operation != "list" && operation != "history" {
+                args.Add("--yes")
+            }
             return args.ToArray()
         }
 
@@ -158,9 +161,7 @@ class TokateCommands {
         /// holds the written amendment files; without it the command has only the commit and budget.
         func RunAction(action RunAction, run string, amendment AmendmentDraft, published string = "", files string = "") []string {
             let args = List[string]{RunActions.Command(action), "--run", run}
-            if action == RunAction.Claim || action == RunAction.Submit {
-                args.Add("--yes")
-            }
+            args.Add("--yes")
             if RunActions.NeedsBudget(action) {
                 args.Add("--time")
                 args.Add(amendment.VerificationMinutes().ToString() + "m")

@@ -130,7 +130,9 @@ func ScrollOutput(host TestHost, window Window, adapter TestAccessibility, end b
 
 func Script(directory string, name string, body string) {
     let path = Path.Combine(directory, name)
-    File.WriteAllText(path, "#!/bin/sh\n" + body)
+    let gate = name != "tokate" ? "": "gated=false\ncase \"$$1\" in approve|revoke|claim|pause|resume|renew|release|amend|external|checks) gated=true;; access) case \"$$2\" in init|trust|untrust|deny|restore|request) gated=true;; esac;; work) [ \"$$2\" = --run ] && gated=true;; esac\nif [ \"$$gated\" = true ]; then\n yes=false\n for arg in \"$$@\"; do [ \"$$arg\" = --yes ] && yes=true; done\n if [ \"$$yes\" = false ]; then printf '{\"schema_version\":1,\"command\":\"%s\",\"status\":\"error\",\"exit_code\":1,\"data\":{\"applied\":false},\"error\":{\"code\":\"confirmation_required\",\"message\":\"Confirm this action\"},\"next_actions\":[],\"truncated\":false}' \"$$1\"; exit 1; fi\nfi\n"
+    let submitGate = name == "tokate" && !body.Contains("pull_request") ? "if [ \"$$1\" = submit ]; then\n yes=false\n for arg in \"$$@\"; do [ \"$$arg\" = --yes ] && yes=true; done\n if [ \"$$yes\" = false ]; then printf '{\"schema_version\":1,\"command\":\"submit\",\"status\":\"error\",\"exit_code\":1,\"data\":{\"applied\":false},\"error\":{\"code\":\"confirmation_required\",\"message\":\"Confirm publication\"},\"next_actions\":[],\"truncated\":false}'; exit 1; fi\nfi\n": ""
+    File.WriteAllText(path, "#!/bin/sh\n" + gate + submitGate + body)
     File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
 }
 
