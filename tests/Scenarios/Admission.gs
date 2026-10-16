@@ -287,6 +287,28 @@ internal class AdmissionChecks {
         }
 
         private func Safety(binary string) {
+            using let invalid = CoordinationFixture(binary)
+            invalid.Initialize(approve: false)
+            Setup(invalid, "trusted")
+            let existing = Check.Envelope(
+                invalid.Flow.Call([]string{"access", "init", "owner/project", "--json"}, 1, owner: true),
+                "access",
+                "error",
+                "invalid_state"
+            )
+            Check.Contains(Check.Text(existing["error"]?["message"]), "already exists")
+            Check.Contains(Check.Text(existing["error"]?["message"]), "tokate access list owner/project")
+            let eventPath = Path.Combine(invalid.Flow.Temp.Root, "invalid-event.json")
+            File.WriteAllText(eventPath, "{}")
+            let malformed = Check.Envelope(
+                invalid.Flow.Call([]string{"admit", "owner/project", "--event", eventPath, "--json"}, 1, owner: true),
+                "admit",
+                "error",
+                "invalid_arguments"
+            )
+            Check.Contains(Check.Text(malformed["error"]?["message"]), eventPath)
+            Check.Contains(Check.Text(malformed["error"]?["message"]), "action")
+            Check.Contains(Check.Text(malformed["error"]?["message"]), "--event")
             for fault in[]string{
                 "api",
                 "malformed",

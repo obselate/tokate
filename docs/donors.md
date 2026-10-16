@@ -107,6 +107,7 @@ Approved issues are selected oldest first across pages. Reserved, stale, inacces
 dependency-blocked and already attempted issues are skipped. Each task uses claim, work and submit.
 Failed tasks release reservations. Three consecutive failures stop the loop. Idle rechecks occur every ten minutes.
 Stop waits for the current task and prints wall time, submitted, skipped and failed tasks, PR URLs and token totals.
+Wall time includes claim, preparation, coding, verification and publication. The report sums saved task times and excludes idle time between tasks.
 
 ### Gratis
 

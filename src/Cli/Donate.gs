@@ -40,9 +40,12 @@ internal class Donate {
                     default: "failed"
                 }
                 session.Fields[result] = session.Number(result) + 1
-                session.Fields["wall_seconds"] = session.Number("wall_seconds") + Math.Max(
-                    run?.Number("elapsed_seconds") ?? 0,
-                    run?.Number("execution_seconds") ?? 0
+                session.Fields["wall_seconds"] = session.Number("wall_seconds") +
+                    (
+                    run?.Fields.ContainsKey("wall_seconds") == true ? run.Number("wall_seconds"): Math.Max(
+                        run?.Number("elapsed_seconds") ?? 0,
+                        run?.Number("execution_seconds") ?? 0
+                    )
                 )
                 let taskUsage = J.Get(run?.Element() ?? default(JsonElement), "usage")
                 for key in usage.Keys {
@@ -110,6 +113,7 @@ internal class Donate {
             options.Values["--issue"] = issue.ToString()
             var directory string = ""
             let task = map[string, Object?]{"issue": issue, "result": "submitted"}
+            let timer = Stopwatch.StartNew()
             try {
                 directory = ContributionPreparation.Acquire(options, gratis)
                 Dispatch(Args([]string{"work", "--run", directory, "--yes", "--non-interactive"}))
@@ -147,6 +151,12 @@ internal class Donate {
                 }
             } finally {
                 ApiTransport.EndDeadline()
+                if directory != "" && File.Exists(Path.Combine(directory, "run.json")) {
+                    using let lease = RunStorage.Lease(directory)
+                    let run = Data.Load(directory)
+                    run.Fields["wall_seconds"] = Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+                    run.Save(directory)
+                }
             }
             task["pr_url"] = directory == "" ? "": Data.Load(directory).Text("pr_url")
             task["run_directory"] = directory

@@ -326,8 +326,14 @@ internal class Policy {
             throw Exception("Repository policy does not allow unlimited coding")
         }
 
-        if seconds < 1 || seconds > J.Number(Value, "max_seconds") {
-            throw Exception("Runtime exceeds repository policy")
+        let maximum = J.Number(Value, "max_seconds")
+        if seconds < 1 || seconds > maximum {
+            throw CliFailure(
+                "invalid_arguments",
+                "Requested --time " + seconds.ToString() + "s is invalid. Policy maximum: " + maximum.ToString() +
+                    "s. Choose --time from 1s to " +
+                    maximum.ToString() + "s."
+            )
         }
     }
 
