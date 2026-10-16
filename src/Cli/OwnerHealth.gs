@@ -147,7 +147,7 @@ internal class OwnerHealth {
                 let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
                 var trusted int32
                 for member in access.Members {
-                    if J.Bool(member, "trusted") && !J.Bool(member, "denied") {
+                    if member.Trusted && !member.Denied {
                         trusted++
                     }
                 }

@@ -258,9 +258,9 @@ internal class ContributionStatus {
                     "eligible": eligible
                 }
 
-                for member in Access?.Members ?? List[JsonElement]() {
-                    if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
-                        row["viewer_denied"] = J.Bool(member, "denied")
+                for member in Access?.Members ?? List[AccessState.Member]() {
+                    if member.Actor == actor {
+                        row["viewer_denied"] = member.Denied
                     }
                 }
 

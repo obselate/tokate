@@ -129,3 +129,43 @@ internal class J {
         }
     }
 }
+
+internal class JsonFields {
+    shared {
+        internal func Int64(value JsonElement, format string, field string) int64 {
+            let item = J.Get(value, field)
+            var result int64
+
+            if item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out result) {
+                throw Invalid(format, field, "an int64")
+            }
+
+            return result
+        }
+
+        internal func Bool(value JsonElement, format string, field string) bool {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.True && item.ValueKind != JsonValueKind.False {
+                throw Invalid(format, field, "a boolean")
+            }
+
+            return item.GetBoolean()
+        }
+
+        internal func Array(value JsonElement, format string, field string) JsonElement {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.Array {
+                throw Invalid(format, field, "an array")
+            }
+
+            return item
+        }
+
+        private func Invalid(format string, field string, expected string) CliFailure -> CliFailure(
+            "invalid_state",
+            format + ": field \"" + field + "\" is missing or not " + expected
+        )
+    }
+}
