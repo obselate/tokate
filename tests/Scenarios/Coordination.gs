@@ -130,6 +130,31 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 }
 
                 test.Flow.Approve()
+                let budget = Check.Envelope(
+                    test.Flow.Call(
+                        []string{
+                            "claim",
+                            "owner/project#1",
+                            "--harness",
+                            "codex",
+                            "--model",
+                            "gpt-6.1-sol",
+                            "--effort",
+                            "high",
+                            "--time",
+                            "61m",
+                            "--yes",
+                            "--json"
+                        },
+                        1
+                    ),
+                    "claim",
+                    "error",
+                    "invalid_arguments"
+                )
+                for expected in[]string{"3660", "3600", "--time"} {
+                    Check.Contains(Check.Text(budget["error"]?["message"]), expected)
+                }
                 test.Claim()
                 let original = Check.Json(File.ReadAllText(test.Tools))
                 let changed = original.DeepClone()
@@ -1731,6 +1756,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 let comment = comments[handled] ?? throw Exception("Missing donation request")
                 Check.That(Check.Text(comment["issue_url"]).EndsWith("/2"), "Donation claimed the reserved issue")
                 let posted = Check.PostedRequest(Check.Map("posted_request", comment.DeepClone()))
+                if Check.Text(posted["action"]) == "claim" {
+                    select {
+                        case <- after(TimeSpan.FromSeconds(3)) { }
+                    }
+                }
                 Flow.CoordinatePosted(2)
                 handled++
                 if Check.Text(posted["action"]) == "publish" {
@@ -1758,6 +1788,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let task = summary["tasks"]?[1] ?? throw Exception("Missing task")
         Check.That(Check.Text(task["issue"]) == "2", "Donation reported the wrong issue")
         Check.Contains(Check.Text(task["pr_url"]), "/pull/10")
+        let timedRun = Check.Json(File.ReadAllText(Path.Combine(Check.Text(task["run_directory"]), "run.json")))
+        let wall = Int32.Parse(Check.Text(timedRun["wall_seconds"]))
+        Check.That(
+            wall >= 3 && wall > Int32.Parse(Check.Text(timedRun["elapsed_seconds"])),
+            "Wall time omitted claim and publication coordination"
+        )
+        Check.That(Check.Text(summary["wall_seconds"]) == wall.ToString(), "Report did not use saved wall time")
         let last = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
         Check.That(JsonNode.DeepEquals(summary, last), "Stopped session report changed")
         let missingRun = Path.Combine(Check.Text(task["run_directory"]), "run.json")

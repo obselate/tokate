@@ -291,7 +291,7 @@ internal class PublicOutput {
                         continue
                     }
 
-                    let amendment = Data.Load(location)
+                    let amendment = Data.Load(location, amendment: true)
 
                     if amendment.Text("state") != "requested" || amendment.Text("previous") != run.Text("commit") {
                         continue
@@ -307,7 +307,7 @@ internal class PublicOutput {
 
             if run.Text("amendment") != "" {
                 let location = Path.Combine(directory, "amendments", run.Text("amendment"))
-                let correction = Data.Load(location)
+                let correction = Data.Load(location, amendment: true)
                 result["correction"] = ChangeSummary(correction, location)
                 if correction.Text("state") == "verified" && J.Get(correction.Element(), "publication")
                     .ValueKind == JsonValueKind.Object &&
@@ -539,7 +539,7 @@ internal class PublicOutput {
                         let location = Path.Combine(RunDirectory, "amendments", options.Get("commit"))
 
                         if File.Exists(Path.Combine(location, "run.json")) {
-                            fields["amendment"] = ChangeSummary(Data.Load(location), location)
+                            fields["amendment"] = ChangeSummary(Data.Load(location, amendment: true), location)
                         }
                     }
 

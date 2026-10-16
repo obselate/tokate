@@ -74,7 +74,14 @@ internal class OwnerApproval {
             var allowed = []int64{}
             if args.Get("donor") != "" {
                 let donor = RepositoryIdentity.Login(args.Get("donor"))
-                allowed = []int64{RepositoryIdentity.PositiveId(J.Get(GitHub.Api("users/" + donor), "id"))}
+                let user = GitHub.Api("users/" + donor, missing: true)
+                if user.ValueKind == JsonValueKind.Undefined {
+                    throw CliFailure(
+                        "invalid_arguments",
+                        "GitHub login " + donor + " does not exist. Choose an existing donor login for tokate approve."
+                    )
+                }
+                allowed = []int64{RepositoryIdentity.PositiveId(J.Get(user, "id"))}
             }
 
             Terminal.Step(

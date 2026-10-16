@@ -158,6 +158,11 @@ Keep saved work and inspect current state before any explicit next action.
 
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
+| `invalid_arguments` | Approval names a missing login or branch, a closed issue or a pull request | Select the existing login, target branch or open issue named in the message. |
+| `invalid_arguments` | Requested `--time` exceeds the policy maximum | Set `--time` within the stated limit. No inference started. |
+| `invalid_arguments` | Admission event has a missing or invalid field | Supply the complete upstream `pull_request_target` event with `--event`. |
+| `invalid_state` | Saved file cannot be read, has malformed JSON or has a missing required field | Preserve the file at the stated path. Select an existing run with `tokate status` or restore the original file. Do not renew approval to repair local data. |
+| `invalid_state` | Access already exists | Inspect membership with `tokate access list OWNER/REPO`. |
 | `invalid_state` | `An unexpired reservation already owns this contribution` or `Reservation state does not permit this operation` | Inspect `tokate status --run DIR --json` and use the existing reservation. |
 | `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate work --run DIR` after inspecting the saved evidence. Use `tokate claim --run DIR` to finish preparation without inference. |
 | `invalid_state` | `Ambiguous or incomplete fork discovery` or `Incomplete fork discovery after 60 seconds` | Select `--fork DONOR/NAME` explicitly in a fresh preparation. |

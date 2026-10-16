@@ -1,6 +1,7 @@
 package TokateTests
 
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json.Nodes
 
@@ -263,6 +264,42 @@ internal class TargetBranches {
                 using let test = DecreeFlow(binary, version)
                 test.Initialize()
                 let flow = test.Flow
+                for input in[]string{"branch", "login", "closed", "pull"} {
+                    flow.Reload()
+                    let issue = flow.State["issue"] ?? throw Exception("Missing issue")
+                    issue["state"] = JsonValue.Create(input == "closed" ? "closed": "open")
+                    if input == "pull" {
+                        issue["pull_request"] = Check.Map("url", "fixture")
+                    } else {
+                        issue.AsObject().Remove("pull_request")
+                    }
+                    flow.Save()
+                    let arguments = List[string]([]string{"approve", "owner/project#1", "--json"})
+                    if input == "branch" {
+                        arguments.AddRange([]string{"--base-branch", "missing"})
+                    } else if input == "login" {
+                        arguments.Add("missing")
+                    }
+                    let refusal = Check.Envelope(
+                        flow.Call(arguments.ToArray(), 1, owner: true),
+                        "approve",
+                        "error",
+                        "invalid_arguments"
+                    )
+                    let message = Check.Text(refusal["error"]?["message"])
+                    Check.Contains(message, input == "branch" || input == "login" ? "missing": "owner/project#1")
+                    Check.Contains(message, "Choose")
+                    Check.Contains(
+                        message,
+                        input == "branch" ? "--base-branch": input == "login" ? "login":
+                        input == "pull" ? "pull request": "closed"
+                    )
+                }
+                flow.Reload()
+                let issue = flow.State["issue"] ?? throw Exception("Missing issue")
+                issue["state"] = JsonValue.Create("open")
+                issue.AsObject().Remove("pull_request")
+                flow.Save()
                 test.Text("synthetic-private-owner-instruction-marker\n")
                 let base = Target(flow, "release")
                 flow.Call(

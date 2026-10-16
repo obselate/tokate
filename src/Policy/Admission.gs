@@ -22,6 +22,21 @@ internal class Admission {
                 "assigned",
                 "unassigned"
             }
+            for field in[]string{"action", "pull_request", "repository"} {
+                let value = J.Get(event, field)
+                if (
+                    field == "action" ? value.ValueKind != JsonValueKind.String:
+                    value.ValueKind != JsonValueKind.Object
+                ) {
+                    throw CliFailure(
+                        "invalid_arguments",
+                        "Admission event " + args.Need("event") +
+                            " has a missing or invalid field: " +
+                            field +
+                            ". Supply a complete pull_request_target event with --event."
+                    )
+                }
+            }
             let number = J.Number(J.Get(event, "pull_request"), "number")
             let repository = J.Get(event, "repository")
 
@@ -32,7 +47,13 @@ internal class Admission {
                 number < 1 ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(repository, "full_name"), repo) {
-                throw Exception("Expected a supported upstream pull_request_target event")
+                throw CliFailure(
+                    "invalid_arguments",
+                    "Admission event " + args.Need("event") +
+                        " requires a supported action, pull_request.number and repository.full_name matching " +
+                        repo +
+                        ". Run admission in the upstream pull_request_target workflow with its complete --event."
+                )
             }
 
             let repoId = RepositoryIdentity.PositiveId(J.Get(repository, "id"))

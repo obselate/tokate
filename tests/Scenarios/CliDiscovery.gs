@@ -988,6 +988,32 @@ internal class CliDiscovery {
             Directory.CreateDirectory(oversized)
             File.WriteAllText(Path.Combine(broken, "run.json"), "{")
             File.WriteAllText(Path.Combine(oversized, "run.json"), String('x', 1024 * 1024 + 1))
+            for fixture in[]string{"absent", "broken", "missing-fields"} {
+                let directory = Path.Combine(root, fixture)
+                if fixture == "missing-fields" {
+                    Directory.CreateDirectory(directory)
+                    File.WriteAllText(Path.Combine(directory, "run.json"), "{}")
+                }
+                for command in[]string{"status", "amend"} {
+                    let refusal = Check.Envelope(
+                        Call(binary, []string{command, "--run", directory, "--json"}, temp, 1),
+                        command,
+                        "error",
+                        "invalid_state"
+                    )
+                    let message = Check.Text(refusal["error"]?["message"])
+                    Check.Contains(message, Path.Combine(directory, "run.json"))
+                    Check.Contains(
+                        message,
+                        fixture == "broken" ? "Malformed JSON":
+                        fixture == "absent" ? "Cannot read": "version"
+                    )
+                    Check.That(!refusal.ToJsonString().Contains("#0"), "Corrupt run suggested invalid approval")
+                }
+                if fixture == "missing-fields" {
+                    Directory.Delete(directory, true)
+                }
+            }
             Directory.CreateSymbolicLink(Path.Combine(root, "linked"), first)
             Call(binary, []string{"status", "--json"}, temp)
             Check.That(

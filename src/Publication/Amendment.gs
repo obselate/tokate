@@ -312,7 +312,8 @@ internal class Amendment {
                     throw CliFailure("invalid_state", "Resume requires a published PR")
                 }
                 let existing = savedCorrection ? Data.Load(
-                    Path.Combine(directory, "amendments", run.Text("amendment"))
+                    Path.Combine(directory, "amendments", run.Text("amendment")),
+                    amendment: true
                 ): nil
                 if existing != nil && continuing && J.Get(existing.Element(), "publication")
                     .ValueKind == JsonValueKind.Object {
@@ -361,7 +362,7 @@ internal class Amendment {
                         if !File.Exists(Path.Combine(saved, "run.json")) {
                             continue
                         }
-                        let value = Data.Load(saved)
+                        let value = Data.Load(saved, amendment: true)
                         if value.Text("previous") != run.Text("commit") || J.Get(value.Element(), "request")
                             .ValueKind != JsonValueKind.Object {
                             continue
@@ -678,7 +679,10 @@ internal class Amendment {
         }
 
         internal func PublishSaved(directory string, run Data, amendment Data? = nil) {
-            let change = amendment ?? Data.Load(Path.Combine(directory, "amendments", run.Text("amendment")))
+            let change = amendment ?? Data.Load(
+                Path.Combine(directory, "amendments", run.Text("amendment")),
+                amendment: true
+            )
             let location = Location(directory, change)
             try {
                 OriginalEvidence.Amended(directory, run, change)

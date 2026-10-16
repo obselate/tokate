@@ -629,7 +629,13 @@ internal class AccessState {
                 let expected = access.Sha == "" ? GitHub.Branch(repo, J.Text(info, "default_branch")): access.Sha
                 if operation == "init" {
                     if access.Sha != "" {
-                        throw Exception("Access already exists; inspect current membership")
+                        throw CliFailure(
+                            "invalid_state",
+                            "Access already exists for " +
+                                repo +
+                                ". Inspect current membership with: tokate access list " +
+                                repo
+                        )
                     }
                 } else {
                     var trusted bool
@@ -674,7 +680,13 @@ internal class AccessState {
                     break
                 }
                 if operation == "init" {
-                    throw CliFailure("invalid_state", "Access already exists. Inspect current membership.")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Access already exists for " +
+                            repo +
+                            ". Inspect current membership with: tokate access list " +
+                            repo
+                    )
                 }
                 access = Load(repo, repoId)
             }
