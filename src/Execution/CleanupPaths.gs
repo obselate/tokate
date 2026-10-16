@@ -20,6 +20,8 @@ internal class CleanupTarget(run SavedRun, path string, ignored bool) {
 
 internal class CleanupPaths {
     shared {
+        private const IgnoredPreviewCount int32 = 5
+
         internal func Ignored(row SavedRun, selected string = "") List[CleanupTarget] {
             let result = List[CleanupTarget]()
             let checkout = Path.Combine(LocalPaths.DirectoryPath(row.Location), "checkout")
@@ -46,20 +48,23 @@ internal class CleanupPaths {
                     continue
                 }
 
-                ValidateIgnored(checkout, path)
+                if !ValidateIgnored(checkout, path, selected != "") {
+                    continue
+                }
+
                 result.Add(CleanupTarget(row, path, true))
             }
 
             result.Sort((a, b) -> b.Bytes.CompareTo(a.Bytes))
 
-            if selected == "" && result.Count > 5 {
-                result.RemoveRange(5, result.Count - 5)
+            if selected == "" && result.Count > IgnoredPreviewCount {
+                result.RemoveRange(IgnoredPreviewCount, result.Count - IgnoredPreviewCount)
             }
 
             return result
         }
 
-        internal func ValidateIgnored(checkout string, path string) {
+        internal func ValidateIgnored(checkout string, path string, selected bool = true) bool {
             let relative = Path.GetRelativePath(checkout, path)
 
             if path == checkout || !LocalPaths.Within(path, checkout) || Array.IndexOf(
@@ -77,8 +82,14 @@ internal class CleanupPaths {
             )
 
             if ignored.Code != 0 || tracked != "" {
-                throw CliFailure("invalid_state", "Directory is not wholly ignored and untracked: " + path)
+                if selected {
+                    throw CliFailure("invalid_state", "Directory is not wholly ignored and untracked: " + path)
+                }
+
+                return false
             }
+
+            return true
         }
 
         internal func Delete(path string) {

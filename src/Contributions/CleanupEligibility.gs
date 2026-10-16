@@ -14,6 +14,18 @@ internal class CleanupEligibility {
                     return "Run is in use."
                 }
 
+                let pr = J.Number(row.Value, "pr")
+
+                if pr == 0 {
+                    if Unpublished(row, "") {
+                        return "Unpublished verified work or publication cannot be established."
+                    }
+
+                    if !row.Finished {
+                        return "Run is not finished."
+                    }
+                }
+
                 let repo = row.Text("repo")
                 let issue = GitHub.Api("repos/" + repo + "/issues/" + row.Issue.ToString())
                 let state = J.Text(issue, "state")
@@ -40,7 +52,6 @@ internal class CleanupEligibility {
                     return "Active reservation."
                 }
 
-                let pr = J.Number(row.Value, "pr")
                 var head = ""
 
                 if pr > 0 {
@@ -53,11 +64,11 @@ internal class CleanupEligibility {
                     head = RepositoryIdentity.CommitSha(J.Text(J.Get(pull, "head"), "sha"))
                 }
 
-                if Unpublished(row, head) {
+                if pr > 0 && Unpublished(row, head) {
                     return "Unpublished verified work or publication cannot be established."
                 }
 
-                return pr > 0 || row.Finished ? "": "Run is not finished."
+                return ""
             } catch (error Exception) when error is CliFailure ||
                 error is IOException ||
                 error is UnauthorizedAccessException ||
@@ -90,7 +101,7 @@ internal class CleanupEligibility {
 
                 for directory in Directory.EnumerateDirectories(amendments) {
                     RunStorage.ControlPaths(directory)
-                    let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
+                    let value = RequestData.FileData(Path.Combine(directory, "run.json"), RunStorage.RunFileByteLimit)
 
                     if J.Text(value, "state") != "published" {
                         return true
