@@ -9,9 +9,12 @@ if git grep -lE '(ghp_|github_pat_|gho_|sk-ant-|sk-proj-)[A-Za-z0-9_]{10,}'; the
     echo 'A tracked file contains a secret-shaped token.' >&2
     exit 1
 fi
-if git grep -nP '(?<![\w.])(?<!func )\b(Terminal|DonationView|WizardScreen|TerminalProgress|PublicOutput|Cli|CliOption|CliCommand|CliOutput|CleanCommand|Completion|Donate|DonorDefaults|DonorSelection|Gratis|GratisGuidance|Installation|MachineSetup|OwnerHealth|OwnerSetup|Positionals|RepositoryInput|RunReference|Startup)\s*[.(]|\bConsole\.(?!CancelKeyPress\b)' -- 'src/*.gs' ':(exclude)src/Cli/**'; then
+if git grep -nP '(?<![\w.])(?<!func )\b(?:Tokate\.)?(Terminal|DonationView|WizardScreen|TerminalProgress|PublicOutput|Cli|CliOption|CliCommand|CliOutput|CleanCommand|Completion|Donate|DonorDefaults|DonorSelection|Gratis|GratisGuidance|Installation|MachineSetup|OwnerHealth|OwnerSetup|Positionals|RepositoryInput|RunReference|Startup)\s*[.(]|\b(?:Tokate\.)?Console\.(?!CancelKeyPress\b)' -- 'src/*.gs' ':(exclude)src/Cli/**'; then
     echo 'CLI types are not allowed outside src/Cli.' >&2
     exit 1
+else
+    status=$?
+    test "$status" -eq 1 || exit "$status"
 fi
 bash scripts/build.sh
 runtime="${TOKATE_RUNTIME_IDENTIFIER:-linux-x64}"
