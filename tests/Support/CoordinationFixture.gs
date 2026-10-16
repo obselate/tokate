@@ -213,18 +213,36 @@ internal open class CoordinationFixture : IDisposable {
                     "open",
                     "draft",
                     true,
+                    "merged",
+                    false,
+                    "merged_at",
+                    nil,
                     "user",
                     Check.Map("id", 123, "login", "donor"),
                     "maintainer_can_modify",
                     true,
                     "head",
-                    Check.Map("sha", commit, "ref", branch, "repo", Check.Map("full_name", "donor/project")),
+                    Check.Map(
+                        "sha",
+                        commit,
+                        "ref",
+                        branch,
+                        "repo",
+                        Check.Map(
+                            "id",
+                            2,
+                            "full_name",
+                            "donor/project",
+                            "owner",
+                            Check.Map("login", "donor", "id", 123)
+                        )
+                    ),
                     "base",
                     Check.Map(
                         "ref",
                         Check.Text(state["state"]?["approval"]?["base_branch"]),
                         "repo",
-                        Check.Map("full_name", "owner/project")
+                        Check.Map("id", 1, "full_name", "owner/project")
                     )
                 )
             )
