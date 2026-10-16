@@ -308,8 +308,6 @@ internal class PreparationChecks {
                 let args = []string{action, "--yes", "--run", run, "--json"}
                 if action == "renew" {
                     test.Flow.Call(args, 1, owner: true)
-                } else if action == "release" {
-                    test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                 }
                 let pending = Check.Json(test.Flow.Call(args, 8).Output)
                 Check.That(Check.Text(pending["data"]?["pending"]) == "true", "Reservation request lost pending status")
@@ -336,8 +334,30 @@ internal class PreparationChecks {
                     Check.Text(test.Flow.State["request_count"]) == requests.ToString(),
                     "Repeated reservation request posted another comment"
                 )
-                guard let comment = test.Flow.State["request_comments"]?[requests - 1] else {
+                var comment = test
+                    .Flow
+                    .State["request_comments"]?[requests - 1] ??
                     throw Exception("Missing request comment")
+                if action == "release" {
+                    test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
+                    Check.Contains(test.Coordinate(PostedEvent(test, comment), 1).Error, "Stale state or approval")
+                    let pendingRun = File.ReadAllText(path)
+                    Check.Contains(
+                        test.Flow.Call([]string{"release", "--run", run, "--json"}, 1).Output,
+                        "confirmation_required"
+                    )
+                    Check.That(File.ReadAllText(path) == pendingRun, "Release preview changed the stale request")
+                    test.Flow.Call(args, 8)
+                    test.Flow.Reload()
+                    requests++
+                    Check.That(
+                        Check.Text(test.Flow.State["request_count"]) == requests.ToString(),
+                        "Release did not replace the stale request"
+                    )
+                    comment = test
+                        .Flow
+                        .State["request_comments"]?[requests - 1] ??
+                        throw Exception("Release did not replace the stale request")
                 }
                 test.Coordinate(PostedEvent(test, comment))
                 let complete = Check.Json(test.Flow.Call(args).Output)
@@ -358,6 +378,17 @@ internal class PreparationChecks {
                 )
                 test.Flow.NoInference()
                 test.Flow.NoPr()
+                if action == "release" {
+                    test.Flow.Faults(
+                        "repos/owner/project/issues/1/labels/tokate%3Aapproved",
+                        Check.Json("[{\"status\":404,\"body\":{\"message\":\"Label does not exist\"}}]")
+                    )
+                    test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
+                    Check.That(
+                        Check.Text(test.State()["state"]?["revoked"]) == "true",
+                        "Repeated revoke lost revocation"
+                    )
+                }
             }
         }
 

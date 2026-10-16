@@ -830,6 +830,19 @@ internal class ContributionStatus {
                     "Review the remaining open issue and approve further work if needed; this contribution was closed without merging.",
                     []string{"gh", "issue", "view", issue, "--repo", Repo}
                 )
+                let reservation = J.Get(state.Value(), "reservation")
+                if !merged && J.Text(reservation, "status") != "released" && CoordinationState.Unix(
+                    reservation,
+                    "expires"
+                ) > DateTimeOffset
+                    .UtcNow
+                    .ToUnixTimeSeconds() {
+                    next = Next(
+                        "donor",
+                        "This contribution was closed without merging. Use tokate release to free its active reservation.",
+                        []string{"tokate", "release", target}
+                    )
+                }
             }
 
             draft["next"] = next

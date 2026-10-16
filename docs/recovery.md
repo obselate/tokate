@@ -105,9 +105,9 @@ Amend checks donor changes against the merged target commit. That commit must de
 
 ## Continue stopped work
 
-For a Codex, Pi or OMP managed run stopped with `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget.
+For a Codex, Pi or OMP managed run stopped by SIGINT or `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget. With bounded continuation, `--verify-time` is optional, as for fresh work.
 
-1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command.
+1. Inspect the stopped run. Status shows the interruption and reads current authority for the continuation command.
 
    ```sh
    tokate status --run PRIOR_RUN_DIR --json

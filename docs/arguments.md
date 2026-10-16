@@ -35,10 +35,10 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `pause` | `tokate pause RUN [--yes]` | Pause your reservation. |
 | `resume` | `tokate resume RUN [--yes]` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN [--yes]` | Renew before expiry. |
-| `release` | `tokate release RUN [--yes]` | Release your reservation. |
+| `release` | `tokate release RUN [--yes]` | Release your reservation. After a concurrent revoke, repeat this command to replace the stale request. |
 | `init` | `tokate init [OWNER/REPO] [options] [--yes]` | Preview required Actions settings and one setup PR with the policy and `v0` workflow. Use `--pin` for an exact release commit. Ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
 | `approve` | `tokate approve ISSUE [LOGIN] [--base-branch BRANCH] [--yes]` | Approve an existing issue. `LOGIN` allows one donor without persistent trust. Denial still blocks that donor. |
-| `revoke` | `tokate revoke ISSUE [--yes]` | Revoke approval and block publication. |
+| `revoke` | `tokate revoke ISSUE [--yes]` | Revoke approval and block publication. An approval label that is already absent is not an error. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
 | `access init` | `tokate access init [OWNER/REPO] [--yes]` | Optionally create an empty access record. An absent ref is already empty. |
 | `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO] [--yes]` | Change persistent donor membership. |

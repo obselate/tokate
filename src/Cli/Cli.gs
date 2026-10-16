@@ -808,7 +808,6 @@ internal class Cli {
 
             if args.Get("continue-from") != "" && !args.Help {
                 args.Need("seconds")
-                args.Need("verification-reserve")
             }
 
             if args.Command == "doctor" {
