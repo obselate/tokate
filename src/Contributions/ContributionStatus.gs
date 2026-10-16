@@ -99,7 +99,6 @@ internal class ContributionStatus {
 
         var state = CoordinationState()
         var approval JsonElement
-        var policy JsonElement
 
         let loaded = Observe(
             row,
@@ -122,6 +121,18 @@ internal class ContributionStatus {
             row["state"] = "unavailable"
             return row
         }
+
+        return ApprovedIssue(task, row, state, approval)
+    }
+
+    private func ApprovedIssue(
+        task JsonElement,
+        row Dictionary[string, Object?],
+        state CoordinationState,
+        approval JsonElement
+    ) Dictionary[string, Object?] {
+        let issue = J.Number(task, "number")
+        var policy JsonElement
 
         if J.Text(task, "state") != "open" {
             let drafts = List[Object]()
@@ -178,6 +189,47 @@ internal class ContributionStatus {
             }
         )
 
+        Eligibility(row, state, approval, policy, valid)
+
+        let drafts = List[Object]()
+        row["drafts"] = drafts
+
+        Observe(row, "drafts", async () -> Drafts(issue, row, state, approval, policy, drafts))
+
+        Observe(
+            row,
+            "remote",
+            async () -> {
+                let latest = GitHub.Api(
+                    "repos/" + Repo + "/git/ref/heads/" + CoordinationState.Ref(issue),
+                    missing: true
+                )
+
+                if J.Text(J.Get(latest, "object"), "sha") != state.Sha {
+                    row["remote_status"] = "stale"
+                } else if Text(row, "approval_status") == "current" {
+                    try {
+                        state.CheckApproval(Repo, issue, quiet: true)
+                        row["remote_status"] = "observed"
+                    } catch (error CliFailure) when error.Code == "stale_approval" {
+                        Stale(row, error)
+                    }
+                }
+            }
+        )
+
+        ActionFor(row, drafts, state, policy)
+
+        return row
+    }
+
+    private func Eligibility(
+        row Dictionary[string, Object?],
+        state CoordinationState,
+        approval JsonElement,
+        policy JsonElement,
+        valid bool
+    ) {
         if Viewer.ValueKind == JsonValueKind.Undefined {
             row["eligibility_status"] = "unavailable"
         } else if valid && Text(row, "approval_status") == "current" {
@@ -221,37 +273,6 @@ internal class ContributionStatus {
                 Unavailable(row, "eligibility", error)
             }
         }
-
-        let drafts = List[Object]()
-        row["drafts"] = drafts
-
-        Observe(row, "drafts", async () -> Drafts(issue, row, state, approval, policy, drafts))
-
-        Observe(
-            row,
-            "remote",
-            async () -> {
-                let latest = GitHub.Api(
-                    "repos/" + Repo + "/git/ref/heads/" + CoordinationState.Ref(issue),
-                    missing: true
-                )
-
-                if J.Text(J.Get(latest, "object"), "sha") != state.Sha {
-                    row["remote_status"] = "stale"
-                } else if Text(row, "approval_status") == "current" {
-                    try {
-                        state.CheckApproval(Repo, issue, quiet: true)
-                        row["remote_status"] = "observed"
-                    } catch (error CliFailure) when error.Code == "stale_approval" {
-                        Stale(row, error)
-                    }
-                }
-            }
-        )
-
-        ActionFor(row, drafts, state, policy)
-
-        return row
     }
 
     private func Drafts(
@@ -651,8 +672,6 @@ internal class ContributionStatus {
     ) {
         let issue = Text(row, "issue")
         let target = Repo + "#" + issue
-        let push = J.Bool(J.Get(Info, "permissions"), "push")
-        let eligibility = Text(row, "eligibility_status")
         var stage = "approval_waiting"
         var next = Next(
             "owner",
@@ -664,141 +683,190 @@ internal class ContributionStatus {
         )
 
         if Text(row, "approval_status") == "current" {
-            if eligibility == "eligible" || (eligibility == "access_waiting" && push) {
-                stage = "reservation_needed"
+            ApprovedAction(row, state, policy, target, ref stage, ref next)
+
+            OpenDraftActions(drafts, ref stage, ref next)
+        }
+
+        ClosedDraftActions(drafts, state, issue, target, ref stage, ref next)
+
+        var unavailable bool
+
+        for part in[]string{"approval", "coordination", "eligibility", "drafts", "remote"} {
+            unavailable = unavailable || Text(row, part + "_status") == "unavailable"
+        }
+
+        if unavailable {
+            stage = "unavailable"
+            next = Next("owner", "Inspect unavailable remote records before proceeding.")
+        } else if Text(row, "remote_status") == "stale" {
+            stage = "stale_remote_data"
+            next = Next(
+                "owner",
+                "Refresh contribution status; the authority changed during this read.",
+                []string{"tokate", "status", target}
+            )
+        }
+
+        row["state"] = stage
+        row["next"] = next
+
+        if stage == "reservation_needed" || stage == "claim_accepted" {
+            Local(row, target, stage)
+        }
+    }
+
+    private func ApprovedAction(
+        row Dictionary[string, Object?],
+        state CoordinationState,
+        policy JsonElement,
+        target string,
+        ref stage string,
+        ref next Dictionary[string, Object?]
+    ) {
+        let issue = Text(row, "issue")
+        let push = J.Bool(J.Get(Info, "permissions"), "push")
+        let eligibility = Text(row, "eligibility_status")
+
+        if eligibility == "eligible" || (eligibility == "access_waiting" && push) {
+            stage = "reservation_needed"
+            next = Next(
+                "donor",
+                eligibility == "eligible" ?
+                "Start work with tokate work " +
+                    target +
+                    " and your selected profile or model and an explicit time budget.":
+                "An eligible donor must select the task and start work with tokate work " +
+                    target +
+                    ". Inspect donor access if no donor is eligible.",
+                []string{"tokate", "work", target}
+            )
+        } else {
+            stage = "access_waiting"
+            next = Next(
+                "owner",
+                "Review donor access and grant eligibility if appropriate.",
+                []string{"tokate", "access", "list", Repo}
+            )
+
+            if Text(row, "viewer_denied") != "True" && !push && !Requested(issue) {
                 next = Next(
                     "donor",
-                    eligibility == "eligible" ?
-                    "Start work with tokate work " +
-                        target +
-                        " and your selected profile or model and an explicit time budget.":
-                    "An eligible donor must select the task and start work with tokate work " +
-                        target +
-                        ". Inspect donor access if no donor is eligible.",
-                    []string{"tokate", "work", target}
+                    "Request owner review for the required donor access.",
+                    AccessState.Mode(policy) == "trusted" ? []string{"tokate", "access", "request", target, "--trust"}:
+                    []string{"tokate", "access", "request", target}
                 )
-            } else {
-                stage = "access_waiting"
-                next = Next(
-                    "owner",
-                    "Review donor access and grant eligibility if appropriate.",
-                    []string{"tokate", "access", "list", Repo}
-                )
-
-                if Text(row, "viewer_denied") != "True" && !push && !Requested(issue) {
-                    next = Next(
-                        "donor",
-                        "Request owner review for the required donor access.",
-                        AccessState.Mode(policy) == "trusted" ? []string{
-                            "tokate",
-                            "access",
-                            "request",
-                            target,
-                            "--trust"
-                        }:
-                        []string{"tokate", "access", "request", target}
-                    )
-                }
-            }
-
-            let reservation = J.Get(state.Value(), "reservation")
-
-            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
-                next = stage == "paused" ? Next(
-                    "donor",
-                    "This claim is paused. The donor checks their saved work on their own machine."
-                ):
-                Next(
-                    "donor",
-                    "This claim has been accepted. The donor can start work with tokate work " +
-                        target +
-                        " on their own machine.",
-                    []string{"tokate", "work", target}
-                )
-            } else if reservation.ValueKind == JsonValueKind.Object {
-                stage = "lease_expired_or_released"
-                next = Next(
-                    "donor",
-                    "Use tokate work " +
-                        target +
-                        " for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation.",
-                    []string{"tokate", "work", target}
-                )
-            }
-
-            if Text(row, "holder_eligible") == "False" {
-                stage = "access_waiting"
-                next = Next(
-                    "owner",
-                    "Restore eligibility for the recorded donor before further work or publication.",
-                    []string{"tokate", "access", "list", Repo}
-                )
-            }
-
-            for item in drafts {
-                let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
-                let view = View(Text(draft, "pr"))
-                let checks = Text(draft, "checks_status")
-                let inspect = "GitHub reports action_required without an approval reason; inspect the linked PR or Actions run."
-
-                if Text(draft, "state") == "closed" {
-                    continue
-                }
-
-                next = Next("owner", "Inspect the PR and Actions links.", view)
-
-                if Text(draft, "binding") != "canonical" {
-                    stage = "binding_mismatch"
-                } else if Text(draft, "remote_status") == "stale" {
-                    stage = "stale_remote_data"
-                } else if checks == "blocked" {
-                    stage = "ci_blocked"
-                    next = Next("owner", inspect, view)
-                } else if checks == "failed" {
-                    stage = "ci_failed"
-                    next = Text(draft, "owner_inspection_required") == "True" ? Next("owner", inspect, view): Next(
-                        "donor",
-                        "Inspect failed checks and repair the contribution using the donor's own saved work.",
-                        view
-                    )
-                } else if checks == "pending" {
-                    stage = "ci_pending"
-                    next = Next(
-                        "owner",
-                        "CI is pending or required checks are missing; inspect the PR or linked Actions run for the reason.",
-                        view
-                    )
-                } else if Text(draft, "review_status") == "changes_requested" {
-                    stage = "review_changes_requested"
-                    next = Next("donor", "Address the recorded review changes using the donor's own saved work.", view)
-                } else if Text(draft, "receipt") == "incomplete" {
-                    stage = "incomplete_draft"
-                    next = Next(
-                        "donor",
-                        "Complete the contribution and receipt using the donor's own saved work; its run directory is unknown."
-                    )
-                } else {
-                    stage = "owner_review"
-                    next = Next(
-                        "owner",
-                        "Check the recorded receipt and CI before reviewing acceptance; status does not establish readiness.",
-                        []string{"tokate", "checks", Repo + "#" + Text(draft, "pr")}
-                    )
-                }
-
-                if checks == "unavailable" ||
-                    Text(draft, "review_status") == "unavailable" ||
-                    Text(draft, "remote_status") == "unavailable" {
-                    stage = "unavailable"
-                    next = Next("owner", "Inspect unavailable PR or Actions data before proceeding.", view)
-                }
-
-                draft["next"] = next
             }
         }
 
+        let reservation = J.Get(state.Value(), "reservation")
+
+        if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+            CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+            stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
+            next = stage == "paused" ? Next(
+                "donor",
+                "This claim is paused. The donor checks their saved work on their own machine."
+            ):
+            Next(
+                "donor",
+                "This claim has been accepted. The donor can start work with tokate work " +
+                    target +
+                    " on their own machine.",
+                []string{"tokate", "work", target}
+            )
+        } else if reservation.ValueKind == JsonValueKind.Object {
+            stage = "lease_expired_or_released"
+            next = Next(
+                "donor",
+                "Use tokate work " +
+                    target +
+                    " for a fresh donation if eligible. Inspect saved work before choosing a separately authorized continuation.",
+                []string{"tokate", "work", target}
+            )
+        }
+
+        if Text(row, "holder_eligible") == "False" {
+            stage = "access_waiting"
+            next = Next(
+                "owner",
+                "Restore eligibility for the recorded donor before further work or publication.",
+                []string{"tokate", "access", "list", Repo}
+            )
+        }
+    }
+
+    private func OpenDraftActions(drafts List[Object], ref stage string, ref next Dictionary[string, Object?]) {
+        for item in drafts {
+            let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
+            let view = View(Text(draft, "pr"))
+            let checks = Text(draft, "checks_status")
+            let inspect = "GitHub reports action_required without an approval reason; inspect the linked PR or Actions run."
+
+            if Text(draft, "state") == "closed" {
+                continue
+            }
+
+            next = Next("owner", "Inspect the PR and Actions links.", view)
+
+            if Text(draft, "binding") != "canonical" {
+                stage = "binding_mismatch"
+            } else if Text(draft, "remote_status") == "stale" {
+                stage = "stale_remote_data"
+            } else if checks == "blocked" {
+                stage = "ci_blocked"
+                next = Next("owner", inspect, view)
+            } else if checks == "failed" {
+                stage = "ci_failed"
+                next = Text(draft, "owner_inspection_required") == "True" ? Next("owner", inspect, view): Next(
+                    "donor",
+                    "Inspect failed checks and repair the contribution using the donor's own saved work.",
+                    view
+                )
+            } else if checks == "pending" {
+                stage = "ci_pending"
+                next = Next(
+                    "owner",
+                    "CI is pending or required checks are missing; inspect the PR or linked Actions run for the reason.",
+                    view
+                )
+            } else if Text(draft, "review_status") == "changes_requested" {
+                stage = "review_changes_requested"
+                next = Next("donor", "Address the recorded review changes using the donor's own saved work.", view)
+            } else if Text(draft, "receipt") == "incomplete" {
+                stage = "incomplete_draft"
+                next = Next(
+                    "donor",
+                    "Complete the contribution and receipt using the donor's own saved work; its run directory is unknown."
+                )
+            } else {
+                stage = "owner_review"
+                next = Next(
+                    "owner",
+                    "Check the recorded receipt and CI before reviewing acceptance; status does not establish readiness.",
+                    []string{"tokate", "checks", Repo + "#" + Text(draft, "pr")}
+                )
+            }
+
+            if checks == "unavailable" ||
+                Text(draft, "review_status") == "unavailable" ||
+                Text(draft, "remote_status") == "unavailable" {
+                stage = "unavailable"
+                next = Next("owner", "Inspect unavailable PR or Actions data before proceeding.", view)
+            }
+
+            draft["next"] = next
+        }
+    }
+
+    private func ClosedDraftActions(
+        drafts List[Object],
+        state CoordinationState,
+        issue string,
+        target string,
+        ref stage string,
+        ref next Dictionary[string, Object?]
+    ) {
         for item in drafts {
             let draft = item as Dictionary[string, Object?] ?? throw Exception("Invalid status draft")
 
@@ -847,31 +915,6 @@ internal class ContributionStatus {
             }
 
             draft["next"] = next
-        }
-
-        var unavailable bool
-
-        for part in[]string{"approval", "coordination", "eligibility", "drafts", "remote"} {
-            unavailable = unavailable || Text(row, part + "_status") == "unavailable"
-        }
-
-        if unavailable {
-            stage = "unavailable"
-            next = Next("owner", "Inspect unavailable remote records before proceeding.")
-        } else if Text(row, "remote_status") == "stale" {
-            stage = "stale_remote_data"
-            next = Next(
-                "owner",
-                "Refresh contribution status; the authority changed during this read.",
-                []string{"tokate", "status", target}
-            )
-        }
-
-        row["state"] = stage
-        row["next"] = next
-
-        if stage == "reservation_needed" || stage == "claim_accepted" {
-            Local(row, target, stage)
         }
     }
 
@@ -948,6 +991,61 @@ internal class ContributionStatus {
             return
         }
 
+        ReadAccess(issue)
+
+        let displayed = List[Object]()
+        let review = Next(
+            "owner",
+            "Review donor access and use approve ISSUE LOGIN or grant trust if appropriate.",
+            []string{"tokate", "access", "list", Repo}
+        )
+
+        for request in Requests {
+            if displayed.Count == 20 {
+                Result["requests_truncated"] = true
+                break
+            }
+
+            let row = J.Select(request, "comment,actor,donor,issue,scope")
+            row["next"] = review
+            displayed.Add(row)
+        }
+
+        Result["pending_requests"] = displayed
+        Result["pending_requests_observed"] = Requests.Count
+        Truncated = Truncated || Text(Result, "requests_truncated") == "True"
+
+        if issue != 0 {
+            Result["coordination"] = nil
+            Observe(
+                Result,
+                "coordination",
+                async () -> {
+                    let state = CoordinationState.Load(Repo, issue, missing: true)
+                    Result["coordination"] = state.Sha == "" ? nil: PublicOutput.Coordination(state.Value(), state.Sha)
+                }
+            )
+        }
+
+        Discover(issue)
+
+        var stale = Text(Result, "access_status") == "stale"
+
+        for item in Work {
+            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
+            stale = stale || Text(row, "remote_status") == "stale" || Text(row, "state") == "stale_remote_data"
+        }
+
+        Result["remote_status"] = Failure != nil ? "unavailable": (stale ? "stale": "observed")
+        Result["next"] = displayed.Count > 0 ? review: (
+            Work.Count > 0 ? (Work[0] as Dictionary[string, Object?])?["next"]: Next(
+                "owner",
+                "No approved work was observed within the bounded index."
+            )
+        )
+    }
+
+    private func ReadAccess(issue int32) {
         Observe(
             Result,
             "viewer",
@@ -984,41 +1082,9 @@ internal class ContributionStatus {
                 }
             )
         }
+    }
 
-        let displayed = List[Object]()
-        let review = Next(
-            "owner",
-            "Review donor access and use approve ISSUE LOGIN or grant trust if appropriate.",
-            []string{"tokate", "access", "list", Repo}
-        )
-
-        for request in Requests {
-            if displayed.Count == 20 {
-                Result["requests_truncated"] = true
-                break
-            }
-
-            let row = J.Select(request, "comment,actor,donor,issue,scope")
-            row["next"] = review
-            displayed.Add(row)
-        }
-
-        Result["pending_requests"] = displayed
-        Result["pending_requests_observed"] = Requests.Count
-        Truncated = Truncated || Text(Result, "requests_truncated") == "True"
-
-        if issue != 0 {
-            Result["coordination"] = nil
-            Observe(
-                Result,
-                "coordination",
-                async () -> {
-                    let state = CoordinationState.Load(Repo, issue, missing: true)
-                    Result["coordination"] = state.Sha == "" ? nil: PublicOutput.Coordination(state.Value(), state.Sha)
-                }
-            )
-        }
-
+    private func Discover(issue int32) {
         Observe(
             Result,
             "discovery",
@@ -1084,21 +1150,6 @@ internal class ContributionStatus {
                 }
             )
         }
-
-        var stale = Text(Result, "access_status") == "stale"
-
-        for item in Work {
-            let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status work")
-            stale = stale || Text(row, "remote_status") == "stale" || Text(row, "state") == "stale_remote_data"
-        }
-
-        Result["remote_status"] = Failure != nil ? "unavailable": (stale ? "stale": "observed")
-        Result["next"] = displayed.Count > 0 ? review: (
-            Work.Count > 0 ? (Work[0] as Dictionary[string, Object?])?["next"]: Next(
-                "owner",
-                "No approved work was observed within the bounded index."
-            )
-        )
     }
 
     private func Text(value Dictionary[string, Object?], key string) string -> value.ContainsKey(key) ? value[

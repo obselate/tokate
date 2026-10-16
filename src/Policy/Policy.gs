@@ -18,47 +18,12 @@ internal class Policy {
     internal init(text string) {
         Value = J.Parse(text)
         let version = J.Number(Value, "version")
+
         if version != 3 {
             throw Exception("Policy requires version 3")
         }
 
-        for key in[]string{"pr_text", "close_message", "target_branch"} {
-            var occurrences int32
-
-            for field in Value.EnumerateObject() {
-                if field.Name == key {
-                    occurrences++
-                }
-            }
-
-            if occurrences > 1 {
-                throw Exception("Duplicate policy field " + key)
-            }
-
-            let item = J.Get(Value, key)
-            if item.ValueKind != JsonValueKind.Undefined {
-                if item.ValueKind != JsonValueKind.String || Encoding.UTF8.GetByteCount(item.GetString() ?? "") > 4096 {
-                    throw Exception(key + " must be bounded plain text")
-                }
-
-                let text = item.GetString() ?? ""
-
-                for c in text {
-                    if c == '\0' || (Char.IsControl(c) && c != '\n' && c != '\r' && c != '\t') {
-                        throw Exception(key + " contains control characters")
-                    }
-                }
-
-                if text.Contains("<!-- tokate") {
-                    throw Exception(key + " cannot contain Tokate ownership markers")
-                }
-
-                if key == "target_branch" {
-                    RepositoryIdentity.Branch(text)
-                }
-            }
-        }
-
+        ValidateTextFields()
         ProtectedPaths.Validate(J.Get(Value, "protected_paths"))
 
         var eligibilityFields int32
@@ -77,6 +42,7 @@ internal class Policy {
         RequestData.Parse(text, 1024 * 1024)
         Eligibility = J.Text(Value, "eligibility")
         let eligible = Eligibility == "open" || Eligibility == "trusted"
+
         if eligibilityFields != 1 || scopeFields != 1 || J.Text(Value, "approval_scope") != "task" || !eligible {
             throw Exception("Policy requires approval_scope task and eligibility trusted or open")
         }
@@ -88,11 +54,13 @@ internal class Policy {
         }
 
         let maxSeconds = J.Number(Value, "max_seconds")
+
         if maxSeconds < 1 || maxSeconds > 86400 {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
 
         let unlimited = J.Get(Value, "allow_unlimited").ValueKind
+
         if unlimited != JsonValueKind.Undefined && unlimited != JsonValueKind.True && unlimited != JsonValueKind.False {
             throw Exception("allow_unlimited must be boolean")
         }
@@ -100,12 +68,14 @@ internal class Policy {
         if unlimited != JsonValueKind.Undefined {
             RequestData.Parse(text, 1024 * 1024)
         }
+
         let edits = J.Get(Value, "maintainer_edits")
         if edits.ValueKind != JsonValueKind.Undefined &&
             edits.ValueKind != JsonValueKind.True &&
             edits.ValueKind != JsonValueKind.False {
             throw Exception("maintainer_edits must be boolean")
         }
+
         MaintainerEdits = edits.ValueKind != JsonValueKind.False
 
         for key in[]string{"verification", "required_checks"} {
@@ -144,12 +114,75 @@ internal class Policy {
             throw Exception("reservation_seconds must be from 300 to 604800 (default 86400)")
         }
 
+        ValidateAllowedTools()
+
+        let task = map[string, Object?]{
+            "verification": commands,
+            "required_checks": checks,
+            "protected_paths": J.Items(J.Get(Value, "protected_paths")),
+            "allowed_tools": Tools,
+            "max_seconds": maxSeconds,
+            "allow_unlimited": J.Bool(Value, "allow_unlimited"),
+            "reservation_seconds": reservation.ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
+                Value,
+                "reservation_seconds"
+            )
+        }
+
+        if edits.ValueKind != JsonValueKind.Undefined {
+            task["maintainer_edits"] = MaintainerEdits
+        }
+        TaskFields = J.Parse(J.Write(task))
+        Digest = Data.Hash(RequestData.Canonical(TaskFields))
+    }
+
+    private func ValidateTextFields() {
+        for key in[]string{"pr_text", "close_message", "target_branch"} {
+            var occurrences int32
+
+            for field in Value.EnumerateObject() {
+                if field.Name == key {
+                    occurrences++
+                }
+            }
+
+            if occurrences > 1 {
+                throw Exception("Duplicate policy field " + key)
+            }
+
+            let item = J.Get(Value, key)
+            if item.ValueKind != JsonValueKind.Undefined {
+                if item.ValueKind != JsonValueKind.String || Encoding.UTF8.GetByteCount(item.GetString() ?? "") > 4096 {
+                    throw Exception(key + " must be bounded plain text")
+                }
+
+                let text = item.GetString() ?? ""
+
+                for c in text {
+                    if c == '\0' || (Char.IsControl(c) && c != '\n' && c != '\r' && c != '\t') {
+                        throw Exception(key + " contains control characters")
+                    }
+                }
+
+                if text.Contains("<!-- tokate") {
+                    throw Exception(key + " cannot contain Tokate ownership markers")
+                }
+
+                if key == "target_branch" {
+                    RepositoryIdentity.Branch(text)
+                }
+            }
+        }
+    }
+
+    private func ValidateAllowedTools() {
         let allowedTools = J.Items(J.Get(Value, "allowed_tools"))
         if allowedTools.Count == 0 {
             throw Exception("Policy requires allowed_tools harness/provider pairs")
         }
 
         let pairs = HashSet[string](StringComparer.Ordinal)
+
         for tool in allowedTools {
             if J.Text(tool, "harness") == "" || J.Text(tool, "provider") == "" {
                 throw Exception("Each allowed tool needs harness and provider")
@@ -170,23 +203,6 @@ internal class Policy {
         }
 
         Tools = J.Get(Value, "allowed_tools")
-        let task = map[string, Object?]{
-            "verification": commands,
-            "required_checks": checks,
-            "protected_paths": J.Items(J.Get(Value, "protected_paths")),
-            "allowed_tools": Tools,
-            "max_seconds": maxSeconds,
-            "allow_unlimited": J.Bool(Value, "allow_unlimited"),
-            "reservation_seconds": reservation.ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
-                Value,
-                "reservation_seconds"
-            )
-        }
-        if edits.ValueKind != JsonValueKind.Undefined {
-            task["maintainer_edits"] = MaintainerEdits
-        }
-        TaskFields = J.Parse(J.Write(task))
-        Digest = Data.Hash(RequestData.Canonical(TaskFields))
     }
 
     private func ValidateModels(models JsonElement) {

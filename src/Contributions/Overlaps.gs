@@ -393,21 +393,7 @@ internal class Overlaps {
             }
         }
 
-        internal func Run(args Args) {
-            Remaining = 24000
-
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let numbers = Cli.PullNumbers(args.Need("prs"))
-            let items = List[OverlapContribution]()
-            let targets = Dictionary[string, string](StringComparer.Ordinal)
-            let changes = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
-
-            for number in numbers {
-                let item = OverlapContribution(number)
-                items.Add(item)
-                Read(repo, item, targets, changes)
-            }
-
+        private func Recheck(repo string, items List[OverlapContribution], targets Dictionary[string, string]) {
             for item in items {
                 try {
                     let pull = GitHub.Api("repos/" + repo + "/pulls/" + item.Number.ToString())
@@ -472,6 +458,24 @@ internal class Overlaps {
                     }
                 }
             }
+        }
+
+        internal func Run(args Args) {
+            Remaining = 24000
+
+            let repo = RepositoryIdentity.Repo(args.Need("repo"))
+            let numbers = Cli.PullNumbers(args.Need("prs"))
+            let items = List[OverlapContribution]()
+            let targets = Dictionary[string, string](StringComparer.Ordinal)
+            let changes = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
+
+            for number in numbers {
+                let item = OverlapContribution(number)
+                items.Add(item)
+                Read(repo, item, targets, changes)
+            }
+
+            Recheck(repo, items, targets)
 
             let pairs = List[Object]()
 

@@ -84,6 +84,44 @@ internal class Contribution {
                 total = RuntimeBudget(Stopwatch.StartNew(), reserve)
             }
 
+            let verification = VerifyOwner(directory, run, record, checkout, seconds, total)
+
+            run.Fields["verification"] = verification
+            PublicOutput.FailureCode = "invalid_state"
+            run.Fields["failure_stage"] = "changed_candidate"
+            run.Fields["failure_reason"] = "candidate_changed"
+
+            using let progress = TerminalProgress(
+                run.Flag("gratis") ? "Candidate validation": "Verified candidate validation",
+                total
+            )
+            let patch = Snapshot(checkout, run, total)
+
+            CheckPaths(checkout, record, run, budget: total)
+
+            if patch != candidate {
+                throw ExecutionFailure.Create("invalid_state", "Verification changed the saved patch")
+            }
+
+            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
+
+            run.Fields["usage"] = usage
+            run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
+            run.Transition("generated")
+            run.Fields.Remove("failure_reason")
+            run.Fields.Remove("failure_stage")
+
+            run.Save(directory)
+        }
+
+        private func VerifyOwner(
+            directory string,
+            run Data,
+            record JsonElement,
+            checkout string,
+            seconds int32,
+            total RuntimeBudget
+        ) List[Object] {
             PublicOutput.FailureCode = "verification_failed"
             run.Fields["failure_stage"] = "owner_verification"
             run.Fields["failure_reason"] = "verification_failed"
@@ -128,32 +166,7 @@ internal class Contribution {
                 }
             }
 
-            run.Fields["verification"] = verification
-            PublicOutput.FailureCode = "invalid_state"
-            run.Fields["failure_stage"] = "changed_candidate"
-            run.Fields["failure_reason"] = "candidate_changed"
-
-            using let progress = TerminalProgress(
-                run.Flag("gratis") ? "Candidate validation": "Verified candidate validation",
-                total
-            )
-            let patch = Snapshot(checkout, run, total)
-
-            CheckPaths(checkout, record, run, budget: total)
-
-            if patch != candidate {
-                throw ExecutionFailure.Create("invalid_state", "Verification changed the saved patch")
-            }
-
-            File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
-
-            run.Fields["usage"] = usage
-            run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
-            run.Transition("generated")
-            run.Fields.Remove("failure_reason")
-            run.Fields.Remove("failure_stage")
-
-            run.Save(directory)
+            return verification
         }
 
         internal func CheckPaths(

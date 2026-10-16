@@ -58,33 +58,7 @@ internal class ReceiptVerification {
             let value = state.Value()
             let contribution = J.Get(value, "contribution")
 
-            if contribution.ValueKind != JsonValueKind.Object && J.Text(value, "approval_id") == J.Text(
-                receipt,
-                "approval"
-            ) &&
-                state.Sha == J.Text(receipt, "expected") && RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) {
-                let reservation = J.Get(value, "reservation")
-                if J.Text(reservation, "reservation") == J.Text(receipt, "reservation") && J.Text(
-                    J.Get(pull, "head"),
-                    "sha"
-                ) == J
-                    .Text(receipt, "head") {
-                    state.Check(repo, J.Number(receipt, "issue"), J.Text(receipt, "donor"), J.Get(reservation, "actor"))
-                    LeaseLifecycle.Owner(state, J.Get(reservation, "actor"), active: true)
-                    throw CliFailure(
-                        "evidence_pending",
-                        "PR publication is awaiting coordinator adoption. Wait, then run tokate checks " +
-                            repo +
-                            "#" +
-                            number.ToString() + " again."
-                    )
-                }
-            }
-
-            if J.Text(value, "approval_id") != J.Text(receipt, "approval") ||
-                contribution.ValueKind != JsonValueKind.Object {
-                throw CliFailure("stale_approval", "PR approval or contribution no longer matches")
-            }
+            VerifyPendingPublication(repo, number, pull, receipt, state, value, contribution)
 
             let metadata = J.Get(contribution, "metadata")
             let handoff = J.Get(metadata, "handoff")
@@ -120,6 +94,89 @@ internal class ReceiptVerification {
                 publicationRevision
             )
 
+            VerifyPublicationAuthority(repo, receipt, value, contribution, current, authenticated)
+
+            let policy = VerifyContributionIdentity(
+                repo,
+                number,
+                pull,
+                receipt,
+                value,
+                contribution,
+                metadata,
+                outcome,
+                exactHead,
+                donor,
+                record
+            )
+
+            VerifyContinuation(receipt, metadata, authenticated, pull)
+
+            let amendment = VerifyAmendment(receipt, current, contribution, policy, exactHead, metadata, pull)
+
+            return CompleteVerification(
+                repo,
+                number,
+                pull,
+                record,
+                exactHead,
+                current,
+                metadata,
+                contribution,
+                receipt,
+                state,
+                value,
+                amendment,
+                paths
+            )
+        }
+
+        private func VerifyPendingPublication(
+            repo string,
+            number int32,
+            pull JsonElement,
+            receipt JsonElement,
+            state CoordinationState,
+            value JsonElement,
+            contribution JsonElement
+        ) {
+            if contribution.ValueKind != JsonValueKind.Object && J.Text(value, "approval_id") == J.Text(
+                receipt,
+                "approval"
+            ) &&
+                state.Sha == J.Text(receipt, "expected") && RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) {
+                let reservation = J.Get(value, "reservation")
+                if J.Text(reservation, "reservation") == J.Text(receipt, "reservation") && J.Text(
+                    J.Get(pull, "head"),
+                    "sha"
+                ) == J
+                    .Text(receipt, "head") {
+                    state.Check(repo, J.Number(receipt, "issue"), J.Text(receipt, "donor"), J.Get(reservation, "actor"))
+                    LeaseLifecycle.Owner(state, J.Get(reservation, "actor"), active: true)
+                    throw CliFailure(
+                        "evidence_pending",
+                        "PR publication is awaiting coordinator adoption. Wait, then run tokate checks " +
+                            repo +
+                            "#" +
+                            number.ToString() + " again."
+                    )
+                }
+            }
+
+            if J.Text(value, "approval_id") != J.Text(receipt, "approval") ||
+                contribution.ValueKind != JsonValueKind.Object {
+                throw CliFailure("stale_approval", "PR approval or contribution no longer matches")
+            }
+        }
+
+        private func VerifyPublicationAuthority(
+            repo string,
+            receipt JsonElement,
+            value JsonElement,
+            contribution JsonElement,
+            current JsonElement,
+            authenticated CoordinationState
+        ) {
             if !RequestData.Same(J.Get(authenticated.Value(), "contribution"), contribution) || !RequestData.Same(
                 CoordinationState.Current(authenticated.Value()),
                 current
@@ -161,7 +218,21 @@ internal class ReceiptVerification {
             if parents.Count != 1 || J.Text(parents[0], "sha") != expected || J.Text(current, "expected") != expected {
                 throw CliFailure("stale_approval", "Receipt does not match the authoritative contribution revision")
             }
+        }
 
+        private func VerifyContributionIdentity(
+            repo string,
+            number int32,
+            pull JsonElement,
+            receipt JsonElement,
+            value JsonElement,
+            contribution JsonElement,
+            metadata JsonElement,
+            outcome JsonElement,
+            exactHead string,
+            donor string,
+            record JsonElement
+        ) Policy {
             let approval = J.Get(record, "approval")
             let reservation = J.Get(value, "reservation")
             let head = J.Get(pull, "head")
@@ -229,6 +300,15 @@ internal class ReceiptVerification {
             policy.ValidateTools(J.Get(metadata, "tools"), J.Text(metadata, "source"))
             AttemptContinuation.Declaration(metadata)
 
+            return policy
+        }
+
+        private func VerifyContinuation(
+            receipt JsonElement,
+            metadata JsonElement,
+            authenticated CoordinationState,
+            pull JsonElement
+        ) {
             for key in[]string{"predecessor", "import_manifest_sha256", "requested_model", "reported_model"} {
                 if !RequestData.Same(J.Get(receipt, key), J.Get(metadata, key)) {
                     throw CliFailure(
@@ -253,7 +333,17 @@ internal class ReceiptVerification {
             } else if J.Get(receipt, "attempt").ValueKind != JsonValueKind.Undefined {
                 throw CliFailure("stale_approval", "Receipt claims continuation authority without predecessor evidence")
             }
+        }
 
+        private func VerifyAmendment(
+            receipt JsonElement,
+            current JsonElement,
+            contribution JsonElement,
+            policy Policy,
+            exactHead string,
+            metadata JsonElement,
+            pull JsonElement
+        ) JsonElement {
             let amendment = J.Get(receipt, "amendment")
 
             if current.GetRawText() != contribution.GetRawText() {
@@ -292,10 +382,34 @@ internal class ReceiptVerification {
                 throw CliFailure("stale_approval", "Receipt claims an amendment without coordination authority")
             }
 
+            return amendment
+        }
+
+        private func CompleteVerification(
+            repo string,
+            number int32,
+            pull JsonElement,
+            record JsonElement,
+            exactHead string,
+            current JsonElement,
+            metadata JsonElement,
+            contribution JsonElement,
+            receipt JsonElement,
+            state CoordinationState,
+            value JsonElement,
+            amendment JsonElement,
+            paths bool
+        ) Data {
+            let reservation = J.Get(value, "reservation")
+            let approval = J.Get(record, "approval")
+            let fork = J.Text(metadata, "fork")
+
             let baseline = J.Text(amendment, "base") == "" ? J.Text(reservation, "base"): J.Text(amendment, "base")
+
             if J.Text(amendment, "base") != J.Text(current, "base") {
                 throw CliFailure("stale_approval", "Amendment base differs from coordination authority")
             }
+
             if baseline != J.Text(reservation, "base") {
                 GitHubPathEvidence.Target(repo, approval, baseline)
                 GitHubPathEvidence.Ancestor(repo, baseline, fork, exactHead)

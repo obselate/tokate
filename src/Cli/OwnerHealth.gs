@@ -115,6 +115,12 @@ internal class OwnerHealth {
         } else {
             Add("actions", "warning", "Requires repository admin access.")
         }
+        InspectPolicyAndAccess(repo, info, revision)
+        InspectApprovals(repo)
+        InspectLastRun(repo, openSettings)
+    }
+
+    private func InspectPolicyAndAccess(repo string, info JsonElement, revision string) {
         Read(
             "policy",
             async () -> {
@@ -166,6 +172,9 @@ internal class OwnerHealth {
                 )
             }
         )
+    }
+
+    private func InspectApprovals(repo string) {
         Read(
             "approvals",
             async () -> {
@@ -221,6 +230,9 @@ internal class OwnerHealth {
                 }
             }
         )
+    }
+
+    private func InspectLastRun(repo string, openSettings[]string) {
         Read(
             "last_run",
             async () -> {

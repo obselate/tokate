@@ -276,6 +276,28 @@ internal class PublicOutput {
                 result["tool_count"] = J.Count(tools)
             }
 
+            SummarizeChangesAndFailure(directory, run, value, result)
+
+            result["artifacts"] = Artifacts(directory)
+
+            if let guidance = Submission.PendingWorkflow(directory, run) {
+                result["coordinator"] = guidance["action"]
+                result["next"] = guidance
+            }
+
+            if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
+                throw CliFailure("output_too_large", Message("output_too_large"))
+            }
+
+            return result
+        }
+
+        private func SummarizeChangesAndFailure(
+            directory string,
+            run Data,
+            value JsonElement,
+            result Dictionary[string, Object?]
+        ) {
             let amendments = J.Get(value, "amendments")
 
             if amendments.ValueKind == JsonValueKind.Array {
@@ -359,19 +381,6 @@ internal class PublicOutput {
                     }
                 }
             }
-
-            result["artifacts"] = Artifacts(directory)
-
-            if let guidance = Submission.PendingWorkflow(directory, run) {
-                result["coordinator"] = guidance["action"]
-                result["next"] = guidance
-            }
-
-            if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
-                throw CliFailure("output_too_large", Message("output_too_large"))
-            }
-
-            return result
         }
 
         internal func Artifacts(directory string) Dictionary[string, Object?] {

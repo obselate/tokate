@@ -153,6 +153,7 @@ internal class Cli {
             "runs DIR: Run storage; default: tokate/runs under XDG_STATE_HOME, or ~/.local/state/tokate/runs",
             "run DIR: Exact saved run directory",
             "all: Also list finished saved runs",
+            "ignored DIR: Select only this ignored directory inside the saved checkout",
             "from-pr N: Seed a donation from another donor's last coordinated PR commit",
             "continue-from DIR: Import stopped unpublished same-donor managed work into a fresh active attempt",
             "path DIR: Repository directory; default: current directory",
@@ -178,6 +179,7 @@ internal class Cli {
 
         internal let Positions map[string, string] = map[string, string]{
             "ISSUE": "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL",
+            "RUN...": "One or more saved run names or full run directory paths; omit to preview cleanup",
             "PR": "PR 10 of the local GitHub remote, OWNER/REPO#10 or a PR URL",
             "PR...": "2 to 16 unique PR numbers; outside a checkout qualify each as OWNER/REPO#N",
             "RUN": "Saved run: 42, REPO#42 or OWNER/REPO#42; add -3 when the issue has two active attempts",
@@ -230,6 +232,13 @@ internal class Cli {
                 "run,all",
                 "Show your saved work, repository issues and who acts next, or one issue or saved run; no writes or inference. Bare status lists your saved work, only for this repository inside a checkout. Repository status is bounded and may report truncation. Blocked work and failed CI still exit 0 after a successful read.",
                 "status 42"
+            ),
+            CliCommand(
+                "clean donate local_read,local_write,github_read",
+                "[RUN...] [--ignored DIR] [--yes]",
+                "ignored,yes,non-interactive",
+                "Preview safe finished runs and the largest ignored directories in kept checkouts. Select whole runs, or one run and --ignored DIR. Shows full paths and bytes before one confirmation. Open issues, active reservations, unpublished verified work and unknown remote state keep whole runs. Never follows symlinks or automatically cleans ignored files. Removing a whole run ends its amendment and recovery.",
+                "clean owner/project#42-1"
             ),
             CliCommand(
                 "checks donate local_read,local_write,github_read repo,pr",
@@ -758,10 +767,80 @@ internal class Cli {
         internal func Validate(args Args) {
             let command = Find(args.Command)
 
+            if args.Command == "clean" {
+                CleanCommand.Validate(args)
+            }
+
+            ValidateWork(args)
+            ValidateDoctor(args)
+            ValidateValues(args, command)
+
+            if args.Help {
+                return
+            }
+
+            ValidateDefaults(args)
+
+            if args.Command == "claim" && args.Get("source") == "external" {
+                args.Need("tools")
+
+                for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
+                    if args.Get(key) != "" {
+                        throw Exception("External claims exclude " + Label(key))
+                    }
+                }
+
+                for key in[]string{
+                    "profile",
+                    "harness",
+                    "provider",
+                    "model",
+                    "effort",
+                    "endpoint",
+                    "pi-root",
+                    "node",
+                    "harness-path",
+                    "availability"
+                } {
+                    if args.Get(key) != "" {
+                        throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
+                    }
+                }
+            }
+
+            if args.Get("all") != "" && (args.Get("repo") != "" || args.Get("issue") != "" || args.Get("run") != "") {
+                throw Exception("--all applies only to bare status")
+            }
+
+            if args.Get("run") != "" && command.SupportsSavedRun {
+                return
+            }
+
+            let missing = List[string]()
+
+            for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
+                if name != "repo" && args.Get(TimeKey(name)) == "" {
+                    missing.Add(Label(TimeKey(name)))
+                }
+            }
+
+            if missing.Count > 0 {
+                throw Exception("Required: " + String.Join(", ", missing))
+            }
+
+            let local = command.Needs("repo") || (args.Command == "status" && args.Get("issue") != "")
+
+            if local && args.Get("repo") == "" {
+                args.Values["--repo"] = RepositoryInput.Local()
+            }
+        }
+
+        private func ValidateWork(args Args) {
             if RepositoryWork(args) && !args.Help {
                 if args.Get("repo") == "" {
                     args.Values["--repo"] = RepositoryInput.Local()
                 }
+
                 if args.Subject != "stop" && args.Get("harness") + args.Get("model") + args.Get("effort") == "" &&
                     DonorDefaults
                     .Read(allowMissing: true).ValueKind == JsonValueKind.Undefined {
@@ -770,17 +849,21 @@ internal class Cli {
                     )
                 }
             }
+
             if args.Command == "claim" && args.Get("issue") == "" && args.Get("run") == "" && !args.Help {
                 throw Exception(
                     "Name an issue: tokate claim OWNER/REPO#NUMBER. tokate status OWNER/REPO lists approved issues."
                 )
             }
+
             if args.Get("prompt") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--prompt requires repository work")
             }
+
             if args.Get("total") != "" && (args.Command != "work" || args.Get("run") != "") && !args.Help {
                 throw Exception("--total requires repository work")
             }
+
             if RepositoryWork(args) && args.Get("unlimited") == "true" && !args.Help {
                 throw Exception("Repository work uses --time and --total, not --unlimited")
             }
@@ -808,7 +891,9 @@ internal class Cli {
             if args.Get("continue-from") != "" && !args.Help {
                 args.Need("seconds")
             }
+        }
 
+        private func ValidateDoctor(args Args) {
             if args.Command == "doctor" {
                 if args.Subject == "repo" && (args.Get("fix") == "true" || args.Get("set-default") == "true") {
                     throw Exception("doctor repo is read-only")
@@ -852,7 +937,9 @@ internal class Cli {
                     args.Need("effort")
                 }
             }
+        }
 
+        private func ValidateValues(args Args, command CliCommand) {
             if args.Get("run") != "" && command.Runs && args.Run == "" && args.Words.Count > 0 {
                 throw Exception("--run conflicts with a repository or task argument")
             }
@@ -941,11 +1028,9 @@ internal class Cli {
                 (args.Subject != "" || !args.Help) {
                 throw Exception("Required shell: bash, zsh or fish")
             }
+        }
 
-            if args.Help {
-                return
-            }
-
+        private func ValidateDefaults(args Args) {
             if args.Command == "defaults" {
                 if args.Subject == "use" && args.Get("profile") == "" {
                     throw Exception("Required: NAME")
@@ -990,59 +1075,6 @@ internal class Cli {
                         throw Exception("defaults " + args.Subject + " does not take --" + key)
                     }
                 }
-            }
-
-            if args.Command == "claim" && args.Get("source") == "external" {
-                args.Need("tools")
-
-                for key in[]string{"verification-reserve", "unlimited", "continue-from"} {
-                    if args.Get(key) != "" {
-                        throw Exception("External claims exclude " + Label(key))
-                    }
-                }
-
-                for key in[]string{
-                    "profile",
-                    "harness",
-                    "provider",
-                    "model",
-                    "effort",
-                    "endpoint",
-                    "pi-root",
-                    "node",
-                    "harness-path",
-                    "availability"
-                } {
-                    if args.Get(key) != "" {
-                        throw Exception("External declarations use --tools; selection option conflicts: " + Label(key))
-                    }
-                }
-            }
-
-            if args.Get("all") != "" && (args.Get("repo") != "" || args.Get("issue") != "" || args.Get("run") != "") {
-                throw Exception("--all applies only to bare status")
-            }
-
-            if args.Get("run") != "" && command.SupportsSavedRun {
-                return
-            }
-
-            let missing = List[string]()
-
-            for name in command.Required.Split(',', StringSplitOptions.RemoveEmptyEntries) {
-                if name != "repo" && args.Get(TimeKey(name)) == "" {
-                    missing.Add(Label(TimeKey(name)))
-                }
-            }
-
-            if missing.Count > 0 {
-                throw Exception("Required: " + String.Join(", ", missing))
-            }
-
-            let local = command.Needs("repo") || (args.Command == "status" && args.Get("issue") != "")
-
-            if local && args.Get("repo") == "" {
-                args.Values["--repo"] = RepositoryInput.Local()
             }
         }
     }

@@ -26,6 +26,12 @@ Bare `42` names the active attempt for commands that take a run. If two attempts
 
 Do not edit `run.json` or delete evidence to bypass a failure.
 
+## Reclaim saved-run space
+
+Run `tokate clean` to preview safe whole-run candidates, kept-run reasons and the largest ignored directories with full paths, sizes and a total. Select `tokate clean RUN...` or `tokate clean RUN --ignored DIR`. Selection asks once before deletion. `--yes` confirms it. With `--json`, `--non-interactive` or no terminal and no `--yes`, `confirmation_required` includes the preview and changes nothing.
+
+An open issue, active reservation, unpublished verified work or unavailable required remote state keeps a whole run even after its PR closes or merges. Removing a whole run ends amendment and recovery. Only explicitly selected ignored directories are removed. Other ignored files, tracked files, commits and saved records in kept runs stay. Symlinks are not followed.
+
 ## Correct a rejected public summary
 
 If coding completed but the public summary was rejected, keep the saved run.
@@ -162,6 +168,9 @@ Keep saved work and inspect current state before any explicit next action.
 | `invalid_arguments` | Requested `--time` exceeds the policy maximum | Set `--time` within the stated limit. No inference started. |
 | `invalid_arguments` | Admission event has a missing or invalid field | Supply the complete upstream `pull_request_target` event with `--event`. |
 | `invalid_state` | Saved file cannot be read, has malformed JSON or has a missing required field | Preserve the file at the stated path. Select an existing run with `tokate status` or restore the original file. Do not renew approval to repair local data. |
+| `invalid_state` | Cleanup says `Keep DIR` or lists a kept-run reason | Preserve the run. Resolve the named issue, reservation or unpublished work first. Restore remote access if required state could not be checked, then preview again with `tokate clean`. |
+| `confirmation_required` | Cleanup preview requires confirmation | Review every selected path and size, then use `tokate clean RUN... --yes` or `tokate clean RUN --ignored DIR --yes` only for those paths. |
+| `command_failed` | `Cleanup failed at PATH` | Inspect the exact path and upstream file error. Correct its permissions or access before previewing again. Partial deletion is not rolled back. |
 | `invalid_state` | Access already exists | Inspect membership with `tokate access list OWNER/REPO`. |
 | `invalid_state` | `An unexpired reservation already owns this contribution` or `Reservation state does not permit this operation` | Inspect `tokate status --run DIR --json` and use the existing reservation. |
 | `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate work --run DIR` after inspecting the saved evidence. Use `tokate claim --run DIR` to finish preparation without inference. |

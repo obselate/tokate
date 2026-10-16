@@ -649,32 +649,36 @@ internal class WorkspacePreparation {
             }
         }
 
+        private func CheckExisting(directory string, checkout string, staging string, run Data) {
+            if AttemptContinuation.Has(run) &&
+                (run.Text("continuation_phase") == "importing" || run.Text("continuation_phase") == "imported") {
+                Source(checkout, run)
+                ContinuationImport.Check(
+                    directory,
+                    run,
+                    ContributionAuthority.Recheck(run),
+                    run.Text("continuation_phase") == "importing"
+                )
+            } else {
+                Clean(checkout, run)
+                if ContributionHandoff.Has(run) {
+                    ContributionHandoff.Import(checkout, run)
+                    Clean(checkout, run)
+                }
+            }
+
+            if Directory.Exists(staging) || File.Exists(staging) || FileInfo(staging).LinkTarget != nil {
+                Reject(staging)
+            }
+        }
+
         private func Checkout(directory string, run Data) string {
             let name = run.Text("source") == "external" ? "coding": "checkout"
             let checkout = Path.Combine(directory, name)
             let staging = Path.Combine(directory, name + ".staging")
 
             if Directory.Exists(checkout) || File.Exists(checkout) || FileInfo(checkout).LinkTarget != nil {
-                if AttemptContinuation.Has(run) &&
-                    (run.Text("continuation_phase") == "importing" || run.Text("continuation_phase") == "imported") {
-                    Source(checkout, run)
-                    ContinuationImport.Check(
-                        directory,
-                        run,
-                        ContributionAuthority.Recheck(run),
-                        run.Text("continuation_phase") == "importing"
-                    )
-                } else {
-                    Clean(checkout, run)
-                    if ContributionHandoff.Has(run) {
-                        ContributionHandoff.Import(checkout, run)
-                        Clean(checkout, run)
-                    }
-                }
-
-                if Directory.Exists(staging) || File.Exists(staging) || FileInfo(staging).LinkTarget != nil {
-                    Reject(staging)
-                }
+                CheckExisting(directory, checkout, staging, run)
 
                 return checkout
             }
