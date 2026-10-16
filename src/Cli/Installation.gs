@@ -82,41 +82,7 @@ internal class Installation {
             pathVariables[]string = nil,
             lines List[string]? = nil
         ) int32 {
-            let info = ProcessStartInfo(executable)
-
-            info.UseShellExecute = false
-            info.RedirectStandardInput = input != nil
-            info.RedirectStandardOutput = PublicOutput.Enabled || capture || lines != nil
-            info.RedirectStandardError = PublicOutput.Enabled || capture || lines != nil
-
-            for arg in args {
-                info.ArgumentList.Add(arg)
-            }
-
-            info.Environment.Clear()
-
-            for key in[]string{
-                "HOME",
-                "PATH",
-                "SHELL",
-                "LANG",
-                "TERM",
-                "ZDOTDIR",
-                "XDG_CONFIG_HOME",
-                "XDG_DATA_HOME",
-                "TMPDIR"
-            } {
-                if let value = Environment.GetEnvironmentVariable(key) {
-                    info.Environment[key] = value
-                }
-            }
-
-            for key in pathVariables ?? []string{} {
-                let path = Environment.GetEnvironmentVariable(key) ?? ""
-                if path != "" {
-                    info.Environment[key] = LocalPaths.RuntimePath(path)
-                }
-            }
+            let info = ConfigureProcess(executable, args, input, capture, pathVariables, lines)
 
             let started = Chan[Process?](1)
             let exited = Chan[Exception?](1)
@@ -223,20 +189,71 @@ internal class Installation {
             }
 
             if outputStarted || errorStarted {
-                if stdout.Failure != nil || stderr.Failure != nil {
-                    throw CliFailure("command_failed", "Cannot read installer diagnostics")
-                }
-
-                PublicOutput.Truncated = PublicOutput.Truncated || stdout.Truncated || stderr.Truncated
-                if let output = lines {
-                    output.AddRange(stdout.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
-                } else {
-                    Console.Error.Write(PublicOutput.Prose(stdout.Text))
-                }
-                Console.Error.Write(PublicOutput.Prose(stderr.Text))
+                ReportDiagnostics(stdout, stderr, lines)
             }
 
             return process.ExitCode
+        }
+
+        private func ConfigureProcess(
+            executable string,
+            args[]string,
+            input string?,
+            capture bool,
+            pathVariables[]string,
+            lines List[string]?
+        ) ProcessStartInfo {
+            let info = ProcessStartInfo(executable)
+
+            info.UseShellExecute = false
+            info.RedirectStandardInput = input != nil
+            info.RedirectStandardOutput = PublicOutput.Enabled || capture || lines != nil
+            info.RedirectStandardError = PublicOutput.Enabled || capture || lines != nil
+
+            for arg in args {
+                info.ArgumentList.Add(arg)
+            }
+
+            info.Environment.Clear()
+
+            for key in[]string{
+                "HOME",
+                "PATH",
+                "SHELL",
+                "LANG",
+                "TERM",
+                "ZDOTDIR",
+                "XDG_CONFIG_HOME",
+                "XDG_DATA_HOME",
+                "TMPDIR"
+            } {
+                if let value = Environment.GetEnvironmentVariable(key) {
+                    info.Environment[key] = value
+                }
+            }
+
+            for key in pathVariables ?? []string{} {
+                let path = Environment.GetEnvironmentVariable(key) ?? ""
+                if path != "" {
+                    info.Environment[key] = LocalPaths.RuntimePath(path)
+                }
+            }
+
+            return info
+        }
+
+        private func ReportDiagnostics(stdout CommandOutput, stderr CommandOutput, lines List[string]?) {
+            if stdout.Failure != nil || stderr.Failure != nil {
+                throw CliFailure("command_failed", "Cannot read installer diagnostics")
+            }
+
+            PublicOutput.Truncated = PublicOutput.Truncated || stdout.Truncated || stderr.Truncated
+            if let output = lines {
+                output.AddRange(stdout.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            } else {
+                Console.Error.Write(PublicOutput.Prose(stdout.Text))
+            }
+            Console.Error.Write(PublicOutput.Prose(stderr.Text))
         }
     }
 }

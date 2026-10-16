@@ -259,6 +259,18 @@ internal class Gratis {
             if findings == "" {
                 return
             }
+
+            PublishDiscussion(directory, run, repoName, discussionTitle, discussionBody, preview)
+        }
+
+        private func PublishDiscussion(
+            directory string,
+            run Data,
+            repoName string,
+            discussionTitle string,
+            discussionBody string,
+            preview Dictionary[string, Object?]
+        ) {
             try {
                 Require(!run.Flag("discussion_attempted"), "Discussion publication was already attempted")
                 let result = Query(

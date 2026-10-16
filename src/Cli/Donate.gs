@@ -173,7 +173,6 @@ internal class Donate {
                 }
             }
             let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
-            let marker = Path.Combine(directory, "stop")
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
             let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
@@ -255,6 +254,23 @@ internal class Donate {
                     "Repository work requires --yes. No claim or inference started."
                 )
             }
+
+            return RunSession(options, issues, directory, total, gratis, context, selection, seconds)
+        }
+
+        private func RunSession(
+            options Args,
+            issues List[int32],
+            directory string,
+            total float64,
+            gratis bool,
+            context Dictionary[string, Object?],
+            selection JsonElement,
+            seconds int32
+        ) int32 {
+            let repo = options.Need("repo")
+            let marker = Path.Combine(directory, "stop")
+
             options.Values["--yes"] = "true"
             Directory.CreateDirectory(directory)
             using let lease = RunStorage.Lease(directory)
