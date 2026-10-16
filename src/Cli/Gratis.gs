@@ -125,7 +125,7 @@ internal class Gratis {
         internal func Outcome(directory string, checkout string, run Data, budget RuntimeBudget) bool {
             let refusal = Artifact(checkout, "tokate-refusal.txt")
             if refusal != "" {
-                run.Fields["state"] = "refused"
+                run.Transition("refused")
                 run.Fields["refusal"] = refusal
             } else {
                 let home = Environment.GetEnvironmentVariable("HOME") ?? ""
@@ -166,7 +166,7 @@ internal class Gratis {
                 if budget.Git(checkout, "status", "--porcelain") != "" {
                     return false
                 }
-                run.Fields["state"] = "skipped"
+                run.Transition("skipped")
             }
             run.Fields.Remove("failure_stage")
             run.Fields.Remove("failure_reason")
@@ -293,7 +293,7 @@ internal class Gratis {
                 Require(url != "", "Discussion publication failed")
                 preview["applied"] = true
                 run.Fields["discussion_url"] = url
-                run.Fields["state"] = "published"
+                run.Transition("published")
             } catch (error Exception) when !(error is CommandInterrupted) {
                 run.Fields["discussion_error"] = error.Message
                 if run.Number("pr") == 0 {

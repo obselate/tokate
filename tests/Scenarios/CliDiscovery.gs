@@ -819,7 +819,10 @@ internal class CliDiscovery {
                 "publication_error",
                 "synthetic-correction-error-marker"
             )
-            File.WriteAllText(Path.Combine(saved, "correction.json"), correction.ToJsonString())
+            record["amendment"] = JsonValue.Create(hash)
+            File.WriteAllText(Path.Combine(saved, "run.json"), record.ToJsonString())
+            Directory.CreateDirectory(Path.Combine(saved, "amendments", hash))
+            File.WriteAllText(Path.Combine(saved, "amendments", hash, "run.json"), correction.ToJsonString())
             let correctedResult = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
             let corrected = Check.Envelope(correctedResult, "status", "ok")
             Check.That(
@@ -835,6 +838,12 @@ internal class CliDiscovery {
             for action in corrected["next_actions"]?.AsArray() ?? JsonArray() {
                 Check.That(Check.Text(action[1]) != "recover", "Suggested removed recovery command")
             }
+            let legacyCorrection = Path.Combine(saved, "correction.json")
+            File.WriteAllText(legacyCorrection, correction.ToJsonString())
+            let refused = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
+            Check.Envelope(refused, "status", "error", "invalid_state")
+            Check.Contains(refused.Output, "0.7.0")
+            File.Delete(legacyCorrection)
             File.Copy(binary, Path.Combine(temp.Root, "tokate-cli"))
             let pty = TestProcess.Run(
                 "/usr/bin/script",

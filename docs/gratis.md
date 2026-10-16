@@ -4,6 +4,8 @@ Gratis mode donates work to a public GitHub repository that has no `.github/toka
 No owner approves the task. You consent once at the start. Tokate then runs your harness,
 commits as you, pushes to your fork and opens a draft PR.
 
+Session reports derive task counts, token usage and time from saved runs. `wall_seconds` sums saved task time and excludes idle time. Keep the session runs to report their results.
+
 ## Commands
 
 ```sh

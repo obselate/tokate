@@ -82,7 +82,7 @@ internal class WorkspacePreparation {
             run.Fields["requested_fork"] = fork
             run.Fields["preparation_version"] = 1
             run.Fields["preparation_identity"] = BoundIdentity(run)
-            run.Fields["state"] = "preparing"
+            run.Transition("preparing")
 
             WriteNew(directory, run)
         }
@@ -142,7 +142,7 @@ internal class WorkspacePreparation {
 
             run.Fields["preparation_version"] = 1
             run.Fields["preparation_identity"] = BoundIdentity(run)
-            run.Fields["state"] = "preparing"
+            run.Transition("preparing")
 
             run.Save(directory)
         }
@@ -223,7 +223,7 @@ internal class WorkspacePreparation {
             }
 
             run.Fields["preparation_complete"] = true
-            run.Fields["state"] = "claimed"
+            run.Transition("claimed")
 
             run.Save(directory)
 

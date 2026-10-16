@@ -125,7 +125,7 @@ internal class Publication {
             }
             run.Fields["pr"] = J.Number(pull, "number")
             run.Fields["pr_url"] = J.Text(pull, "html_url")
-            run.Fields["state"] = "published"
+            run.Transition("published")
 
             run.Save(directory)
 

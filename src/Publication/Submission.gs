@@ -157,7 +157,7 @@ internal class Submission {
 
             run.Fields["partial_source_state"] = run.Text("state")
             run.Fields["incomplete"] = true
-            run.Fields["state"] = "incomplete_generated"
+            run.Transition("incomplete_generated")
 
             run.Save(directory)
 
@@ -662,7 +662,7 @@ internal class Submission {
                         elapsed
                     )
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
-                    run.Fields["state"] = "failed"
+                    run.Transition("failed")
                     run.Fields["error"] = error.Message
                     run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
 
@@ -682,7 +682,7 @@ internal class Submission {
                 Partial(directory, run)
             }
 
-            if File.Exists(Path.Combine(directory, "correction.json")) {
+            if run.Text("amendment") != "" {
                 Amendment.PublishSaved(directory, run)
                 return
             }

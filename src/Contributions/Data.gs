@@ -23,6 +23,41 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
 
     internal func Element() JsonElement -> J.Parse(J.Write(Fields))
 
+    internal func Transition(next string) {
+        let current = Text("state")
+        let allowed = switch current {
+            case "": next == "claim_pending" || next == "preparing" || next == "validating"
+            case "claim_pending": next == current || next == "preparing"
+            case "preparing": next == current || next == "claimed"
+            case "claimed": next == current || next == "running" || next == "verifying" || next == "failed"
+            case "running": next == current ||
+                next == "generated" ||
+                next == "failed" ||
+                next == "incomplete_generated" ||
+                next == "refused" ||
+                next == "skipped"
+            case "failed": next == current ||
+                next == "verifying" ||
+                next == "generated" ||
+                next == "incomplete_generated"
+            case "validating": next == current || next == "verifying" || next == "failed"
+            case "verifying": next == current || next == "verified" || next == "generated" || next == "failed"
+            case "verified": next == current || next == "publishing" || next == "published"
+            case "publishing": next == current || next == "requested" || next == "published"
+            case "requested": next == current || next == "published"
+            case "generated": next == current || next == "published"
+            case "incomplete_generated": next == current || next == "published" || next == "generated"
+            case "skipped": next == current || next == "published"
+            case "published": next == current
+            case "refused": next == current
+            default: false
+        }
+        if !allowed {
+            throw CliFailure("invalid_state", "Invalid run state transition: " + current + " -> " + next)
+        }
+        Fields["state"] = next
+    }
+
     internal func Save(directory string) {
         RunStorage.ControlPaths(directory)
         Write(Path.Combine(directory, "run.json"))
@@ -42,6 +77,12 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
+            if Directory.GetFiles(directory, "correction.*").Length > 0 {
+                throw CliFailure(
+                    "invalid_state",
+                    "Legacy correction file found. Use Tokate 0.7.0 for this saved run. Start new work with the current version."
+                )
+            }
             return Read(Path.Combine(directory, "run.json"))
         }
 

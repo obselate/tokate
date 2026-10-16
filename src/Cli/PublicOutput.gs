@@ -305,13 +305,9 @@ internal class PublicOutput {
                 }
             }
 
-            let correctionPath = Path.Combine(directory, "correction.json")
-
-            if File.Exists(correctionPath) {
-                let correction = Data.Read(correctionPath)
-                var uuid Guid
-                let location = Guid.TryParse(correction.Text("uuid"), out uuid) ?
-                Path.Combine(directory, "correction-" + correction.Text("uuid")): directory
+            if run.Text("amendment") != "" {
+                let location = Path.Combine(directory, "amendments", run.Text("amendment"))
+                let correction = Data.Load(location)
                 result["correction"] = ChangeSummary(correction, location)
                 if correction.Text("state") == "verified" && J.Get(correction.Element(), "publication")
                     .ValueKind == JsonValueKind.Object &&
@@ -388,8 +384,7 @@ internal class PublicOutput {
                 "pr-body.md",
                 "publication.json",
                 "checks.json",
-                "record.json",
-                "correction.json"
+                "record.json"
             } {
                 let path = Path.Combine(directory, name)
 
