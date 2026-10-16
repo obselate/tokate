@@ -8,6 +8,28 @@ import System.Text.RegularExpressions
 
 internal class PrBody {
     shared {
+        internal func Coordinated(
+            record JsonElement,
+            metadata JsonElement,
+            donor string,
+            receipt Object,
+            marker string
+        ) string {
+            let values = Dictionary[string, string]()
+            values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
+            values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
+            values["donor"] = donor
+            values["model"] = "see original donor-reported tools in report"
+            values["effort"] = "per-tool declaration; not independently attested"
+            values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
+            values["base"] = J.Text(record, "base")
+            values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
+            values["usage"] = "per-tool donor declaration; not independently attested"
+            values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"
+
+            return PrBody.Render(J.Text(record, "template"), values, J.Get(record, "policy"))
+        }
+
         internal func ValidateTemplate(text string) {
             for key in[]string{"issue", "report", "donor", "base", "policy", "receipt"} {
                 if !text.Contains("{{" + key + "}}") {

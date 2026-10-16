@@ -1224,12 +1224,11 @@ internal partial class Fixture {
             }
             let pull = selected ?? throw Exception("Missing PR")
             if method == "PATCH" {
-                if body["maintainer_can_modify"] != nil && !String.Equals(
-                    Check.Text(State["viewer_login"] ?? JsonValue.Create(actor)),
-                    Check.Text(pull["head"]?["repo"]?["full_name"]).Split('/')[0],
-                    StringComparison.OrdinalIgnoreCase
-                ) {
-                    return Response(403)
+                if body["maintainer_can_modify"] != nil && Check.Text(pull["user"]?["id"]) != Check.Text(actorId) {
+                    return Response(
+                        422,
+                        Check.Map("message", "Only the pull request author may change the maintainer_can_modify value.")
+                    )
                 }
                 if Check.Text(State["mode"]) == "body_fail" {
                     return Response(500)
@@ -1255,6 +1254,9 @@ internal partial class Fixture {
             if method == "GET" && State["pull_response_override"] != nil {
                 return Answer(State["pull_response_override"] ?? throw Exception("Missing PR override"))
             }
+            if method == "GET" && Check.Text(State["mode"]) == "revoke_after_pr" {
+                (State["issue"] ?? throw Exception("Missing issue"))["labels"] = JsonArray()
+            }
             return Answer(pull)
         }
         if tail == "pulls" {
@@ -1271,7 +1273,8 @@ internal partial class Fixture {
             let headPush = State["repository_info"]?[headRepo]?["permissions"]?["push"] ??
                 (headLogin == "owner" ? State["repo_permissions"]?["push"]: State["fork_push"]) ??
                 JsonValue.Create(String.Equals(actor, headLogin, StringComparison.OrdinalIgnoreCase))
-            if Check.Text(body["maintainer_can_modify"]) != "false" && Check.Text(headPush) != "true" {
+            if headRepo != repo && Check.Text(body["maintainer_can_modify"]) != "false" &&
+                (Check.Text(headPush) != "true" || Check.Text(State["viewer_login"]) == "github-actions[bot]") {
                 return Response(
                     422,
                     Check.Map(

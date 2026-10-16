@@ -43,7 +43,7 @@ internal class ProtectedPathChecks {
                 let result = test.Coordinate(test.Event(test.PublishRequest(claim, head)), 1)
                 Check.Contains(result.Error, "protected owner path")
                 flow.NoInference()
-                flow.NoPr()
+                Check.That(test.State()["state"]?["contribution"] == nil, "Protected edit gained publication authority")
             }
             Console.WriteLine(
                 "PASS coordinated publication rejects whitespace, BOM, quoted and newline protected Git names"

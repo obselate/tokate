@@ -41,7 +41,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     test.Flow.Receipt("owner/project#10", owner: true)
                 } else {
                     Check.Contains(test.Coordinate(test.Event(publication), 1).Error, "protected owner path")
-                    test.Flow.NoPr()
+                    test.Flow.Reload()
+                    Check.That(test.Flow.State["pulls"]?.AsArray().Count == 1, "Coordinator changed donor PR count")
                     Check.That(test.State()["state"]?["contribution"] == nil, "Protected contribution gained authority")
                 }
                 test.Flow.NoInference()
@@ -277,7 +278,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
             requestedTool["effort"] = JsonValue.Create("absent")
             test.Coordinate(test.Event(request), 1)
-            test.Flow.NoPr()
+            Check.That(test.State()["state"]?["contribution"] == nil, "Invalid effort gained publication authority")
             requestedTool["effort"] = JsonValue.Create("high")
             test.Coordinate(test.Event(request))
             test.Flow.Receipt("owner/project#10", owner: true)
@@ -909,15 +910,89 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Imported external Git metadata"
         )
         Flow.CommitIdentity(Path.Combine(run, "checkout"), commit, "Donor", "donor@example.test")
+        Flow.Mode("pr_fail_after_create")
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 1)
+        Flow.Mode("")
+        Flow.Reload()
+        let originalPulls = Flow.State["pulls"]?.DeepClone() ?? throw Exception("Missing interrupted PR")
+        (Flow.State["pulls"] ?? throw Exception("Missing PRs")).AsArray().Add(originalPulls[0]?.DeepClone())
+        Flow.Save()
+        Check.Contains(Flow.Call([]string{"submit", "--run", run, "--json"}, 1).Output, "ambiguous physical PRs")
+        Flow.Reload()
+        Flow.State["pulls"] = originalPulls
+        Flow.Save()
+        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
         let path = Event(publish)
-        Flow.Mode("pr_fail_after_create")
-        Coordinate(path, 1)
-        Flow.Mode("")
+        let pull = Flow.State["pulls"]?[0]?.DeepClone() ?? throw Exception("Missing donor PR")
+        Check.That(Check.Text(pull["user"]?["id"]) == "123", "Submit did not use the donor token")
+        Check.That(Check.Text(pull["maintainer_can_modify"]) == "true", "Submit disabled maintainer edits")
+        let reasons = Check.Map(
+            "author",
+            "author",
+            "sha",
+            "head SHA",
+            "repo",
+            "head repository",
+            "ref",
+            "head repository",
+            "base",
+            "reserved target",
+            "closed",
+            "open draft",
+            "ready",
+            "open draft",
+            "maintainer",
+            "maintainer edits"
+        )
+        for fault in[]string{"author", "sha", "repo", "ref", "base", "closed", "ready", "maintainer"} {
+            Flow.Reload()
+            let forged = pull.DeepClone()
+            switch fault {
+                case "author" {
+                    (forged["user"] ?? throw Exception("Missing author"))["id"] = JsonValue.Create(999)
+                }
+                case "sha" {
+                    (forged["head"] ?? throw Exception("Missing head"))["sha"] = JsonValue.Create(String('a', 40))
+                }
+                case "repo" {
+                    (forged["head"]?["repo"] ?? throw Exception("Missing head repo"))["full_name"] = JsonValue.Create(
+                        "other/project"
+                    )
+                }
+                case "ref" {
+                    (forged["head"] ?? throw Exception("Missing head"))["ref"] = JsonValue.Create("other")
+                }
+                case "base" {
+                    (forged["base"] ?? throw Exception("Missing base"))["ref"] = JsonValue.Create("other")
+                }
+                case "closed" {
+                    forged["state"] = JsonValue.Create("closed")
+                }
+                case "ready" {
+                    forged["draft"] = JsonValue.Create(false)
+                }
+                case "maintainer" {
+                    forged["maintainer_can_modify"] = JsonValue.Create(false)
+                }
+            }
+            Flow.State["pulls"] = JsonArray(forged)
+            Flow.Save()
+            Check.Contains(Coordinate(path, 1).Error, Check.Text(reasons[fault]))
+            Check.That(State()["state"]?["contribution"] == nil, "Forged PR was adopted")
+        }
+        Flow.Reload()
+        Flow.State["pulls"] = JsonArray(pull)
+        pull["body"] = JsonValue.Create("Donor body changed before adoption")
+        Flow.Save()
         Coordinate(path)
         Flow.Reload()
+        Check.That(
+            Check.Text(Flow.State["pulls"]?[0]?["body"]) != "Donor body changed before adoption",
+            "Coordinator did not restore canonical body"
+        )
         Check.That(Flow.State["pulls"]?.AsArray().Count == 1, "Interrupted publication duplicated PR")
         Check.That(
             Check.Text(State()["state"]?["contribution"]?["metadata"]?["head"]) == commit,
@@ -1171,7 +1246,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
         Prepare(code: 1)
         Flow.NoInference()
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Expired publication gained authority")
     }
 
     internal func InvalidEvents() {
@@ -1447,21 +1522,21 @@ internal partial class CoordinationFlow : CoordinationFixture {
         tool[unrestricted ? "effort": "model"] = JsonValue.Create(unrestricted ? "invalid": "disallowed-model")
         metadata["tools"] = invalid
         Coordinate(Event(request), 1)
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Invalid declaration gained publication authority")
         if !unrestricted {
             let swapped = declared.DeepClone()
             let first = swapped[0] ?? throw Exception("Missing declared tool")
             first["model"] = declared[1]?["model"]?.DeepClone()
             metadata["tools"] = swapped
             Check.Contains(Coordinate(Event(request), 1).Error, "Model/effort pair")
-            Flow.NoPr()
+            Check.That(State()["state"]?["contribution"] == nil, "Invalid model gained publication authority")
         }
 
         metadata["tools"] = declared.DeepClone()
         let source = Check.Text(metadata["source"])
         metadata["source"] = JsonValue.Create("tokate")
         Coordinate(Event(request), 1)
-        Flow.NoPr()
+        Check.That(State()["state"]?["contribution"] == nil, "Invalid source gained publication authority")
         metadata["source"] = JsonValue.Create(source)
         Coordinate(Event(request))
         Flow.Receipt("owner/project#10", owner: true)

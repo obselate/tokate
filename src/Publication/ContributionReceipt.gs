@@ -24,6 +24,34 @@ internal class ContributionReceipt {
             "head": head
         }
 
+        internal func Publication(
+            repo string,
+            issue int32,
+            request JsonElement,
+            reservation string,
+            donor string
+        ) Dictionary[string, Object?] {
+            let metadata = J.Get(request, "metadata")
+            let receipt = Coordinated(
+                repo,
+                issue,
+                J.Text(request, "approval"),
+                J.Text(request, "expected"),
+                reservation,
+                donor,
+                J.Text(metadata, "head")
+            )
+            Models(receipt, metadata)
+            for field in[]string{"correction", "handoff", "incomplete"} {
+                let value = J.Get(metadata, field)
+                if value.ValueKind != JsonValueKind.Undefined {
+                    receipt[field] = value
+                }
+            }
+            AttemptContinuation.Keep(receipt, metadata)
+            return receipt
+        }
+
         internal func Models(fields Dictionary[string, Object?], value JsonElement) {
             for key in[]string{"requested_model", "reported_model"} {
                 let model = J.Get(value, key)

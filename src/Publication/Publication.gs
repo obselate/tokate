@@ -76,7 +76,7 @@ internal class Publication {
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
 
-            if J.Text(head, "sha") != run.Text("commit") || J.Text(head, "ref") != run.Text("branch") ||
+            if J.Text(head, "sha") != J.Text(expectedReceipt, "head") || J.Text(head, "ref") != run.Text("branch") ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
                 throw CliFailure("invalid_state", failure)
@@ -112,17 +112,78 @@ internal class Publication {
             return pulls[0]
         }
 
-        internal func SavePr(directory string, run Data, pull JsonElement, maintainerEdits bool = false) {
-            if maintainerEdits && !J.Bool(pull, "maintainer_can_modify") {
-                let updated = GitHub.Api(
-                    "repos/" + run.Text("repo") + "/pulls/" + J.Number(pull, "number").ToString(),
-                    map[string, Object?]{"maintainer_can_modify": true},
-                    "PATCH"
-                )
-                if !J.Bool(updated, "maintainer_can_modify") {
-                    throw CliFailure("invalid_state", "PR did not enable policy maintainer edits")
-                }
+        internal func PullRequest(run Data, title string, body string, draft bool, maintainerEdits bool) Dictionary[
+            string,
+            Object?
+        ] {
+            let fields = map[string, Object?]{
+                "title": title,
+                "body": body,
+                "head": run.Text("head_repo").Split('/')[0] + ":" + run.Text("branch"),
+                "base": run.Text("base_branch"),
+                "draft": draft
             }
+            if !RepositoryIdentity.SameRepo(run.Text("head_repo"), run.Text("repo")) {
+                fields["maintainer_can_modify"] = maintainerEdits
+            }
+            return fields
+        }
+
+        internal func Prepare(run Data, record JsonElement, request JsonElement) JsonElement {
+            let receipt = ContributionReceipt.Publication(
+                run.Text("repo"),
+                run.Number("issue"),
+                request,
+                run.Text("id"),
+                run.Text("donor")
+            )
+            let body = PrBody.Coordinated(
+                record,
+                J.Get(request, "metadata"),
+                run.Text("donor"),
+                receipt,
+                "<!-- tokate-v2:" + run.Text("id") + " -->"
+            )
+            RepositoryAccess.ValidateFork(
+                run.Text("repo"),
+                J.Get(request, "metadata"),
+                J.Get(run.Element(), "donor_id")
+            )
+            let expected = J.Parse(J.Write(receipt))
+            var pull = Find(run, expected)
+            if pull.ValueKind == JsonValueKind.Undefined {
+                pull = GitHub.Api(
+                    "repos/" + run.Text("repo") + "/pulls",
+                    PullRequest(
+                        run,
+                        (RequestData.Incomplete(J.Get(request, "metadata")) ? "Incomplete: ": "") + J.Text(
+                            J.Get(record, "issue"),
+                            "title"
+                        ),
+                        body,
+                        true,
+                        Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits
+                    )
+                )
+                Match(run, pull, expected)
+            }
+            if J.Get(J.Get(pull, "user"), "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
+                throw CliFailure("invalid_state", "Publication PR author differs from reserved donor")
+            }
+            if J.Text(pull, "body") != body {
+                throw CliFailure("invalid_state", "Existing PR body differs from canonical publication")
+            }
+            let metadata = Dictionary[string, Object?]()
+            for field in J.Get(request, "metadata").EnumerateObject() {
+                metadata[field.Name] = field.Value
+            }
+            metadata["pr"] = J.Number(pull, "number")
+            let fields = J.Select(request, "uuid,expected,approval,action")
+            fields["metadata"] = metadata
+            return J.Parse(J.Write(fields))
+        }
+
+        internal func SavePr(directory string, run Data, pull JsonElement) {
             run.Fields["pr"] = J.Number(pull, "number")
             run.Fields["pr_url"] = J.Text(pull, "html_url")
             run.Fields["state"] = "published"

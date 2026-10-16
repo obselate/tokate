@@ -241,7 +241,7 @@ internal class EligibilityChecks {
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             Access(publication, "untrust")
             publication.Coordinate(publication.Event(publish), 1)
-            publication.Flow.NoPr()
+            Check.That(publication.State()["state"]?["contribution"] == nil, "Untrusted PR gained authority")
             publication.Flow.NoInference()
         }
 
@@ -562,15 +562,11 @@ internal class EligibilityChecks {
                 RevokeAt(test, read)
                 test.Coordinate(test.Event(publish), 1)
                 test.Flow.Reload()
-                if read == 2 {
-                    test.Flow.NoPr()
-                } else {
-                    Check.That(
-                        test.Flow.State["pulls"]?.AsArray().Count == 1,
-                        "Uncertain publication did not preserve physical PR"
-                    )
-                    test.Flow.Receipt("owner/project#10", false, true)
-                }
+                Check.That(
+                    test.Flow.State["pulls"]?.AsArray().Count == 1,
+                    "Rejected adoption did not preserve donor PR"
+                )
+                test.Flow.Receipt("owner/project#10", false, true)
                 Check.That(test.State()["state"]?["contribution"] == nil, "Revoked access authorized publication")
                 test.Flow.NoInference()
             }
