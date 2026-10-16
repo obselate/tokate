@@ -237,7 +237,7 @@ internal class HarnessRunner {
                             run.Fields[name] = value
                         }
                     }
-                    run.Fields["state"] = "running"
+                    run.Transition("running")
                     run.Fields["failure_stage"] = "inference"
                     run.Fields["failure_reason"] = "inference_failed"
                     run.Save(directory)
@@ -305,7 +305,7 @@ internal class HarnessRunner {
                             run.Fields["error_truncated"] = result.ErrorTruncated
                         }
                     }
-                    run.Fields["state"] = "failed"
+                    run.Transition("failed")
                     run.Fields["error"] = error.Message
                     if codex && !run.Fields.ContainsKey("failure_reason") {
                         run.Fields["failure_reason"] = PublicOutput.FailureCode

@@ -204,8 +204,10 @@ internal class TerminalOutput {
             record["version"] = JsonValue.Create(2)
             record["source"] = JsonValue.Create("tokate")
             record["state"] = JsonValue.Create("generated")
+            record["amendment"] = JsonValue.Create("candidate")
             File.WriteAllText(recordPath, record.ToJsonString())
-            let correctionPath = Path.Combine(saved, "correction.json")
+            Directory.CreateDirectory(Path.Combine(saved, "amendments", "candidate"))
+            let correctionPath = Path.Combine(saved, "amendments", "candidate", "run.json")
             File.WriteAllText(
                 correctionPath,
                 Check.Map(
@@ -228,6 +230,7 @@ internal class TerminalOutput {
                 "Correction status leaked private evidence"
             )
             File.Delete(correctionPath)
+            record.AsObject().Remove("amendment")
             record["state"] = JsonValue.Create("verifying")
             record["verification"] = JsonArray()
             let snapshot = record.ToJsonString()

@@ -344,13 +344,7 @@ internal class AttemptContinuation {
                 )
             }
 
-            for name in[]string{
-                "publication.json",
-                "request.json",
-                "request.json.posting.json",
-                "correction.json",
-                "amendments"
-            } {
+            for name in[]string{"publication.json", "request.json", "request.json.posting.json", "amendments"} {
                 let path = Path.Combine(directory, name)
                 if File.Exists(path) || Directory.Exists(path) || FileInfo(path).LinkTarget != nil {
                     throw CliFailure(

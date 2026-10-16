@@ -1743,6 +1743,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(prompt, "tokate-refusal.txt")
         Check.Contains(prompt, "Open PR snapshot")
         let gratisDirectory = Check.Text(gratis["tasks"]?[0]?["run_directory"])
+        let session = Check.Json(
+            File.ReadAllText(
+                Path.Combine(gratisFlow.Temp.Env["HOME"], ".local/state/tokate/donations/owner/project/session.json")
+            )
+        )
+        for key in[]string{"submitted", "skipped", "failed", "prepared", "wall_seconds", "usage"} {
+            Check.That(session[key] == nil, "Session stored a derived counter: " + key)
+        }
         Check.That(File.Exists(Path.Combine(gratisDirectory, "open-prs.json")), "Missing saved PR snapshot")
         Check.That(
             File.ReadAllText(Path.Combine(gratisDirectory, "verification.json")) == "[]",
@@ -1975,6 +1983,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "ok"
         )["data"]
         Check.That(Check.Text(published?["applied"]) == "true", "Confirmed submission did not publish")
+        let refreshed = Check.Envelope(
+            namedFlow.Call([]string{"work", "owner/project", "stop", "--yes", "--json"}),
+            "work",
+            "ok"
+        )["data"]
+        Check.That(
+            Check.Text(refreshed?["submitted"]) == "1" && Check.Text(refreshed?["prepared"]) == "1",
+            "Session did not derive current run outcomes"
+        )
         namedFlow.Reload()
         let namedPull = namedFlow.State["pulls"]?[0] ?? throw Exception("Missing named PR")
         Check.That(Check.Text(namedPull["title"]) == title, "Gratis PR differs from preview title")

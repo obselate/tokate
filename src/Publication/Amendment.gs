@@ -302,7 +302,7 @@ internal class Amendment {
             let live = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
             live.Reservation(J.Get(run.Element(), "donor_id"))
             let state = live.Value()
-            let savedCorrection = File.Exists(Path.Combine(directory, "correction.json"))
+            let savedCorrection = run.Text("amendment") != ""
             let correcting = run.Number("pr") == 0 && run.Text("state") != "published" &&
                 (savedCorrection || J.Get(state, "contribution").ValueKind != JsonValueKind.Object)
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
@@ -311,8 +311,9 @@ internal class Amendment {
                 if args.Get("resume") != "" {
                     throw CliFailure("invalid_state", "Resume requires a published PR")
                 }
-                let current = Path.Combine(directory, "correction.json")
-                let existing = File.Exists(current) ? Data.Read(current): nil
+                let existing = savedCorrection ? Data.Load(
+                    Path.Combine(directory, "amendments", run.Text("amendment"))
+                ): nil
                 if existing != nil && continuing && J.Get(existing.Element(), "publication")
                     .ValueKind == JsonValueKind.Object {
                     PublishSaved(directory, run, existing)
@@ -381,13 +382,16 @@ internal class Amendment {
                 }
             }
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
-            let current = correcting ? Path.Combine(directory, "correction.json"): Path.Combine(
+            let current = Path.Combine(
                 directory,
                 "amendments",
-                commit,
+                correcting && savedCorrection ? run.Text("amendment"): commit,
                 "run.json"
             )
             var change = File.Exists(current) ? Data.Read(current): Data()
+            if !correcting && change.Text("uuid") != "" {
+                change = Data()
+            }
             let saved = change.Text("commit") == commit
             if !saved && J.Get(change.Element(), "publication").ValueKind == JsonValueKind.Object {
                 throw CliFailure(
@@ -467,11 +471,11 @@ internal class Amendment {
                         "expected": J.Text(authority, "sha"),
                         "attempt": J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt"),
                         "original_evidence_sha256": archive,
-                        "state": "validating",
                         "failure_stage": "candidate_validation",
                         "failure_reason": "candidate_invalid"
                     }
                 )
+                change.Transition("validating")
                 if correcting {
                     change.Fields["version"] = 1
                     change.Fields["uuid"] = change.Text("id")
@@ -507,7 +511,7 @@ internal class Amendment {
                     Save(directory, change)
                     Verify(directory, run, change, record)
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
-                    change.Fields["state"] = "failed"
+                    change.Transition("failed")
                     change.Fields["error"] = error.Message
                     Save(directory, change)
                     let failure = ExecutionFailure.From(
@@ -575,18 +579,19 @@ internal class Amendment {
             }
         }
 
-        private func Location(directory string, change Data) string -> change.Text("uuid") != "" ? Path.Combine(
+        private func Location(directory string, change Data) string -> Path.Combine(
             directory,
-            "correction-" + change.Text("uuid")
-        ): Path.Combine(directory, "amendments", change.Text("commit"))
+            "amendments",
+            change.Text("commit")
+        )
 
         private func Save(directory string, change Data) {
-            if change.Text("uuid") == "" {
-                change.Save(Location(directory, change))
-                return
+            change.Save(Location(directory, change))
+            if change.Text("uuid") != "" {
+                let run = Data.Load(directory)
+                run.Fields["amendment"] = change.Text("commit")
+                run.Save(directory)
             }
-            change.Write(Path.Combine(Location(directory, change), "record.json"))
-            change.Write(Path.Combine(directory, "correction.json"))
         }
 
         private func Exact(directory string, run Data, change Data, record JsonElement) string {
@@ -616,7 +621,7 @@ internal class Amendment {
             let timer = Stopwatch.StartNew()
             let seconds = change.Number("seconds")
             change.Fields["verification"] = results
-            change.Fields["state"] = "verifying"
+            change.Transition("verifying")
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
             Save(directory, change)
@@ -661,7 +666,7 @@ internal class Amendment {
             change.Fields["failure_reason"] = "verification_failed"
             PublicOutput.FailureCode = "verification_failed"
             Verification.Results(change, record)
-            change.Fields["state"] = "verified"
+            change.Transition("verified")
             change.Fields.Remove("failure_stage")
             change.Fields.Remove("failure_reason")
             Save(directory, change)
@@ -679,7 +684,7 @@ internal class Amendment {
         }
 
         internal func PublishSaved(directory string, run Data, amendment Data? = nil) {
-            let change = amendment ?? Data.Read(Path.Combine(directory, "correction.json"))
+            let change = amendment ?? Data.Load(Path.Combine(directory, "amendments", run.Text("amendment")))
             let location = Location(directory, change)
             try {
                 OriginalEvidence.Amended(directory, run, change)
@@ -799,7 +804,7 @@ internal class Amendment {
                     "action": "amend",
                     "metadata": metadata
                 }
-                amendment.Fields["state"] = "publishing"
+                amendment.Transition("publishing")
 
                 amendment.Save(location)
                 File.WriteAllText(Path.Combine(location, "publication.json"), J.Write(amendment.Element()) + "\n")
@@ -864,7 +869,7 @@ internal class Amendment {
 
                 Authority(run, amendment, directory: directory)
 
-                amendment.Fields["state"] = "requested"
+                amendment.Transition("requested")
 
                 amendment.Save(location)
             }
@@ -922,7 +927,8 @@ internal class Amendment {
 
             run.Fields.Remove("summary_patch_sha256")
             run.Fields["correction"] = Provenance(correction)
-            run.Fields["state"] = "generated"
+            run.Fields["amendment"] = correction.Text("commit")
+            run.Transition("generated")
             run.Fields.Remove("error")
             run.Fields.Remove("failure_reason")
             run.Fields.Remove("failure_stage")
@@ -1137,7 +1143,7 @@ internal class Amendment {
         }
 
         internal func Complete(directory string, location string, run Data, amendment Data, pull JsonElement) {
-            amendment.Fields["state"] = "published"
+            amendment.Transition("published")
             amendment.Fields.Remove("error")
             amendment.Fields.Remove("failure_reason")
 

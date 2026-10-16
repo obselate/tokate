@@ -26,7 +26,7 @@ internal class ExternalContribution {
                 )
             }
 
-            for name in[]string{"request.json", "request.json.posting.json", "publication.json", "correction.json"} {
+            for name in[]string{"request.json", "request.json.posting.json", "publication.json"} {
                 if Exists(Path.Combine(directory, name)) {
                     throw ExecutionFailure.Create(
                         "invalid_state",
@@ -335,7 +335,7 @@ internal class ExternalContribution {
                     run.Fields["commit"] = commit
                     run.Fields["verification_seconds"] = seconds
                     run.Fields["tools"] = tools
-                    run.Fields["state"] = "verifying"
+                    run.Transition("verifying")
                     run.Fields["failure_stage"] = "candidate_validation"
                     run.Fields["failure_reason"] = "candidate_invalid"
                     run.Fields["verification"] = J.Parse("[]")
@@ -398,7 +398,7 @@ internal class ExternalContribution {
                     error.GetType() == typeof(Exception) ||
                     error is IOException ||
                     error is UnauthorizedAccessException {
-                    run.Fields["state"] = "failed"
+                    run.Transition("failed")
                     run.Fields["error"] = error.Message
 
                     run.Save(directory)
@@ -407,7 +407,7 @@ internal class ExternalContribution {
                 }
 
                 let timer = Stopwatch.StartNew()
-                run.Fields["state"] = "verifying"
+                run.Transition("verifying")
                 run.Save(directory)
 
                 let results = List[Object]()
@@ -484,7 +484,7 @@ internal class ExternalContribution {
                     run.Fields[
                         "tool_provenance"
                     ] = "donor-reported; identity, usage and coding time not independently attested"
-                    run.Fields["state"] = "generated"
+                    run.Transition("generated")
                     run.Fields.Remove("failure_stage")
                     run.Fields.Remove("failure_reason")
 
@@ -496,7 +496,7 @@ internal class ExternalContribution {
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException {
-                    run.Fields["state"] = "failed"
+                    run.Transition("failed")
                     run.Fields["error"] = error.Message
 
                     run.Save(directory)

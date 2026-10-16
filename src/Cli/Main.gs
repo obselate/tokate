@@ -72,7 +72,7 @@ func Main(args[]string) int32 {
                 using let lease = RunStorage.Lease(PublicOutput.RunDirectory)
                 let run = Data.Load(PublicOutput.RunDirectory)
                 if run.Text("state") == "claimed" && run.Text("source") == "tokate" {
-                    run.Fields["state"] = "failed"
+                    run.Transition("failed")
                     run.Fields["failure_stage"] = "preflight"
                     run.Fields["failure_reason"] = code
                     run.Save(PublicOutput.RunDirectory)

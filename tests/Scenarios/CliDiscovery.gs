@@ -819,7 +819,12 @@ internal class CliDiscovery {
                 "publication_error",
                 "synthetic-correction-error-marker"
             )
-            File.WriteAllText(Path.Combine(saved, "correction.json"), correction.ToJsonString())
+            correction["version"] = JsonValue.Create(1)
+            correction["id"] = correction["uuid"]?.DeepClone()
+            record["amendment"] = JsonValue.Create(hash)
+            File.WriteAllText(Path.Combine(saved, "run.json"), record.ToJsonString())
+            Directory.CreateDirectory(Path.Combine(saved, "amendments", hash))
+            File.WriteAllText(Path.Combine(saved, "amendments", hash, "run.json"), correction.ToJsonString())
             let correctedResult = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
             let corrected = Check.Envelope(correctedResult, "status", "ok")
             Check.That(
@@ -835,6 +840,40 @@ internal class CliDiscovery {
             for action in corrected["next_actions"]?.AsArray() ?? JsonArray() {
                 Check.That(Check.Text(action[1]) != "recover", "Suggested removed recovery command")
             }
+            let legacyCorrection = Path.Combine(saved, "correction.json")
+            let legacyArtifacts = Path.Combine(saved, "correction-" + Check.Text(correction["uuid"]))
+            Directory.Move(Path.Combine(saved, "amendments", hash), legacyArtifacts)
+            File.Move(Path.Combine(legacyArtifacts, "run.json"), Path.Combine(legacyArtifacts, "record.json"))
+            File.WriteAllText(Path.Combine(legacyArtifacts, "candidate.patch"), "legacy-patch")
+            record.AsObject().Remove("amendment")
+            File.WriteAllText(Path.Combine(saved, "run.json"), record.ToJsonString())
+            File.WriteAllText(legacyCorrection, correction.ToJsonString())
+            let migrated = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
+            Check.Envelope(migrated, "status", "ok")
+            Check.That(
+                !File.Exists(legacyCorrection) && !Directory.Exists(legacyArtifacts),
+                "Legacy correction was not migrated"
+            )
+            let migratedPath = Path.Combine(saved, "amendments", hash, "run.json")
+            Check.That(
+                JsonNode.DeepEquals(Check.Json(File.ReadAllText(migratedPath)), correction),
+                "Migration changed correction data"
+            )
+            Check.That(
+                Check.Text(Check.Json(File.ReadAllText(Path.Combine(saved, "run.json")))["amendment"]) == hash,
+                "Migration did not select the amendment"
+            )
+            Check.That(
+                File.ReadAllText(Path.Combine(saved, "amendments", hash, "candidate.patch")) == "legacy-patch",
+                "Migration lost correction artifacts"
+            )
+            let migratedRecord = File.ReadAllText(migratedPath)
+            Check.Envelope(
+                TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env),
+                "status",
+                "ok"
+            )
+            Check.That(File.ReadAllText(migratedPath) == migratedRecord, "Migration repeated")
             File.Copy(binary, Path.Combine(temp.Root, "tokate-cli"))
             let pty = TestProcess.Run(
                 "/usr/bin/script",
@@ -920,6 +959,21 @@ internal class CliDiscovery {
                 offline["data"]?["runs"]?.AsArray().Count == 2,
                 "Local repository failure stopped saved-run listing"
             )
+            let legacyRun = Path.Combine(root, "legacy-correction")
+            Directory.CreateDirectory(legacyRun)
+            File.WriteAllText(Path.Combine(legacyRun, "run.json"), record.ToJsonString())
+            File.WriteAllText(Path.Combine(legacyRun, "correction.json"), "{}")
+            let isolated = Check.Envelope(Call(binary, []string{"status", "--json"}, temp), "status", "ok")
+            Check.That(
+                isolated["data"]?["runs"]?.AsArray().Count == 2 && Check.Text(isolated["data"]?["skipped"]) == "1",
+                "Invalid correction stopped other saved runs"
+            )
+            Check.Contains(Check.Text(isolated["data"]?["skipped_entries"]?[0]?["reason"]), "tokate status --run")
+            Check.That(
+                File.ReadAllText(Path.Combine(legacyRun, "correction.json")) == "{}",
+                "Invalid correction was changed"
+            )
+            Directory.Delete(legacyRun, true)
             let firstBytes = Check.Hash(Path.Combine(first, "run.json"))
             let secondBytes = Check.Hash(Path.Combine(second, "run.json"))
             let obsolete = Path.Combine(root, "obsolete")
