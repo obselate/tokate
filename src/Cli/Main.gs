@@ -176,6 +176,25 @@ func Dispatch(options Args) int32 {
         return Donate.Stop(options)
     }
 
+    ConfirmCommand(options)
+
+    if (options.Command != "doctor" || options.Subject == "repo") &&
+        (options.Command != "defaults" || options.Subject == "check") {
+        DonorSelection.ApplyDefaults(options)
+        Startup.Check(options)
+    }
+
+    if options.Command == "claim" ||
+        options.Command == "work" ||
+        options.Command == "submit" ||
+        options.Command == "status" {
+        OwnerHealth.WarnCoordinator(options)
+    }
+
+    return RunCommand(options)
+}
+
+private func ConfirmCommand(options Args) {
     let consent = options.Get("yes") != "true" &&
         (
         options.Command == "approve" ||
@@ -244,22 +263,9 @@ func Dispatch(options Args) int32 {
 
         options.Values["--yes"] = "true"
     }
+}
 
-    if (options.Command != "doctor" || options.Subject == "repo") &&
-        (options.Command != "defaults" || options.Subject == "check") {
-        DonorSelection.ApplyDefaults(options)
-        Startup.Check(options)
-    }
-
-    if options.Command == "claim" ||
-        options.Command == "work" ||
-        options.Command == "submit" ||
-        options.Command == "status" {
-        OwnerHealth.WarnCoordinator(options)
-    }
-
-    var pending bool
-
+private func RunCommand(options Args) int32 {
     switch options.Command {
         case "doctor" {
             return Startup.Doctor(options)
@@ -321,51 +327,8 @@ func Dispatch(options Args) int32 {
         }
 
         case "submit" {
-            Submission.Submit(options)
-
-            let directory = Path.GetFullPath(options.Need("run"))
-            var run = Data.Load(directory)
-            if run.Flag("gratis") {
-                return 0
-            }
-
-            if PublicOutput.Enabled && !Donate.Active {
-                pending = run.Number("pr") == 0
-
-                if pending {
-                    Submission.FailedWorkflow(directory, run)
-                }
-            } else {
-                let request = run.Number("pr") == 0 ? RequestData.FileData(
-                    Path.Combine(directory, "request.json"),
-                    8192
-                ):
-                JsonElement{}
-                ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
-                try {
-                    while run.Number("pr") == 0 {
-                        Submission.FailedWorkflow(directory, run)
-                        if let guidance = Submission.PendingWorkflow(directory, run) {
-                            if !Donate.Active {
-                                Terminal.Message(guidance["action"]?.ToString() ?? "")
-                                return 8
-                            }
-                        }
-                        let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-                        if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
-                            .ValueKind == JsonValueKind.Undefined {
-                            ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
-                            Submission.ResetWorkflow()
-                        } else {
-                            Submission.Submit(options)
-                            run = Data.Load(directory)
-                        }
-                    }
-                } catch (error ApiDeadlineException) when !Donate.Active {
-                    return 8
-                } finally {
-                    ApiTransport.EndDeadline()
-                }
+            if let result = SubmitCommand(options) {
+                return result
             }
         }
 
@@ -378,35 +341,8 @@ func Dispatch(options Args) int32 {
         }
 
         case "claim", "work" {
-            if Cli.RepositoryWork(options) ||
-                (
-                options.Command == "work" && options.Get("run") == "" &&
-                    (
-                    options.Get("review") == "true" || options.Get("prompt") != "" || options.Get("total") != "" ||
-                        GitHub
-                        .Api("repos/" + options.Need("repo") + "/contents/.github/tokate.json", missing: true)
-                        .ValueKind == JsonValueKind.Undefined
-                )
-            ) {
-                return Donate.Run(options)
-            }
-            let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
-            ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)
-            let ready = Data.Load(directory)
-
-            if ready.Text("state") == "claim_pending" {
-                return 8
-            }
-
-            if options.Command == "work" && ready.Text("source") == "tokate" {
-                if options.Get("run") != "" && !ready.Flag("gratis") {
-                    Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
-                }
-                HarnessRunner.Execute(directory, options)
-                PublicOutput.FailureCode = "command_failed"
-                if !ready.Flag("gratis") || Data.Load(directory).Text("state") == "generated" {
-                    Submission.Commit(directory)
-                }
+            if let result = WorkCommand(options) {
+                return result
             }
         }
 
@@ -433,5 +369,101 @@ func Dispatch(options Args) int32 {
         PublicOutput.ResultData = PublicOutput.RunSummary(PublicOutput.RunDirectory)
     }
 
-    return pending ? 8: 0
+    return 0
+}
+
+private func SubmitCommand(options Args) int32? {
+    Submission.Submit(options)
+
+    let directory = Path.GetFullPath(options.Need("run"))
+    var run = Data.Load(directory)
+
+    if run.Flag("gratis") {
+        return 0
+    }
+
+    if PublicOutput.Enabled && !Donate.Active {
+        let pending = run.Number("pr") == 0
+
+        if pending {
+            Submission.FailedWorkflow(directory, run)
+
+            if PublicOutput.RunDirectory != "" {
+                PublicOutput.ResultData = PublicOutput.RunSummary(PublicOutput.RunDirectory)
+            }
+
+            return 8
+        }
+    } else {
+        let request = run.Number("pr") == 0 ? RequestData.FileData(Path.Combine(directory, "request.json"), 8192):
+        JsonElement{}
+        ApiTransport.BeginDeadline(Donate.Active ? run.Number("seconds"): 30)
+        try {
+            while run.Number("pr") == 0 {
+                Submission.FailedWorkflow(directory, run)
+
+                if let guidance = Submission.PendingWorkflow(directory, run) {
+                    if !Donate.Active {
+                        Terminal.Message(guidance["action"]?.ToString() ?? "")
+                        return 8
+                    }
+                }
+
+                let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+                if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+                    .ValueKind == JsonValueKind.Undefined {
+                    ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
+                    Submission.ResetWorkflow()
+                } else {
+                    Submission.Submit(options)
+                    run = Data.Load(directory)
+                }
+            }
+        } catch (error ApiDeadlineException) when !Donate.Active {
+            return 8
+        } finally {
+            ApiTransport.EndDeadline()
+        }
+    }
+
+    return nil
+}
+
+private func WorkCommand(options Args) int32? {
+    if Cli.RepositoryWork(options) ||
+        (
+        options.Command == "work" && options.Get("run") == "" &&
+            (
+            options.Get("review") == "true" || options.Get("prompt") != "" || options.Get("total") != "" || GitHub.Api(
+                "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
+                missing: true
+            )
+                .ValueKind == JsonValueKind.Undefined
+        )
+    ) {
+        return Donate.Run(options)
+    }
+
+    let directory = options.Get("run") == "" ? ContributionPreparation.Acquire(options):
+    ContributionPreparation.Resume(Path.GetFullPath(options.Need("run")), options)
+    let ready = Data.Load(directory)
+
+    if ready.Text("state") == "claim_pending" {
+        return 8
+    }
+
+    if options.Command == "work" && ready.Text("source") == "tokate" {
+        if options.Get("run") != "" && !ready.Flag("gratis") {
+            Overlaps.RequireDependencies(ready.Text("repo"), ready.Number("issue"))
+        }
+
+        HarnessRunner.Execute(directory, options)
+        PublicOutput.FailureCode = "command_failed"
+
+        if !ready.Flag("gratis") || Data.Load(directory).Text("state") == "generated" {
+            Submission.Commit(directory)
+        }
+    }
+
+    return nil
 }
