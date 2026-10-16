@@ -214,6 +214,7 @@ internal class Coordinator {
             ) {
                 throw CliFailure("stale_approval", "Stale state or approval; evicted requests cannot repeat effects")
             }
+
             let action = J.Text(request, "action")
             let record = action == "release" ? JsonElement{}: state.Check(repo, number, donor, actor)
             var outcome Object = map[string, Object?]{}
@@ -225,121 +226,15 @@ internal class Coordinator {
             } else if J.Text(request, "action") == "amend" {
                 outcome = Amend(repo, number, state, record, request, actor, donor)
             } else {
-                state.Reservation(actor)
-                LeaseLifecycle.Fence(state, J.Text(J.Get(request, "metadata"), "attempt"))
-                let value = state.Value()
-
-                if J.Get(value, "contribution").ValueKind == JsonValueKind.Object {
-                    throw Exception("Contribution already published; use the recorded outcome or fresh owner approval")
-                }
-
-                let metadata = J.Get(request, "metadata")
-                ContributionHandoff.Authority(state, J.Get(metadata, "handoff"))
-                ContributionHandoff.Candidate(
-                    J.Get(metadata, "handoff"),
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "head")
-                )
-                AttemptContinuation.Declaration(metadata)
-
-                if J.Get(metadata, "predecessor").ValueKind != JsonValueKind.Undefined {
-                    AttemptContinuation.Authority(state, J.Get(metadata, "predecessor"))
-                }
-
-                Policy(J.Write(J.Get(record, "policy"))).ValidateTools(
-                    J.Get(metadata, "tools"),
-                    J.Text(metadata, "source")
-                )
-
-                let correction = J.Get(metadata, "correction")
-                if correction.ValueKind != JsonValueKind.Undefined {
-                    RequestData.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
-                }
-
-                RepositoryAccess.ValidateFork(repo, metadata, actor)
-                ValidateDiff(repo, record, metadata)
-
-                let reservation = J.Text(J.Get(value, "reservation"), "reservation")
-                if J.Text(metadata, "branch") != "tokate/v2-" + reservation {
-                    throw Exception("Publication must use this reservation's branch")
-                }
-
-                let receipt = ContributionReceipt.Publication(repo, number, request, reservation, donor)
-                RepositoryIdentity.PositiveId(J.Get(metadata, "pr"))
-                Revalidate(repo, number, state, actor, donor)
-                RepositoryAccess.ValidateFork(repo, metadata, actor)
-                let pull = GitHub.Api("repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString())
-                let head = J.Get(pull, "head")
-                let target = J.Get(pull, "base")
-                if J.Get(J.Get(pull, "user"), "id").ToString() != actor.ToString() {
-                    throw Exception("Publication PR author differs from reserved donor")
-                }
-                if !RepositoryIdentity.SameRepo(J.Text(J.Get(head, "repo"), "full_name"), J.Text(metadata, "fork")) ||
-                    J.Text(head, "ref") != J.Text(metadata, "branch") {
-                    throw Exception("Publication PR head repository or branch differs from reservation")
-                }
-                if J.Text(head, "sha") != J.Text(metadata, "head") {
-                    throw Exception("Publication PR head SHA differs from receipt")
-                }
-                if !RepositoryIdentity.SameRepo(J.Text(J.Get(target, "repo"), "full_name"), repo) || J.Text(
-                    target,
-                    "ref"
-                ) != J.Text(J.Get(record, "approval"), "base_branch") {
-                    throw Exception("Publication PR base differs from reserved target")
-                }
-                if J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") {
-                    throw Exception("Publication PR must be an open draft")
-                }
-                if !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), repo) && J.Get(pull, "maintainer_can_modify")
-                    .ValueKind !=
-                (Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits ? JsonValueKind.True: JsonValueKind.False) {
-                    throw Exception("Publication PR maintainer edits differ from policy")
-                }
-                let body = PrBody.Coordinated(
-                    record,
-                    metadata,
-                    donor,
-                    receipt,
-                    "<!-- tokate-v2:" + reservation + " -->"
-                )
-                let title = (RequestData.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
-                    J.Get(record, "issue"),
-                    "title"
-                )
-                if J.Text(pull, "body") != body || J.Text(pull, "title") != title {
-                    Revalidate(repo, number, state, actor, donor)
-                    GitHub.Api(
-                        "repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString(),
-                        map[string, Object?]{"body": body, "title": title},
-                        "PATCH",
-                        expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
-                    )
-                }
-                Revalidate(repo, number, state, actor, donor)
-                RepositoryAccess.ValidateFork(repo, metadata, actor)
-
-                outcome = map[string, Object?]{
-                    "pr": J.Number(pull, "number"),
-                    "url": J.Text(pull, "html_url"),
-                    "head": J.Text(metadata, "head"),
-                    "reservation": reservation
-                }
-
-                state.Fields["contribution"] = map[string, Object?]{
-                    "request": J.Text(request, "uuid"),
-                    "expected": J.Text(request, "expected"),
-                    "metadata": metadata,
-                    "actor": actor,
-                    "donor": donor,
-                    "outcome": outcome,
-                    "verification_provenance": "donor-reported; exact-commit owner CI required"
-                }
+                outcome = Publish(repo, number, state, record, request, actor, donor)
             }
 
             if action == "publish" || action == "amend" {
                 state.Fields["publication_revision"] = nil
             }
+
             let retained = List[Object]()
+
             for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
                 retained.Add(outcomes[i])
             }
@@ -347,7 +242,155 @@ internal class Coordinator {
             retained.Add(map[string, Object?]{"uuid": J.Text(request, "uuid"), "binding": binding, "outcome": outcome})
             state.Fields["outcomes"] = retained
 
+            CommitRequest(repo, number, state, record, request, actor, donor, outcome, originalExpiry)
+        }
+
+        private func Publish(
+            repo string,
+            number int32,
+            state CoordinationState,
+            record JsonElement,
+            request JsonElement,
+            actor JsonElement,
+            donor string
+        ) Object {
+            state.Reservation(actor)
+            LeaseLifecycle.Fence(state, J.Text(J.Get(request, "metadata"), "attempt"))
+            let value = state.Value()
+
+            if J.Get(value, "contribution").ValueKind == JsonValueKind.Object {
+                throw Exception("Contribution already published; use the recorded outcome or fresh owner approval")
+            }
+
+            let metadata = J.Get(request, "metadata")
+            ContributionHandoff.Authority(state, J.Get(metadata, "handoff"))
+            ContributionHandoff.Candidate(
+                J.Get(metadata, "handoff"),
+                J.Text(metadata, "fork"),
+                J.Text(metadata, "head")
+            )
+            AttemptContinuation.Declaration(metadata)
+
+            if J.Get(metadata, "predecessor").ValueKind != JsonValueKind.Undefined {
+                AttemptContinuation.Authority(state, J.Get(metadata, "predecessor"))
+            }
+
+            Policy(J.Write(J.Get(record, "policy"))).ValidateTools(J.Get(metadata, "tools"), J.Text(metadata, "source"))
+
+            let correction = J.Get(metadata, "correction")
+            if correction.ValueKind != JsonValueKind.Undefined {
+                RequestData.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
+            }
+
+            RepositoryAccess.ValidateFork(repo, metadata, actor)
+            ValidateDiff(repo, record, metadata)
+
+            let reservation = J.Text(J.Get(value, "reservation"), "reservation")
+            if J.Text(metadata, "branch") != "tokate/v2-" + reservation {
+                throw Exception("Publication must use this reservation's branch")
+            }
+
+            let receipt = ContributionReceipt.Publication(repo, number, request, reservation, donor)
+            RepositoryIdentity.PositiveId(J.Get(metadata, "pr"))
+            Revalidate(repo, number, state, actor, donor)
+            RepositoryAccess.ValidateFork(repo, metadata, actor)
+            let pull = PublicationPull(repo, metadata, actor, record)
+            let body = PrBody.Coordinated(record, metadata, donor, receipt, "<!-- tokate-v2:" + reservation + " -->")
+            let title = (RequestData.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
+                J.Get(record, "issue"),
+                "title"
+            )
+
+            if J.Text(pull, "body") != body || J.Text(pull, "title") != title {
+                Revalidate(repo, number, state, actor, donor)
+                GitHub.Api(
+                    "repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString(),
+                    map[string, Object?]{"body": body, "title": title},
+                    "PATCH",
+                    expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
+                )
+            }
+
+            Revalidate(repo, number, state, actor, donor)
+            RepositoryAccess.ValidateFork(repo, metadata, actor)
+
+            let outcome = map[string, Object?]{
+                "pr": J.Number(pull, "number"),
+                "url": J.Text(pull, "html_url"),
+                "head": J.Text(metadata, "head"),
+                "reservation": reservation
+            }
+
+            state.Fields["contribution"] = map[string, Object?]{
+                "request": J.Text(request, "uuid"),
+                "expected": J.Text(request, "expected"),
+                "metadata": metadata,
+                "actor": actor,
+                "donor": donor,
+                "outcome": outcome,
+                "verification_provenance": "donor-reported; exact-commit owner CI required"
+            }
+
+            return outcome
+        }
+
+        private func PublicationPull(
+            repo string,
+            metadata JsonElement,
+            actor JsonElement,
+            record JsonElement
+        ) JsonElement {
+            let pull = GitHub.Api("repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString())
+            let head = J.Get(pull, "head")
+            let target = J.Get(pull, "base")
+
+            if J.Get(J.Get(pull, "user"), "id").ToString() != actor.ToString() {
+                throw Exception("Publication PR author differs from reserved donor")
+            }
+
+            if !RepositoryIdentity.SameRepo(J.Text(J.Get(head, "repo"), "full_name"), J.Text(metadata, "fork")) ||
+                J.Text(head, "ref") != J.Text(metadata, "branch") {
+                throw Exception("Publication PR head repository or branch differs from reservation")
+            }
+
+            if J.Text(head, "sha") != J.Text(metadata, "head") {
+                throw Exception("Publication PR head SHA differs from receipt")
+            }
+
+            if !RepositoryIdentity.SameRepo(J.Text(J.Get(target, "repo"), "full_name"), repo) || J.Text(
+                target,
+                "ref"
+            ) != J.Text(J.Get(record, "approval"), "base_branch") {
+                throw Exception("Publication PR base differs from reserved target")
+            }
+
+            if J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") {
+                throw Exception("Publication PR must be an open draft")
+            }
+
+            if !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), repo) && J.Get(pull, "maintainer_can_modify")
+                .ValueKind !=
+            (Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits ? JsonValueKind.True: JsonValueKind.False) {
+                throw Exception("Publication PR maintainer edits differ from policy")
+            }
+
+            return pull
+        }
+
+        private func CommitRequest(
+            repo string,
+            number int32,
+            state CoordinationState,
+            record JsonElement,
+            request JsonElement,
+            actor JsonElement,
+            donor string,
+            outcome Object,
+            originalExpiry int64
+        ) {
+            let action = J.Text(request, "action")
             let updated = state.Value()
+
             if action == "amend" {
                 Revalidate(repo, number, state, actor, donor)
                 GitHubPathEvidence.Amendment(repo, record, J.Get(request, "metadata"))
@@ -453,43 +496,12 @@ internal class Coordinator {
             actor JsonElement,
             donor string
         ) Object {
-            state.Reservation(actor)
-            LeaseLifecycle.Fence(state, J.Text(J.Get(request, "metadata"), "attempt"))
-            let value = state.Value()
-            let original = J.Get(value, "contribution")
+            let value = ValidateAmendment(repo, state, record, request, actor)
             let current = CoordinationState.Current(value)
             let metadata = J.Get(request, "metadata")
-            let old = J.Get(original, "metadata")
-            let policy = Policy(J.Write(J.Get(record, "policy")))
-            Amendment.Tools(policy, J.Get(metadata, "tools"))
+            let old = J.Get(J.Get(value, "contribution"), "metadata")
             let reservation = J.Get(value, "reservation")
             let branch = J.Text(metadata, "branch")
-            let failure = "Amendment differs from current published contribution authority"
-            let originalActor = J.Get(original, "actor").ToString()
-
-            if J.Number(metadata, "seconds") > J.Number(policy.Value, "max_seconds") ||
-                originalActor != actor.ToString() {
-                throw Exception(failure)
-            }
-
-            let currentOutcome = J.Get(current, "outcome")
-            let publishedPr = J.Number(currentOutcome, "pr")
-            let publishedHead = CoordinationState.Head(value)
-            if J.Text(metadata, "previous") != publishedHead || J.Number(metadata, "pr") != publishedPr {
-                throw Exception(failure)
-            }
-
-            if !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), J.Text(old, "fork")) {
-                throw Exception(failure)
-            }
-
-            let expectedBranch = "tokate/v2-" + J.Text(reservation, "reservation")
-            if branch != J.Text(old, "branch") || branch != expectedBranch {
-                throw Exception(failure)
-            }
-
-            RepositoryAccess.ValidateFork(repo, metadata, actor)
-            GitHubPathEvidence.Amendment(repo, record, metadata)
 
             let run = Data()
             run.Fields["version"] = 2
@@ -526,6 +538,7 @@ internal class Coordinator {
 
             let retainedHistory = List[Object]()
             let amendments = J.Get(value, "amendments")
+
             if amendments.ValueKind == JsonValueKind.Array {
                 for prior in amendments.EnumerateArray() {
                     retainedHistory.Add(prior)
@@ -591,6 +604,68 @@ internal class Coordinator {
                 throw Exception("Physical PR receipt changed; amendment has no coordination authority")
             }
 
+            return RecordAmendment(state, request, actor, donor, value, run, latest, retainedHistory)
+        }
+
+        private func ValidateAmendment(
+            repo string,
+            state CoordinationState,
+            record JsonElement,
+            request JsonElement,
+            actor JsonElement
+        ) JsonElement {
+            state.Reservation(actor)
+            LeaseLifecycle.Fence(state, J.Text(J.Get(request, "metadata"), "attempt"))
+            let value = state.Value()
+            let original = J.Get(value, "contribution")
+            let current = CoordinationState.Current(value)
+            let metadata = J.Get(request, "metadata")
+            let old = J.Get(original, "metadata")
+            let policy = Policy(J.Write(J.Get(record, "policy")))
+            Amendment.Tools(policy, J.Get(metadata, "tools"))
+            let reservation = J.Get(value, "reservation")
+            let branch = J.Text(metadata, "branch")
+            let failure = "Amendment differs from current published contribution authority"
+            let originalActor = J.Get(original, "actor").ToString()
+
+            if J.Number(metadata, "seconds") > J.Number(policy.Value, "max_seconds") ||
+                originalActor != actor.ToString() {
+                throw Exception(failure)
+            }
+
+            let currentOutcome = J.Get(current, "outcome")
+            let publishedPr = J.Number(currentOutcome, "pr")
+            let publishedHead = CoordinationState.Head(value)
+            if J.Text(metadata, "previous") != publishedHead || J.Number(metadata, "pr") != publishedPr {
+                throw Exception(failure)
+            }
+
+            if !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), J.Text(old, "fork")) {
+                throw Exception(failure)
+            }
+
+            let expectedBranch = "tokate/v2-" + J.Text(reservation, "reservation")
+            if branch != J.Text(old, "branch") || branch != expectedBranch {
+                throw Exception(failure)
+            }
+
+            RepositoryAccess.ValidateFork(repo, metadata, actor)
+            GitHubPathEvidence.Amendment(repo, record, metadata)
+
+            return value
+        }
+
+        private func RecordAmendment(
+            state CoordinationState,
+            request JsonElement,
+            actor JsonElement,
+            donor string,
+            value JsonElement,
+            run Data,
+            latest JsonElement,
+            retainedHistory List[Object]
+        ) Object {
+            let metadata = J.Get(request, "metadata")
             let outcome = map[string, Object?]{
                 "pr": J.Number(metadata, "pr"),
                 "url": J.Text(latest, "html_url"),
@@ -619,6 +694,7 @@ internal class Coordinator {
             if J.Text(metadata, "base") != "" {
                 entry["base"] = J.Text(metadata, "base")
             }
+
             retainedHistory.Add(entry)
             state.Fields["amendments"] = retainedHistory
 

@@ -499,38 +499,7 @@ internal class AccessState {
                 }
             }
 
-            let history = List[Object]()
-
-            if args.Subject == "history" {
-                for pull in Pages("repos/" + repo + "/pulls?state=all&") {
-                    try {
-                        let receipt = PrBody.Receipt(J.Text(pull, "body"))
-                        let headOwner = J.Get(J.Get(J.Get(pull, "head"), "repo"), "owner")
-                        let donorId = RepositoryIdentity.PositiveId(J.Get(headOwner, "id"))
-                        let donorLogin = RepositoryIdentity.Login(J.Text(headOwner, "login"))
-                        if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) || !String.Equals(
-                            J.Text(receipt, "donor"),
-                            donorLogin,
-                            StringComparison.OrdinalIgnoreCase
-                        ) ||
-                            (actor != 0 && donorId != actor) ||
-                            (args.Get("issue") != "" && J.Number(receipt, "issue") != args.Number("issue")) {
-                            continue
-                        }
-
-                        history.Add(
-                            map[string, Object?]{
-                                "pr": J.Number(pull, "number"),
-                                "issue": J.Number(receipt, "issue"),
-                                "donor": donorLogin,
-                                "state": J.Text(pull, "state"),
-                                "merged": J.Get(pull, "merged_at").ValueKind == JsonValueKind.String,
-                                "evidence": "unverified PR receipt; inspect verify and owner review"
-                            }
-                        )
-                    } catch (error Exception) { }
-                }
-            }
+            let history = AccessHistory(repo, args, actor)
 
             let pending = List[JsonElement]()
             if args.Subject == "list" {
@@ -579,6 +548,43 @@ internal class AccessState {
                     }
                 }
             }
+        }
+
+        private func AccessHistory(repo string, args Args, actor int64) List[Object] {
+            let history = List[Object]()
+
+            if args.Subject == "history" {
+                for pull in Pages("repos/" + repo + "/pulls?state=all&") {
+                    try {
+                        let receipt = PrBody.Receipt(J.Text(pull, "body"))
+                        let headOwner = J.Get(J.Get(J.Get(pull, "head"), "repo"), "owner")
+                        let donorId = RepositoryIdentity.PositiveId(J.Get(headOwner, "id"))
+                        let donorLogin = RepositoryIdentity.Login(J.Text(headOwner, "login"))
+                        if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) || !String.Equals(
+                            J.Text(receipt, "donor"),
+                            donorLogin,
+                            StringComparison.OrdinalIgnoreCase
+                        ) ||
+                            (actor != 0 && donorId != actor) ||
+                            (args.Get("issue") != "" && J.Number(receipt, "issue") != args.Number("issue")) {
+                            continue
+                        }
+
+                        history.Add(
+                            map[string, Object?]{
+                                "pr": J.Number(pull, "number"),
+                                "issue": J.Number(receipt, "issue"),
+                                "donor": donorLogin,
+                                "state": J.Text(pull, "state"),
+                                "merged": J.Get(pull, "merged_at").ValueKind == JsonValueKind.String,
+                                "evidence": "unverified PR receipt; inspect verify and owner review"
+                            }
+                        )
+                    } catch (error Exception) { }
+                }
+            }
+
+            return history
         }
 
         internal func Run(args Args) {
@@ -642,42 +648,7 @@ internal class AccessState {
                         )
                     }
                 } else {
-                    var trusted bool
-                    var denied bool
-                    var index int32 = -1
-
-                    for i in 0 ... access.Members.Count {
-                        let member = access.Members[i]
-                        if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
-                            index = i
-                            trusted = J.Bool(member, "trusted")
-                            denied = J.Bool(member, "denied")
-                        }
-                    }
-                    switch operation {
-                        case "trust" {
-                            trusted = true
-                        }
-                        case "untrust" {
-                            trusted = false
-                        }
-                        case "deny" {
-                            denied = true
-                        }
-                        case "restore" {
-                            denied = false
-                        }
-                    }
-
-                    if index >= 0 {
-                        access.Members.RemoveAt(index)
-                    }
-
-                    if trusted || denied {
-                        access.Members.Add(
-                            J.Parse(J.Write(map[string, Object?]{"actor": actor, "trusted": trusted, "denied": denied}))
-                        )
-                    }
+                    ChangeMembership(access, actor, operation)
                 }
 
                 if access.Write(repo, expected, owner) {
@@ -726,6 +697,45 @@ internal class AccessState {
                         "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
                     )
                 }
+            }
+        }
+
+        private func ChangeMembership(access AccessState, actor int64, operation string) {
+            var trusted bool
+            var denied bool
+            var index int32 = -1
+
+            for i in 0 ... access.Members.Count {
+                let member = access.Members[i]
+                if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
+                    index = i
+                    trusted = J.Bool(member, "trusted")
+                    denied = J.Bool(member, "denied")
+                }
+            }
+            switch operation {
+                case "trust" {
+                    trusted = true
+                }
+                case "untrust" {
+                    trusted = false
+                }
+                case "deny" {
+                    denied = true
+                }
+                case "restore" {
+                    denied = false
+                }
+            }
+
+            if index >= 0 {
+                access.Members.RemoveAt(index)
+            }
+
+            if trusted || denied {
+                access.Members.Add(
+                    J.Parse(J.Write(map[string, Object?]{"actor": actor, "trusted": trusted, "denied": denied}))
+                )
             }
         }
     }
