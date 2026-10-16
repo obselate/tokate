@@ -210,7 +210,7 @@ internal class DecreeFlow : IDisposable {
                     )
                     test.Flow.NoInference()
                     if change == "unsupported" {
-                        let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
+                        let failure = test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, true)
                         Check.Contains(failure.Error, "regular Git blob")
                     } else {
                         test.Flow.Git("-C", Path.Combine(test.Flow.Bin, "fork"), "fetch", test.Flow.Upstream, "main")
@@ -295,7 +295,7 @@ internal class DecreeFlow : IDisposable {
                 )
                 test.Flow.Save()
                 test.Flow.ResetTraffic()
-                let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
+                let failure = test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, true)
                 Check.That(
                     failure.Error.Contains("DECREE.md"),
                     "Unsupported " + kind + " did not report DECREE.md: " + failure.Error
@@ -429,7 +429,7 @@ internal class DecreeFlow : IDisposable {
                     Path.Combine(test.Flow.Bin, "fork"),
                     "HEAD:refs/heads/tokate/v2-" + Check.Text(claim["uuid"])
                 )
-                let external = test.Flow.Call([]string{"external", "--run", run, "--commit", commit}, 1)
+                let external = test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit}, 1)
                 Check.Contains(external.Error, "changes approved root DECREE.md")
                 Check.That(
                     !File.Exists(Path.Combine(run, "verification.json")),

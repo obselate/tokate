@@ -251,7 +251,7 @@ internal class Diagnostics {
             File.Delete(Path.Combine(temp.Root, "bin/codex"))
             File.Delete(Path.Combine(temp.Root, "bin/git"))
             File.WriteAllText(calls, "")
-            let archive = Call(binary, temp, []string{"amend", "--run", saved}, "error", "missing_tools")
+            let archive = Call(binary, temp, []string{"amend", "--yes", "--run", saved}, "error", "missing_tools")
             Check.That(
                 archive["data"]?["tools"]?.AsArray().Count == 1 && Check.Text(
                     Row(archive, "git")["status"]
@@ -261,7 +261,7 @@ internal class Diagnostics {
             let verify = Call(
                 binary,
                 temp,
-                []string{"external", "--run", saved, "--commit", String('a', 40)},
+                []string{"external", "--yes", "--run", saved, "--commit", String('a', 40)},
                 "error",
                 "missing_tools"
             )
@@ -272,14 +272,14 @@ internal class Diagnostics {
             let external = Call(
                 binary,
                 temp,
-                []string{"claim", "owner/project#1", "--source", "external", "--tools", tools},
+                []string{"claim", "--yes", "owner/project#1", "--source", "external", "--tools", tools},
                 "error",
                 "missing_tools"
             )
             Check.That(Check.Text(Row(external, "git")["status"]) == "missing", "External preparation omitted Git")
             Check.That(!File.ReadAllText(calls).Contains("codex"), "External preparation needed Codex")
             for words in[][]string{
-                []string{"claim", "owner/project#1"},
+                []string{"claim", "--yes", "owner/project#1"},
                 []string{"defaults", "check", "owner/project"}
             } {
                 let selection = Call(binary, temp, words, "error", "missing_tools")

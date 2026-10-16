@@ -21,7 +21,7 @@ internal class RepositoryIdentityChecks {
         }
 
         private func Approve(flow NativeFixture, repo string) {
-            flow.Call([]string{"approve", repo + "#1"}, owner: true)
+            flow.Call([]string{"approve", "--yes", repo + "#1"}, owner: true)
             let approval = Check.Json(flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json"))
             Check.That(Check.Text(approval["approval"]?["repo"]) == repo, "Approval spelling was rewritten")
         }
@@ -142,7 +142,7 @@ internal class RepositoryIdentityChecks {
             test.Initialize(false)
             let flow = test.Flow
             flow.OwnerAccess()
-            flow.Call([]string{"approve", "OwNeR/PrOjEcT#1"}, owner: true)
+            flow.Call([]string{"approve", "--yes", "OwNeR/PrOjEcT#1"}, owner: true)
             let claim = test.ClaimRequest()
             var eventPath = test.Event(claim)
             let event = Check.Json(File.ReadAllText(eventPath))
@@ -154,6 +154,7 @@ internal class RepositoryIdentityChecks {
                 flow.Call(
                     []string{
                         "claim",
+                        "--yes",
                         "OWNER/PROJECT#1",
                         "--source",
                         "external",
@@ -176,8 +177,8 @@ internal class RepositoryIdentityChecks {
             saved["head_repo"] = JsonValue.Create("DONOR/PROJECT")
             File.WriteAllText(savedPath, saved.ToJsonString())
             let commit = test.Candidate(claim)
-            flow.Call([]string{"external", "--run", run, "--commit", commit})
-            flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+            flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             flow.Reload()
             let request = Check.PostedRequest(flow.State)
             eventPath = test.Event(request)

@@ -22,6 +22,11 @@ func Main(args[]string) int32 {
     var message string = ""
     var exitCode int32
 
+    let stdout = Console.Out
+    if PublicOutput.Enabled {
+        Console.SetOut(Console.Error)
+    }
+
     try {
         options = Args(args)
         traffic = options.Get("traffic") == "true"
@@ -104,7 +109,6 @@ func Main(args[]string) int32 {
             ApiTransport.Report()
         }
     }
-
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
         PublicOutput.Next(options, code)
 
@@ -113,6 +117,7 @@ func Main(args[]string) int32 {
         }
     }
 
+    Console.SetOut(stdout)
     if PublicOutput.Enabled {
         return PublicOutput.Emit(exitCode, code, message)
     }
@@ -169,6 +174,71 @@ func Dispatch(options Args) int32 {
 
     if Cli.RepositoryWork(options) && options.Subject == "stop" {
         return Donate.Stop(options)
+    }
+
+    let consent = options.Get("yes") != "true" &&
+        (
+        options.Command == "approve" ||
+            options.Command == "revoke" ||
+            (
+            options.Command == "access" &&
+                options.Subject != "list" &&
+                options.Subject != "history" &&
+                options.Subject != "check" &&
+                options.Subject != ""
+        ) ||
+            options.Command == "claim" ||
+            options.Command == "pause" ||
+            options.Command == "resume" ||
+            options.Command == "renew" ||
+            options.Command == "release" ||
+            (options.Command == "submit" && !Data.Load(Path.GetFullPath(options.Need("run"))).Flag("gratis")) ||
+            (
+            options.Command == "work" && options.Get("run") != "" && Data.Load(Path.GetFullPath(options.Need("run")))
+                .Text("source") == "external"
+        ) ||
+            options.Command == "amend" ||
+            options.Command == "external" ||
+            (options.Command == "checks" && options.Get("run") != "")
+    )
+
+    if consent {
+        var change = Cli.Find(options.Command).Brief
+
+        if options.Command == "approve" {
+            let state = CoordinationState.Load(options.Need("repo"), options.Number("issue"), true)
+            let warning = state.ApprovalWarning(options.Need("repo"))
+            if warning != "" {
+                change += ". " + warning.TrimEnd('.')
+            }
+        }
+
+        PublicOutput.ResultData = map[string, Object?]{
+            "operation": options.Command,
+            "subject": options.Subject,
+            "repo": options.Get("repo"),
+            "issue": options.Get("issue"),
+            "donor": options.Get("donor"),
+            "base_branch": options.Get("base-branch"),
+            "changes": []string{change},
+            "run_directory": options.Get("run"),
+            "applied": false
+        }
+        Terminal.Message(
+            change +
+                ". Target: " +
+                (options.Get("run") != "" ? options.Get("run"): options.Get("repo") + "#" + options.Get("issue")) +
+                (options.Subject == "" ? "": " (" + options.Subject + ")") +
+                (options.Get("donor") == "" ? "": " Donor: " + options.Get("donor")) +
+                ".",
+            error: true
+        )
+
+        if !OwnerSetup.Confirm(options, options.Command == "approve" ? "Replace approval?": "Apply these changes?") {
+            throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
+        }
+
+        options.Values["--yes"] = "true"
     }
 
     if (options.Command != "doctor" || options.Subject == "repo") &&

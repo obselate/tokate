@@ -22,28 +22,28 @@ Bare `tokate` prints help. The GUI is the other interface.
 
 | Command | Usage | What it does |
 | --- | --- | --- |
-| `work` | `tokate work ISSUE [NAME] \| RUN [options]` | Code an approved issue and verify it. Uses donor inference. Claims the issue, or prepares a fresh attempt under your active reservation. `RUN` resumes a pending claim or incomplete preparation, then codes. |
+| `work` | `tokate work ISSUE [NAME] \| RUN [options] [--yes]` | Code an approved issue and verify it. Uses donor inference. Claims the issue, or prepares a fresh attempt under your active reservation. `RUN` resumes a pending claim or incomplete preparation, then codes. |
 | `work` repository | `tokate work OWNER/REPO --yes [--time PER_TASK] [--total TOTAL] [options]` | Claim, work and submit approved issues until stopped. Bare `work` uses the local GitHub remote. |
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
-| `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. Under your active reservation, prepare a fresh attempt. `OWNER/REPO` alone is invalid. |
+| `claim` | `tokate claim ISSUE [NAME] [options] [--yes]` | Reserve a named issue without inference or publication. Under your active reservation, prepare a fresh attempt. `OWNER/REPO` alone is invalid. |
 | `claim` saved run | `tokate claim RUN [--yes]` | Finish or recheck a saved claim and its preparation without inference. |
 | `submit` | `tokate submit RUN [--incomplete] [--yes]` | Push saved work and request a draft PR. Gratis work previews the exact PR text before consent. |
 | `status` | `tokate status [--all]` | List your saved work as a table. Inside a checkout, list only that repository. Finished runs are hidden and counted. `--all` shows them. One GitHub query marks merged or closed PRs as finished. Offline, saved state is used. |
 | `status` repository | `tokate status OWNER/REPO` | List approved issues with title, state, whether you act next and the next command. |
 | `status` issue or run | `tokate status ISSUE \| RUN` | Show issue, state, PR and next action in a short table. `--json` adds the details, and issue data includes `coordination`. |
-| `checks` | `tokate checks PR\|RUN [--watch]` | Check the receipt against owner approval, and the report, CI and freshness gates. |
-| `pause` | `tokate pause RUN` | Pause your reservation. |
-| `resume` | `tokate resume RUN` | Resume your paused reservation. |
-| `renew` | `tokate renew RUN` | Renew before expiry. |
-| `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [options]` | Preview required Actions settings and one setup PR with the policy and `v0` workflow. Use `--pin` for an exact release commit. Ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
+| `checks` | `tokate checks PR\|RUN [--watch] [--yes]` | Check the receipt, report, CI and freshness gates. A target that resolves to a saved run also stores results and requires consent. Other PR checks are read-only. |
+| `pause` | `tokate pause RUN [--yes]` | Pause your reservation. |
+| `resume` | `tokate resume RUN [--yes]` | Resume your paused reservation. |
+| `renew` | `tokate renew RUN [--yes]` | Renew before expiry. |
+| `release` | `tokate release RUN [--yes]` | Release your reservation. |
+| `init` | `tokate init [OWNER/REPO] [options] [--yes]` | Preview required Actions settings and one setup PR with the policy and `v0` workflow. Use `--pin` for an exact release commit. Ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
 | `approve` | `tokate approve ISSUE [LOGIN] [--base-branch BRANCH] [--yes]` | Approve an existing issue. `LOGIN` allows one donor without persistent trust. Denial still blocks that donor. |
-| `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
+| `revoke` | `tokate revoke ISSUE [--yes]` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
-| `access init` | `tokate access init [OWNER/REPO]` | Optionally create an empty access record. An absent ref is already empty. |
-| `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO]` | Change persistent donor membership. |
+| `access init` | `tokate access init [OWNER/REPO] [--yes]` | Optionally create an empty access record. An absent ref is already empty. |
+| `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO] [--yes]` | Change persistent donor membership. |
 | `access check` | `tokate access check ISSUE` | Check your eligibility. |
-| `access request` | `tokate access request ISSUE [--trust]` | Post a plain comment to request issue access or persistent trust. The owner uses `approve ISSUE LOGIN` or `access trust`. |
+| `access request` | `tokate access request ISSUE [--trust] [--yes]` | Post a plain comment to request issue access or persistent trust. The owner uses `approve ISSUE LOGIN` or `access trust`. |
 | `doctor` | `tokate doctor [repo\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites, or read repository policy and coordinator health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `doctor claude` | `tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]` | Also check the Claude invocation for one owner-permitted model and effort. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
@@ -51,8 +51,8 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `update` | `tokate update [--yes]` | Show the current and latest stable version, then install it. Without a terminal, preview unless `--yes`. |
 | `uninstall` | `tokate uninstall [--yes]` | Show the files to remove, then remove the managed installation and keep runs. Without a terminal, preview unless `--yes`. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
-| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
-| `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
+| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--resume] [--yes]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
+| `external` | `tokate external RUN [--commit SHA] [--summary FILE] [--yes]` | Fetch and verify an exact external commit. |
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |

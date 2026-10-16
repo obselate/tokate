@@ -173,7 +173,7 @@ internal class LocalCodex {
             let request = independent.Claim()
             let run = independent.Prepare()
             let head = independent.Candidate(request)
-            independent.Flow.Call([]string{"external", "--run", run, "--commit", head})
+            independent.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", head})
             Check.Contains(File.ReadAllText(Path.Combine(run, "verification.json")), "independent-verification-ran")
             independent.Flow.NoInference()
             let unsupported = Path.Combine(flow.Bin, "unsupported-launcher")

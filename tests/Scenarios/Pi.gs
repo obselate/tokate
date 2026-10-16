@@ -101,7 +101,7 @@ internal class PiChecks {
                 File.WriteAllText(Path.Combine(agent, "mode"), mode)
                 let claim = List[string](args)
                 claim.RemoveRange(0, 3)
-                claim.InsertRange(0, []string{"claim", "owner/project#1"})
+                claim.InsertRange(0, []string{"claim", "--yes", "owner/project#1"})
                 claim.AddRange(
                     []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, mode)}
                 )
@@ -447,6 +447,7 @@ internal class PiChecks {
             File.CreateSymbolicLink(Path.Combine(flow.Flow.Bin, "node"), node)
             let args = List[string]{
                 "claim",
+                "--yes",
                 "owner/project#1",
                 "--harness",
                 "pi",
@@ -728,7 +729,7 @@ internal class PiChecks {
                     "Pi tool changes were lost"
                 )
                 if mode == "on" {
-                    flow.Flow.Call([]string{"submit", "--run", run}, 8)
+                    flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
                     flow.Flow.Reload()
                     flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
                     flow.Flow.Receipt("owner/project#10", owner: true)

@@ -119,6 +119,7 @@ internal class PublishedContribution : IDisposable {
                 flow.Flow.Call(
                     []string{
                         "external",
+                        "--yes",
                         "--run",
                         run,
                         "--commit",
@@ -128,7 +129,7 @@ internal class PublishedContribution : IDisposable {
                     }
                 )
             }
-            flow.Flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             flow.Coordinate(flow.Event(request))

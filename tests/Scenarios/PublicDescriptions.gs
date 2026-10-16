@@ -65,7 +65,7 @@ internal class PublicDescriptions {
                 path,
                 Summary("Update result content to show the final reviewed text.", head).ToJsonString()
             )
-            let args = []string{"amend", "--run", run, "--commit", head, "--time", "30s", "--summary", path}
+            let args = []string{"amend", "--yes", "--run", run, "--commit", head, "--time", "30s", "--summary", path}
             flow.Call(args)
             flow.CoordinatePosted()
             flow.Call(args)
@@ -137,7 +137,7 @@ internal class PublicDescriptions {
                     "\"],\"verification\":[],\"limitations\":[]}"
             } {
                 File.WriteAllText(path, invalid)
-                flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
+                flow.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", head, "--summary", path}, 1)
                 Check.That(
                     !Directory.Exists(Path.Combine(run, "checkout")),
                     "Invalid public summary reached verification"
@@ -145,17 +145,20 @@ internal class PublicDescriptions {
             }
             File.WriteAllText(path, usable)
             File.CreateSymbolicLink(path + ".link", path)
-            flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path + ".link"}, 1)
+            flow.Flow.Call(
+                []string{"external", "--yes", "--run", run, "--commit", head, "--summary", path + ".link"},
+                1
+            )
             Check.That(!Directory.Exists(Path.Combine(run, "checkout")), "Linked public summary reached verification")
             File.WriteAllText(path, Summary("Add external contribution text.", String('a', 40)).ToJsonString())
-            flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path}, 1)
+            flow.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", head, "--summary", path}, 1)
             Check.That(!Directory.Exists(Path.Combine(run, "checkout")), "Stale summary reached verification")
             File.WriteAllText(path, usable)
-            flow.Flow.Call([]string{"external", "--run", run, "--commit", head, "--summary", path})
+            flow.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", head, "--summary", path})
             flow.Flow.Mode("pr_fail_after_create")
-            flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
             flow.Flow.Mode("")
-            flow.Flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             flow.Flow.Reload()
             let request = Check.PostedRequest(flow.Flow.State)
             let event = flow.Event(request)
@@ -196,6 +199,7 @@ internal class PublicDescriptions {
             )
             let args = []string{
                 "amend",
+                "--yes",
                 "--run",
                 run,
                 "--commit",
@@ -236,7 +240,7 @@ internal class PublicDescriptions {
                 "Original managed summary was not bound to its commit"
             )
             Check.That(Check.Text(original["summary_patch_sha256"]) != "", "Original summary has no patch binding")
-            flow.Call([]string{"amend", "--run", run})
+            flow.Call([]string{"amend", "--yes", "--run", run})
             let checkout = Path.Combine(run, "checkout")
             File.Delete(Path.Combine(checkout, "other.txt"))
             File.WriteAllText(Path.Combine(checkout, "result.txt"), "Final corrected result text\n")
@@ -251,6 +255,7 @@ internal class PublicDescriptions {
             flow.Call(
                 []string{
                     "amend",
+                    "--yes",
                     "--run",
                     run,
                     "--commit",
@@ -319,7 +324,7 @@ internal class PublicDescriptions {
                     let unsafe = Summary("Add final result content.")
                     unsafe["verification"]?.AsArray().Add(JsonValue.Create("sk-abc123 leaked") as JsonNode)
                     File.WriteAllText(summaryPath, unsafe.ToJsonString())
-                    let rejected = flow.Call([]string{"submit", "--run", run}, 1)
+                    let rejected = flow.Call([]string{"submit", "--yes", "--run", run}, 1)
                     Check.Contains(rejected.Error, "verification[1]")
                     Check.Contains(rejected.Error, "matched disallowed public text pattern \"sk-\"")
                     flow.NoPr()
@@ -344,7 +349,9 @@ internal class PublicDescriptions {
             flow.State.AsObject().Remove("exec_count")
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
-            guard let ready = Check.Json(flow.Call([]string{"checks", "--run", run, "--json"}).Output)["data"] else {
+            guard let ready = Check.Json(flow.Call([]string{"checks", "--yes", "--run", run, "--json"}).Output)[
+                "data"
+            ] else {
                 throw Exception("Missing readiness result")
             }
             Check.That(
@@ -371,7 +378,7 @@ internal class PublicDescriptions {
                     )
                 )
                 flow.Save()
-                let refusal = flow.Call([]string{"checks", "--run", run, "--json"}, 1)
+                let refusal = flow.Call([]string{"checks", "--yes", "--run", run, "--json"}, 1)
                 Check.Envelope(refusal, "checks", "error", "invalid_state")
                 let refused = Check.Json(refusal.Output)["data"] ?? throw Exception("Missing refusal result")
                 Check.That(

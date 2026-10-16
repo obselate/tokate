@@ -79,8 +79,8 @@ internal class AttemptContinuationChecks {
             endpoint string = ""
         ) string {
             test.Initialize(approve: false)
-            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
-            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "trust", "donor", "owner/project"}, owner: true)
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "tracked.txt"), "approved\n")
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "baseline.txt"), "baseline\n")
             Directory.CreateDirectory(Path.Combine(test.Flow.Upstream, "folder"))
@@ -100,7 +100,7 @@ internal class AttemptContinuationChecks {
             }
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Continuation authority and complete-diff verification fixture")
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             test.Coordinate(test.Event(test.ClaimRequest()))
             let args = List[string](
                 Args(
@@ -376,7 +376,7 @@ internal class AttemptContinuationChecks {
         }
 
         private func Publish(test CoordinationFlow, source string, fresh string) {
-            test.Flow.Call([]string{"submit", "--run", source}, 1)
+            test.Flow.Call([]string{"submit", "--yes", "--run", source}, 1)
             let preserved = File.ReadAllText(Path.Combine(fresh, "run.json"))
             let omitted = Read(fresh)
             for key in[]string{
@@ -388,9 +388,9 @@ internal class AttemptContinuationChecks {
                 omitted.AsObject().Remove(key)
             }
             Save(fresh, omitted)
-            test.Flow.Call([]string{"submit", "--run", fresh}, 1)
+            test.Flow.Call([]string{"submit", "--yes", "--run", fresh}, 1)
             File.WriteAllText(Path.Combine(fresh, "run.json"), preserved)
-            test.Flow.Call([]string{"submit", "--run", fresh, "--json"}, 8)
+            test.Flow.Call([]string{"submit", "--yes", "--run", fresh, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(fresh, "request.json")))
             let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
             Check.That(
@@ -547,7 +547,7 @@ internal class AttemptContinuationChecks {
                         run["state_sha"] = test.State()["sha"]?.DeepClone()
                     }
                     case "revoked" {
-                        test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                        test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                     }
                     case "task-changed" {
                         let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
@@ -555,7 +555,7 @@ internal class AttemptContinuationChecks {
                         test.Flow.Save()
                     }
                     case "denied" {
-                        test.Flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
+                        test.Flow.Call([]string{"access", "--yes", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "expired" {
                         test.Expire()
@@ -633,6 +633,7 @@ internal class AttemptContinuationChecks {
                         test.Flow.Call(
                             []string{
                                 "claim",
+                                "--yes",
                                 "owner/project#1",
                                 "--continue-from",
                                 source,

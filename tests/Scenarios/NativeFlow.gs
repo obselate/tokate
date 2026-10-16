@@ -36,7 +36,7 @@ internal partial class NativeFlow : NativeFixture {
         let codex = Path.Combine(Bin, "codex")
         File.Delete(codex)
         File.WriteAllText(codex, "not executable")
-        let result = Call([]string{"approve", "owner/project#1"}, owner: true)
+        let result = Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
         Check.That(result.Error == "", "Owner command warned about donor tools")
         Check.Contains(
             result.Output,
@@ -87,7 +87,7 @@ internal partial class NativeFlow : NativeFixture {
         display["verification"]?.AsArray().Add(Check.Json("[\"/bin/echo\",\"literal  spaces\"]"))
         File.WriteAllText(path, display.ToJsonString())
         Commit("Policy display fixture")
-        let approval = Call([]string{"approve", "owner/project#1", "--json"}, owner: true)
+        let approval = Call([]string{"approve", "--yes", "owner/project#1", "--json"}, owner: true)
         Check.Envelope(approval, "approve", "ok")
         let health = Call([]string{"doctor", "repo", "owner/project", "--json"})
         let value = Check.Envelope(health, "doctor", "ok")
@@ -169,16 +169,16 @@ internal partial class NativeFlow : NativeFixture {
             !work.Output.Contains("synthetic-raw") && !work.Output.Contains("synthetic-usage-secret"),
             "Inference output leaked"
         )
-        let submit = Call([]string{"submit", "--run", run, "--json"}, 8)
+        let submit = Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         Check.Envelope(submit, "submit", "pending")
         Check.Contains(submit.Error, warning)
         Check.Contains(submit.Error, update)
         CoordinatePosted()
-        Call([]string{"submit", "--run", run})
+        Call([]string{"submit", "--yes", "--run", run})
         Receipt("owner/project#10", owner: true)
-        Check.Envelope(Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
+        Check.Envelope(Call([]string{"checks", "--yes", "--run", run, "--json"}, 8), "checks", "pending")
         Check.Envelope(
-            Call([]string{"checks", "--run", run, "--watch", "--timeout", "1s", "--json"}, 8),
+            Call([]string{"checks", "--yes", "--run", run, "--watch", "--timeout", "1s", "--json"}, 8),
             "checks",
             "pending"
         )
@@ -217,8 +217,13 @@ internal partial class NativeFlow : NativeFixture {
         Reload()
         Check.That(Check.Text(State["exec_count"]) == "1", "Receipt rejection spent inference")
         Check.That((State["pulls"]?.ToJsonString() ?? "") == originalPulls, "Receipt rejection changed the PR")
-        Call([]string{"revoke", "owner/project#1"}, owner: true)
-        Check.Envelope(Call([]string{"submit", "--run", run, "--json"}, 1), "submit", "error", "stale_approval")
+        Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
+        Check.Envelope(
+            Call([]string{"submit", "--yes", "--run", run, "--json"}, 1),
+            "submit",
+            "error",
+            "stale_approval"
+        )
     }
 
     internal func StructuredFailures() {
@@ -493,7 +498,17 @@ internal partial class NativeFlow : NativeFixture {
         Approve()
         Faults("repos/donor/project", JsonArray(Check.Map("status", 403, "message", "Forbidden")))
         let failure = Acquire(
-            []string{"claim", "owner/project#1", "--model", "gpt-6.1-sol", "--effort", "high", "--time", "30s"},
+            []string{
+                "claim",
+                "--yes",
+                "owner/project#1",
+                "--model",
+                "gpt-6.1-sol",
+                "--effort",
+                "high",
+                "--time",
+                "30s"
+            },
             1,
             traffic: true
         )
@@ -507,7 +522,9 @@ internal partial class NativeFlow : NativeFixture {
     internal func RunNames() {
         Approve()
         let store = Path.Combine(Temp.Env["HOME"], ".local/state/tokate/runs")
-        Acquire([]string{"claim", "owner/project#1", "--model", "gpt-6.1-sol", "--effort", "high", "--time", "30s"})
+        Acquire(
+            []string{"claim", "--yes", "owner/project#1", "--model", "gpt-6.1-sol", "--effort", "high", "--time", "30s"}
+        )
         let first = Path.Combine(store, "owner-project-1-1")
         let claimed = File.ReadAllText(Path.Combine(first, "run.json"))
         Check.That(Check.Text(Check.Json(claimed)["state"]) == "claimed", "Claim did not use a named run directory")
@@ -515,7 +532,7 @@ internal partial class NativeFlow : NativeFixture {
         Directory.CreateDirectory(second)
         File.WriteAllText(Path.Combine(second, "run.json"), claimed)
         let refused = Check.Envelope(
-            Call([]string{"submit", "owner/project#1", "--json"}, 1),
+            Call([]string{"submit", "--yes", "owner/project#1", "--json"}, 1),
             "submit",
             "error",
             "invalid_arguments"
@@ -922,8 +939,13 @@ internal partial class NativeFlow : NativeFixture {
                 verb == "DELETE" ? "repos/owner/project/issues/1/labels/tokate%3Aapproved": "repos/owner/project/git/trees"
             )
             Faults(path, Check.Json("[{\"status\":429,\"headers\":\"Retry-After: 2\\r\\n\"}]"))
-            let result = verb == "DELETE" ? Call([]string{"revoke", "owner/project#1"}, 1, owner: true, traffic: true):
-            Call([]string{"approve", "owner/project#1"}, 1, owner: true, traffic: true)
+            let result = verb == "DELETE" ? Call(
+                []string{"revoke", "--yes", "owner/project#1"},
+                1,
+                owner: true,
+                traffic: true
+            ):
+            Call([]string{"approve", "--yes", "owner/project#1"}, 1, owner: true, traffic: true)
             Reload()
             Check.That(Check.Text(State["fault_index"]) == "1", "Mutation retried a rate limit")
             Check.Contains(result.Error, "No automatic retry")
@@ -947,7 +969,11 @@ internal partial class NativeFlow : NativeFixture {
         for json in[]bool{false, true} {
             Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", body.DeepClone())))
             let result = Call(
-                json ? []string{"approve", "owner/project#1", "--json"}: []string{"approve", "owner/project#1"},
+                json ? []string{"approve", "--yes", "owner/project#1", "--json"}: []string{
+                    "approve",
+                    "--yes",
+                    "owner/project#1"
+                },
                 1,
                 owner: true
             )
@@ -968,7 +994,7 @@ internal partial class NativeFlow : NativeFixture {
             Check.Map("message", 42, "errors", Check.Json("[null,{\"message\":false},{\"message\":\"Nested reason\"}]"))
         } {
             Faults("repos/owner/project/git/trees", JsonArray(Check.Map("status", 422, "body", value)))
-            let result = Call([]string{"approve", "owner/project#1", "--json"}, 1, owner: true)
+            let result = Call([]string{"approve", "--yes", "owner/project#1", "--json"}, 1, owner: true)
             let message = Check.Text(Check.Json(result.Output)["error"]?["message"])
             Check.Contains(message, "tokate submit --run with the saved run")
             if value["message"]?.ToJsonString() == "42" {

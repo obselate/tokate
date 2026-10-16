@@ -49,8 +49,8 @@ internal class ContributionStatusChecks {
             test.Initialize(false)
             let waiting = Row(Read(test))
             Check.That(Check.Text(waiting["state"]) == "approval_waiting", "Absent approval is ready")
-            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             let needsRequest = Row(Read(test))
             Check.That(
                 Check.Text(needsRequest["next"]?["role"]) == "donor" && Check.Text(
@@ -58,13 +58,13 @@ internal class ContributionStatusChecks {
                 ) == "request",
                 "Missing donor access request action"
             )
-            test.Flow.Call([]string{"access", "request", "owner/project#1", "--trust"})
+            test.Flow.Call([]string{"access", "--yes", "request", "owner/project#1", "--trust"})
             let pending = Read(test, owner: true, index: true)
             Check.That(pending["data"]?["pending_requests"]?.AsArray().Count == 1, "Status hid pending access")
             Check.That(Check.Text(pending["data"]?["next"]?["role"]) == "owner", "Request responsibility missing")
             Check.That(Check.Text(Row(pending)["approval_status"]) == "current", "Task approval was not validated")
             Check.That(Check.Text(Row(Read(test))["state"]) == "access_waiting", "Untrusted donor became eligible")
-            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "trust", "donor", "owner/project"}, owner: true)
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
@@ -98,7 +98,7 @@ internal class ContributionStatusChecks {
             test.Flow.Reload()
             test.Flow.State["access_revoke_after_path"] = nil
             test.Flow.Save()
-            test.Flow.Call([]string{"access", "restore", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "restore", "donor", "owner/project"}, owner: true)
 
             test.Flow.Reload()
             let task = test.Flow.State["issue"] ?? throw Exception("Missing task")

@@ -296,6 +296,7 @@ internal open class CoordinationFixture : IDisposable {
     ) string {
         let args = List[string]{
             "claim",
+            "--yes",
             "owner/project#1",
             "--source",
             source,

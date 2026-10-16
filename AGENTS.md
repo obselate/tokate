@@ -19,6 +19,14 @@ Do not infer support for another platform, forge or harness.
 Use CLI flags or the GUI. Bare `tokate` prints help. Confirmation asks once in a terminal unless `--yes` is set. With `--json`, `--non-interactive` or no terminal, confirmation gates preview without changes. Rejected consent uses `confirmation_required` naming `--yes`. Existing successful previews stay successful.
 A missing choice fails with `invalid_arguments` and names the required flag.
 
+For JSON, non-interactive or no-terminal mutations, require `--yes`. The commands
+are `claim`, `pause`, `resume`, `renew`, `release`, `revoke`, `access init`,
+`access trust`, `access untrust`, `access deny`, `access restore`, `access request`,
+`amend`, `external`, `checks` when the target resolves to a saved run, `work`,
+`init`, `submit`, `approve`, `update` and `uninstall`. Defaults profile writes do
+not require consent. Internal `coordinate`, `admit` and `request`, including the
+label workflow, are exempt.
+
 ## Install Tokate and its dependencies
 
 Use Linux x86_64 with glibc 2.34+ or Alpine 3.24. Install the system packages first.
@@ -75,8 +83,9 @@ It never writes branch protection or creates access state. In a terminal without
 The coordinator uses `obselate/tokate/.github/workflows/tokate-shared.yml@v0`. Use `init --pin` for an exact release commit.
 Existing setup repositories run init once and merge the setup PR. Policies require version 3.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
-Approve existing issues with `tokate approve N [LOGIN] [--base-branch BRANCH]`.
-Use `--yes` to replace active reservation or published PR authority.
+Approve existing issues with `tokate approve N [LOGIN] [--base-branch BRANCH] --yes`.
+All approval writes require consent, including replacing an active reservation or
+published PR authority.
 In `trusted` eligibility, trust the donor or name the donor in the approval with
 `tokate approve N LOGIN`. In `open`, anyone not denied may claim. Deny always wins.
 Maintainer edits default to true. Set `"maintainer_edits": false` in the policy to opt out.

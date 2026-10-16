@@ -97,7 +97,7 @@ internal class Coordinator {
             }
 
             approval["nonce"] = Guid.NewGuid().ToString("N")
-            CoordinationState.Approve(repo, number, approval, true)
+            CoordinationState.Approve(repo, number, approval)
             Terminal.Message("Issue approved from the tokate:approved label.")
         }
 

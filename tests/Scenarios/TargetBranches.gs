@@ -19,7 +19,7 @@ internal class TargetBranches {
         }
 
         private func Approve(flow NativeFixture, branch string) JsonNode {
-            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
+            flow.Call([]string{"approve", "--yes", "owner/project#1", "--base-branch", branch}, owner: true)
             let state = flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json")
             return Check.Json(state)["approval"] ?? throw Exception("Missing approval")
         }
@@ -142,6 +142,7 @@ internal class TargetBranches {
                 flow.Call(
                     []string{
                         "external",
+                        "--yes",
                         "--run",
                         run,
                         "--commit",
@@ -160,7 +161,7 @@ internal class TargetBranches {
             }
             Check.That(!File.Exists(Path.Combine(run, "checkout/moved.txt")), "V2 changed its base after the claim")
             RunBase(run, base, branch)
-            flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+            flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(request))
             Receipt(flow, branch, base)
@@ -172,10 +173,14 @@ internal class TargetBranches {
             test.Initialize()
             let branch = "release/freshness"
             let base = Target(flow, branch)
-            flow.Call([]string{"approve", "owner/project#1", "--base-branch", "release/missing"}, 1, owner: true)
+            flow.Call(
+                []string{"approve", "--yes", "owner/project#1", "--base-branch", "release/missing"},
+                1,
+                owner: true
+            )
             flow.NoInference()
             Console.WriteLine("PASS V2 target freshness: missing")
-            flow.Call([]string{"approve", "owner/project#1", "--base-branch", branch}, owner: true)
+            flow.Call([]string{"approve", "--yes", "owner/project#1", "--base-branch", branch}, owner: true)
             test.Coordinate(test.Event(test.ClaimRequest()))
             let run = test.Prepare()
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
@@ -202,7 +207,7 @@ internal class TargetBranches {
                     }
                     flow.Commit("Owner configuration changed")
                 }
-                let result = flow.Call([]string{"external", "--run", run, "--commit", base}, 1)
+                let result = flow.Call([]string{"external", "--yes", "--run", run, "--commit", base}, 1)
                 Check.Contains(
                     result.Error,
                     change == "deleted" ? "GitHub read failed (HTTP 404)": "The owner must run: tokate approve owner/project#1"
@@ -260,7 +265,10 @@ internal class TargetBranches {
                 let flow = test.Flow
                 test.Text("synthetic-private-owner-instruction-marker\n")
                 let base = Target(flow, "release")
-                flow.Call([]string{"approve", "owner/project#1", "--base-branch", "release", "--json"}, owner: true)
+                flow.Call(
+                    []string{"approve", "--yes", "owner/project#1", "--base-branch", "release", "--json"},
+                    owner: true
+                )
                 let result = flow.Call([]string{"status", "owner/project#1", "--json"})
                 let approval = Check.Envelope(result, "status", "ok")["data"]?["coordination"]?["approval"]
                 Check.That(
