@@ -248,6 +248,197 @@ internal class ExternalContribution {
             Directory.Move(temporary, target)
         }
 
+        private func PrepareCheckout(
+            directory string,
+            run Data,
+            record JsonElement,
+            args Args,
+            commit string,
+            retry bool
+        ) ValueTuple[int32, JsonElement, string] {
+            var seconds = run.Number("seconds")
+            var tools = J.Get(run.Element(), "tools")
+            var history = ""
+
+            if retry {
+                Failed(directory, run, J.Get(record, "policy"))
+                args.Need("seconds")
+                seconds = args.Number("seconds")
+                tools = RequestData.FileData(args.Need("tools"), 4096)
+                RequestData.Tools(tools)
+
+                let policy = Policy(J.Write(J.Get(record, "policy")))
+                policy.ValidateBudget(seconds)
+                policy.ValidateTools(tools, "external")
+                KeepTools(J.Get(run.Element(), "tools"), tools)
+
+                if J.Count(tools) == J.Count(J.Get(run.Element(), "tools")) {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "External correction must append at least one tool declaration"
+                    )
+                }
+
+                Unpublished(directory, run)
+                history = History(directory, run, commit)
+            }
+
+            let metadata = J.Parse(
+                J.Write(
+                    map[string, Object?]{"fork": run.Text("head_repo"), "branch": run.Text("branch"), "head": commit}
+                )
+            )
+            RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
+
+            let checkout = Path.Combine(directory, "checkout")
+            if retry {
+                Verification.Candidate(checkout)
+                if Commands.Git(checkout, "rev-parse", "HEAD") != run.Text("commit") {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Failed external checkout differs from its recorded commit"
+                    )
+                }
+
+                Preserve(directory, history)
+
+                let heads = J.Items(J.Get(run.Element(), "external_history"))
+                heads.Add(J.Get(run.Element(), "commit"))
+                run.Fields["external_history"] = heads
+                run.Fields["commit"] = commit
+                run.Fields["verification_seconds"] = seconds
+                run.Fields["tools"] = tools
+                run.Transition("verifying")
+                run.Fields["failure_stage"] = "candidate_validation"
+                run.Fields["failure_reason"] = "candidate_invalid"
+                run.Fields["verification"] = J.Parse("[]")
+
+                for key in[]string{"public_summary", "verification_provenance", "tool_provenance", "error"} {
+                    run.Fields.Remove(key)
+                }
+
+                run.Save(directory)
+
+                Directory.Move(checkout, Path.Combine(history, "checkout"))
+            } else if Exists(checkout) {
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "External checkout already exists; interrupted verification requires inspection"
+                )
+            }
+
+            return (seconds, metadata, checkout)
+        }
+
+        private func VerifyExternal(
+            directory string,
+            run Data,
+            record JsonElement,
+            checkout string,
+            commit string,
+            seconds int32,
+            retry bool,
+            metadata JsonElement
+        ) {
+            let timer = Stopwatch.StartNew()
+            run.Transition("verifying")
+            run.Save(directory)
+
+            let results = List[Object]()
+            run.Fields["verification"] = results
+            PublicOutput.FailureCode = "verification_failed"
+            run.Fields["failure_stage"] = "owner_verification"
+            run.Fields["failure_reason"] = "verification_failed"
+
+            run.Save(directory)
+
+            File.WriteAllText(Path.Combine(directory, "verification.json"), J.Write(results))
+
+            try {
+                let budget = RuntimeBudget(timer, seconds)
+
+                {
+                    using let workspace = VerificationWorkspace.Create(checkout, budget)
+
+                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                        let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
+                        if remaining < 1 {
+                            throw ExecutionFailure.Create("verification_failed", "Verification budget exhausted")
+                        }
+
+                        let result = Terminal.Verify(
+                            directory,
+                            results,
+                            command,
+                            checkout,
+                            remaining,
+                            budget: budget,
+                            workspace: workspace
+                        )
+                        if result.Code != 0 {
+                            throw CliFailure(
+                                "verification_failed",
+                                "Independent external verification failed; no publication authority granted"
+                            )
+                        }
+                    }
+
+                    PublicOutput.FailureCode = "invalid_state"
+                    run.Fields["failure_stage"] = "changed_candidate"
+                    run.Fields["failure_reason"] = "candidate_changed"
+                    workspace.Unchanged(budget)
+                }
+
+                PublicOutput.FailureCode = "invalid_state"
+                run.Fields["failure_stage"] = "changed_candidate"
+                run.Fields["failure_reason"] = "candidate_changed"
+                Verification.Candidate(checkout)
+
+                if Commands.Git(checkout, "rev-parse", "HEAD") != commit || Commands.Git(
+                    checkout,
+                    "status",
+                    "--porcelain"
+                ) != "" {
+                    throw ExecutionFailure.Create(
+                        "invalid_state",
+                        "Independent verification changed the declared commit or checkout"
+                    )
+                }
+
+                ContributionAuthority.Recheck(run)
+
+                if retry {
+                    RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
+                    Unpublished(directory, run)
+                    History(directory, run, "")
+                }
+
+                run.Fields["verification"] = results
+                run.Fields["verification_provenance"] = "tokate-observed locally, exact commit " + commit
+                run.Fields[
+                    "tool_provenance"
+                ] = "donor-reported; identity, usage and coding time not independently attested"
+                run.Transition("generated")
+                run.Fields.Remove("failure_stage")
+                run.Fields.Remove("failure_reason")
+
+                run.Save(directory)
+            } catch (error Exception) when error is CliFailure ||
+                error is CommandInterrupted ||
+                error is ApiDeadlineException ||
+                error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is JsonException {
+                run.Transition("failed")
+                run.Fields["error"] = error.Message
+
+                run.Save(directory)
+
+                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
+            }
+        }
+
         internal func External(args Args) {
             try {
                 let directory = Path.GetFullPath(args.Need("run"))
@@ -279,80 +470,10 @@ internal class ExternalContribution {
                 ContributionHandoff.Candidate(J.Get(run.Element(), "handoff"), run.Text("head_repo"), commit)
                 let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
 
-                var seconds = run.Number("seconds")
-                var tools = J.Get(run.Element(), "tools")
-                var history = ""
-
-                if retry {
-                    Failed(directory, run, J.Get(record, "policy"))
-                    args.Need("seconds")
-                    seconds = args.Number("seconds")
-                    tools = RequestData.FileData(args.Need("tools"), 4096)
-                    RequestData.Tools(tools)
-
-                    let policy = Policy(J.Write(J.Get(record, "policy")))
-                    policy.ValidateBudget(seconds)
-                    policy.ValidateTools(tools, "external")
-                    KeepTools(J.Get(run.Element(), "tools"), tools)
-
-                    if J.Count(tools) == J.Count(J.Get(run.Element(), "tools")) {
-                        throw ExecutionFailure.Create(
-                            "invalid_state",
-                            "External correction must append at least one tool declaration"
-                        )
-                    }
-
-                    Unpublished(directory, run)
-                    history = History(directory, run, commit)
-                }
-
-                let metadata = J.Parse(
-                    J.Write(
-                        map[string, Object?]{
-                            "fork": run.Text("head_repo"),
-                            "branch": run.Text("branch"),
-                            "head": commit
-                        }
-                    )
-                )
-                RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
-
-                let checkout = Path.Combine(directory, "checkout")
-                if retry {
-                    Verification.Candidate(checkout)
-                    if Commands.Git(checkout, "rev-parse", "HEAD") != run.Text("commit") {
-                        throw ExecutionFailure.Create(
-                            "invalid_state",
-                            "Failed external checkout differs from its recorded commit"
-                        )
-                    }
-
-                    Preserve(directory, history)
-
-                    let heads = J.Items(J.Get(run.Element(), "external_history"))
-                    heads.Add(J.Get(run.Element(), "commit"))
-                    run.Fields["external_history"] = heads
-                    run.Fields["commit"] = commit
-                    run.Fields["verification_seconds"] = seconds
-                    run.Fields["tools"] = tools
-                    run.Transition("verifying")
-                    run.Fields["failure_stage"] = "candidate_validation"
-                    run.Fields["failure_reason"] = "candidate_invalid"
-                    run.Fields["verification"] = J.Parse("[]")
-
-                    for key in[]string{"public_summary", "verification_provenance", "tool_provenance", "error"} {
-                        run.Fields.Remove(key)
-                    }
-
-                    run.Save(directory)
-
-                    Directory.Move(checkout, Path.Combine(history, "checkout"))
-                } else if Exists(checkout) {
-                    throw ExecutionFailure.Create(
-                        "invalid_state",
-                        "External checkout already exists; interrupted verification requires inspection"
-                    )
-                }
+                let prepared = PrepareCheckout(directory, run, record, args, commit, retry)
+                let seconds = prepared.Item1
+                let metadata = prepared.Item2
+                let checkout = prepared.Item3
 
                 if summary.ValueKind != JsonValueKind.Undefined {
                     run.Fields["public_summary"] = summary
@@ -406,103 +527,7 @@ internal class ExternalContribution {
                     throw ExecutionFailure.From(error, PublicOutput.FailureCode)
                 }
 
-                let timer = Stopwatch.StartNew()
-                run.Transition("verifying")
-                run.Save(directory)
-
-                let results = List[Object]()
-                run.Fields["verification"] = results
-                PublicOutput.FailureCode = "verification_failed"
-                run.Fields["failure_stage"] = "owner_verification"
-                run.Fields["failure_reason"] = "verification_failed"
-
-                run.Save(directory)
-
-                File.WriteAllText(Path.Combine(directory, "verification.json"), J.Write(results))
-
-                try {
-                    let budget = RuntimeBudget(timer, seconds)
-
-                    {
-                        using let workspace = VerificationWorkspace.Create(checkout, budget)
-
-                        for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
-                            let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
-                            if remaining < 1 {
-                                throw ExecutionFailure.Create("verification_failed", "Verification budget exhausted")
-                            }
-
-                            let result = Terminal.Verify(
-                                directory,
-                                results,
-                                command,
-                                checkout,
-                                remaining,
-                                budget: budget,
-                                workspace: workspace
-                            )
-                            if result.Code != 0 {
-                                throw CliFailure(
-                                    "verification_failed",
-                                    "Independent external verification failed; no publication authority granted"
-                                )
-                            }
-                        }
-
-                        PublicOutput.FailureCode = "invalid_state"
-                        run.Fields["failure_stage"] = "changed_candidate"
-                        run.Fields["failure_reason"] = "candidate_changed"
-                        workspace.Unchanged(budget)
-                    }
-
-                    PublicOutput.FailureCode = "invalid_state"
-                    run.Fields["failure_stage"] = "changed_candidate"
-                    run.Fields["failure_reason"] = "candidate_changed"
-                    Verification.Candidate(checkout)
-
-                    if Commands.Git(checkout, "rev-parse", "HEAD") != commit || Commands.Git(
-                        checkout,
-                        "status",
-                        "--porcelain"
-                    ) != "" {
-                        throw ExecutionFailure.Create(
-                            "invalid_state",
-                            "Independent verification changed the declared commit or checkout"
-                        )
-                    }
-
-                    ContributionAuthority.Recheck(run)
-
-                    if retry {
-                        RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
-                        Unpublished(directory, run)
-                        History(directory, run, "")
-                    }
-
-                    run.Fields["verification"] = results
-                    run.Fields["verification_provenance"] = "tokate-observed locally, exact commit " + commit
-                    run.Fields[
-                        "tool_provenance"
-                    ] = "donor-reported; identity, usage and coding time not independently attested"
-                    run.Transition("generated")
-                    run.Fields.Remove("failure_stage")
-                    run.Fields.Remove("failure_reason")
-
-                    run.Save(directory)
-                } catch (error Exception) when error is CliFailure ||
-                    error is CommandInterrupted ||
-                    error is ApiDeadlineException ||
-                    error.GetType() == typeof(Exception) ||
-                    error is IOException ||
-                    error is UnauthorizedAccessException ||
-                    error is JsonException {
-                    run.Transition("failed")
-                    run.Fields["error"] = error.Message
-
-                    run.Save(directory)
-
-                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
-                }
+                VerifyExternal(directory, run, record, checkout, commit, seconds, retry, metadata)
 
                 Terminal.Message(
                     "Exact external commit passed independent verification. Use " + Terminal.Command(
