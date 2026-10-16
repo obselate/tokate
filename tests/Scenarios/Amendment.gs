@@ -556,6 +556,7 @@ internal class AmendmentFlow {
         private func V2(binary string, mode string = "", native bool = false, modelPolicy string = "") {
             using let flow = CoordinationFixture(binary)
             let run = PublishedContribution.PublishRun(flow, native, modelPolicy)
+            flow.Flow.Call([]string{"submit", "--run", run})
             if native {
                 flow.Flow.Reload()
                 let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
@@ -737,6 +738,16 @@ internal class AmendmentFlow {
             for call in flow.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 Check.That(Check.Text(call["method"]) == "GET", "Applied amendment request repeated writes")
             }
+            flow.Flow.Reload()
+            flow.Flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
+            flow.Flow.Save()
+            let checked = Check.Envelope(flow.Flow.Call([]string{"checks", "--run", run, "--json"}), "checks", "ok")
+            Check.That(
+                Check.Text(checked["data"]?["commit"]) == commit && Check.Text(
+                    checked["data"]?["machine_status"]
+                ) == "passed",
+                "Checks rejected the accepted amendment before local completion"
+            )
             let status = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
             let pending = status["data"]?["amendment"]
             let previous = Check.Text(Check.Json(original)["commit"])

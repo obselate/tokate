@@ -174,6 +174,7 @@ Amendment publication keeps the underlying error code. Inspect saved publication
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
 | `invalid_state` | `No PR has been published for this run` | Inspect `tokate status --run DIR --json` before submitting or reading checks. |
+| `invalid_state` | `PR #N was closed without merge.` or `PR #N was merged.` | Checks requires an open, unmerged PR. Use `gh pr view N` to inspect its history. |
 | `invalid_state` | `Public summary needs bounded changes, verification and limitations lists`, `Set head in the summary to SHA.` or invalid public text | Supply a valid summary for the exact candidate before an explicit submit or amend command. |
 | `invalid_state` | Malformed or ambiguous Tokate receipt or report, unsupported receipt protocol, missing public report or changed original evidence | Preserve saved evidence. Restore the report from its current authority or declare a corrected candidate. |
 | `invalid_state` | `incomplete_turn:` followed by the failure | Correction requires a completed successful inference turn. Inspect stopped work before continuation or incomplete publication. |
