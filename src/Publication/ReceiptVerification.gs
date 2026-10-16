@@ -38,7 +38,7 @@ internal class ReceiptVerification {
             run.Fields["base_branch"] = J.Get(approval, "base_branch")
 
             run.Fields["authority_revision"] = revision
-            run.Fields["receipt_hash"] = Data.Hash(RequestData.Canonical(receipt))
+            run.Fields["receipt_hash"] = J.Hash(RequestData.Canonical(receipt))
             run.Fields["policy_hash"] = J.Get(approval, "policy_hash")
         }
 

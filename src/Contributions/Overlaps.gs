@@ -64,7 +64,7 @@ internal class Overlaps {
                 "head_repo": J.Text(J.Get(J.Get(pull, "head"), "repo"), "full_name"),
                 "target": J.Text(J.Get(pull, "base"), "ref"),
                 "target_repo": J.Text(J.Get(J.Get(pull, "base"), "repo"), "full_name"),
-                "body_hash": Data.Hash(J.Text(pull, "body"))
+                "body_hash": J.Hash(J.Text(pull, "body"))
             }
         )
 

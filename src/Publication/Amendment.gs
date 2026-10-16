@@ -608,7 +608,7 @@ internal class Amendment {
                     change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
                 }
 
-                change.Fields[correcting ? "patch_sha256": "snapshot"] = Data.Hash(snapshot)
+                change.Fields[correcting ? "patch_sha256": "snapshot"] = J.Hash(snapshot)
                 File.WriteAllText(Path.Combine(location, "candidate.patch"), snapshot)
 
                 File.WriteAllText(
@@ -705,7 +705,7 @@ internal class Amendment {
             )
             let correcting = change.Text("uuid") != ""
             let patch = File.ReadAllText(Path.Combine(Location(directory, change), "candidate.patch"))
-            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) || Data.Hash(
+            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) || J.Hash(
                 snapshot
             ) != change.Text(correcting ? "patch_sha256": "snapshot") || snapshot != patch {
                 throw CliFailure("invalid_state", "Verified amendment candidate changed")

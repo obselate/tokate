@@ -133,7 +133,7 @@ internal class Policy {
             task["maintainer_edits"] = MaintainerEdits
         }
         TaskFields = J.Parse(J.Write(task))
-        Digest = Data.Hash(RequestData.Canonical(TaskFields))
+        Digest = J.Hash(RequestData.Canonical(TaskFields))
     }
 
     private func ValidateTextFields() {

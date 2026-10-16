@@ -13,13 +13,13 @@ internal class SessionEvidence {
             if event == "message_end" && J.Text(J.Get(value, "message"), "role") == "assistant" {
                 for part in J.Items(J.Get(J.Get(value, "message"), "content")) {
                     if J.Text(part, "type") == "text" {
-                        DonationView.Append("Assistant: " + J.Text(part, "text"))
+                        Output.Sink.Append("Assistant: " + J.Text(part, "text"))
                     }
                 }
             } else if event == "tool_execution_start" {
                 let args = J.Get(value, "args")
                 let detail = J.Text(args, "command") == "" ? J.Text(args, "path"): J.Text(args, "command")
-                DonationView.Append(J.Text(value, "toolName") + ": " + detail)
+                Output.Sink.Append(J.Text(value, "toolName") + ": " + detail)
             } else {
                 return false
             }

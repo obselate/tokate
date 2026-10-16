@@ -14,16 +14,15 @@ internal class OmpHarness {
             if SessionEvidence.Activity(value) {
                 return
             } else if event == "auto_compaction_end" {
-                DonationView.Append("Context compacted")
+                Output.Sink.Append("Context compacted")
             }
         }
 
-        internal func Select(args Args, policy Policy, source string) JsonElement {
+        internal func Select(args Args, selected Dictionary[string, Object?]) JsonElement {
             let provider = RequestData.Token(args.Need("provider"))
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            let selected = SelectionPolicy.Selection(args, policy, source)
             let runtime = OmpRuntime.Runtime(args)
             let limits = OmpRuntime.Model(args.Need("harness-path"), provider, model)
             OmpRuntime.CheckEffort(limits, effort)
@@ -84,10 +83,13 @@ internal class OmpHarness {
             }
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
-            []string,
-            Dictionary[string, Object?]?
-        ] {
+        internal func Prepare(
+            directory string,
+            run Data,
+            record JsonElement,
+            coding RuntimeBudget,
+            models Func[List[string]?]
+        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
             let runtime = OmpRuntime.Runtime(options, coding)
             if options.Need("harness-path") != run.Text("harness_path") {
@@ -122,7 +124,13 @@ internal class OmpHarness {
             return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
+        internal func Read(
+            directory string,
+            run Data,
+            record JsonElement,
+            result CommandResult,
+            validateModels Action[JsonElement]
+        ) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 let reason = OmpEvidence.Failure(result.Output)
                 throw ExecutionFailure.Create(

@@ -233,7 +233,7 @@ internal class CoordinationState {
             state.Fields["repo"] = repo
             state.Fields["issue"] = issue
             state.Fields["approval"] = approval
-            state.Fields["approval_id"] = Data.Hash(RequestData.Canonical(approved))
+            state.Fields["approval_id"] = J.Hash(RequestData.Canonical(approved))
             state.Fields["revoked"] = false
             state.Fields["identity"] = nil
             state.Fields["publication_revision"] = nil

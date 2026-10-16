@@ -299,12 +299,12 @@ internal class Verification {
                 arguments.RemoveAt(0)
                 var outputLine Action[string]? = nil
                 var errorLine Action[string]? = nil
-                if DonationView.Active() {
+                if Output.Sink.Active() {
                     if outputPath != "" {
-                        outputLine = line -> DonationView.Append(line)
+                        outputLine = line -> Output.Sink.Append(line)
                     }
                     if errorPath != "" {
-                        errorLine = line -> DonationView.Append(line)
+                        errorLine = line -> Output.Sink.Append(line)
                     }
                 }
 

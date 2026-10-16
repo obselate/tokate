@@ -35,9 +35,8 @@ internal class CommandHarness {
             }
         }
 
-        internal func Select(args Args, policy Policy, source string) JsonElement {
-            let selected = SelectionPolicy.Selection(args, policy, source)
-            selected["command"] = J.Get(policy.Tool("command", args.Need("provider")), "command")
+        internal func Select(args Args, selected Dictionary[string, Object?], command JsonElement) JsonElement {
+            selected["command"] = command
             if args.Get("consented-command") != "" && args.Get("consented-command") != J.Write(selected["command"]) {
                 throw Exception("The owner changed the command after your consent. No inference started.")
             }
@@ -66,17 +65,24 @@ internal class CommandHarness {
                 "",
                 "",
                 "Command inference",
-                (directory string, run Data, record JsonElement, coding RuntimeBudget) -> Prepare(tool, directory, run),
                 (
                     directory string,
                     run Data,
                     record JsonElement,
-                    result CommandResult
-                ) -> output == "codex" ? Worker.Read(directory, run, record, result):
-                output == "claude" ? ClaudeHarness.Read(directory, run, record, result):
-                OmpHarness.Read(directory, run, record, result),
+                    coding RuntimeBudget,
+                    models Func[List[string]?]
+                ) -> Prepare(tool, directory, run),
+                (
+                    directory string,
+                    run Data,
+                    record JsonElement,
+                    result CommandResult,
+                    validateModels Action[JsonElement]
+                ) -> output == "codex" ? Worker.Read(directory, run, record, result, validateModels):
+                output == "claude" ? ClaudeHarness.Read(directory, run, record, result, validateModels):
+                OmpHarness.Read(directory, run, record, result, validateModels),
                 activity,
-                Select,
+                (args Args, selected Dictionary[string, Object?]) -> Select(args, selected, J.Get(tool, "command")),
                 catalog: true,
                 continues: false
             )

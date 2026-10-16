@@ -14,7 +14,7 @@ internal class ExecutionFailure {
             error.GetType() == typeof(Exception)
 
         internal func Create(code string, message string) CliFailure ->
-        CliFailure(code, message, summary: CliFailure.Message(PublicOutput.FailureCode))
+        CliFailure(code, message, summary: CliFailure.Message(Output.Sink.FailureCode))
 
         internal func From(error Exception, code string = "command_failed") CliFailure {
             if error is CliFailure failure {

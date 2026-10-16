@@ -21,15 +21,15 @@ internal class PiHarness {
             } else if event == "tool_execution_end" {
                 for item in J.Items(J.Get(J.Get(value, "result"), "content")) {
                     if J.Text(item, "type") == "text" {
-                        DonationView.Append(J.Text(item, "text"))
+                        Output.Sink.Append(J.Text(item, "text"))
                     }
                 }
 
                 if J.Bool(value, "is_error") {
-                    DonationView.Append("Tool failed: " + J.Text(value, "tool"))
+                    Output.Sink.Append("Tool failed: " + J.Text(value, "tool"))
                 }
             } else if event == "compaction_end" {
-                DonationView.Append("Context compacted")
+                Output.Sink.Append("Context compacted")
             }
         }
 
@@ -211,11 +211,10 @@ internal class PiHarness {
             }
         }
 
-        internal func Select(args Args, policy Policy, source string) JsonElement {
+        internal func Select(args Args, selected Dictionary[string, Object?]) JsonElement {
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            let selected = SelectionPolicy.Selection(args, policy, source)
             let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
             Runtime(args)
             PiBoundary.Probe(args.Need("pi-root"), args.Need("node"))
@@ -303,10 +302,13 @@ internal class PiHarness {
             run.Fields["endpoint_catalog"] = PiCatalog.Read(run.Text("pi_node"), run.Text("model"), endpoint, coding)
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
-            []string,
-            Dictionary[string, Object?]?
-        ] {
+        internal func Prepare(
+            directory string,
+            run Data,
+            record JsonElement,
+            coding RuntimeBudget,
+            models Func[List[string]?]
+        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let runtime = PiBoundary.Probe(run.Text("pi_root"), run.Text("pi_node"), coding)
             let endpoint = PiBoundary.Endpoint(run.Text("pi_endpoint"))
             let limits = PiBoundary.ModelSettings(
@@ -338,7 +340,13 @@ internal class PiHarness {
             )
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
+        internal func Read(
+            directory string,
+            run Data,
+            record JsonElement,
+            result CommandResult,
+            validateModels Action[JsonElement]
+        ) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw ExecutionFailure.Create(
                     "inference_failed",

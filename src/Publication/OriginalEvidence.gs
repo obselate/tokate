@@ -141,7 +141,7 @@ internal class OriginalEvidence {
                 File.WriteAllText(Path.Combine(directory, "manifest.json"), manifest + "\n")
 
                 let seal = Data()
-                seal.Fields["manifest_sha256"] = Data.Hash(manifest)
+                seal.Fields["manifest_sha256"] = J.Hash(manifest)
 
                 seal.Write(Path.Combine(directory, "seal.json"))
             } catch (error Exception) when error is IOException ||
@@ -161,7 +161,7 @@ internal class OriginalEvidence {
                 inventory.Remove("manifest.json")
                 inventory.Remove("seal.json")
 
-                if Data.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
+                if J.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
                     J.Parse(J.Write(inventory))
                 ) != manifest {
                     throw CliFailure(

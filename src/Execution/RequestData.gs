@@ -186,7 +186,24 @@ internal class RequestData {
             return value
         }
 
-        internal func ModelIdentifier(value string) string -> PublicSummary.Identifier(value, model: true)
+        internal func Identifier(text string, model bool = false) string {
+            if text == "" && !model {
+                return "unknown"
+            }
+
+            let pattern = model ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+
+            if !Regex.IsMatch(text, pattern) || text.Contains("://") || Regex.IsMatch(
+                text,
+                "(?i)(gh[pousr]_|github_pat_|sk-|secret|password)"
+            ) {
+                throw CliFailure("invalid_state", "Tool declaration contains an invalid public identifier")
+            }
+
+            return text
+        }
+
+        internal func ModelIdentifier(value string) string -> Identifier(value, model: true)
 
         internal func Tools(value JsonElement) {
             let items = J.Items(value)
@@ -200,7 +217,7 @@ internal class RequestData {
                 Keys(tool, "harness,provider,model,effort,usage,coding_seconds")
 
                 for name in[]string{"harness", "provider", "effort"} {
-                    PublicSummary.Identifier(
+                    Identifier(
                         Token(
                             J.Text(tool, name),
                             "Tools row " + (index + 1).ToString() +
@@ -303,7 +320,7 @@ internal class RequestData {
                 "request": request
             }
 
-            return Data.Hash(Canonical(J.Parse(J.Write(binding))))
+            return J.Hash(Canonical(J.Parse(J.Write(binding))))
         }
 
         internal func Incomplete(metadata JsonElement) bool {

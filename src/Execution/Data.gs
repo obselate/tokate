@@ -3,8 +3,6 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.IO
-import System.Security.Cryptography
-import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
 
@@ -253,8 +251,5 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
 
             return result
         }
-
-        internal func Hash(text string) string -> Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))
-            .ToLowerInvariant()
     }
 }

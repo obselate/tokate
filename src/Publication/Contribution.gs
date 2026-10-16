@@ -31,11 +31,18 @@ internal class Contribution {
             var candidate string
 
             {
-                using let progress = TerminalProgress("Candidate validation", coding, total)
+                using let progress = Output.Sink.Progress("Candidate validation", coding, total)
                 coding.Remaining()
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
 
-                if run.Flag("gratis") && Gratis.Outcome(directory, checkout, run, coding) {
+                if run.Flag("gratis") && GratisOutcome.Collect(
+                    directory,
+                    checkout,
+                    run,
+                    coding,
+                    PublicSummary.RestrictedTextPattern,
+                    PublicSummary.Capture
+                ) {
                     return
                 }
 
@@ -77,7 +84,7 @@ internal class Contribution {
             }
 
             if !run.Flag("gratis") {
-                Terminal.Step("Running independent owner verification...")
+                Output.Sink.Step("Running independent owner verification...")
             }
 
             if run.Flag("unlimited") {
@@ -87,11 +94,11 @@ internal class Contribution {
             let verification = VerifyOwner(directory, run, record, checkout, seconds, total)
 
             run.Fields["verification"] = verification
-            PublicOutput.FailureCode = "invalid_state"
+            Output.Sink.FailureCode = "invalid_state"
             run.Fields["failure_stage"] = "changed_candidate"
             run.Fields["failure_reason"] = "candidate_changed"
 
-            using let progress = TerminalProgress(
+            using let progress = Output.Sink.Progress(
                 run.Flag("gratis") ? "Candidate validation": "Verified candidate validation",
                 total
             )
@@ -122,7 +129,7 @@ internal class Contribution {
             seconds int32,
             total RuntimeBudget
         ) List[Object] {
-            PublicOutput.FailureCode = "verification_failed"
+            Output.Sink.FailureCode = "verification_failed"
             run.Fields["failure_stage"] = "owner_verification"
             run.Fields["failure_reason"] = "verification_failed"
             let verification = List[Object]()
@@ -159,7 +166,7 @@ internal class Contribution {
                         }
                     }
 
-                    PublicOutput.FailureCode = "invalid_state"
+                    Output.Sink.FailureCode = "invalid_state"
                     run.Fields["failure_stage"] = "changed_candidate"
                     run.Fields["failure_reason"] = "candidate_changed"
                     workspace.Unchanged(total)
