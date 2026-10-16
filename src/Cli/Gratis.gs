@@ -24,12 +24,6 @@ internal class Gratis {
             return Policy(J.Write(policy.Fields))
         }
 
-        private func Require(valid bool, message string) {
-            if !valid {
-                throw CliFailure("invalid_state", message)
-            }
-        }
-
         internal func ConfirmPublish(
             directory string,
             args Args,
@@ -61,7 +55,7 @@ internal class Gratis {
                     map[string, Object?]{"cursor": cursor}
                 )
                 let connection = J.Get(J.Get(result, "repository"), "pullRequests")
-                Require(connection.ValueKind == JsonValueKind.Object, "Open PR snapshot is unavailable")
+                Publication.Require(connection.ValueKind == JsonValueKind.Object, "Open PR snapshot is unavailable")
                 for pull in J.Items(J.Get(connection, "nodes")) {
                     pulls.Add(
                         map[string, Object?]{
@@ -114,7 +108,10 @@ internal class Gratis {
                     issue["body"] = body
                 }
             }
-            Require(Encoding.UTF8.GetByteCount(J.Write(record)) <= 65536, "Guidance and PR snapshot exceed 64 KiB")
+            Publication.Require(
+                Encoding.UTF8.GetByteCount(J.Write(record)) <= 65536,
+                "Guidance and PR snapshot exceed 64 KiB"
+            )
             record["pulls"] = original
             return J.Parse(J.Write(record))
         }

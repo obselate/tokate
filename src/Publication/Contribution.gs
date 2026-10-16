@@ -35,14 +35,7 @@ internal class Contribution {
                 coding.Remaining()
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
 
-                if run.Flag("gratis") && GratisOutcome.Collect(
-                    directory,
-                    checkout,
-                    run,
-                    coding,
-                    PublicSummary.RestrictedTextPattern,
-                    PublicSummary.Capture
-                ) {
+                if run.Flag("gratis") && GratisOutcome.Collect(directory, checkout, run, coding) {
                     return
                 }
 

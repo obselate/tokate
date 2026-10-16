@@ -18,7 +18,7 @@ internal class Publication {
             return J.Get(result, "data")
         }
 
-        private func Require(valid bool, message string) {
+        internal func Require(valid bool, message string) {
             if !valid {
                 throw CliFailure("invalid_state", message)
             }
