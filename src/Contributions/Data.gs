@@ -77,20 +77,13 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
-            var run = Read(Path.Combine(directory, "run.json"))
+            return Read(Path.Combine(directory, "run.json"))
+        }
+
+        internal func Migrate(directory string) {
             let legacy = Path.Combine(directory, "correction.json")
             if File.Exists(legacy) {
-                var migration FileStream
-                try {
-                    migration = RunStorage.Lease(directory)
-                } catch (error IOException) {
-                    return run
-                }
-                using let lease = migration
-                if !File.Exists(legacy) {
-                    return Read(Path.Combine(directory, "run.json"))
-                }
-                run = Read(Path.Combine(directory, "run.json"))
+                let run = Load(directory)
                 RunStorage.ControlFile(directory, "correction.json")
                 let change = Read(legacy)
                 let commit = change.Text("commit")
@@ -107,7 +100,7 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                             " and restore its original record and artifacts before retrying."
                     )
                 }
-                for source in Directory.GetDirectories(directory, "correction-*") {
+                for source in Directory.EnumerateDirectories(directory, "correction-*") {
                     LocalPaths.DirectoryPath(source)
                     RunStorage.ControlFile(source, "record.json")
                     if !File.Exists(Path.Combine(source, "record.json")) {
@@ -169,7 +162,6 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                 File.Delete(Path.Combine(target, "record.json"))
                 File.Delete(legacy)
             }
-            return run
         }
 
         internal func Read(path string) Data {

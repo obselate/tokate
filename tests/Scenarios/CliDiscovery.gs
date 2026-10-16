@@ -874,11 +874,19 @@ internal class CliDiscovery {
                 "Status migrated a correction without the run lease"
             )
             migrationLease.Dispose()
+            Check.Envelope(
+                TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env),
+                "status",
+                "ok"
+            )
+            Check.That(File.Exists(legacyCorrection), "Lease-free status migrated a correction")
+            let amendment = TestProcess.Run(binary, []string{"amend", "--run", saved, "--json"}, temp.Env)
+            Check.Envelope(amendment, "amend", "error")
             let migrated = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
             Check.Envelope(migrated, "status", "ok")
             Check.That(
                 !File.Exists(legacyCorrection) && !Directory.Exists(legacyArtifacts),
-                "Legacy correction was not migrated"
+                "Leased amendment command did not migrate the legacy correction"
             )
             let migratedPath = Path.Combine(saved, "amendments", hash, "run.json")
             Check.That(
