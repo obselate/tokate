@@ -500,48 +500,7 @@ internal class Startup {
             }
 
             if doctorScope == "managed" && adapter?.Doctor == nil {
-                let sandbox = ToolCheck{
-                    Name: "sandbox",
-                    Status: "skipped",
-                    Hint: "Ensure native Codex sandbox support and permission profiles. Tokate does not change security settings.",
-                    Detail: "Requires working setsid, /usr/bin/setsid, /usr/bin/env and codex."
-                }
-
-                if probe && Ready(tools, "codex") && Ready(tools, "/usr/bin/env") {
-                    try {
-                        let pinned = Worker.Doctor(options.Get("harness-path"))
-
-                        sandbox.Status = "ready"
-                        sandbox.Detail = "Checkout and private /tmp writable. Control files and Git metadata unreadable."
-                        if pinned {
-                            sandbox.Detail += " Repository global.json SDK/MSBuild starts inside the sandbox."
-                        }
-                    } catch (error CliFailure) {
-                        if error.Code == "missing_tools" {
-                            sandbox.Status = "ready"
-                            sandbox.Detail = "Sandbox isolation probe passed; pinned toolchain probe failed."
-                            tools.Add(
-                                ToolCheck{
-                                    Name: "toolchain",
-                                    Status: "failed",
-                                    Hint: error.Summary,
-                                    Detail: error.Summary
-                                }
-                            )
-                        } else {
-                            sandbox.Status = "failed"
-                            sandbox.Detail = error.Summary
-                            sandbox.Code = error.Code
-                        }
-                    } catch (error Exception) {
-                        sandbox.Status = "failed"
-                        sandbox.Detail = "Sandbox probe could not complete. " +
-                            sandbox.Hint +
-                            " Ensure temporary storage is writable and repository global.json is a regular file, not a symbolic link."
-                    }
-                }
-
-                tools.Add(sandbox)
+                ProbeSandbox(options, tools, probe)
             }
 
             if options.Get("auth") == "true" {
@@ -552,6 +511,10 @@ internal class Startup {
                 }
             }
 
+            return ReportDoctor(options, tools, doctorScope)
+        }
+
+        private func ReportDoctor(options Args, tools List[ToolCheck], doctorScope string) int32 {
             let listed = Listed(tools)
             PublicOutput.Tools(listed)
 
@@ -610,6 +573,46 @@ internal class Startup {
             }
 
             return 0
+        }
+
+        private func ProbeSandbox(options Args, tools List[ToolCheck], probe bool) {
+            let sandbox = ToolCheck{
+                Name: "sandbox",
+                Status: "skipped",
+                Hint: "Ensure native Codex sandbox support and permission profiles. Tokate does not change security settings.",
+                Detail: "Requires working setsid, /usr/bin/setsid, /usr/bin/env and codex."
+            }
+
+            if probe && Ready(tools, "codex") && Ready(tools, "/usr/bin/env") {
+                try {
+                    let pinned = Worker.Doctor(options.Get("harness-path"))
+
+                    sandbox.Status = "ready"
+                    sandbox.Detail = "Checkout and private /tmp writable. Control files and Git metadata unreadable."
+                    if pinned {
+                        sandbox.Detail += " Repository global.json SDK/MSBuild starts inside the sandbox."
+                    }
+                } catch (error CliFailure) {
+                    if error.Code == "missing_tools" {
+                        sandbox.Status = "ready"
+                        sandbox.Detail = "Sandbox isolation probe passed; pinned toolchain probe failed."
+                        tools.Add(
+                            ToolCheck{Name: "toolchain", Status: "failed", Hint: error.Summary, Detail: error.Summary}
+                        )
+                    } else {
+                        sandbox.Status = "failed"
+                        sandbox.Detail = error.Summary
+                        sandbox.Code = error.Code
+                    }
+                } catch (error Exception) {
+                    sandbox.Status = "failed"
+                    sandbox.Detail = "Sandbox probe could not complete. " +
+                        sandbox.Hint +
+                        " Ensure temporary storage is writable and repository global.json is a regular file, not a symbolic link."
+                }
+            }
+
+            tools.Add(sandbox)
         }
     }
 }
