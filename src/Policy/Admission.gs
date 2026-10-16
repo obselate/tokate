@@ -397,6 +397,14 @@ internal class Admission {
                 binding = reservation
             }
 
+            return ValidateDonorFork(repo, pull, binding)
+        }
+
+        private func ValidateDonorFork(repo string, pull JsonElement, binding JsonElement) JsonElement {
+            let head = J.Get(pull, "head")
+            let headRepo = J.Get(head, "repo")
+            let fork = J.Text(headRepo, "full_name")
+            let branch = J.Text(head, "ref")
             let actor = RepositoryIdentity.PositiveId(J.Get(binding, "actor"))
             let owner = J.Get(headRepo, "owner")
 
