@@ -80,7 +80,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             File.ReadAllText(Path.Combine(run, "run.json")) == saved,
             "Renewal rewrote saved budgets or execution"
         )
-        let late = PublishRequest(claim, String('0', 40))
+        let late = PublishRequest(claim, String('0', 40), createPr: false)
         Lifecycle("pause")
         Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
         Coordinate(Event(late), 1)
@@ -100,7 +100,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Resume replaced contribution identity"
         )
         Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
-        let staleFence = PublishRequest(claim, String('0', 40))
+        let staleFence = PublishRequest(claim, String('0', 40), createPr: false)
         let metadata = staleFence["metadata"] ?? throw Exception("Missing metadata")
         metadata["attempt"] = JsonValue.Create(Check.Text(claim["uuid"]))
         Check.Contains(Coordinate(Event(staleFence), 1).Error, "attempt fence")

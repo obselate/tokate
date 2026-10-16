@@ -187,7 +187,7 @@ internal open class CoordinationFixture : IDisposable {
         Flow.Git("-C", Flow.Upstream, "update-ref", "refs/heads/tokate/contributions/1", next, previous)
     }
 
-    internal func PublishRequest(claim JsonNode, commit string) JsonNode {
+    internal func PublishRequest(claim JsonNode, commit string, createPr bool = true) JsonNode {
         let state = State()
         Flow.Reload()
         let pulls = Flow.State["pulls"]?.AsArray() ?? JsonArray()
@@ -198,7 +198,7 @@ internal open class CoordinationFixture : IDisposable {
                 number = Int32.Parse(Check.Text(pull["number"]))
             }
         }
-        if number == 10 + pulls.Count {
+        if createPr && number == 10 + pulls.Count {
             pulls.Add(
                 Check.Map(
                     "number",
