@@ -53,7 +53,7 @@ data struct DraftReview {
     var Ci string
     var NeedsAmendment bool
 
-    prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" ? Tone.Wait: Tone.Fail
+    prop ReceiptTone Tone -> Receipt == "verified" ? Tone.Done: Receipt == "" || Receipt == "pending" ? Tone.Wait: Tone.Fail
 
     prop CiTone Tone -> Ci == "passed" ? Tone.Done: Ci == "failed" ? Tone.Fail: Ci == NeedsApproval ? Tone.Need: Tone.Wait
 

@@ -78,6 +78,8 @@ func CodecTests() {
     Regression.Check(conflict.NeedsAmendment, "conflicting target merges need donor amendment")
     let clean = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"passed\"}},\"checks_status\":\"passed\",\"mergeable\":true,\"target_moved\":true}"))
     Regression.Check(!clean.NeedsAmendment && clean.Receipt == "verified", "clean target merges retain verified receipt")
+    let settling = PullRequestCodec.Review(Json.Parse("{\"gates\":{\"receipt\":{\"status\":\"pending\",\"reason\":\"pr_head_unavailable\"}},\"checks_status\":\"unread\",\"machine_status\":\"pending\"}"))
+    Regression.Check(settling.Receipt == "pending" && settling.ReceiptTone == Tone.Wait, "an unavailable pushed head waits instead of failing")
     let optional = PolicyCodec.Policy(Json.Parse("{\"version\":3,\"eligibility\":\"trusted\"}"))
     Regression.Check(optional.Verification.Length == 0 && optional.RequiredChecks.Length == 0, "optional policy fields use 0.7.0 defaults")
     let commandPolicy = PolicyCodec.Policy(Json.Parse(

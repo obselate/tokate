@@ -231,6 +231,9 @@ class OwnerService {
                         Tone.Need
                     )
                 }
+                if reply.Outcome.Pending && reply.Value.Receipt == "pending" {
+                    feedback.Show("PR #" + pr + " is still updating on GitHub. Check again in a minute", Tone.Wait)
+                }
                 let reviews = List[DraftReview](Current.Reviews)
                 reviews.RemoveAll(existing -> existing.Pr == pr)
                 reviews.Add(reply.Value with{Pr = pr})
