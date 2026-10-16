@@ -110,10 +110,19 @@ internal class LeaseLifecycle {
 
                 let approval = J.Get(value, "approval")
                 let repo = J.Text(value, "repo")
-                let base = GitHub.Branch(repo, J.Text(approval, "base_branch"))
+                let same = Supported(value) && RepositoryIdentity.PositiveId(
+                    J.Get(identity, "actor")
+                ) == RepositoryIdentity.PositiveId(actor)
+                let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
+                GitHub.Branch(repo, J.Text(approval, "base_branch"))
                 let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
-                if Policy.Load(repo, base).Digest != J.Text(approval, "policy_hash") {
-                    throw CoordinationState.ApprovalFailure(repo, J.Number(value, "issue"), "Target policy changed.")
+                let authority = GitHub.Branch(repo, J.Text(approval, "authority_branch"))
+                if Policy.Load(repo, authority).Digest != J.Text(approval, "policy_hash") {
+                    throw CoordinationState.ApprovalFailure(
+                        repo,
+                        J.Number(value, "issue"),
+                        "Repository policy changed."
+                    )
                 }
                 if base != approved {
                     let comparison = GitHub.Api(
@@ -131,9 +140,6 @@ internal class LeaseLifecycle {
                     }
                 }
 
-                let same = Supported(value) && RepositoryIdentity.PositiveId(
-                    J.Get(identity, "actor")
-                ) == RepositoryIdentity.PositiveId(actor)
                 let id = same ? J.Text(identity, "id"): uuid
 
                 if !same {

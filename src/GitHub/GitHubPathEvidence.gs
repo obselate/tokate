@@ -7,26 +7,21 @@ import System.Text.Json
 
 internal class GitHubPathEvidence {
     shared {
+        private let CleanMergeParents Dictionary[string, List[string]] = Dictionary[string, List[string]]()
+
         internal func Ancestor(repo string, base string, fork string, head string) {
             RepositoryIdentity.Repo(repo)
             RepositoryIdentity.Repo(fork)
             RepositoryIdentity.CommitSha(base)
             RepositoryIdentity.CommitSha(head)
             let value = GitHub.Api("repos/" + repo + "/compare/" + base + "..." + fork.Split('/')[0] + ":" + head)
-            let commits = J.Items(J.Get(value, "commits"))
             if J.Text(J.Get(value, "base_commit"), "sha") != base || J.Text(
                 J.Get(value, "merge_base_commit"),
                 "sha"
             ) != base ||
                 J
                 .Get(value, "behind_by").ValueKind != JsonValueKind.Number || J.Number(value, "behind_by") != 0 ||
-                (
-                base == head ? J.Text(value, "status") != "identical":
-                J.Text(value, "status") != "ahead" || commits.Count == 0 || J.Text(
-                    commits[commits.Count - 1],
-                    "sha"
-                ) != head
-            ) {
+                (base == head ? J.Text(value, "status") != "identical": J.Text(value, "status") != "ahead") {
                 throw CliFailure("invalid_state", "Missing or mismatched ancestry evidence")
             }
         }
@@ -64,12 +59,22 @@ internal class GitHubPathEvidence {
             let baseline = J.Text(metadata, "base") == "" ? J.Text(record, "base"): J.Text(metadata, "base")
             if baseline != J.Text(record, "base") {
                 Target(repo, approval, baseline)
+                Ancestor(repo, baseline, J.Text(metadata, "fork"), J.Text(metadata, "head"))
             }
             Ancestor(repo, J.Text(metadata, "previous"), J.Text(metadata, "fork"), J.Text(metadata, "head"))
             Check(repo, J.Get(record, "policy"), approval, baseline, J.Text(metadata, "fork"), J.Text(metadata, "head"))
         }
 
         internal func CleanMerges(repo string, fork string, approval JsonElement, receipt string, head string) {
+            let key = repo + "\n" + fork + "\n" + receipt + "\n" + head
+            var cached List[string]
+            if CleanMergeParents.TryGetValue(key, out cached) {
+                for upstream in cached {
+                    Target(repo, approval, upstream)
+                }
+                return
+            }
+            let targets = List[string]()
             let checkout = Path.Combine(Path.GetTempPath(), "tokate-checks-" + Guid.NewGuid().ToString("N"))
             Directory.CreateDirectory(checkout)
             try {
@@ -78,6 +83,7 @@ internal class GitHubPathEvidence {
                     checkout,
                     "fetch",
                     "--quiet",
+                    "--filter=blob:none",
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
@@ -104,6 +110,7 @@ internal class GitHubPathEvidence {
                             "Later PR changes need owner review and a verified amendment"
                         )
                     }
+                    targets.Add(parents[2])
                     previous = merge
                 }
                 if previous != head {
@@ -112,6 +119,7 @@ internal class GitHubPathEvidence {
             } finally {
                 Directory.Delete(checkout, true)
             }
+            CleanMergeParents[key] = targets
         }
 
         internal func Check(

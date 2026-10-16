@@ -177,11 +177,13 @@ internal class Policy {
             "allowed_tools": Tools,
             "max_seconds": maxSeconds,
             "allow_unlimited": J.Bool(Value, "allow_unlimited"),
-            "maintainer_edits": MaintainerEdits,
             "reservation_seconds": reservation.ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
                 Value,
                 "reservation_seconds"
             )
+        }
+        if edits.ValueKind != JsonValueKind.Undefined {
+            task["maintainer_edits"] = MaintainerEdits
         }
         TaskFields = J.Parse(J.Write(task))
         Digest = Data.Hash(RequestData.Canonical(TaskFields))

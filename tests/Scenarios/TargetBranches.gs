@@ -8,6 +8,7 @@ internal class TargetBranches {
     shared {
         private func Target(flow NativeFixture, branch string) string {
             flow.Git("-C", flow.Upstream, "checkout", "-b", branch)
+            File.WriteAllText(Path.Combine(flow.Upstream, ".github/tokate.json"), "{\"version\":999}")
             File.WriteAllText(Path.Combine(flow.Upstream, ".github/tokate-pr.md"), "Untrusted target template")
             File.WriteAllText(Path.Combine(flow.Upstream, "target.txt"), "Selected target code\n")
             flow.Commit("Different target configuration")

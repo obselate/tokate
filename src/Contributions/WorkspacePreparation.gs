@@ -114,14 +114,16 @@ internal class WorkspacePreparation {
             file.Flush(true)
         }
 
-        internal func Promote(directory string, run Data) {
+        internal func Promote(directory string, run Data, approvedBase string) {
             let pending = Data.Load(directory)
             if pending.Number("version") != 2 || pending.Text("state") != "claim_pending" || pending.Fields.ContainsKey(
                 "id"
             ) ||
                 pending
                 .Fields
-                .ContainsKey("attempt") || pending.Fields.ContainsKey("preparation_identity") {
+                .ContainsKey("attempt") || pending.Fields.ContainsKey("preparation_identity") || pending.Text(
+                "base"
+            ) != approvedBase {
                 Reject(directory)
             }
 
@@ -131,7 +133,7 @@ internal class WorkspacePreparation {
                 }
             }
 
-            for key in "version,repo,issue,donor,donor_id,approval,base,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,harness,harness_path,provider,model,requested_model,reported_model,effort,selection,pi_endpoint,pi_root,pi_node,claude_profile,requested_fork,claim_request,handoff"
+            for key in "version,repo,issue,donor,donor_id,approval,base_branch,policy_hash,source,tools,seconds,verification_reserve,unlimited,harness,harness_path,provider,model,requested_model,reported_model,effort,selection,pi_endpoint,pi_root,pi_node,claude_profile,requested_fork,claim_request,handoff"
                 .Split(',') {
                 if !RequestData.Same(J.Get(pending.Element(), key), J.Get(run.Element(), key)) {
                     Reject(directory)

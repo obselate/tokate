@@ -501,7 +501,7 @@ internal class ContributionPreparation {
                 Bind(run, state)
 
                 WorkspacePreparation.Select(run, run.Text("requested_fork"))
-                WorkspacePreparation.Promote(directory, run)
+                WorkspacePreparation.Promote(directory, run, J.Text(J.Get(state.Value(), "approval"), "base"))
                 Complete(directory, run)
             } else {
                 PublicOutput.ResultData = PublicOutput.RunSummary(directory)

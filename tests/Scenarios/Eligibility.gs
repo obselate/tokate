@@ -363,7 +363,7 @@ internal class EligibilityChecks {
             let gate = Access(test, "check", issue: "1", owner: false, traffic: true)
             test.Flow.Traffic(11, 0, 0, gate)
             test.Flow.Mode("lost_state_response")
-            let request = Claim(test, 1)
+            let request = Claim(test)
             let sha = Check.Text(test.State()["sha"])
             test.Coordinate(test.Event(request))
             let output = Check.Envelope(
@@ -410,7 +410,7 @@ internal class EligibilityChecks {
             let path = test.Event(claim)
             test.Flow.ResetTraffic()
             let acquired = test.Coordinate(path, traffic: true)
-            test.Flow.Traffic(32, 3, 0, acquired)
+            test.Flow.Traffic(35, 3, 0, acquired)
             let run = test.Prepare("tokate")
             test.Flow.Call([]string{"work", "--run", run})
             test.Flow.Call([]string{"submit", "--run", run}, 8)

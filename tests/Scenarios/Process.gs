@@ -200,7 +200,7 @@ internal class ProcessChecks {
             flow.Mode("capture_write_failure")
             let result = TestProcess.Run(
                 "/bin/bash",
-                []string{"-c", "trap '' XFSZ; ulimit -f 64; exec \"$1\" work --run \"$2\"", "fixture", binary, run},
+                []string{"-c", "trap '' XFSZ; ulimit -S -f 64; exec \"$1\" work --run \"$2\"", "fixture", binary, run},
                 flow.Temp.Env
             )
             Check.That(

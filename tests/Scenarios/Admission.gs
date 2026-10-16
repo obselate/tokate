@@ -447,12 +447,16 @@ internal class AdmissionChecks {
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.State["actions_policies"] = Check.Map("total_count", 0, "policies", JsonArray())
             setup.Flow.Save()
+            setup.Flow.ResetTraffic()
             setup.Flow.Call(init, owner: true)
             setup.Flow.Reload()
-            Check.That(
-                Check.Text(setup.Flow.State["actions_policy"]?["name"]) == "Tokate coordinator events",
-                "Missing event policy was not created"
-            )
+            Check.That(setup.Flow.State["actions_policy"] == nil, "Setup created an unneeded event policy")
+            for call in setup.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(
+                    Check.Text(call["method"]) == "GET",
+                    "Unrestricted Actions setup changed repository settings"
+                )
+            }
             let central = TestResources.Template("coordinator.yml")
             Check.Contains(central, "contents: read")
             Check.Contains(central, "admit \"$$TOKATE_REPOSITORY\"")

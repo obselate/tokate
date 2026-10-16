@@ -1985,7 +1985,7 @@ internal class AmendmentFlow {
                     let posted = Check.PostedRequest(flow.Flow.State)
                     let path = flow.Event(posted)
                     flow.Flow.Mode("lost_state_response")
-                    flow.Coordinate(path, 1)
+                    flow.Coordinate(path)
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Coordinate(path)
                     Once(flow.Flow, 1)

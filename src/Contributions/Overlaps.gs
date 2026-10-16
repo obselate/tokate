@@ -268,8 +268,8 @@ internal class Overlaps {
 
             if base != target {
                 facts["upstream_next"] = paths.Count > 0 ?
-                "Owner: ask the current donor to reconcile these overlapping paths with the current target, then verify the resulting commit. Further coding requires a new donor budget.":
-                "Owner: no filename overlap was found. Review semantic compatibility and choose merge order; old checks do not verify a reconciled commit."
+                "Owner: ask the current donor to merge the target, resolve overlapping paths, then run tokate amend with a verification budget. Further coding requires a new donor budget.":
+                "Owner: no filename overlap was found. Review semantic compatibility and choose merge order. After merging the target, run tokate amend with a verification budget."
             }
         }
 

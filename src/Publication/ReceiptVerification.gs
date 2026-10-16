@@ -176,7 +176,11 @@ internal class ReceiptVerification {
             }
 
             if physicalHead != exactHead {
-                GitHubPathEvidence.CleanMerges(repo, fork, approval, exactHead, physicalHead)
+                try {
+                    GitHubPathEvidence.CleanMerges(repo, fork, approval, exactHead, physicalHead)
+                } catch (error Exception) when error.GetType() == typeof(Exception) {
+                    throw CliFailure("stale_approval", failure + ". " + error.Message)
+                }
             }
 
             if J.Text(head, "ref") != branch || !RepositoryIdentity.SameRepo(J.Text(headRepo, "full_name"), fork) {

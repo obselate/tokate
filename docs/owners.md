@@ -173,7 +173,7 @@ Tokate keeps its records in `tokate/` branches of your repository. Init names th
 
 | Branch | Holds |
 | --- | --- |
-| `tokate/access` | Donor trust, grants and denials |
+| `tokate/access` | Donor trust and denials |
 | `tokate/contributions/N` | Reservation and publication record for issue N |
 
 Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and deny entries. Deleting a contribution branch removes that issue's record.

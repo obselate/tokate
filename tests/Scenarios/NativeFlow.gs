@@ -102,17 +102,32 @@ internal partial class NativeFlow : NativeFixture {
         Directory.CreateDirectory(Path.GetDirectoryName(workflow) ?? "")
         let version = Call([]string{"--version"}).Output.Trim().Substring(7)
         let warning = "Warning: Repository coordinator 0.3.5 is older than CLI " + version
-        let update = "tokate init owner/project"
+        let update = "tokate init --pin owner/project"
+        File.WriteAllText(
+            workflow,
+            "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@v0\n"
+        )
+        Commit("Set stable-major coordinator reference")
+        Reload()
+        State["release_version"] = JsonValue.Create("0.3.5")
+        Save()
+        let automatic = Call([]string{"status", "owner/project#1", "--json"})
+        Check.Envelope(automatic, "status", "ok")
+        Check.That(
+            !automatic.Error.Contains("Warning: Repository coordinator"),
+            "Stable-major coordinator emitted a version warning"
+        )
+        File.WriteAllText(
+            workflow,
+            "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+                String('a', 40) +
+                "\n"
+        )
+        Commit("Set exact coordinator reference")
         for pinned in[]string{version, "99.0.0", "0.3.5"} {
-            File.WriteAllText(
-                workflow,
-                "jobs:\n  coordinate:\n    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
-                    String('a', 40) +
-                    "\n    with:\n      member: 'tokate-" +
-                    pinned +
-                    "-linux-x64/tokate'\n"
-            )
-            Commit("Set coordinator version " + pinned)
+            Reload()
+            State["release_version"] = JsonValue.Create(pinned)
+            Save()
             let status = Call([]string{"status", "owner/project#1", "--json"})
             Check.Envelope(status, "status", "ok")
             Check.That(

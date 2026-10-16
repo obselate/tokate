@@ -87,12 +87,14 @@ internal partial class CoordinationFlow {
             using let test = CoordinationFixture(binary)
             test.Initialize()
             let pending = test.ClaimRequest()
-            test.Event(pending)
+            let pendingPath = test.Event(pending)
             test.Coordinate(test.LabelEvent())
             Check.That(
-                Check.Text(test.State()["state"]?["reservation"]?["reservation"]) == Check.Text(pending["uuid"]),
-                "Label event did not process an earlier unrecorded request"
+                test.State()["state"]?["reservation"] == nil,
+                "Label event processed a request from a different comment"
             )
+            test.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
+            test.Coordinate(pendingPath)
             let initial = test.State()
             let path = test.LabelEvent()
             test.Coordinate(path)

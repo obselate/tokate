@@ -17,19 +17,6 @@ internal partial class Fixture {
         let pageField = Array.Find(query, field -> field.StartsWith("page=", StringComparison.Ordinal)) ?? "page=1"
         let sizeField = Array.Find(query, field -> field.StartsWith("per_page=", StringComparison.Ordinal)) ??
             "per_page=30"
-        let sinceField = Array.Find(query, field -> field.StartsWith("since=", StringComparison.Ordinal)) ?? "since="
-        let since = Uri.UnescapeDataString(sinceField.Substring(6))
-        if since != "" {
-            let threshold = DateTimeOffset.Parse(since)
-            var index = rows.Count - 1
-            while index >= 0 {
-                let updated = Check.Text(rows[index]?["updated_at"] ?? rows[index]?["created_at"])
-                if updated != "" && DateTimeOffset.Parse(updated) <= threshold {
-                    rows.RemoveAt(index)
-                }
-                index--
-            }
-        }
         let page = Int32.Parse(pageField.Substring(5))
         let size = Int32.Parse(sizeField.Substring(9))
         let result = JsonArray()
@@ -1238,7 +1225,7 @@ internal partial class Fixture {
             let pull = selected ?? throw Exception("Missing PR")
             if method == "PATCH" {
                 if body["maintainer_can_modify"] != nil && !String.Equals(
-                    actor,
+                    Check.Text(State["viewer_login"] ?? JsonValue.Create(actor)),
                     Check.Text(pull["head"]?["repo"]?["full_name"]).Split('/')[0],
                     StringComparison.OrdinalIgnoreCase
                 ) {

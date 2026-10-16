@@ -220,8 +220,8 @@ If the version check is unavailable, commands continue with a warning.
 | --- | --- |
 | `Claim pending.` with `work --run DIR` | Inspect status, then use `tokate work --run DIR`. External work starts no inference. If the workflow failed, use owner recovery below first. |
 | `Tokate coordinator is still running. RUN_URL` | Wait for the linked run, then inspect `tokate status --run DIR`. |
-| `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the failure, fix its cause, then trigger a new coordinator event. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
-| `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the shared workflow in Actions settings, then trigger a new coordinator event. |
+| `Tokate workflow failed. MESSAGE RUN_URL` followed by the recovery text below | Owner: inspect the failure, fix its cause, then rerun the failed coordinator workflow in Actions. `MESSAGE` is the first failure annotation, limited to 1024 characters, when available. |
+| `GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit. RUN_URL` followed by the recovery text below | Owner: allow the shared workflow in Actions settings, then rerun the failed coordinator workflow in Actions. |
 | `Approval revoked or task changed.` followed by the issue text or approval-label reason | Owner: review the task, then run the named `tokate approve OWNER/REPO#42` command. |
 | `Repository policy or template changed. The owner must approve again.` followed by `Approval no longer matches current task fields.` or `PR template changed.` and an approval command | Owner: run the named `tokate approve OWNER/REPO#42` command. |
 | `The reservation is gone. Return to the owner.` | `tokate status OWNER/REPO#42` |
@@ -232,15 +232,9 @@ If the version check is unavailable, commands continue with a warning.
 
 For a pending claim, inspect the failed workflow before resuming the saved command.
 A rerun uses the same coordinator version. If that version caused the failure,
-update the coordinator first. After fixing the cause, trigger a new coordinator
-event for the issue. For example, rerun the failed workflow or post a new `/tokate`
-request. Each event processes earlier unrecorded requests in comment order.
-Requests keep their UUID and expected state revision. Stale or invalid earlier
-requests cannot change authority or block later valid requests.
-The scan starts one second before the current approval time and reads at most
-1000 comments. It logs when that limit leaves comments unprocessed. Approvals
-from older versions have no capture time and use the same limit without a time filter.
-Do not repost an identical request. After owner recovery, resume the saved run.
+update the coordinator first. After fixing the cause, the owner reruns the failed
+coordinator workflow run in Actions.
+Each event processes only its triggering comment. Recorded UUIDs replay their outcome.
 
 Formatting, eligibility and descriptive policy edits keep approvals valid. Current
 eligibility still controls donor access. Task-field or PR-template changes need
