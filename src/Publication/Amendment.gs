@@ -92,39 +92,9 @@ internal class Amendment {
                 amendment == nil && run.Number("pr") == 0 && run.Text("state") != "published" &&
                     original.ValueKind != JsonValueKind.Object
             )
+
             if correcting {
-                if directory != "" {
-                    OriginalEvidence.Pinned(directory, run, record)
-                }
-                ContributionAuthority.Recheck(run)
-                let intent = J.Get(amendment?.Element() ?? default(JsonElement), "publication")
-                if intent.ValueKind == JsonValueKind.Object && state.Sha != amendment?.Text("expected") {
-                    let request = J.Get(intent, "request")
-                    let outcome = RequestData.Recorded(value, J.Get(viewer, "id"), request)
-                    Transition(run.Text("repo"), state, amendment?.Text("expected") ?? "")
-                    if J.Text(original, "request") != amendment?.Text("publication_uuid") || J.Text(
-                        original,
-                        "expected"
-                    ) != amendment?.Text("expected") || J.Get(original, "actor").ToString() != J.Get(viewer, "id")
-                        .ToString() || !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) ||
-                        !RequestData.Same(J.Get(original, "metadata"), J.Get(request, "metadata")) ||
-                        outcome.ValueKind != JsonValueKind.Object ||
-                        !RequestData
-                        .Same(outcome, J.Get(original, "outcome")) {
-                        throw CliFailure(
-                            "stale_approval",
-                            "Stale coordination revision; only the exact saved publication transition can resume"
-                        )
-                    }
-                } else if original.ValueKind == JsonValueKind.Object {
-                    throw CliFailure("invalid_state", "Contribution already published")
-                }
-                UnpublishedRemote(
-                    run,
-                    amendment,
-                    intent.ValueKind == JsonValueKind.Undefined || J.Text(intent, "stage") == "prepared"
-                )
-                return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
+                return CorrectionAuthority(run, amendment, directory, record, state, value, viewer, original)
             }
 
             let metadata = J.Get(original, "metadata")
@@ -200,6 +170,53 @@ internal class Amendment {
                 J.Get(viewer, "id")
             )
 
+            return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
+        }
+
+        private func CorrectionAuthority(
+            run Data,
+            amendment Data?,
+            directory string,
+            record JsonElement,
+            state CoordinationState,
+            value JsonElement,
+            viewer JsonElement,
+            original JsonElement
+        ) JsonElement {
+            if directory != "" {
+                OriginalEvidence.Pinned(directory, run, record)
+            }
+
+            ContributionAuthority.Recheck(run)
+            let intent = J.Get(amendment?.Element() ?? default(JsonElement), "publication")
+
+            if intent.ValueKind == JsonValueKind.Object && state.Sha != amendment?.Text("expected") {
+                let request = J.Get(intent, "request")
+                let outcome = RequestData.Recorded(value, J.Get(viewer, "id"), request)
+                Transition(run.Text("repo"), state, amendment?.Text("expected") ?? "")
+                if J.Text(original, "request") != amendment?.Text("publication_uuid") || J.Text(
+                    original,
+                    "expected"
+                ) != amendment?.Text("expected") || J.Get(original, "actor").ToString() != J.Get(viewer, "id")
+                    .ToString() || !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) ||
+                    !RequestData.Same(J.Get(original, "metadata"), J.Get(request, "metadata")) ||
+                    outcome.ValueKind != JsonValueKind.Object ||
+                    !RequestData
+                    .Same(outcome, J.Get(original, "outcome")) {
+                    throw CliFailure(
+                        "stale_approval",
+                        "Stale coordination revision; only the exact saved publication transition can resume"
+                    )
+                }
+            } else if original.ValueKind == JsonValueKind.Object {
+                throw CliFailure("invalid_state", "Contribution already published")
+            }
+
+            UnpublishedRemote(
+                run,
+                amendment,
+                intent.ValueKind == JsonValueKind.Undefined || J.Text(intent, "stage") == "prepared"
+            )
             return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
         }
 
@@ -306,43 +323,8 @@ internal class Amendment {
             let correcting = run.Number("pr") == 0 && run.Text("state") != "published" &&
                 (savedCorrection || J.Get(state, "contribution").ValueKind != JsonValueKind.Object)
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
-            if correcting {
-                Completed(directory, run)
-                if args.Get("resume") != "" {
-                    throw CliFailure("invalid_state", "Resume requires a published PR")
-                }
-                let existing = savedCorrection ? Data.Load(
-                    Path.Combine(directory, "amendments", run.Text("amendment")),
-                    amendment: true
-                ): nil
-                if existing != nil && continuing && J.Get(existing.Element(), "publication")
-                    .ValueKind == JsonValueKind.Object {
-                    PublishSaved(directory, run, existing)
-                    return
-                }
-                let record = J.Get(Authority(run, continuing ? existing: nil, directory: directory), "record")
-                if J.Get(existing?.Element() ?? default(JsonElement), "publication").ValueKind != JsonValueKind.Object {
-                    Publication.Find(
-                        run,
-                        default(JsonElement),
-                        newIntent: J.Get(state, "contribution").ValueKind != JsonValueKind.Object
-                    )
-                }
-                if !continuing || existing != nil {
-                    OriginalEvidence.Load(directory, run)
-                }
-                if continuing {
-                    OriginalEvidence.Capture(directory, run, record)
-                    for key in[]string{"tools", "summary"} {
-                        if args.Get(key) != "" {
-                            args.Need("seconds")
-                        }
-                    }
-                    Terminal.Message(
-                        "Original evidence preserved. Edit and commit the checkout, then amend --time TIME. No inference, checks or publication ran."
-                    )
-                    return
-                }
+            if correcting && PrepareCorrection(args, directory, run, savedCorrection, continuing, state) {
+                return
             }
             let coding = run.Text("source") == "external"
             let checkout = Path.Combine(directory, "checkout")
@@ -350,190 +332,312 @@ internal class Amendment {
             if !continuing && args.Get("commit") == "" {
                 args.Values["--commit"] = Commands.Git(source, "rev-parse", "HEAD")
             }
+
             if continuing {
-                for key in[]string{"tools", "summary", "resume"} {
-                    if args.Get(key) != "" {
-                        args.Need("commit")
-                    }
-                }
-                let amendments = Path.Combine(directory, "amendments")
-                if Directory.Exists(amendments) {
-                    for saved in Directory.EnumerateDirectories(amendments) {
-                        if !File.Exists(Path.Combine(saved, "run.json")) {
-                            continue
-                        }
-                        let value = Data.Load(saved, amendment: true)
-                        if value.Text("previous") != run.Text("commit") || J.Get(value.Element(), "request")
-                            .ValueKind != JsonValueKind.Object {
-                            continue
-                        }
-                        if args.Get("commit") != "" {
-                            throw CliFailure(
-                                "invalid_state",
-                                "Multiple saved amendment requests. Select one with --commit and --time."
-                            )
-                        }
-                        args.Values["--commit"] = value.Text("commit")
-                    }
-                }
-                if args.Get("commit") == "" {
-                    throw CliFailure("invalid_state", "No saved amendment request. Start a new amendment with --time.")
-                }
+                SelectSavedAmendment(args, directory, run)
             }
+
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
             let current = Path.Combine(directory, "amendments", commit, "run.json")
             var change = File.Exists(current) ? Data.Read(current): Data()
+
             if !correcting && change.Text("uuid") != "" {
                 change = Data()
             }
+
             let saved = change.Text("commit") == commit
+
             if !saved && J.Get(change.Element(), "publication").ValueKind == JsonValueKind.Object {
                 throw CliFailure(
                     "invalid_state",
                     "Interrupted publication intent already binds another candidate; inspect it before any new correction"
                 )
             }
+
             if saved {
                 OriginalEvidence.Amended(directory, run, change)
                 if !continuing {
                     Inputs(args, change, commit, correcting)
                 }
             } else {
-                let seconds = args.Number("seconds")
-                let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(
-                    args.Need("tools"),
-                    correcting ? 4096: 8192
-                )
-                let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
-                let published = run.Text("commit")
-                let authority = Authority(run, nil, args.Get("resume") == "true", directory: directory)
-                let record = J.Get(authority, "record")
-                let policy = Policy(J.Write(J.Get(record, "policy")))
-                Tools(policy, tools)
-                if seconds > J.Number(policy.Value, "max_seconds") {
-                    throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
-                }
-                let number = correcting ? 0: J.Number(
-                    J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"),
-                    "pr"
-                )
-                let pull = correcting ? default(JsonElement): Pull(run, number, published, "")
-                if !correcting {
-                    ReceiptVerification.Verify(run.Text("repo"), number, pull)
-                    Remote(run, published, "")
-                }
-                if coding {
-                    let baseline = GitHubPathEvidence.LocalBase(
-                        source,
-                        run.Text("repo"),
-                        J.Get(record, "approval"),
-                        commit,
-                        J.Text(record, "base")
-                    )
-                    Snapshot(source, run, commit, published, record, baseline)
-                    Commands.Git(
-                        checkout,
-                        "-c",
-                        "protocol.file.allow=always",
-                        "fetch",
-                        "--quiet",
-                        "--no-tags",
-                        "--no-recurse-submodules",
-                        "--",
-                        source,
-                        commit
-                    )
-                    Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)
-                }
-                let baseline = correcting ? run.Text("base"): GitHubPathEvidence.LocalBase(
-                    checkout,
-                    run.Text("repo"),
-                    J.Get(record, "approval"),
-                    commit,
-                    J.Text(record, "base")
-                )
-                let accepted = correcting ? "": Snapshot(checkout, run, commit, run.Text("commit"), record, baseline)
-                let archive = OriginalEvidence.Capture(directory, run)
-                change = Data(
-                    map[string, Object?]{
-                        "id": Guid.NewGuid().ToString("D"),
-                        "commit": commit,
-                        "seconds": seconds,
-                        "tools": tools,
-                        "previous": correcting ? "": run.Text("commit"),
-                        "previous_remote": correcting ? run.Text("commit"): "",
-                        "pr": number,
-                        "expected": J.Text(authority, "sha"),
-                        "attempt": J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt"),
-                        "original_evidence_sha256": archive,
-                        "failure_stage": "candidate_validation",
-                        "failure_reason": "candidate_invalid"
-                    }
-                )
-                change.Transition("validating")
-                if correcting {
-                    change.Fields["version"] = 1
-                    change.Fields["uuid"] = change.Text("id")
-                }
-                if baseline != run.Text("base") {
-                    change.Fields["base"] = baseline
-                }
-                if summary.ValueKind != JsonValueKind.Undefined {
-                    change.Fields["public_summary"] = summary
-                }
-                for key in[]string{"tools", "summary"} {
-                    if args.Get(key) != "" {
-                        change.Fields[key + "_argument"] = Path.GetFullPath(args.Get(key))
-                        change.Fields[key + "_sha256"] = Convert.ToHexString(
-                            SHA256.HashData(File.ReadAllBytes(args.Need(key)))
-                        )
-                    }
-                }
-                change.Fields["previous_body"] = J.Text(pull, "body")
-                let location = Location(directory, change)
-                Directory.CreateDirectory(location)
-                try {
-                    let snapshot = correcting ? Snapshot(checkout, run, commit, "", record, baseline): accepted
-                    if correcting {
-                        change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
-                    }
-                    change.Fields[correcting ? "patch_sha256": "snapshot"] = Data.Hash(snapshot)
-                    File.WriteAllText(Path.Combine(location, "candidate.patch"), snapshot)
-                    File.WriteAllText(
-                        Path.Combine(location, "conflict-evidence.txt"),
-                        Commands.Git(checkout, "show", "--format=raw", "--cc", "--no-ext-diff", "--no-textconv", commit)
-                    )
-                    Save(directory, change)
-                    Verify(directory, run, change, record)
-                } catch (error Exception) when ExecutionFailure.Handled(error) {
-                    change.Transition("failed")
-                    change.Fields["error"] = error.Message
-                    Save(directory, change)
-                    let failure = ExecutionFailure.From(
-                        error,
-                        change.Text("failure_reason") == "verification_failed" ? "verification_failed": "invalid_state"
-                    )
-                    throw CliFailure(
-                        failure.Code,
-                        PublicOutput.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
-                            "failure_stage"
-                        ) +
-                            "): " +
-                            error.Message,
-                        summary: failure.Summary
-                    )
-                }
+                change = CreateAmendment(args, directory, run, commit, correcting, coding, source, checkout)
             }
+
             if change.Text("state") == "failed" || change.Text("state") == "verifying" {
                 throw CliFailure(
                     "verification_failed",
                     "Amendment verification failed or interrupted; inspect saved progress and declare a corrected commit"
                 )
             }
+
             if correcting {
                 Activate(directory, run, change)
             }
+
             PublishSaved(directory, run, change)
+        }
+
+        private func PrepareCorrection(
+            args Args,
+            directory string,
+            run Data,
+            savedCorrection bool,
+            continuing bool,
+            state JsonElement
+        ) bool {
+            Completed(directory, run)
+
+            if args.Get("resume") != "" {
+                throw CliFailure("invalid_state", "Resume requires a published PR")
+            }
+
+            let existing = savedCorrection ? Data.Load(
+                Path.Combine(directory, "amendments", run.Text("amendment")),
+                amendment: true
+            ): nil
+
+            if existing != nil && continuing && J.Get(existing.Element(), "publication")
+                .ValueKind == JsonValueKind.Object {
+                PublishSaved(directory, run, existing)
+                return true
+            }
+
+            let record = J.Get(Authority(run, continuing ? existing: nil, directory: directory), "record")
+
+            if J.Get(existing?.Element() ?? default(JsonElement), "publication").ValueKind != JsonValueKind.Object {
+                Publication.Find(
+                    run,
+                    default(JsonElement),
+                    newIntent: J.Get(state, "contribution").ValueKind != JsonValueKind.Object
+                )
+            }
+
+            if !continuing || existing != nil {
+                OriginalEvidence.Load(directory, run)
+            }
+
+            if continuing {
+                OriginalEvidence.Capture(directory, run, record)
+
+                for key in[]string{"tools", "summary"} {
+                    if args.Get(key) != "" {
+                        args.Need("seconds")
+                    }
+                }
+
+                Terminal.Message(
+                    "Original evidence preserved. Edit and commit the checkout, then amend --time TIME. No inference, checks or publication ran."
+                )
+                return true
+            }
+
+            return false
+        }
+
+        private func SelectSavedAmendment(args Args, directory string, run Data) {
+            for key in[]string{"tools", "summary", "resume"} {
+                if args.Get(key) != "" {
+                    args.Need("commit")
+                }
+            }
+
+            let amendments = Path.Combine(directory, "amendments")
+
+            if Directory.Exists(amendments) {
+                for saved in Directory.EnumerateDirectories(amendments) {
+                    if !File.Exists(Path.Combine(saved, "run.json")) {
+                        continue
+                    }
+                    let value = Data.Load(saved, amendment: true)
+
+                    if value.Text("previous") != run.Text("commit") || J.Get(value.Element(), "request")
+                        .ValueKind != JsonValueKind.Object {
+                        continue
+                    }
+
+                    if args.Get("commit") != "" {
+                        throw CliFailure(
+                            "invalid_state",
+                            "Multiple saved amendment requests. Select one with --commit and --time."
+                        )
+                    }
+                    args.Values["--commit"] = value.Text("commit")
+                }
+            }
+
+            if args.Get("commit") == "" {
+                throw CliFailure("invalid_state", "No saved amendment request. Start a new amendment with --time.")
+            }
+        }
+
+        private func CreateAmendment(
+            args Args,
+            directory string,
+            run Data,
+            commit string,
+            correcting bool,
+            coding bool,
+            source string,
+            checkout string
+        ) Data {
+            let seconds = args.Number("seconds")
+            let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(
+                args.Need("tools"),
+                correcting ? 4096: 8192
+            )
+            let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
+            let published = run.Text("commit")
+            let authority = Authority(run, nil, args.Get("resume") == "true", directory: directory)
+            let record = J.Get(authority, "record")
+            let policy = Policy(J.Write(J.Get(record, "policy")))
+            Tools(policy, tools)
+
+            if seconds > J.Number(policy.Value, "max_seconds") {
+                throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
+            }
+
+            let number = correcting ? 0: J.Number(
+                J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"),
+                "pr"
+            )
+            let pull = correcting ? default(JsonElement): Pull(run, number, published, "")
+
+            if !correcting {
+                ReceiptVerification.Verify(run.Text("repo"), number, pull)
+                Remote(run, published, "")
+            }
+
+            if coding {
+                let baseline = GitHubPathEvidence.LocalBase(
+                    source,
+                    run.Text("repo"),
+                    J.Get(record, "approval"),
+                    commit,
+                    J.Text(record, "base")
+                )
+                Snapshot(source, run, commit, published, record, baseline)
+                Commands.Git(
+                    checkout,
+                    "-c",
+                    "protocol.file.allow=always",
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "--no-recurse-submodules",
+                    "--",
+                    source,
+                    commit
+                )
+                Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)
+            }
+
+            let baseline = correcting ? run.Text("base"): GitHubPathEvidence.LocalBase(
+                checkout,
+                run.Text("repo"),
+                J.Get(record, "approval"),
+                commit,
+                J.Text(record, "base")
+            )
+            let accepted = correcting ? "": Snapshot(checkout, run, commit, run.Text("commit"), record, baseline)
+            let archive = OriginalEvidence.Capture(directory, run)
+
+            let change = Data(
+                map[string, Object?]{
+                    "id": Guid.NewGuid().ToString("D"),
+                    "commit": commit,
+                    "seconds": seconds,
+                    "tools": tools,
+                    "previous": correcting ? "": run.Text("commit"),
+                    "previous_remote": correcting ? run.Text("commit"): "",
+                    "pr": number,
+                    "expected": J.Text(authority, "sha"),
+                    "attempt": J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt"),
+                    "original_evidence_sha256": archive,
+                    "failure_stage": "candidate_validation",
+                    "failure_reason": "candidate_invalid"
+                }
+            )
+
+            change.Transition("validating")
+            if correcting {
+                change.Fields["version"] = 1
+                change.Fields["uuid"] = change.Text("id")
+            }
+
+            if baseline != run.Text("base") {
+                change.Fields["base"] = baseline
+            }
+
+            if summary.ValueKind != JsonValueKind.Undefined {
+                change.Fields["public_summary"] = summary
+            }
+
+            for key in[]string{"tools", "summary"} {
+                if args.Get(key) != "" {
+                    change.Fields[key + "_argument"] = Path.GetFullPath(args.Get(key))
+                    change.Fields[key + "_sha256"] = Convert.ToHexString(
+                        SHA256.HashData(File.ReadAllBytes(args.Need(key)))
+                    )
+                }
+            }
+
+            change.Fields["previous_body"] = J.Text(pull, "body")
+
+            VerifyCandidate(directory, run, change, checkout, commit, record, baseline, correcting, accepted)
+
+            return change
+        }
+
+        private func VerifyCandidate(
+            directory string,
+            run Data,
+            change Data,
+            checkout string,
+            commit string,
+            record JsonElement,
+            baseline string,
+            correcting bool,
+            accepted string
+        ) {
+            let location = Location(directory, change)
+            Directory.CreateDirectory(location)
+            try {
+                let snapshot = correcting ? Snapshot(checkout, run, commit, "", record, baseline): accepted
+
+                if correcting {
+                    change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
+                }
+
+                change.Fields[correcting ? "patch_sha256": "snapshot"] = Data.Hash(snapshot)
+                File.WriteAllText(Path.Combine(location, "candidate.patch"), snapshot)
+
+                File.WriteAllText(
+                    Path.Combine(location, "conflict-evidence.txt"),
+                    Commands.Git(checkout, "show", "--format=raw", "--cc", "--no-ext-diff", "--no-textconv", commit)
+                )
+
+                Save(directory, change)
+                Verify(directory, run, change, record)
+            } catch (error Exception) when ExecutionFailure.Handled(error) {
+                change.Transition("failed")
+                change.Fields["error"] = error.Message
+                Save(directory, change)
+
+                let failure = ExecutionFailure.From(
+                    error,
+                    change.Text("failure_reason") == "verification_failed" ? "verification_failed": "invalid_state"
+                )
+
+                throw CliFailure(
+                    failure.Code,
+                    PublicOutput.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
+                        "failure_stage"
+                    ) +
+                        "): " +
+                        error.Message,
+                    summary: failure.Summary
+                )
+            }
         }
 
         private func Inputs(args Args, change Data, commit string, correcting bool) {
@@ -750,62 +854,17 @@ internal class Amendment {
             let previousReceipt = PrBody.Receipt(amendment.Text("previous_body"))
 
             if amendment.Text("state") == "verified" {
-                if remote != published || J.Text(receipt, "head") != amendment.Text("previous") {
-                    throw CliFailure("stale_approval", "Remote changed before amendment publication intent")
-                }
-
-                if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) {
-                    throw CliFailure("stale_approval", "Previous receipt changed after amendment acceptance")
-                }
-
-                let intent = map[string, Object?]{
-                    "previous": amendment.Text("previous"),
-                    "head": amendment.Text("commit"),
-                    "pr": amendment.Number("pr"),
-                    "uuid": amendment.Text("id")
-                }
-
-                amendment.Fields["publication"] = intent
-
-                let updatedReceipt = Receipt(receipt, amendment, amendment.Text("commit"), amendment.Text("expected"))
-
-                let original = J.Get(J.Get(authority, "state"), "contribution")
-
-                let metadata = PublicSummary.Attach(
-                    map[string, Object?]{
-                        "fork": run.Text("head_repo"),
-                        "branch": run.Text("branch"),
-                        "previous": amendment.Text("previous"),
-                        "head": amendment.Text("commit"),
-                        "attempt": amendment.Text("attempt") == "" ? run.Text("attempt"): amendment.Text("attempt"),
-                        "pr": amendment.Number("pr"),
-                        "seconds": amendment.Number("seconds"),
-                        "tools": J.Get(amendment.Element(), "tools"),
-                        "verification": "donor-reported-pass"
-                    },
-                    J.Get(amendment.Element(), "public_summary")
+                PreparePublication(
+                    location,
+                    run,
+                    amendment,
+                    authority,
+                    pull,
+                    remote,
+                    published,
+                    receipt,
+                    previousReceipt
                 )
-                amendment.Fields["body"] = PrBody.ReplaceBody(
-                    J.Text(pull, "body"),
-                    PrBody.PublicReport(J.Parse(J.Write(metadata)), J.Get(original, "metadata")),
-                    updatedReceipt
-                )
-
-                if amendment.Text("base") != "" {
-                    metadata["base"] = amendment.Text("base")
-                }
-
-                amendment.Fields["request"] = map[string, Object?]{
-                    "uuid": amendment.Text("id"),
-                    "expected": amendment.Text("expected"),
-                    "approval": run.Text("approval"),
-                    "action": "amend",
-                    "metadata": metadata
-                }
-                amendment.Transition("publishing")
-
-                amendment.Save(location)
-                File.WriteAllText(Path.Combine(location, "publication.json"), J.Write(amendment.Element()) + "\n")
             }
 
             let previousOwned = PrBody.Owned(amendment.Text("previous_body"))
@@ -837,9 +896,11 @@ internal class Amendment {
             }
 
             Authority(run, amendment, directory: directory)
+
             Remote(run, amendment.Text("commit"), "")
 
             let latest = Pull(run, amendment.Number("pr"), amendment.Text("commit"), "")
+
             GitHubPathEvidence.Amendment(
                 run.Text("repo"),
                 record,
@@ -875,6 +936,78 @@ internal class Amendment {
             Terminal.Message(
                 "Amendment request saved. Await coordinator outcome, then repeat amend. The PR receipt is invalid until body and coordination state agree."
             )
+        }
+
+        private func PreparePublication(
+            location string,
+            run Data,
+            amendment Data,
+            authority JsonElement,
+            pull JsonElement,
+            remote string,
+            published string,
+            receipt JsonElement,
+            previousReceipt JsonElement
+        ) {
+            if remote != published || J.Text(receipt, "head") != amendment.Text("previous") {
+                throw CliFailure("stale_approval", "Remote changed before amendment publication intent")
+            }
+
+            if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) {
+                throw CliFailure("stale_approval", "Previous receipt changed after amendment acceptance")
+            }
+
+            let intent = map[string, Object?]{
+                "previous": amendment.Text("previous"),
+                "head": amendment.Text("commit"),
+                "pr": amendment.Number("pr"),
+                "uuid": amendment.Text("id")
+            }
+
+            amendment.Fields["publication"] = intent
+
+            let updatedReceipt = Receipt(receipt, amendment, amendment.Text("commit"), amendment.Text("expected"))
+
+            let original = J.Get(J.Get(authority, "state"), "contribution")
+
+            let metadata = PublicSummary.Attach(
+                map[string, Object?]{
+                    "fork": run.Text("head_repo"),
+                    "branch": run.Text("branch"),
+                    "previous": amendment.Text("previous"),
+                    "head": amendment.Text("commit"),
+                    "attempt": amendment.Text("attempt") == "" ? run.Text("attempt"): amendment.Text("attempt"),
+                    "pr": amendment.Number("pr"),
+                    "seconds": amendment.Number("seconds"),
+                    "tools": J.Get(amendment.Element(), "tools"),
+                    "verification": "donor-reported-pass"
+                },
+                J.Get(amendment.Element(), "public_summary")
+            )
+
+            amendment.Fields["body"] = PrBody.ReplaceBody(
+                J.Text(pull, "body"),
+                PrBody.PublicReport(J.Parse(J.Write(metadata)), J.Get(original, "metadata")),
+                updatedReceipt
+            )
+
+            if amendment.Text("base") != "" {
+                metadata["base"] = amendment.Text("base")
+            }
+
+            amendment.Fields["request"] = map[string, Object?]{
+                "uuid": amendment.Text("id"),
+                "expected": amendment.Text("expected"),
+                "approval": run.Text("approval"),
+                "action": "amend",
+                "metadata": metadata
+            }
+
+            amendment.Transition("publishing")
+
+            amendment.Save(location)
+
+            File.WriteAllText(Path.Combine(location, "publication.json"), J.Write(amendment.Element()) + "\n")
         }
 
         internal func Completed(directory string, run Data) Dictionary[string, Object?] {
