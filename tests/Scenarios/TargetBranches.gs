@@ -274,7 +274,7 @@ internal class TargetBranches {
                         issue.AsObject().Remove("pull_request")
                     }
                     flow.Save()
-                    let arguments = List[string]([]string{"approve", "owner/project#1", "--json"})
+                    let arguments = List[string]([]string{"approve", "--yes", "owner/project#1", "--json"})
                     if input == "branch" {
                         arguments.AddRange([]string{"--base-branch", "missing"})
                     } else if input == "login" {

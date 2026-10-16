@@ -291,7 +291,7 @@ internal class AdmissionChecks {
             invalid.Initialize(approve: false)
             Setup(invalid, "trusted")
             let existing = Check.Envelope(
-                invalid.Flow.Call([]string{"access", "init", "owner/project", "--json"}, 1, owner: true),
+                invalid.Flow.Call([]string{"access", "--yes", "init", "owner/project", "--json"}, 1, owner: true),
                 "access",
                 "error",
                 "invalid_state"

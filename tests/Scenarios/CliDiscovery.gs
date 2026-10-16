@@ -720,6 +720,10 @@ internal class CliDiscovery {
                 2,
                 "id",
                 "saved",
+                "repo",
+                "owner/project",
+                "issue",
+                1,
                 "state",
                 "failed",
                 "commit",
@@ -996,7 +1000,13 @@ internal class CliDiscovery {
                 }
                 for command in[]string{"status", "amend"} {
                     let refusal = Check.Envelope(
-                        Call(binary, []string{command, "--run", directory, "--json"}, temp, 1),
+                        Call(
+                            binary,
+                            command == "amend" ? []string{command, "--run", directory, "--yes", "--json"}:
+                            []string{command, "--run", directory, "--json"},
+                            temp,
+                            1
+                        ),
                         command,
                         "error",
                         "invalid_state"
@@ -1316,10 +1326,6 @@ internal class CliDiscovery {
             } {
                 Check.Contains(Call(binary, argv, temp, 1).Error, "Usage:")
             }
-            let saved = Path.Combine(temp.Root, "run")
-            Directory.CreateDirectory(saved)
-            File.WriteAllText(Path.Combine(saved, "run.json"), "{\"version\":2,\"state\":\"claimed\"}")
-            Check.Contains(Call(binary, []string{"status", "--run=" + saved}, temp).Output, "claimed")
             Check.That(!File.Exists(log), "Help or invalid inputs invoked a tool")
 
             {
@@ -1455,6 +1461,13 @@ internal class CliDiscovery {
             Check.That(File.Exists(Path.Combine(temp.Root, "child-lc-all-unset")), "Child LC_ALL changed")
             Collected(pid)
             Check.That(!File.Exists(log), "Failed repository discovery invoked GitHub")
+            let saved = Path.Combine(temp.Root, "run")
+            Directory.CreateDirectory(saved)
+            File.WriteAllText(
+                Path.Combine(saved, "run.json"),
+                "{\"version\":2,\"state\":\"claimed\",\"repo\":\"owner/project\",\"issue\":1}"
+            )
+            Check.Contains(Call(binary, []string{"status", "--run=" + saved}, temp).Output, "claimed")
             File.WriteAllText(Path.Combine(bin, "git"), "#!/bin/sh\n: > namespace-command-started\n")
             let unavailable = TestProcess.Run(
                 "/usr/bin/bwrap",

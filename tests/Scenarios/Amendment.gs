@@ -559,7 +559,7 @@ internal class AmendmentFlow {
         private func V2(binary string, mode string = "", native bool = false, modelPolicy string = "") {
             using let flow = CoordinationFixture(binary)
             let run = PublishedContribution.PublishRun(flow, native, modelPolicy)
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run})
             if native {
                 flow.Flow.Reload()
                 let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
@@ -746,7 +746,11 @@ internal class AmendmentFlow {
             flow.Flow.Reload()
             flow.Flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Flow.Save()
-            let checked = Check.Envelope(flow.Flow.Call([]string{"checks", "--run", run, "--json"}), "checks", "ok")
+            let checked = Check.Envelope(
+                flow.Flow.Call([]string{"checks", "--yes", "--run", run, "--json"}),
+                "checks",
+                "ok"
+            )
             Check.That(
                 Check.Text(checked["data"]?["commit"]) == commit && Check.Text(
                     checked["data"]?["machine_status"]
@@ -796,7 +800,7 @@ internal class AmendmentFlow {
                 File.WriteAllText(summary, summaryInput)
                 File.WriteAllText(flow.Tools, toolsInput)
             }
-            flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).ToArray())
+            flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).Concat([]string{"--yes"}).ToArray())
             let completed = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
             Check.That(
                 completed["data"]?["amendment"] == nil && completed["data"]?["next"] == nil && Check.Text(
