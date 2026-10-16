@@ -60,6 +60,8 @@ It uses the completed work without new inference. Do not start another run.
    ```
 
 `--commit` defaults to HEAD of the saved checkout. This path requires completed original inference. For stopped or failed inference, use fresh preparation under current authority and an explicit new budget.
+If a request was rejected, correction reuses your open draft on the reservation branch.
+The coordinator must verify the new request before the draft has publication authority.
 
 ## Amend a published PR
 
@@ -284,7 +286,7 @@ After owner recovery, repeat a pending publication with the same saved intent. D
 
 Approve a fork workflow only after diff review. For a stale PR, refresh `tokate checks PR` and use the target update steps above if required.
 
-Corrections use `amendments/COMMIT/run.json`. The saved run selects the current correction with `amendment`. Loading an old run moves its correction record and artifacts to this location and removes `correction.json`. Invalid legacy corrections affect only that run. Status lists the other runs.
+Corrections use `amendments/COMMIT/run.json`. The saved run selects the current correction with `amendment`. Commands that lock an old run move its valid correction records and artifacts to this location and remove `correction.json`. Status does not migrate runs. Invalid legacy corrections affect only that run. Status lists the other runs.
 
 ### Access
 

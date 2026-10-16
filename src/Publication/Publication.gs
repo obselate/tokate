@@ -52,51 +52,49 @@ internal class Publication {
             )
         }
 
-        internal func Match(run Data, pull JsonElement, expectedReceipt JsonElement) {
-            let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
-            let body = J.Text(pull, "body")
+        internal func Match(run Data, pull JsonElement, expectedReceipt JsonElement, newIntent bool = false) {
             let failure = "interrupted_publication: physical PR differs from exact saved run/head/receipt"
-            let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
-
-            if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
-                throw CliFailure("invalid_state", failure)
-            }
-
-            let comparable = Dictionary[string, Object?]()
-
-            for field in receipt.EnumerateObject() {
-                comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
-            }
-
-            if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
-                body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) {
-                throw CliFailure("invalid_state", failure)
-            }
-
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
-
-            if J.Text(head, "sha") != J.Text(expectedReceipt, "head") || J.Text(head, "ref") != run.Text("branch") ||
-                !RepositoryIdentity
-                .SameRepo(J.Text(J.Get(head, "repo"), "full_name"), run.Text("head_repo")) {
-                throw CliFailure("invalid_state", failure)
-            }
-
-            let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
             let mergedAt = J.Get(pull, "merged_at").ValueKind
-
-            if J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
-                baseRepo,
+            if J.Text(head, "ref") != run.Text("branch") || !RepositoryIdentity.SameRepo(
+                J.Text(J.Get(head, "repo"), "full_name"),
+                run.Text("head_repo")
+            ) ||
+                J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
+                J.Text(J.Get(base, "repo"), "full_name"),
                 run.Text("repo")
             ) ||
                 J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) ||
-                J.Number(pull, "number") < 1 {
+                J.Number(pull, "number") < 1 || J.Get(J.Get(pull, "user"), "id").ToString() != J.Get(
+                run.Element(),
+                "donor_id"
+            )
+                .ToString() {
+                throw CliFailure("invalid_state", failure)
+            }
+            if newIntent {
+                return
+            }
+            let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
+            let body = J.Text(pull, "body")
+            let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+            if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
+                throw CliFailure("invalid_state", failure)
+            }
+            let comparable = Dictionary[string, Object?]()
+            for field in receipt.EnumerateObject() {
+                comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
+            }
+            if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
+                body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) ||
+                J.Text(head, "sha") != J.Text(expectedReceipt, "head") {
                 throw CliFailure("invalid_state", failure)
             }
         }
 
-        internal func Find(run Data, expectedReceipt JsonElement) JsonElement {
+        internal func Find(run Data, expectedReceipt JsonElement, newIntent bool = false) JsonElement {
             let pulls = Pulls(run)
 
             if pulls.Count > 1 {
@@ -107,7 +105,7 @@ internal class Publication {
                 return JsonElement{}
             }
 
-            Match(run, pulls[0], expectedReceipt)
+            Match(run, pulls[0], expectedReceipt, newIntent)
 
             return pulls[0]
         }
@@ -129,7 +127,7 @@ internal class Publication {
             return fields
         }
 
-        internal func Prepare(run Data, record JsonElement, request JsonElement) JsonElement {
+        internal func Prepare(run Data, record JsonElement, request JsonElement, newIntent bool = false) JsonElement {
             let receipt = ContributionReceipt.Publication(
                 run.Text("repo"),
                 run.Number("issue"),
@@ -150,7 +148,7 @@ internal class Publication {
                 J.Get(run.Element(), "donor_id")
             )
             let expected = J.Parse(J.Write(receipt))
-            var pull = Find(run, expected)
+            var pull = Find(run, expected, newIntent)
             if pull.ValueKind == JsonValueKind.Undefined {
                 pull = GitHub.Api(
                     "repos/" + run.Text("repo") + "/pulls",
@@ -167,11 +165,13 @@ internal class Publication {
                 )
                 Match(run, pull, expected)
             }
-            if J.Get(J.Get(pull, "user"), "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
-                throw CliFailure("invalid_state", "Publication PR author differs from reserved donor")
-            }
-            if J.Text(pull, "body") != body {
-                throw CliFailure("invalid_state", "Existing PR body differs from canonical publication")
+            if newIntent && J.Text(pull, "body") != body {
+                pull = GitHub.Api(
+                    "repos/" + run.Text("repo") + "/pulls/" + J.Number(pull, "number").ToString(),
+                    map[string, Object?]{"body": body},
+                    "PATCH"
+                )
+                Match(run, pull, expected)
             }
             let metadata = Dictionary[string, Object?]()
             for field in J.Get(request, "metadata").EnumerateObject() {

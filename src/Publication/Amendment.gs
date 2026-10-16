@@ -320,13 +320,11 @@ internal class Amendment {
                     return
                 }
                 let record = J.Get(Authority(run, existing, directory: directory), "record")
-                if J.Get(existing?.Element() ?? default(JsonElement), "publication")
-                    .ValueKind != JsonValueKind.Object &&
-                    Publication
-                    .Pulls(run).Count != 0 {
-                    throw CliFailure(
-                        "invalid_state",
-                        "Contribution already has a physical PR; inspect publication instead"
+                if J.Get(existing?.Element() ?? default(JsonElement), "publication").ValueKind != JsonValueKind.Object {
+                    Publication.Find(
+                        run,
+                        default(JsonElement),
+                        newIntent: J.Get(state, "contribution").ValueKind != JsonValueKind.Object
                     )
                 }
                 if !continuing || existing != nil {
@@ -467,6 +465,7 @@ internal class Amendment {
                         "seconds": seconds,
                         "tools": tools,
                         "previous": correcting ? "": run.Text("commit"),
+                        "previous_remote": correcting ? run.Text("commit"): "",
                         "pr": number,
                         "expected": J.Text(authority, "sha"),
                         "attempt": J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt"),
@@ -969,7 +968,9 @@ internal class Amendment {
 
             let head = J.Text(J.Get(reference, "object"), "sha")
 
-            if head != run.Text("base") && head != (correction?.Text("commit") ?? "") {
+            if head != run.Text("base") && head != run.Text("commit") &&
+                head != (correction?.Text("previous_remote") ?? "") &&
+                head != (correction?.Text("commit") ?? "") {
                 throw CliFailure(
                     "invalid_state",
                     "interrupted_publication: remote branch changed; refusing to overwrite it"
@@ -999,6 +1000,13 @@ internal class Amendment {
                 let request = Submission.PublicationRequest(run, change)
                 RequestData.Parse(J.Write(request))
                 RequestData.Request(request)
+                for file in[]string{"request.json", "publication.json"} {
+                    RunStorage.ControlFile(directory, file)
+                    let previous = Path.Combine(directory, file)
+                    if File.Exists(previous) {
+                        File.Move(previous, Path.Combine(Location(directory, change), "previous-" + file))
+                    }
+                }
                 change.Fields["publication"] = map[string, Object?]{"stage": "prepared", "request": request}
                 Save(directory, change)
                 intent = J.Get(change.Element(), "publication")
@@ -1021,7 +1029,8 @@ internal class Amendment {
                 run.Text("donor")
             )
             Preview(Path.Combine(directory, "publication.json"), J.Write(receipt) + "\n")
-            let existing = Publication.Find(run, J.Parse(J.Write(receipt)))
+            let unrecorded = J.Get(J.Get(authority, "state"), "contribution").ValueKind != JsonValueKind.Object
+            let existing = Publication.Find(run, J.Parse(J.Write(receipt)), newIntent: unrecorded)
             if J.Text(authority, "sha") != change.Text("expected") {
                 if existing.ValueKind == JsonValueKind.Undefined || remote != change.Text("commit") || J.Number(
                     J.Get(J.Get(J.Get(authority, "state"), "contribution"), "outcome"),
@@ -1038,7 +1047,7 @@ internal class Amendment {
                 Publication.SavePr(directory, run, existing)
                 return
             }
-            if existing.ValueKind != JsonValueKind.Undefined && remote != change.Text("commit") {
+            if existing.ValueKind != JsonValueKind.Undefined && J.Text(J.Get(existing, "head"), "sha") != remote {
                 throw CliFailure("stale_approval", "Physical PR and remote branch disagree")
             }
             if remote != change.Text("commit") {
@@ -1071,7 +1080,7 @@ internal class Amendment {
             Exact(directory, run, change, record)
             let latest = Authority(run, change, directory: directory)
             Access(run, record, true)
-            let request = Publication.Prepare(run, record, J.Get(intent, "request"))
+            let request = Publication.Prepare(run, record, J.Get(intent, "request"), newIntent: unrecorded)
             change.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
             change.Fields["publication"] = map[string, Object?]{"stage": stage, "request": request}
             Save(directory, change)

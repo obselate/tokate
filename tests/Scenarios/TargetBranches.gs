@@ -88,7 +88,10 @@ internal class TargetBranches {
             let sha = Check.Text(head["sha"])
             head["sha"] = JsonValue.Create(String('a', 40))
             flow.Save()
-            flow.Call([]string{"checks", "owner/project#10"}, 1, owner: true)
+            Check.Contains(
+                flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true).Output,
+                "PR head is not yet available for verification"
+            )
             head["sha"] = JsonValue.Create(sha)
             let target = flow.State["pulls"]?[0]?["base"] ?? throw Exception("Missing base")
             target["ref"] = JsonValue.Create("main")

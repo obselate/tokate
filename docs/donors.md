@@ -65,7 +65,7 @@ Use [Linux harness installations](linux-harnesses.md) for custom paths. Use [Nix
 
 Submit creates a draft PR with your GitHub account, then asks the coordinator to verify and record it.
 Fork PRs use the owner's maintainer edits policy. Repeated submit reuses the exact saved draft.
-The coordinator restores the canonical PR body before it records the draft.
+The coordinator restores the canonical PR title and body before it records the draft.
 
 Use CLI flags or the GUI. Claim and work show the task, tool, model, effort and budget and ask once in a terminal unless `--yes` is set. Missing choices fail with
 `invalid_arguments` and name the required flag. Bare `tokate` prints help.

@@ -920,6 +920,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Flow.Call([]string{"submit", "--run", run, "--json"}, 1).Output, "ambiguous physical PRs")
         Flow.Reload()
         Flow.State["pulls"] = originalPulls
+        let edited = Flow.State["pulls"]?[0] ?? throw Exception("Missing interrupted draft")
+        edited["body"] = JsonValue.Create("Donor note before adoption\n" + Check.Text(edited["body"]))
         Flow.Save()
         Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
         Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
@@ -986,12 +988,23 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Reload()
         Flow.State["pulls"] = JsonArray(pull)
         pull["body"] = JsonValue.Create("Donor body changed before adoption")
+        pull["title"] = JsonValue.Create("Donor changed title")
         Flow.Save()
+        Flow.Mode("body_fail")
+        Coordinate(path, 1)
+        Check.That(State()["state"]?["contribution"] == nil, "Failed adoption PATCH gained authority")
+        Flow.Mode("lost_body_response")
+        Coordinate(path, 1)
+        Check.That(State()["state"]?["contribution"] == nil, "Lost adoption PATCH gained authority")
         Coordinate(path)
         Flow.Reload()
         Check.That(
             Check.Text(Flow.State["pulls"]?[0]?["body"]) != "Donor body changed before adoption",
             "Coordinator did not restore canonical body"
+        )
+        Check.That(
+            Check.Text(Flow.State["pulls"]?[0]?["title"]) == "Implement fixture",
+            "Coordinator did not restore canonical title"
         )
         Check.That(Flow.State["pulls"]?.AsArray().Count == 1, "Interrupted publication duplicated PR")
         Check.That(

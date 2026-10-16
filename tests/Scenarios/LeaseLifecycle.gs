@@ -274,6 +274,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let path = Path.Combine(run, "request.json")
         let saved = File.ReadAllText(path)
         let request = Check.Json(saved)
+        Flow.Reload()
+        let drafts = Flow.State["pulls"]?.ToJsonString()
         Lifecycle("renew")
         Flow.Call([]string{"submit", "--run", run}, 8)
         Check.That(File.ReadAllText(path) == saved, "Renewal rebound a saved publication UUID")
@@ -283,7 +285,9 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"request", "owner/project#1", "--file", path}, 1)
         File.WriteAllText(path, saved)
         Flow.NoInference()
-        Flow.NoPr()
+        Flow.Reload()
+        Check.That(Flow.State["pulls"]?.ToJsonString() == drafts, "Stale publication changed donor drafts")
+        Check.That(State()["state"]?["contribution"] == nil, "Stale publication gained authority")
     }
 
     internal func LeaseReplayAndLegacy() {

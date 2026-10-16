@@ -1610,7 +1610,7 @@ internal class AmendmentFlow {
                 Directory.GetDirectories(Path.Combine(run, "amendments")).Length == 2,
                 "Interrupted attempt evidence lost"
             )
-            Once(flow)
+            Once(flow, 1)
         }
 
         private func ChangedCandidate(binary string) {
@@ -1807,6 +1807,28 @@ internal class AmendmentFlow {
         }
 
         private func Managed(binary string) {
+            {
+                using let rejected = CoordinationFlow(binary)
+                rejected.Initialize()
+                let saved = ManagedRun(rejected, "")
+                rejected.Flow.Call([]string{"submit", "--run", saved}, 8)
+                let previous = Read(saved, "request.json")
+                rejected.Lifecycle("renew")
+                rejected.Coordinate(rejected.Event(previous), 1)
+                rejected.Flow.Call([]string{"amend", "--run", saved})
+                let head = Correct(rejected.Flow, saved)
+                Rework(rejected.Flow, saved, head)
+                rejected.Flow.Reload()
+                let request = Check.PostedRequest(rejected.Flow.State)
+                Check.That(
+                    Check.Text(request["uuid"]) != Check.Text(previous["uuid"]),
+                    "Correction reused rejected intent"
+                )
+                rejected.Coordinate(rejected.Event(request))
+                rejected.Flow.Call([]string{"submit", "--run", saved})
+                Once(rejected.Flow, 1)
+                rejected.Flow.Receipt("owner/project#10", owner: true)
+            }
             using let flow = CoordinationFlow(binary)
             flow.Initialize()
             flow.Flow.ProtectedPolicy()
@@ -1958,7 +1980,7 @@ internal class AmendmentFlow {
             flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
             flow.Flow.Reload()
             let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
-            pull["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")
+            Check.That(Check.Text(pull["user"]?["id"]) == "123", "Recorded PR lost donor authorship")
             pull["maintainer_can_modify"] = JsonValue.Create(false)
             flow.Flow.Save()
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)

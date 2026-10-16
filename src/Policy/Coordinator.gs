@@ -299,11 +299,15 @@ internal class Coordinator {
                     receipt,
                     "<!-- tokate-v2:" + reservation + " -->"
                 )
-                if J.Text(pull, "body") != body {
+                let title = (RequestData.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
+                    J.Get(record, "issue"),
+                    "title"
+                )
+                if J.Text(pull, "body") != body || J.Text(pull, "title") != title {
                     Revalidate(repo, number, state, actor, donor)
                     GitHub.Api(
                         "repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString(),
-                        map[string, Object?]{"body": body},
+                        map[string, Object?]{"body": body, "title": title},
                         "PATCH",
                         expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
                     )

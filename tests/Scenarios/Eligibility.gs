@@ -506,14 +506,12 @@ internal class EligibilityChecks {
                         "Revoked donor wrote a PR after downstream evidence read: " + call?.ToJsonString()
                     )
                 }
-                if amend {
-                    Check.That(
-                        Check.Text(test.Flow.State["pulls"]?[0]?["body"]) == bodyBefore,
-                        "Revoked amendment changed PR body"
-                    )
-                } else {
-                    test.Flow.NoPr()
-                }
+                Check.That(
+                    test.Flow.State["pulls"]?.AsArray().Count == 1 && Check.Text(
+                        test.Flow.State["pulls"]?[0]?["body"]
+                    ) == bodyBefore,
+                    "Revoked publication changed the donor draft"
+                )
                 Check.That(
                     Check.Text(test.State()["sha"]) == stateBefore,
                     "Revoked publication changed contribution state"
@@ -961,8 +959,8 @@ internal class EligibilityChecks {
             test.Coordinate(test.Event(publication))
             test.Flow.Reload()
             Check.That(
-                Check.Text(test.Flow.State["pulls"]?[0]?["user"]?["login"]) == "owner",
-                "Coordinator did not create the PR"
+                Check.Text(test.Flow.State["pulls"]?[0]?["user"]?["login"]) == "donor",
+                "Coordinator changed the donor PR author"
             )
             let body = Check.Text(test.Flow.State["pulls"]?[0]?["body"])
             Check.Contains(body, "Fixes #1")

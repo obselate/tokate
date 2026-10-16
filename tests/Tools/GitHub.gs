@@ -1267,7 +1267,7 @@ internal partial class Fixture {
                 return Response(500)
             }
             let headParts = Check.Text(body["head"]).Split(':')
-            let headLogin = headParts[0]
+            let headLogin = headParts[0].ToLowerInvariant()
             let branch = headParts[1]
             let headRepo = headLogin + "/project"
             let headFolder = State["repository_folders"]?[headRepo]
@@ -1302,7 +1302,7 @@ internal partial class Fixture {
                 "repo",
                 State["repository_info"]?[headRepo]?.DeepClone() ?? Check.Map(
                     "id",
-                    2,
+                    headRepo == repo ? 1: 2,
                     "full_name",
                     headRepo,
                     "owner",
