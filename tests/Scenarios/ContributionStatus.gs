@@ -146,6 +146,48 @@ internal class ContributionStatusChecks {
                 ) == "100",
                 "Later request failure discarded observed requests"
             )
+
+            using let gratis = NativeFixture(binary)
+            gratis.Initialize(access: false)
+            gratis.Git("-C", gratis.Upstream, "rm", ".github/tokate.json")
+            gratis.Commit("Accept gratis work")
+            let unstarted = Check.Envelope(gratis.Call([]string{"status", "owner/project#1", "--json"}), "status", "ok")
+            Check.That(Check.Text(Row(unstarted)["state"]) == "open", "Unstarted gratis issue requires approval")
+            let directory = Path.Combine(gratis.Temp.Env["HOME"], ".local/state/tokate/runs/gratis")
+            Directory.CreateDirectory(directory)
+            let saved = Check.Map("version", 2, "id", "gratis", "repo", "owner/project", "issue", 1, "gratis", true)
+            for state in[]string{"running", "generated", "published", "failed"} {
+                saved["state"] = JsonValue.Create(state)
+                File.WriteAllText(Path.Combine(directory, "run.json"), saved.ToJsonString())
+                for target in[]string{"owner/project#1", "owner/project"} {
+                    let status = Check.Envelope(gratis.Call([]string{"status", target, "--json"}), "status", "ok")
+                    Check.That(
+                        Check.Text(Row(status)["state"]) == state,
+                        "Gratis status lost " + state + ": " + status.ToJsonString()
+                    )
+                    Check.That(!status.ToJsonString().Contains("approval_waiting"), "Gratis status requires approval")
+                }
+                let listed = Check.Envelope(
+                    TestProcess.Run(
+                        binary,
+                        []string{"status", "--all", "--json"},
+                        gratis.Temp.Env,
+                        cwd: gratis.Temp.Root
+                    ),
+                    "status",
+                    "ok"
+                )
+                Check.That(
+                    Check.Text(listed["data"]?["runs"]?[0]?["state"]) == state,
+                    "Gratis saved list lost " + state
+                )
+                let attempt = Check.Envelope(
+                    gratis.Call([]string{"status", "--run", directory, "--json"}),
+                    "status",
+                    "ok"
+                )
+                Check.That(Check.Text(attempt["data"]?["state"]) == state, "Gratis saved attempt lost " + state)
+            }
         }
 
         private func Leases(binary string) {

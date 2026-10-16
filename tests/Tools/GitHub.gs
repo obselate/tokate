@@ -805,7 +805,8 @@ internal partial class Fixture {
                 for label in issue["labels"]?.AsArray() ?? JsonArray() {
                     labelled = labelled || Check.Text(label["name"]) == "tokate:approved"
                 }
-                if labelled && Check.Text(issue["state"]) == "open" && rows.Count < size {
+                if (!tail.Contains("labels=") || labelled) && Check.Text(issue["state"]) == "open" &&
+                    rows.Count < size {
                     rows.Add(issue.DeepClone())
                 }
             }

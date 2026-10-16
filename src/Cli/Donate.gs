@@ -179,16 +179,14 @@ internal class Donate {
             let invalid = List[string]()
             for number in issues {
                 let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString(), missing: true)
-                if J.Text(issue, "state") != "open" || J.Bool(issue, "locked") || J.Get(issue, "pull_request")
-                    .ValueKind != JsonValueKind.Undefined {
-                    invalid.Add("#" + number.ToString())
+                let reason = J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined ? "a pull request":
+                J.Text(issue, "state") != "open" ? "closed": J.Bool(issue, "locked") ? "locked": ""
+                if reason != "" {
+                    invalid.Add(repo + "#" + number.ToString() + " is " + reason)
                 }
             }
             if invalid.Count > 0 {
-                throw CliFailure(
-                    "invalid_state",
-                    "Gratis work requires an open, unlocked issue, not a pull request: " + String.Join(", ", invalid)
-                )
+                throw CliFailure("invalid_state", "Gratis work cannot use these issues: " + String.Join(", ", invalid))
             }
             if gratis && options.Get("unlimited") == "true" {
                 throw CliFailure("invalid_arguments", "Gratis work uses --time, not --unlimited")

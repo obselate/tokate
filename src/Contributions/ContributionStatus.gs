@@ -11,6 +11,7 @@ internal class ContributionStatus {
     private var Info JsonElement
     private var Access AccessState? = nil
     private var Repo string = ""
+    private var GratisRepo bool
     internal let Result Dictionary[string, Object?] = map[string, Object?]{}
     private let Work List[Object] = List[Object]()
     private let Requests List[JsonElement] = List[JsonElement]()
@@ -77,6 +78,24 @@ internal class ContributionStatus {
             "next": Next("owner", "Inspect unavailable contribution state.")
         }
         Work.Add(row)
+
+        let runs = Saved.For(Repo, issue)
+        let run = runs.Count == 0 ? nil: runs[runs.Count - 1]
+        if GratisRepo || (run != nil && J.Bool(run.Value, "gratis")) {
+            row["approval_status"] = "not_required"
+            row["eligibility_status"] = "not_required"
+            row["coordination_status"] = "not_required"
+            row["drafts_status"] = "not_observed"
+            row["state"] = run != nil && J.Bool(run.Value, "gratis") ? run.State: J.Text(task, "state")
+            row["next"] = run == nil ?
+            Next(
+                "donor",
+                "Start gratis work on this issue.",
+                []string{"tokate", "work", Repo + "#" + issue.ToString()}
+            ):
+            Next("donor", "Inspect your saved gratis work.", []string{"tokate", "status", "--run", run.Location})
+            return row
+        }
 
         var state = CoordinationState()
         var approval JsonElement
@@ -905,6 +924,11 @@ internal class ContributionStatus {
                 }
 
                 Result["repository_status"] = "observed"
+                GratisRepo = GitHub.Api(
+                    "repos/" + Repo + "/contents/.github/tokate.json?ref=" + J.Text(Info, "default_branch"),
+                    missing: true
+                )
+                    .ValueKind == JsonValueKind.Undefined
             }
         ) {
             return
@@ -991,7 +1015,9 @@ internal class ContributionStatus {
                     let issues = GitHub.Api(
                         "repos/" +
                             Repo +
-                            "/issues?state=open&labels=tokate%3Aapproved&sort=updated&direction=desc&per_page=20&page=1"
+                            "/issues?state=open&" +
+                            (GratisRepo ? "": "labels=tokate%3Aapproved&") +
+                            "sort=updated&direction=desc&per_page=20&page=1"
                     )
 
                     if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 20 {
@@ -1006,7 +1032,7 @@ internal class ContributionStatus {
                             task,
                             "state"
                         ) == "open" &&
-                            GitHub.HasLabel(task) {
+                            (GratisRepo || GitHub.HasLabel(task)) {
                             let row = Issue(task)
                             if Text(row, "approval_status") == "absent" {
                                 Work.Remove(row)
