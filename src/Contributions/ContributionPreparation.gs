@@ -150,21 +150,7 @@ internal class ContributionPreparation {
                 )
             }
 
-            if args.Get("unlimited") != "true" {
-                args.Need("seconds")
-            }
-
-            run.Fields["seconds"] = RuntimeBudget.ReadSeconds(args)
-
-            if args.Get("unlimited") == "true" {
-                run.Fields["unlimited"] = true
-            }
-
-            if args.Get("verification-reserve") != "" {
-                run.Fields["verification_reserve"] = RuntimeBudget.Reserve(args, run.Number("seconds"))
-            }
-
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
+            PlanBudget(args, run, policy)
 
             if source == "tokate" {
                 let declared = J.Items(tools)[0]
@@ -194,6 +180,24 @@ internal class ContributionPreparation {
             RuntimeBudget.Validate(run)
 
             return run
+        }
+
+        private func PlanBudget(args Args, run Data, policy Policy) {
+            if args.Get("unlimited") != "true" {
+                args.Need("seconds")
+            }
+
+            run.Fields["seconds"] = RuntimeBudget.ReadSeconds(args)
+
+            if args.Get("unlimited") == "true" {
+                run.Fields["unlimited"] = true
+            }
+
+            if args.Get("verification-reserve") != "" {
+                run.Fields["verification_reserve"] = RuntimeBudget.Reserve(args, run.Number("seconds"))
+            }
+
+            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
         }
 
         private func Allocate(store string, run Data, id string) string {
