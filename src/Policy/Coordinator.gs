@@ -189,11 +189,11 @@ internal class Coordinator {
                 throw Exception("Canonical comment is not a request")
             }
 
-            let request = RequestData.CommentData(text)
-            RequestData.Request(request)
+            let request = RequestMetadata.CommentData(text)
+            RequestMetadata.Request(request)
 
             let state = CoordinationState.Load(repo, number)
-            let binding = RequestData.Binding(actor, request)
+            let binding = RequestMetadata.Binding(actor, request)
             let initial = state.Value()
             let outcomes = J.Items(J.Get(initial, "outcomes"))
 
@@ -278,7 +278,7 @@ internal class Coordinator {
 
             let correction = J.Get(metadata, "correction")
             if correction.ValueKind != JsonValueKind.Undefined {
-                RequestData.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
+                RequestMetadata.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
             }
 
             RepositoryAccess.ValidateFork(repo, metadata, actor)
@@ -295,7 +295,7 @@ internal class Coordinator {
             RepositoryAccess.ValidateFork(repo, metadata, actor)
             let pull = PublicationPull(repo, metadata, actor, record)
             let body = PrBody.Coordinated(record, metadata, donor, receipt, "<!-- tokate-v2:" + reservation + " -->")
-            let title = (RequestData.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
+            let title = (RequestMetadata.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
                 J.Get(record, "issue"),
                 "title"
             )
@@ -397,7 +397,7 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
-                let recorded = RequestData.Recorded(live.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(live.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, live, request, actor, donor, recorded)
                 }
@@ -427,7 +427,7 @@ internal class Coordinator {
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
-                let recorded = RequestData.Recorded(inspected.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(inspected.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
@@ -450,7 +450,7 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
-                let recorded = RequestData.Recorded(acquired.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(acquired.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
@@ -577,7 +577,7 @@ internal class Coordinator {
                 AccessState.Check(repo, number, J.Get(record, "approval"), actor, J.Get(record, "policy"))
                 let changes = map[string, Object?]{"body": updated}
                 let title = J.Text(J.Get(record, "issue"), "title")
-                if RequestData.Incomplete(old) && J.Text(fresh, "title") == "Incomplete: " + title {
+                if RequestMetadata.Incomplete(old) && J.Text(fresh, "title") == "Incomplete: " + title {
                     changes["title"] = title
                 }
 

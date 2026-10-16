@@ -109,7 +109,7 @@ internal class Submission {
         }
 
         private func Partial(directory string, run Data) {
-            if RequestData.Incomplete(run.Element()) {
+            if RequestMetadata.Incomplete(run.Element()) {
                 if run.Text("commit") == "" && run.Text("state") == "incomplete_generated" {
                     CommitPrepared(directory, run, true)
                 }
@@ -197,7 +197,7 @@ internal class Submission {
                     var candidate JsonElement
 
                     try {
-                        candidate = RequestData.CommentData(body)
+                        candidate = RequestMetadata.CommentData(body)
                     } catch (error CliFailure) {
                         continue
                     }
@@ -368,7 +368,7 @@ internal class Submission {
             journal string,
             expectedActor JsonElement? = nil
         ) {
-            RequestData.Request(value)
+            RequestMetadata.Request(value)
 
             let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(requestRepo))
             let repo = RepositoryIdentity.Repo(J.Text(info, "full_name"))
@@ -393,7 +393,7 @@ internal class Submission {
                 }
             }
 
-            let binding = RequestData.Binding(actor, value)
+            let binding = RequestMetadata.Binding(actor, value)
 
             if FileInfo(journal).LinkTarget != nil {
                 throw CliFailure("invalid_state", "Request posting journal must not be a symbolic link")
@@ -424,7 +424,7 @@ internal class Submission {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestData.Recorded(state.Value(), actor, value)
+            let outcome = RequestMetadata.Recorded(state.Value(), actor, value)
 
             if outcome.ValueKind != JsonValueKind.Undefined {
                 Output.Sink.RequestOutcome(outcome)
@@ -478,7 +478,7 @@ internal class Submission {
             try {
                 let posted = GitHub.Api(
                     "repos/" + repo + "/issues/" + issue.ToString() + "/comments",
-                    map[string, Object?]{"body": RequestData.Comment(request)},
+                    map[string, Object?]{"body": RequestMetadata.Comment(request)},
                     expires: expires
                 )
 
@@ -493,7 +493,7 @@ internal class Submission {
                 if RepositoryIdentity.PositiveId(author) != RepositoryIdentity.PositiveId(actor) || J.Text(
                     posted,
                     "body"
-                ) != RequestData.Comment(request) {
+                ) != RequestMetadata.Comment(request) {
                     throw CliFailure("invalid_state", failure)
                 }
 
@@ -501,7 +501,7 @@ internal class Submission {
             } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
                 let latest = CoordinationState.Load(repo, issue)
 
-                if RequestData.Recorded(latest.Value(), actor, request)
+                if RequestMetadata.Recorded(latest.Value(), actor, request)
                     .ValueKind == JsonValueKind.Undefined &&
                     !Posted(repo, issue, actor, request) {
                     let code = error is CliFailure failure && failure.Code != "invalid_state" ? failure.Code:
@@ -547,7 +547,7 @@ internal class Submission {
                 "attempt": run.Text("attempt"),
                 "source": run.Text("source"),
                 "tools": tools,
-                "verification": RequestData.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
+                "verification": RequestMetadata.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
             }
             let pr = correction?.Number("publication_pr") ?? run.Number("publication_pr")
             if pr > 0 {
@@ -556,7 +556,7 @@ internal class Submission {
 
             ContributionReceipt.Models(metadata, run.Element())
 
-            if RequestData.Incomplete(run.Element()) {
+            if RequestMetadata.Incomplete(run.Element()) {
                 metadata["incomplete"] = true
             }
 
@@ -613,12 +613,12 @@ internal class Submission {
 
             let record = ContributionAuthority.Recheck(run)
 
-            if run.Text("state") != (RequestData.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
+            if run.Text("state") != (RequestMetadata.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
                 run.Text("commit") == "" {
                 throw CliFailure("invalid_state", "Only an independently verified exact commit can be submitted")
             }
 
-            if !RequestData.Incomplete(run.Element()) {
+            if !RequestMetadata.Incomplete(run.Element()) {
                 Verification.Results(run, record)
             }
 
@@ -773,7 +773,7 @@ internal class Submission {
                 }
 
                 let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), saved)
+                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), saved)
 
                 if outcome.ValueKind != JsonValueKind.Undefined {
                     if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(

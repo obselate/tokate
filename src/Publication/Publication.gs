@@ -172,7 +172,7 @@ internal class Publication {
                     "repos/" + run.Text("repo") + "/pulls",
                     PullRequest(
                         run,
-                        (RequestData.Incomplete(J.Get(request, "metadata")) ? "Incomplete: ": "") + J.Text(
+                        (RequestMetadata.Incomplete(J.Get(request, "metadata")) ? "Incomplete: ": "") + J.Text(
                             J.Get(record, "issue"),
                             "title"
                         ),

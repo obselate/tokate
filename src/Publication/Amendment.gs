@@ -9,7 +9,7 @@ import System.Text.Json
 
 internal class Amendment {
     shared {
-        internal func Tools(policy Policy, tools JsonElement) -> RequestData.CorrectionTools(
+        internal func Tools(policy Policy, tools JsonElement) -> RequestMetadata.CorrectionTools(
             tools,
             policy.Value,
             "Amendment"
@@ -192,7 +192,7 @@ internal class Amendment {
 
             if intent.ValueKind == JsonValueKind.Object && state.Sha != amendment?.Text("expected") {
                 let request = J.Get(intent, "request")
-                let outcome = RequestData.Recorded(value, J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(value, J.Get(viewer, "id"), request)
                 Transition(run.Text("repo"), state, amendment?.Text("expected") ?? "")
                 if J.Text(original, "request") != amendment?.Text("publication_uuid") || J.Text(
                     original,
@@ -795,7 +795,7 @@ internal class Amendment {
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 if change.Text("uuid") != "" {
                     Completed(Path.Combine(directory, "original-evidence"), OriginalEvidence.Load(directory, run))
-                    RequestData.CorrectionTools(J.Get(change.Element(), "tools"), policy.Value)
+                    RequestMetadata.CorrectionTools(J.Get(change.Element(), "tools"), policy.Value)
                     if change.Text("state") != "verified" || run.Text("commit") != change.Text("commit") ||
                         !RequestData.Same(J.Get(run.Element(), "correction"), Provenance(change)) || !RequestData.Same(
                         J.Get(run.Element(), "verification"),
@@ -1131,7 +1131,7 @@ internal class Amendment {
                 run.Save(directory)
                 let request = Submission.PublicationRequest(run, change)
                 RequestData.Parse(J.Write(request))
-                RequestData.Request(request)
+                RequestMetadata.Request(request)
                 for file in[]string{"request.json", "publication.json"} {
                     RunStorage.ControlFile(directory, file)
                     let previous = Path.Combine(directory, file)

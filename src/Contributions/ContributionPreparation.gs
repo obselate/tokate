@@ -83,7 +83,7 @@ internal class ContributionPreparation {
             var selection = JsonElement{}
 
             if tools.ValueKind != JsonValueKind.Undefined {
-                RequestData.Tools(tools)
+                RequestMetadata.Tools(tools)
                 policy.ValidateTools(tools, source)
             }
 
@@ -308,7 +308,7 @@ internal class ContributionPreparation {
                 )
             )
 
-            RequestData.Request(request)
+            RequestMetadata.Request(request)
 
             run.Fields["claim_request"] = request
             run.Fields["requested_fork"] = args.Get("fork")
@@ -340,7 +340,7 @@ internal class ContributionPreparation {
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
             let request = J.Get(run.Element(), "claim_request")
-            RequestData.Request(request)
+            RequestMetadata.Request(request)
 
             if run.Number("version") != 2 || run.Text("state") != "claim_pending" ||
                 (run.Text("source") != "tokate" && run.Text("source") != "external") ||
@@ -375,7 +375,7 @@ internal class ContributionPreparation {
 
             let tools = J.Get(run.Element(), "tools")
 
-            RequestData.Tools(tools)
+            RequestMetadata.Tools(tools)
             policy.ValidateTools(tools, run.Text("source"))
 
             if run.Text("source") == "tokate" &&
@@ -483,7 +483,7 @@ internal class ContributionPreparation {
                         )
                     }
 
-                    let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                    let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
                     if outcome.ValueKind != JsonValueKind.Undefined {
                         accepted = state
                         break
@@ -503,7 +503,7 @@ internal class ContributionPreparation {
             }
 
             if let state = accepted {
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
                 Accepted(run, viewer, state, outcome)
 
                 Bind(run, state)

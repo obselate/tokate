@@ -19,7 +19,7 @@ internal class ReservationRequest {
             var actions[]string
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestData.Request(request)
+                RequestMetadata.Request(request)
                 if !LeaseLifecycle.Transition(J.Text(request, "action")) {
                     throw CliFailure("invalid_state", "Invalid saved reservation request")
                 }
@@ -50,7 +50,7 @@ internal class ReservationRequest {
         }
 
         private func Result(directory string, run Data, state CoordinationState, request JsonElement) int32 {
-            let outcome = RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+            let outcome = RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
             let pending = outcome.ValueKind == JsonValueKind.Undefined
 
             Output
@@ -100,8 +100,8 @@ internal class ReservationRequest {
             var request = J.Get(run.Element(), "reservation_request")
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestData.Request(request)
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                RequestMetadata.Request(request)
+                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
 
                 if outcome.ValueKind == JsonValueKind.Undefined && J.Text(request, "action") != action {
                     throw CliFailure(

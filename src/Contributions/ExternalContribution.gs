@@ -265,7 +265,7 @@ internal class ExternalContribution {
                 args.Need("seconds")
                 seconds = args.Number("seconds")
                 tools = RequestData.FileData(args.Need("tools"), 4096)
-                RequestData.Tools(tools)
+                RequestMetadata.Tools(tools)
 
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 policy.ValidateBudget(seconds)

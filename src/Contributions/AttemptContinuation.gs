@@ -167,7 +167,7 @@ internal class AttemptContinuation {
             RepositoryIdentity.PositiveId(J.Get(prior, "donor_id"))
             RepositoryIdentity.PositiveId(J.Get(prior, "repo_id"))
 
-            RequestData.Tools(tools)
+            RequestMetadata.Tools(tools)
 
             let declared = J.Items(tools)
 
