@@ -398,7 +398,7 @@ internal partial class NativeFlow : NativeFixture {
             Save()
             let target = state == "closed" ? "10": "https://github.com/owner/project/pull/10"
             let result = TestProcess.Run(Binary, []string{"checks", target}, Temp.Env, cwd: Upstream)
-            Check.That(result.Code == 0, "Checks refused a historical PR")
+            Check.That(result.Code == 1, "Checks accepted a historical PR without evaluating gates")
             Check.Contains(
                 result.Output + result.Error,
                 "PR #10 " + (state == "merged" ? "was merged.": "was closed without merge.")

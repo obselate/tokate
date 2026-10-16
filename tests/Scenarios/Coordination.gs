@@ -947,6 +947,18 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
+        let pendingChecks = Check.Envelope(
+            Flow.Call([]string{"checks", "owner/project#10", "--json"}, 8),
+            "checks",
+            "pending"
+        )
+        Check.That(
+            Check.Text(pendingChecks["data"]?["machine_status"]) == "pending" && Check.Text(
+                pendingChecks["data"]?["gates"]?["receipt"]?["status"]
+            ) == "pending",
+            "Publication adoption was reported as stale approval"
+        )
+        Check.Contains(pendingChecks["next_actions"]?.ToJsonString() ?? "", "checks")
         let path = Event(publish)
         let pull = Flow.State["pulls"]?[0]?.DeepClone() ?? throw Exception("Missing donor PR")
         Check.That(Check.Text(pull["user"]?["id"]) == "123", "Submit did not use the donor token")

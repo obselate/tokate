@@ -236,7 +236,7 @@ internal class Cli {
                 "checks donate local_read,local_write,github_read repo,pr",
                 "PR|RUN [--watch] [--timeout TIME] [--verbose] [--yes]",
                 "run,watch,timeout,verbose,yes,non-interactive",
-                "Read PR receipt, report, CI and freshness gates; a saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed. Owners retain acceptance and merge. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Read PR receipt, report, CI and freshness gates for an open, unmerged PR. A saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed, including closed or merged PRs. Owners retain acceptance and merge. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
                 "checks 10 --watch"
             ),
             CliCommand(

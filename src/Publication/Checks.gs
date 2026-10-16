@@ -216,19 +216,15 @@ internal class Checks {
                     }
 
                     if historical {
-                        facts["machine_status"] = "historical"
-
-                        PublicOutput.Checks(run, J.Parse("[]"), "unread", facts)
-
-                        Terminal.Message(
+                        throw CliFailure(
+                            "invalid_state",
                             "PR #" + run.Number("pr").ToString() +
                                 (
                                 J.Bool(pull, "merged") || J.Get(pull, "merged_at").ValueKind == JsonValueKind.String ?
                                 " was merged.": " was closed without merge."
-                            )
+                            ) +
+                                " Machine gates were not evaluated."
                         )
-
-                        return 0
                     }
 
                     if !isOpen {
@@ -254,13 +250,7 @@ internal class Checks {
 
                     stage = "receipt"
 
-                    let verified = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull)
-
-                    if run.Text("commit") != "" && verified.Text("commit") != run.Text("commit") {
-                        throw CliFailure("stale_approval", "Saved commit differs from PR receipt")
-                    }
-
-                    run = verified
+                    run = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), pull)
                     let checkHead = J.Text(J.Get(pull, "head"), "sha")
                     run.Fields["checks_head"] = checkHead
                     facts["checks_head"] = checkHead
@@ -588,7 +578,7 @@ internal class Checks {
                         )
                     }
 
-                    gate["reason"] = settling ? "pr_head_unavailable": (
+                    gate["reason"] = settling ? "evidence_pending": (
                         timedOut ? "deadline": (
                             stale ? "changed_authority_or_identity": "evidence_blocked_or_unavailable"
                         )
