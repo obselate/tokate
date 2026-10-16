@@ -246,36 +246,7 @@ internal class DonorDefaults {
             let profile = args.Get("profile")
 
             if args.Subject == "list" {
-                let profiles = SortedDictionary[string, Object?](StringComparer.Ordinal)
-                var scanned int32
-
-                for storage in LocalPaths.StateDirectories() {
-                    let directory = Path.GetDirectoryName(Location("list", storage)) ?? ""
-                    if Directory.Exists(directory) {
-                        for path in Directory.EnumerateFiles(directory, "*.json") {
-                            scanned++
-
-                            if scanned > 128 {
-                                throw Exception("Donor profile list exceeds 128 entries")
-                            }
-
-                            let name = Name(Path.GetFileNameWithoutExtension(path))
-
-                            if !profiles.ContainsKey(name) {
-                                profiles.Add(name, Summary(Read(name)))
-                            }
-                        }
-                    }
-                }
-
-                return J.Parse(
-                    J.Write(
-                        map[string, Object?]{
-                            "default": Summary(Read()),
-                            "profiles": Dictionary[string, Object?](profiles)
-                        }
-                    )
-                )
+                return ListProfiles()
             }
 
             if args.Subject == "check" {
@@ -378,6 +349,36 @@ internal class DonorDefaults {
             Write(value, profile)
 
             return J.Parse(J.Write(map[string, Object?]{"profile": profile, "default": Summary(value)}))
+        }
+
+        private func ListProfiles() JsonElement {
+            let profiles = SortedDictionary[string, Object?](StringComparer.Ordinal)
+            var scanned int32
+
+            for storage in LocalPaths.StateDirectories() {
+                let directory = Path.GetDirectoryName(Location("list", storage)) ?? ""
+                if Directory.Exists(directory) {
+                    for path in Directory.EnumerateFiles(directory, "*.json") {
+                        scanned++
+
+                        if scanned > 128 {
+                            throw Exception("Donor profile list exceeds 128 entries")
+                        }
+
+                        let name = Name(Path.GetFileNameWithoutExtension(path))
+
+                        if !profiles.ContainsKey(name) {
+                            profiles.Add(name, Summary(Read(name)))
+                        }
+                    }
+                }
+            }
+
+            return J.Parse(
+                J.Write(
+                    map[string, Object?]{"default": Summary(Read()), "profiles": Dictionary[string, Object?](profiles)}
+                )
+            )
         }
     }
 }

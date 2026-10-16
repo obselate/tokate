@@ -126,23 +126,7 @@ internal class DonorSelection {
 
             let harness = args.Get("harness", "codex")
 
-            if (Harness.Find(harness)?.Provider == "" || harness == "command") && args.Get("provider") == "" {
-                let allowed = policy.Providers(harness)
-                let name = Harness.Find(harness)?.Title ?? "the command harness"
-
-                if allowed.Count != 1 {
-                    throw CliFailure(
-                        "invalid_arguments",
-                        "Choose --provider for " +
-                            name +
-                            ": the owner policy allows " +
-                            (allowed.Count == 0 ? "no " + name + " provider": String.Join(", ", allowed)) +
-                            ". No inference started."
-                    )
-                }
-
-                args.Values["--provider"] = allowed[0]
-            }
+            ChooseProvider(args, policy, harness)
 
             let provider = args.Get("provider", "openai")
 
@@ -242,6 +226,26 @@ internal class DonorSelection {
                 "availability_evidence"
             ] = "No account availability probe; catalog presence, PATH and login do not prove availability"
             return J.Parse(J.Write(selected))
+        }
+
+        private func ChooseProvider(args Args, policy Policy, harness string) {
+            if (Harness.Find(harness)?.Provider == "" || harness == "command") && args.Get("provider") == "" {
+                let allowed = policy.Providers(harness)
+                let name = Harness.Find(harness)?.Title ?? "the command harness"
+
+                if allowed.Count != 1 {
+                    throw CliFailure(
+                        "invalid_arguments",
+                        "Choose --provider for " +
+                            name +
+                            ": the owner policy allows " +
+                            (allowed.Count == 0 ? "no " + name + " provider": String.Join(", ", allowed)) +
+                            ". No inference started."
+                    )
+                }
+
+                args.Values["--provider"] = allowed[0]
+            }
         }
 
         internal func Selection(args Args, policy Policy, source string) Dictionary[string, Object?] {
