@@ -844,17 +844,6 @@ internal class CliDiscovery {
             let legacyArtifacts = Path.Combine(saved, "correction-" + Check.Text(correction["uuid"]))
             Directory.Move(Path.Combine(saved, "amendments", hash), legacyArtifacts)
             File.Move(Path.Combine(legacyArtifacts, "run.json"), Path.Combine(legacyArtifacts, "record.json"))
-            File.WriteAllText(Path.Combine(legacyArtifacts, "candidate.patch"), "legacy-patch")
-            let earlier = correction.DeepClone()
-            let earlierCommit = String('b', 40)
-            let earlierId = Guid.NewGuid().ToString("D")
-            earlier["commit"] = JsonValue.Create(earlierCommit)
-            earlier["uuid"] = JsonValue.Create(earlierId)
-            earlier["id"] = JsonValue.Create(earlierId)
-            let earlierArtifacts = Path.Combine(saved, "correction-" + earlierId)
-            Directory.CreateDirectory(earlierArtifacts)
-            File.WriteAllText(Path.Combine(earlierArtifacts, "record.json"), earlier.ToJsonString())
-            File.WriteAllText(Path.Combine(earlierArtifacts, "candidate.patch"), "earlier-patch")
             record.AsObject().Remove("amendment")
             File.WriteAllText(Path.Combine(saved, "run.json"), record.ToJsonString())
             File.WriteAllText(legacyCorrection, correction.ToJsonString())
@@ -880,43 +869,6 @@ internal class CliDiscovery {
                 "ok"
             )
             Check.That(File.Exists(legacyCorrection), "Lease-free status migrated a correction")
-            let amendment = TestProcess.Run(binary, []string{"amend", "--run", saved, "--json"}, temp.Env)
-            Check.Envelope(amendment, "amend", "error")
-            let migrated = TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env)
-            Check.Envelope(migrated, "status", "ok")
-            Check.That(
-                !File.Exists(legacyCorrection) && !Directory.Exists(legacyArtifacts),
-                "Leased amendment command did not migrate the legacy correction"
-            )
-            let migratedPath = Path.Combine(saved, "amendments", hash, "run.json")
-            Check.That(
-                JsonNode.DeepEquals(Check.Json(File.ReadAllText(migratedPath)), correction),
-                "Migration changed correction data"
-            )
-            Check.That(
-                Check.Text(Check.Json(File.ReadAllText(Path.Combine(saved, "run.json")))["amendment"]) == hash,
-                "Migration did not select the amendment"
-            )
-            Check.That(
-                File.ReadAllText(Path.Combine(saved, "amendments", hash, "candidate.patch")) == "legacy-patch",
-                "Migration lost correction artifacts"
-            )
-            Check.That(
-                !Directory.Exists(earlierArtifacts) && JsonNode.DeepEquals(
-                    Check.Json(File.ReadAllText(Path.Combine(saved, "amendments", earlierCommit, "run.json"))),
-                    earlier
-                ) &&
-                    File.ReadAllText(Path.Combine(saved, "amendments", earlierCommit, "candidate.patch")) ==
-                "earlier-patch" && Directory.GetDirectories(Path.Combine(saved, "amendments")).Length == 2,
-                "Migration lost an earlier correction attempt"
-            )
-            let migratedRecord = File.ReadAllText(migratedPath)
-            Check.Envelope(
-                TestProcess.Run(binary, []string{"status", "--run", saved, "--json"}, temp.Env),
-                "status",
-                "ok"
-            )
-            Check.That(File.ReadAllText(migratedPath) == migratedRecord, "Migration repeated")
             File.Copy(binary, Path.Combine(temp.Root, "tokate-cli"))
             let pty = TestProcess.Run(
                 "/usr/bin/script",

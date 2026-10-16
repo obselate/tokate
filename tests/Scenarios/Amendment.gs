@@ -1217,6 +1217,48 @@ internal class AmendmentFlow {
             let savedAttempt = File.ReadAllText(
                 Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
             )
+            let legacyCorrection = Path.Combine(run, "correction.json")
+            let legacyArtifacts = Path.Combine(run, "correction-" + Check.Text(attempt["uuid"]))
+            Directory.Move(Path.Combine(run, "amendments", failing), legacyArtifacts)
+            File.Move(Path.Combine(legacyArtifacts, "run.json"), Path.Combine(legacyArtifacts, "record.json"))
+            let patch = File.ReadAllText(Path.Combine(legacyArtifacts, "candidate.patch"))
+            let earlier = attempt.DeepClone()
+            let earlierCommit = String('b', 40)
+            let earlierId = Guid.NewGuid().ToString("D")
+            earlier["commit"] = JsonValue.Create(earlierCommit)
+            earlier["uuid"] = JsonValue.Create(earlierId)
+            earlier["id"] = JsonValue.Create(earlierId)
+            let earlierArtifacts = Path.Combine(run, "correction-" + earlierId)
+            Directory.CreateDirectory(earlierArtifacts)
+            File.WriteAllText(Path.Combine(earlierArtifacts, "record.json"), earlier.ToJsonString())
+            File.WriteAllText(Path.Combine(earlierArtifacts, "candidate.patch"), "earlier-patch")
+            let parent = Read(run)
+            parent.AsObject().Remove("amendment")
+            File.WriteAllText(Path.Combine(run, "run.json"), parent.ToJsonString())
+            File.WriteAllText(legacyCorrection, attempt.ToJsonString())
+            Check.Envelope(ReworkAndSubmit(flow, run, failing, 1, json: true), "amend", "error", "verification_failed")
+            Check.That(
+                !File.Exists(legacyCorrection) && !Directory.Exists(legacyArtifacts) && Check.Text(
+                    Read(run)["amendment"]
+                ) == failing,
+                "Leased amendment did not migrate the legacy correction"
+            )
+            Check.That(
+                JsonNode.DeepEquals(Read(run, "amendments/" + failing + "/run.json"), attempt) && File.ReadAllText(
+                    Path.Combine(run, "amendments", failing, "candidate.patch")
+                ) == patch,
+                "Migration changed correction data or artifacts"
+            )
+            Check.That(
+                !Directory.Exists(earlierArtifacts) && JsonNode.DeepEquals(
+                    Read(run, "amendments/" + earlierCommit + "/run.json"),
+                    earlier
+                ) &&
+                    File.ReadAllText(
+                    Path.Combine(run, "amendments", earlierCommit, "candidate.patch")
+                ) == "earlier-patch",
+                "Migration lost an earlier correction attempt"
+            )
             ReworkAndSubmit(flow, run, failing, 1)
             Check.That(
                 File.ReadAllText(
@@ -1247,7 +1289,7 @@ internal class AmendmentFlow {
                 "Original failed checks replaced"
             )
             Check.That(
-                Directory.GetDirectories(Path.Combine(run, "amendments")).Length == 2,
+                Directory.GetDirectories(Path.Combine(run, "amendments")).Length == 3,
                 "Failed attempt evidence lost"
             )
         }

@@ -80,26 +80,32 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
             return Read(Path.Combine(directory, "run.json"))
         }
 
+        internal func LegacyCorrection(path string) Data {
+            let change = Read(path)
+            let state = change.Text("state")
+            var uuid Guid
+            if change.Number("version") != 1 || !Guid.TryParse(change.Text("uuid"), out uuid) || change.Text(
+                "id"
+            ) != change.Text("uuid") || !Regex.IsMatch(change.Text("commit"), "^[0-9a-f]{40}\\z") ||
+                (state != "validating" && state != "verifying" && state != "verified" && state != "failed") {
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot migrate the legacy correction. Inspect " +
+                        path +
+                        " and restore its original record and artifacts before retrying."
+                )
+            }
+            return change
+        }
+
         internal func Migrate(directory string) {
             let legacy = Path.Combine(directory, "correction.json")
             if File.Exists(legacy) {
                 let run = Load(directory)
                 RunStorage.ControlFile(directory, "correction.json")
-                let change = Read(legacy)
+                let change = LegacyCorrection(legacy)
                 let commit = change.Text("commit")
-                let state = change.Text("state")
                 let id = change.Text("uuid")
-                var uuid Guid
-                if change.Number("version") != 1 || !Guid.TryParse(id, out uuid) || change.Text("id") != id ||
-                    !Regex.IsMatch(commit, "^[0-9a-f]{40}\\z") ||
-                    (state != "validating" && state != "verifying" && state != "verified" && state != "failed") {
-                    throw CliFailure(
-                        "invalid_state",
-                        "Cannot migrate the legacy correction. Inspect " +
-                            legacy +
-                            " and restore its original record and artifacts before retrying."
-                    )
-                }
                 for source in Directory.EnumerateDirectories(directory, "correction-*") {
                     LocalPaths.DirectoryPath(source)
                     RunStorage.ControlFile(source, "record.json")
