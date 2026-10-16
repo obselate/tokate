@@ -86,7 +86,6 @@ internal class LeaseLifecycle {
         ) Object {
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
-            let identity = J.Get(value, "identity")
             let action = J.Text(request, "action")
             let uuid = J.Text(request, "uuid")
             let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
@@ -96,85 +95,7 @@ internal class LeaseLifecycle {
             )
 
             if action == "claim" {
-                if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                    CoordinationState.Unix(reservation, "expires") > now {
-                    throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
-                }
-
-                if reservation.ValueKind == JsonValueKind.Object && !Supported(value) {
-                    throw CliFailure(
-                        "stale_approval",
-                        "Legacy lease reacquisition is unsupported; fresh owner approval is required"
-                    )
-                }
-
-                let approval = J.Get(value, "approval")
-                let repo = J.Text(value, "repo")
-                let same = Supported(value) && RepositoryIdentity.PositiveId(
-                    J.Get(identity, "actor")
-                ) == RepositoryIdentity.PositiveId(actor)
-                let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
-                GitHub.Branch(repo, J.Text(approval, "base_branch"))
-                let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
-                let authority = GitHub.Branch(repo, J.Text(approval, "authority_branch"))
-                if Policy.Load(repo, authority).Digest != J.Text(approval, "policy_hash") {
-                    throw CoordinationState.ApprovalFailure(
-                        repo,
-                        J.Number(value, "issue"),
-                        "Repository policy changed."
-                    )
-                }
-                if base != approved {
-                    let comparison = GitHub.Api(
-                        "repos/" + repo + "/compare/" + approved + "..." + repo.Split('/')[0] + ":" + base
-                    )
-                    if J.Text(comparison, "status") != "ahead" || J.Text(
-                        J.Get(comparison, "merge_base_commit"),
-                        "sha"
-                    ) != approved {
-                        throw CoordinationState.ApprovalFailure(
-                            repo,
-                            J.Number(value, "issue"),
-                            "Target no longer descends from the approved base."
-                        )
-                    }
-                }
-
-                let id = same ? J.Text(identity, "id"): uuid
-
-                if !same {
-                    let next = map[string, Object?]{"id": id, "actor": actor}
-                    if Supported(value) {
-                        next["predecessor"] = map[string, Object?]{
-                            "revision": state.Sha,
-                            "id": J.Text(identity, "id"),
-                            "actor": J.Get(identity, "actor")
-                        }
-                    }
-
-                    state.Fields["identity"] = next
-                    state.Fields["contribution"] = nil
-                    state.Fields["amendments"] = []Object{}
-                    state.Fields["publication_revision"] = nil
-                } else {
-                    Pin(state)
-                }
-
-                let outcome = map[string, Object?]{
-                    "reservation": id,
-                    "base": base,
-                    "lease": uuid,
-                    "donor": donor,
-                    "actor": actor,
-                    "created": now,
-                    "expires": now + duration,
-                    "status": "active",
-                    "attempt": uuid
-                }
-
-                state.Fields["reservation"] = outcome
-
-                return outcome
+                return Claim(state, value, actor, donor, uuid, now, duration)
             }
 
             if !Supported(value) {
@@ -220,6 +141,98 @@ internal class LeaseLifecycle {
             state.Fields["reservation"] = fields
 
             return fields
+        }
+
+        private func Claim(
+            state CoordinationState,
+            value JsonElement,
+            actor JsonElement,
+            donor string,
+            uuid string,
+            now int64,
+            duration int32
+        ) Object {
+            let reservation = J.Get(value, "reservation")
+            let identity = J.Get(value, "identity")
+
+            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+                CoordinationState.Unix(reservation, "expires") > now {
+                throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
+            }
+
+            if reservation.ValueKind == JsonValueKind.Object && !Supported(value) {
+                throw CliFailure(
+                    "stale_approval",
+                    "Legacy lease reacquisition is unsupported; fresh owner approval is required"
+                )
+            }
+
+            let approval = J.Get(value, "approval")
+            let repo = J.Text(value, "repo")
+            let same = Supported(value) && RepositoryIdentity.PositiveId(
+                J.Get(identity, "actor")
+            ) == RepositoryIdentity.PositiveId(actor)
+            let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
+            GitHub.Branch(repo, J.Text(approval, "base_branch"))
+            let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
+            let authority = GitHub.Branch(repo, J.Text(approval, "authority_branch"))
+
+            if Policy.Load(repo, authority).Digest != J.Text(approval, "policy_hash") {
+                throw CoordinationState.ApprovalFailure(repo, J.Number(value, "issue"), "Repository policy changed.")
+            }
+
+            if base != approved {
+                let comparison = GitHub.Api(
+                    "repos/" + repo + "/compare/" + approved + "..." + repo.Split('/')[0] + ":" + base
+                )
+                if J.Text(comparison, "status") != "ahead" || J.Text(
+                    J.Get(comparison, "merge_base_commit"),
+                    "sha"
+                ) != approved {
+                    throw CoordinationState.ApprovalFailure(
+                        repo,
+                        J.Number(value, "issue"),
+                        "Target no longer descends from the approved base."
+                    )
+                }
+            }
+
+            let id = same ? J.Text(identity, "id"): uuid
+
+            if !same {
+                let next = map[string, Object?]{"id": id, "actor": actor}
+
+                if Supported(value) {
+                    next["predecessor"] = map[string, Object?]{
+                        "revision": state.Sha,
+                        "id": J.Text(identity, "id"),
+                        "actor": J.Get(identity, "actor")
+                    }
+                }
+
+                state.Fields["identity"] = next
+                state.Fields["contribution"] = nil
+                state.Fields["amendments"] = []Object{}
+                state.Fields["publication_revision"] = nil
+            } else {
+                Pin(state)
+            }
+
+            let outcome = map[string, Object?]{
+                "reservation": id,
+                "base": base,
+                "lease": uuid,
+                "donor": donor,
+                "actor": actor,
+                "created": now,
+                "expires": now + duration,
+                "status": "active",
+                "attempt": uuid
+            }
+
+            state.Fields["reservation"] = outcome
+
+            return outcome
         }
 
         private func Pin(state CoordinationState) {
