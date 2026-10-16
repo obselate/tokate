@@ -9,7 +9,7 @@ import System.Text.RegularExpressions
 internal class ClaudeHarness {
     shared {
         internal func Select(args Args, policy Policy, source string) JsonElement {
-            let selected = DonorSelection.Selection(args, policy, source)
+            let selected = SelectionPolicy.Selection(args, policy, source)
             let runtime = ClaudeCode.Runtime(args)
 
             selected["capability"] = "native configured tools inside whole-process isolation"

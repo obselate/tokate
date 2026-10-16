@@ -269,7 +269,7 @@ internal class HarnessRunner {
                 let record = ContributionAuthority.Recheck(run)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 policy.Digest = run.Text("policy_hash")
-                DonorSelection.Revalidate(run, policy)
+                SelectionPolicy.Revalidate(run, policy)
 
                 DonorSelection.Confirm(options, J.Get(run.Element(), "selection"), run)
 

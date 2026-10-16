@@ -215,7 +215,7 @@ internal class PiHarness {
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            let selected = DonorSelection.Selection(args, policy, source)
+            let selected = SelectionPolicy.Selection(args, policy, source)
             let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
             Runtime(args)
             PiBoundary.Probe(args.Need("pi-root"), args.Need("node"))

@@ -36,7 +36,7 @@ internal class CommandHarness {
         }
 
         internal func Select(args Args, policy Policy, source string) JsonElement {
-            let selected = DonorSelection.Selection(args, policy, source)
+            let selected = SelectionPolicy.Selection(args, policy, source)
             selected["command"] = J.Get(policy.Tool("command", args.Need("provider")), "command")
             if args.Get("consented-command") != "" && args.Get("consented-command") != J.Write(selected["command"]) {
                 throw Exception("The owner changed the command after your consent. No inference started.")
