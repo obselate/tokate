@@ -535,7 +535,20 @@ internal class CheckGates {
             }
             let checkout = Path.Combine(test.Run, "checkout")
             let receipt = Check.Text(Check.Json(File.ReadAllText(Path.Combine(test.Run, "run.json")))["commit"])
-            for kind in[]string{"clean", "non-target", "extra-change"} {
+            flow.Reload()
+            let originalHead = Check.Text(flow.State["pulls"]?[0]?["head"]?["sha"])
+            let settlingHead = flow.State["pulls"]?[0]?["head"] ?? throw Exception("Missing head")
+            settlingHead["sha"] = JsonValue.Create(String('f', 40))
+            flow.Save()
+            let settling = Data(Read(test, 8))
+            Gate(settling, "receipt", "pending")
+            Check.That(Check.Text(settling["machine_status"]) == "pending", "Settling PR head failed")
+            Check.Contains(settling["required_owner_actions"]?.ToJsonString() ?? "", "PR head")
+            flow.Reload()
+            let restoredHead = flow.State["pulls"]?[0]?["head"] ?? throw Exception("Missing head")
+            restoredHead["sha"] = JsonValue.Create(originalHead)
+            flow.Save()
+            for kind in[]string{"clean", "non-target", "extra-change", "direct"} {
                 flow.Git("-C", checkout, "fetch", flow.Upstream, current)
                 var target = current
                 if kind == "non-target" {
@@ -546,7 +559,13 @@ internal class CheckGates {
                     target = flow.Git("-C", checkout, "rev-parse", "HEAD")
                 }
                 flow.Git("-C", checkout, "checkout", "--detach", receipt)
-                flow.DonorGit(checkout, "merge", "--no-ff", "--no-edit", target)
+                if kind == "direct" {
+                    File.AppendAllText(Path.Combine(checkout, "result.txt"), "Direct donor edit\n")
+                    flow.DonorGit(checkout, "add", ".")
+                    flow.DonorGit(checkout, "commit", "-m", "Unverified direct commit")
+                } else {
+                    flow.DonorGit(checkout, "merge", "--no-ff", "--no-edit", target)
+                }
                 if kind == "extra-change" {
                     File.AppendAllText(Path.Combine(checkout, "result.txt"), "Unverified edit\n")
                     flow.DonorGit(checkout, "add", ".")
@@ -562,7 +581,19 @@ internal class CheckGates {
                 flow.Git("-C", fork, "update-ref", "refs/heads/" + Check.Text(head["ref"]), candidate)
                 head["sha"] = JsonValue.Create(candidate)
                 flow.Save()
-                let merged = Data(Read(test, kind == "clean" ? 0: 1))
+                let read = Read(test, kind == "clean" ? 0: 1)
+                if kind == "direct" {
+                    let rejected = Check.Envelope(read, "checks", "error", "stale_approval")
+                    Check.Contains(
+                        Check.Text(rejected["error"]?["message"]),
+                        "Later PR commits need owner review and a verified amendment"
+                    )
+                    Check.Contains(
+                        Read(test, 1, human: true).Error,
+                        "Later PR commits need owner review and a verified amendment"
+                    )
+                }
+                let merged = Data(read)
                 Gate(merged, "receipt", kind == "clean" ? "passed": (kind == "non-target" ? "failed": "stale"))
                 if kind == "clean" {
                     Gate(merged, "checks", "passed")

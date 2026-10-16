@@ -479,6 +479,12 @@ internal class Checks {
                     let livePull = GitHub.Api(pullPath)
 
                     ObserveAfter(livePull, facts)
+                    if J.Text(J.Get(livePull, "head"), "sha") != checkHead {
+                        throw CliFailure(
+                            "stale_approval",
+                            "PR head, target, receipt or lifecycle changed while reading checks"
+                        )
+                    }
 
                     let live = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), livePull)
 
@@ -566,6 +572,7 @@ internal class Checks {
                     }
 
                     let timedOut = error is ApiDeadlineException deadline
+                    let settling = error is CliFailure evidence && evidence.Code == "evidence_pending"
                     let unavailable = timedOut ||
                         error is CliFailure transport &&
                         (transport.Code == "command_failed" || transport.Code == "authentication_required")
@@ -576,18 +583,22 @@ internal class Checks {
                     let gate = gates[stage] as Dictionary[string, Object?] ?? throw Exception("Invalid check gate")
 
                     if gate["status"]?.ToString() == "unread" || stage == "freshness" {
-                        gate["status"] = stale ? "stale": (unavailable || stage == "checks" ? "unavailable": "failed")
+                        gate["status"] = settling ? "pending": (
+                            stale ? "stale": (unavailable || stage == "checks" ? "unavailable": "failed")
+                        )
                     }
 
-                    gate["reason"] = timedOut ? "deadline": (
-                        stale ? "changed_authority_or_identity": "evidence_blocked_or_unavailable"
+                    gate["reason"] = settling ? "pr_head_unavailable": (
+                        timedOut ? "deadline": (
+                            stale ? "changed_authority_or_identity": "evidence_blocked_or_unavailable"
+                        )
                     )
 
                     if stage == "freshness" || stale {
                         Invalidate(gates, facts)
                     }
 
-                    facts["machine_status"] = timedOut ? "pending": "failed"
+                    facts["machine_status"] = timedOut || settling ? "pending": "failed"
 
                     if stage == "checks" {
                         facts["checks_status"] = stale ? "stale": "unavailable"
@@ -595,10 +606,12 @@ internal class Checks {
                     }
 
                     if facts["owner_review"]?.ToString() == "required" {
-                        let action = stage == "dependencies" ? "Inspect native dependencies; every dependency must be closed as completed before machine success.": (
-                            stage == "checks" ? "Inspect incomplete or unavailable exact-head CI evidence before acceptance.": (
-                                stage == "report" ? ReportAction:
-                                "Inspect current approval, receipt, protected paths, PR head, target and lifecycle evidence before acceptance."
+                        let action = settling ? error.Message: (
+                            stage == "dependencies" ? "Inspect native dependencies; every dependency must be closed as completed before machine success.": (
+                                stage == "checks" ? "Inspect incomplete or unavailable exact-head CI evidence before acceptance.": (
+                                    stage == "report" ? ReportAction:
+                                    "Inspect current approval, receipt, protected paths, PR head, target and lifecycle evidence before acceptance."
+                                )
                             )
                         )
 
@@ -624,6 +637,10 @@ internal class Checks {
                     }
 
                     Show(run, observed, facts, directory, args.Get("verbose") == "true", approval, ref previous)
+                    if settling {
+                        Terminal.Message(error.Message, "yellow")
+                        return 8
+                    }
 
                     if error is CliFailure || error is ApiDeadlineException {
                         throw error
