@@ -556,6 +556,13 @@ internal class AmendmentFlow {
         private func V2(binary string, mode string = "", native bool = false, modelPolicy string = "") {
             using let flow = CoordinationFixture(binary)
             let run = PublishedContribution.PublishRun(flow, native, modelPolicy)
+            if native {
+                flow.Flow.Reload()
+                let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
+                pull["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")
+                pull["maintainer_can_modify"] = JsonValue.Create(false)
+                flow.Flow.Save()
+            }
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let contribution = Check.Text(flow.State()["state"]?["contribution"])
             Review(flow.Flow)
@@ -1271,7 +1278,7 @@ internal class AmendmentFlow {
                 "Commit changed the original candidate patch"
             )
             Rework(flow, run, commit)
-            Once(flow)
+            Once(flow, 1)
             Check.That(
                 Check.Text(Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["tree"]) == tree,
                 "Correction verified a different tree"
@@ -1683,7 +1690,7 @@ internal class AmendmentFlow {
             )
             File.WriteAllText(reportPath, report)
             Rework(flow, run, commit)
-            Once(flow)
+            Once(flow, 1)
         }
 
         private func AuthorityChanges(binary string) {
@@ -1818,7 +1825,7 @@ internal class AmendmentFlow {
                 "[{\"harness\":\"claude\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-4-6\",\"effort\":\"unknown\",\"usage\":{\"input_tokens\":7},\"coding_seconds\":2}]"
             )
             Rework(flow.Flow, run, commit, tools: flow.Tools)
-            Once(flow.Flow)
+            Once(flow.Flow, 1)
             Check.That(Read(run)["public_summary"] == nil, "Recovery without a summary retained the original summary")
             Check.That(Read(run)["summary_patch_sha256"] == nil, "Recovery retained the original summary patch binding")
             Check.That(Read(run)["publication_uuid"] == nil, "Recovery posted a v2 publication")
@@ -1943,12 +1950,17 @@ internal class AmendmentFlow {
                     "Response recovery changed " + field
                 )
             }
-            Once(flow.Flow)
+            Once(flow.Flow, 1)
         }
 
         private func PublicationOutcomes(flow CoordinationFixture, run string) {
             flow.Flow.Reload()
             flow.Coordinate(flow.Event(Check.PostedRequest(flow.Flow.State)))
+            flow.Flow.Reload()
+            let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
+            pull["user"] = Check.Map("login", "github-actions[bot]", "id", 41898282, "type", "Bot")
+            pull["maintainer_can_modify"] = JsonValue.Create(false)
+            flow.Flow.Save()
             using let baseline = FixtureSnapshot(flow.Flow.Temp.Root)
             for fault in[]string{"duplicate", "binding", "outcome"} {
                 baseline.Restore()
@@ -2034,12 +2046,17 @@ internal class AmendmentFlow {
                     Check.Text(flow.Flow.State["request_count"]) == (mode == "request_fail_before_write" ? "": "1"),
                     "Interrupted submit duplicated a request"
                 )
+                let preparedRequest = Check.Json(intent)
+                (preparedRequest["metadata"] ?? throw Exception("Missing publication metadata"))[
+                    "pr"
+                ] = JsonValue.Create(10)
                 Check.That(
-                    Check.Text(
+                    JsonNode.DeepEquals(
                         Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["publication"]?[
                             "request"
-                        ]
-                    ) == intent,
+                        ],
+                        preparedRequest
+                    ),
                     "Submit changed saved UUID/revision/metadata"
                 )
                 Check.That(
@@ -2048,7 +2065,7 @@ internal class AmendmentFlow {
                     ) == checks,
                     "Submit reran checks"
                 )
-                Once(flow.Flow)
+                Once(flow.Flow, 1)
                 if mode != "request_fail_before_write" {
                     let posted = Check.PostedRequest(flow.Flow.State)
                     let path = flow.Event(posted)

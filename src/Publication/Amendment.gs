@@ -979,27 +979,6 @@ internal class Amendment {
             return head
         }
 
-        private func CorrectionReceipt(run Data, correction Data) Dictionary[string, Object?] {
-            let receipt = ContributionReceipt.Coordinated(
-                run.Text("repo"),
-                run.Number("issue"),
-                run.Text("approval"),
-                (run.Text("publication_expected") == "" ? run.Text("state_sha"): run.Text("publication_expected")),
-                run.Text("id"),
-                run.Text("donor"),
-                correction.Text("commit")
-            )
-
-            ContributionReceipt.Models(receipt, run.Element())
-            receipt["correction"] = Provenance(correction)
-
-            if AttemptContinuation.Has(run) {
-                AttemptContinuation.Keep(receipt, AttemptContinuation.Metadata(run))
-            }
-
-            return receipt
-        }
-
         private func Access(run Data, record JsonElement, current bool = false) {
             let approval = J.Get(record, "approval")
             let policy = current ? ApprovalBase.Check(run.Text("repo"), approval, true).Item1.Value: J.Get(
@@ -1027,13 +1006,22 @@ internal class Amendment {
             if !RequestData.Same(J.Get(intent, "request"), Submission.PublicationRequest(run, change)) {
                 throw CliFailure("stale_approval", "Saved version-2 publication intent changed")
             }
-            for file in[]string{"request.json", "publication.json"} {
-                Preview(Path.Combine(directory, file), J.Write(J.Get(intent, "request")) + "\n")
+            let path = Path.Combine(directory, "request.json")
+            if File.Exists(path) || FileInfo(path).LinkTarget != nil {
+                Preview(path, J.Write(J.Get(intent, "request")) + "\n")
             }
             let authority = Authority(run, change, directory: directory)
             let stage = J.Text(intent, "stage")
             let remote = UnpublishedRemote(run, change, stage == "prepared")
-            let existing = Publication.Find(run, J.Parse(J.Write(CorrectionReceipt(run, change))))
+            let receipt = ContributionReceipt.Publication(
+                run.Text("repo"),
+                run.Number("issue"),
+                J.Get(intent, "request"),
+                run.Text("id"),
+                run.Text("donor")
+            )
+            Preview(Path.Combine(directory, "publication.json"), J.Write(receipt) + "\n")
+            let existing = Publication.Find(run, J.Parse(J.Write(receipt)))
             if J.Text(authority, "sha") != change.Text("expected") {
                 if existing.ValueKind == JsonValueKind.Undefined || remote != change.Text("commit") || J.Number(
                     J.Get(J.Get(J.Get(authority, "state"), "contribution"), "outcome"),
@@ -1047,7 +1035,7 @@ internal class Amendment {
                     change.Fields.Remove(key)
                 }
                 Save(directory, change)
-                Publication.SavePr(directory, run, existing, Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits)
+                Publication.SavePr(directory, run, existing)
                 return
             }
             if existing.ValueKind != JsonValueKind.Undefined && remote != change.Text("commit") {
@@ -1062,7 +1050,7 @@ internal class Amendment {
                 }
                 Authority(run, change, directory: directory)
             }
-            if stage == "request_pending" || stage == "requested" || existing.ValueKind != JsonValueKind.Undefined {
+            if stage == "request_pending" || stage == "requested" {
                 if !Submission.Posted(
                     run.Text("repo"),
                     run.Number("issue"),
@@ -1083,16 +1071,21 @@ internal class Amendment {
             Exact(directory, run, change, record)
             let latest = Authority(run, change, directory: directory)
             Access(run, record, true)
+            let request = Publication.Prepare(run, record, J.Get(intent, "request"))
+            change.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
+            change.Fields["publication"] = map[string, Object?]{"stage": stage, "request": request}
+            Save(directory, change)
+            Preview(path, J.Write(request) + "\n")
             SetStage(directory, change, "request_pending")
             Submission.WriteRequest(
                 run.Text("repo"),
                 run.Number("issue"),
                 J.Get(run.Element(), "donor_id"),
-                J.Get(intent, "request"),
+                request,
                 CoordinationState.Unix(J.Get(J.Get(latest, "state"), "reservation"), "expires")
             )
             SetStage(directory, change, "requested")
-            Terminal.Message("Exact correction publication request posted. The coordinator remains publisher.")
+            Terminal.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")
         }
 
         private func Preview(path string, expected string) {

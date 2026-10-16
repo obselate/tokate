@@ -211,15 +211,13 @@ internal class Gratis {
                 id +
                 " -->\n" +
                 marker
-            let pullRequest = map[string, Object?]{
-                "title": run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"):
-                run.Text("gratis_title"),
-                "body": body,
-                "head": donor + ":" + run.Text("branch"),
-                "base": run.Text("base_branch"),
-                "draft": !run.Flag("ready"),
-                "maintainer_can_modify": true
-            }
+            let pullRequest = Publication.PullRequest(
+                run,
+                run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"): run.Text("gratis_title"),
+                body,
+                !run.Flag("ready"),
+                true
+            )
             let findings = run.Text("findings")
             let discussionTitle = "Tokate donation findings"
             let discussionBody = findings == "" ? "": findings + "\n\n" + attribution + "\n\n" + marker

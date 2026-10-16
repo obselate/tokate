@@ -361,7 +361,7 @@ internal class RequestData {
             } else if J.Text(value, "action") == "publish" {
                 Keys(
                     metadata,
-                    "fork,branch,head,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff,requested_model,reported_model"
+                    "fork,branch,head,pr,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff,requested_model,reported_model"
                 )
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "head"))

@@ -795,7 +795,10 @@ internal class PreparationChecks {
                     metadata["fork"] = JsonValue.Create("owner/project")
                     test.Coordinate(test.Event(rejected, 123, "owner"), 1)
                     test.Flow.NoInference()
-                    test.Flow.NoPr()
+                    Check.That(
+                        test.State()["state"]?["contribution"] == nil,
+                        "Unauthorized same-repository PR gained authority"
+                    )
                     continue
                 }
                 let run = RunPath(test.Flow)
@@ -830,6 +833,10 @@ internal class PreparationChecks {
                 Check.That(
                     test.Flow.State["pulls"]?.AsArray().Count == 1,
                     "Coordinator rejected numerically owned upstream"
+                )
+                Check.That(
+                    test.Flow.State["pulls"]?[0]?["maintainer_can_modify"] == nil,
+                    "Same-repository PR set maintainer edits"
                 )
                 test.Flow.NoInference()
             }

@@ -261,92 +261,55 @@ internal class Coordinator {
                     throw Exception("Publication must use this reservation's branch")
                 }
 
-                let marker = "<!-- tokate-v2:" + reservation + " -->"
-                let receipt = ContributionReceipt.Coordinated(
-                    repo,
-                    number,
-                    J.Text(value, "approval_id"),
-                    J.Text(request, "expected"),
-                    reservation,
-                    donor,
-                    J.Text(metadata, "head")
-                )
-                ContributionReceipt.Models(receipt, metadata)
-
-                if correction.ValueKind != JsonValueKind.Undefined {
-                    receipt["correction"] = correction
-                }
-
-                if RequestData.Incomplete(metadata) {
-                    receipt["incomplete"] = true
-                }
-
-                if J.Get(metadata, "handoff").ValueKind != JsonValueKind.Undefined {
-                    receipt["handoff"] = J.Get(metadata, "handoff")
-                }
-
-                AttemptContinuation.Keep(receipt, metadata)
-
-                let pulls = J.Items(
-                    GitHub.Api(
-                        "repos/" + repo + "/pulls?state=all&head=" + Uri.EscapeDataString(
-                            donor + ":" + J.Text(metadata, "branch")
-                        ) +
-                            "&base=" +
-                            Uri.EscapeDataString(J.Text(J.Get(record, "approval"), "base_branch"))
-                    )
-                )
-
-                if pulls.Count > 1 {
-                    throw Exception("Ambiguous publication; owner inspection required")
-                }
-
-                var pull = pulls.Count == 0 ? JsonElement{}: pulls[0]
-                if pull.ValueKind != JsonValueKind.Undefined {
-                    let body = J.Text(pull, "body")
-                    let sameReceipt = RequestData.Canonical(PrBody.Receipt(body)) == RequestData.Canonical(
-                        J.Parse(J.Write(receipt))
-                    )
-
-                    if !body.Contains(marker) || J.Text(J.Get(pull, "head"), "sha") != J.Text(metadata, "head") ||
-                        !sameReceipt {
-                        throw Exception("Existing PR differs from this contribution")
-                    }
-
-                    let report = PrBody.ReportText(body)
-                    if report != PrBody.PublicReport(metadata) {
-                        throw Exception("Existing PR summary differs from this publication intent")
-                    }
-                }
-
+                let receipt = ContributionReceipt.Publication(repo, number, request, reservation, donor)
+                RepositoryIdentity.PositiveId(J.Get(metadata, "pr"))
                 Revalidate(repo, number, state, actor, donor)
                 RepositoryAccess.ValidateFork(repo, metadata, actor)
-
-                if pull.ValueKind == JsonValueKind.Undefined {
-                    AccessState.Check(repo, number, J.Get(record, "approval"), actor, J.Get(record, "policy"))
-                    pull = GitHub.Api(
-                        "repos/" + repo + "/pulls",
-                        map[string, Object?]{
-                            "title": (RequestData.Incomplete(metadata) ? "Incomplete: ": "") + J.Text(
-                                J.Get(record, "issue"),
-                                "title"
-                            ),
-                            "body": Body(record, metadata, donor, receipt, marker),
-                            "head": donor + ":" + J.Text(metadata, "branch"),
-                            "base": J.Text(J.Get(record, "approval"), "base_branch"),
-                            "draft": true,
-                            "maintainer_can_modify": false
-                        },
+                let pull = GitHub.Api("repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString())
+                let head = J.Get(pull, "head")
+                let target = J.Get(pull, "base")
+                if J.Get(J.Get(pull, "user"), "id").ToString() != actor.ToString() {
+                    throw Exception("Publication PR author differs from reserved donor")
+                }
+                if !RepositoryIdentity.SameRepo(J.Text(J.Get(head, "repo"), "full_name"), J.Text(metadata, "fork")) ||
+                    J.Text(head, "ref") != J.Text(metadata, "branch") {
+                    throw Exception("Publication PR head repository or branch differs from reservation")
+                }
+                if J.Text(head, "sha") != J.Text(metadata, "head") {
+                    throw Exception("Publication PR head SHA differs from receipt")
+                }
+                if !RepositoryIdentity.SameRepo(J.Text(J.Get(target, "repo"), "full_name"), repo) || J.Text(
+                    target,
+                    "ref"
+                ) != J.Text(J.Get(record, "approval"), "base_branch") {
+                    throw Exception("Publication PR base differs from reserved target")
+                }
+                if J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") {
+                    throw Exception("Publication PR must be an open draft")
+                }
+                if !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), repo) && J.Get(pull, "maintainer_can_modify")
+                    .ValueKind !=
+                (Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits ? JsonValueKind.True: JsonValueKind.False) {
+                    throw Exception("Publication PR maintainer edits differ from policy")
+                }
+                let body = PrBody.Coordinated(
+                    record,
+                    metadata,
+                    donor,
+                    receipt,
+                    "<!-- tokate-v2:" + reservation + " -->"
+                )
+                if J.Text(pull, "body") != body {
+                    Revalidate(repo, number, state, actor, donor)
+                    GitHub.Api(
+                        "repos/" + repo + "/pulls/" + J.Number(metadata, "pr").ToString(),
+                        map[string, Object?]{"body": body},
+                        "PATCH",
                         expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
                     )
                 }
-
                 Revalidate(repo, number, state, actor, donor)
                 RepositoryAccess.ValidateFork(repo, metadata, actor)
-
-                if J.Text(J.Get(pull, "head"), "sha") != J.Text(metadata, "head") {
-                    throw Exception("PR commit differs from declaration")
-                }
 
                 outcome = map[string, Object?]{
                     "pr": J.Number(pull, "number"),
@@ -675,28 +638,6 @@ internal class Coordinator {
                 J.Text(metadata, "fork"),
                 J.Text(metadata, "head")
             )
-        }
-
-        private func Body(
-            record JsonElement,
-            metadata JsonElement,
-            donor string,
-            receipt Object,
-            marker string
-        ) string {
-            let values = Dictionary[string, string]()
-            values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
-            values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
-            values["donor"] = donor
-            values["model"] = "see original donor-reported tools in report"
-            values["effort"] = "per-tool declaration; not independently attested"
-            values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
-            values["base"] = J.Text(record, "base")
-            values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
-            values["usage"] = "per-tool donor declaration; not independently attested"
-            values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"
-
-            return PrBody.Render(J.Text(record, "template"), values, J.Get(record, "policy"))
         }
     }
 }

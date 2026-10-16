@@ -576,6 +576,10 @@ internal class Submission {
                 "tools": tools,
                 "verification": RequestData.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
             }
+            let pr = correction?.Number("publication_pr") ?? run.Number("publication_pr")
+            if pr > 0 {
+                metadata["pr"] = pr
+            }
 
             ContributionReceipt.Models(metadata, run.Element())
 
@@ -738,12 +742,7 @@ internal class Submission {
                         pull,
                         "html_url"
                     ) {
-                        Publication.SavePr(
-                            directory,
-                            run,
-                            pull,
-                            Policy(J.Write(J.Get(published.Element(), "policy"))).MaintainerEdits
-                        )
+                        Publication.SavePr(directory, run, pull)
                     }
 
                     return
@@ -809,7 +808,9 @@ internal class Submission {
                 run.Save(directory)
             }
 
-            let request = PublicationRequest(run)
+            let request = Publication.Prepare(run, record, PublicationRequest(run))
+            run.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
+            run.Save(directory)
 
             File.WriteAllText(path, J.Write(request) + "\n")
 

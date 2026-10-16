@@ -53,7 +53,7 @@ It uses the completed work without new inference. Do not start another run.
    tokate amend 42 --time 5m
    ```
 
-4. After the coordinator publishes the draft, record its result.
+4. After the coordinator adopts the donor's draft PR, record its result.
 
    ```sh
    tokate submit 42
