@@ -314,7 +314,7 @@ internal class Coordinator {
                     }
 
                     let report = PrBody.ReportText(body)
-                    if report != PrBody.CoordinatedReport(metadata) {
+                    if report != PrBody.PublicReport(metadata) {
                         throw Exception("Existing PR summary differs from this publication intent")
                     }
                 }
@@ -552,14 +552,7 @@ internal class Coordinator {
             let pull = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
             let body = J.Text(pull, "body")
             let oldReceipt = PrBody.Receipt(body)
-            let report = Amendment.Summary(
-                J.Text(metadata, "previous"),
-                J.Text(metadata, "head"),
-                J.Number(metadata, "seconds"),
-                J.Get(metadata, "tools"),
-                J.Get(metadata, "summary"),
-                old
-            )
+            let report = PrBody.PublicReport(metadata, old)
 
             let retainedHistory = List[Object]()
             let amendments = J.Get(value, "amendments")
@@ -584,15 +577,8 @@ internal class Coordinator {
                     throw Exception("PR receipt differs from saved previous or candidate state")
                 }
 
-                let previousReport = retainedHistory.Count == 0 ? PrBody.CoordinatedReport(old):
-                Amendment.Summary(
-                    J.Text(current, "previous"),
-                    J.Text(current, "head"),
-                    J.Number(current, "seconds"),
-                    J.Get(current, "tools"),
-                    J.Get(current, "summary"),
-                    old
-                )
+                let previousReport = retainedHistory.Count == 0 ? PrBody.PublicReport(old):
+                PrBody.PublicReport(current, old)
                 let observedReport = PrBody.ReportText(body)
 
                 if observedReport != previousReport {
@@ -700,7 +686,7 @@ internal class Coordinator {
         ) string {
             let values = Dictionary[string, string]()
             values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
-            values["report"] = PrBody.Report(PrBody.CoordinatedReport(metadata))
+            values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
             values["donor"] = donor
             values["model"] = "see original donor-reported tools in report"
             values["effort"] = "per-tool declaration; not independently attested"
