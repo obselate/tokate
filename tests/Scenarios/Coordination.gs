@@ -1879,8 +1879,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
             field == "locked" ? JsonValue.Create(true): Check.Map("url", "pull")
             namedFlow.Save()
             let rejected = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
-            Check.Contains(Check.Text(rejected["error"]?["message"]), "open, unlocked issue")
-            Check.Contains(Check.Text(rejected["error"]?["message"]), "#2")
+            Check.Contains(
+                Check.Text(rejected["error"]?["message"]),
+                field == "state" ? "closed": field == "locked" ? "locked": "a pull request"
+            )
+            Check.Contains(Check.Text(rejected["error"]?["message"]), "owner/project#2")
             namedIssue.AsObject().Remove(field)
             namedIssue["state"] = JsonValue.Create("open")
         }
@@ -1889,7 +1892,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
         namedIssue["locked"] = JsonValue.Create(true)
         namedFlow.Save()
         let invalidList = Check.Envelope(namedFlow.Call(namedArgs, 1), "work", "error", "invalid_state")
-        Check.Contains(Check.Text(invalidList["error"]?["message"]), "#2, #1")
+        Check.Contains(
+            Check.Text(invalidList["error"]?["message"]),
+            "owner/project#2 is locked, owner/project#1 is closed"
+        )
         namedFlow.NoInference()
         let restored = namedFlow.State["issues"] ?? throw Exception("Missing restored issues")
         let restoredFirst = restored["1"] ?? throw Exception("Missing restored first issue")
