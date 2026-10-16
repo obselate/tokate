@@ -126,7 +126,7 @@ internal class SelectionPolicy {
                     args.Values["--effort"] = effort
                 }
 
-                return choose(args, Selection(args, policy, source))
+                return choose(args, () -> Selection(args, policy, source))
             }
 
             let capabilities = CodexRuntime.Capabilities(args.Get("harness-path"))

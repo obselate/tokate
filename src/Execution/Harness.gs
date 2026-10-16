@@ -26,7 +26,7 @@ internal class Harness(
     ],
     read Func[string, Data, JsonElement, CommandResult, Action[JsonElement], Evidence],
     activity Action[string],
-    choose Func[Args, Dictionary[string, Object?], JsonElement]? = nil,
+    choose Func[Args, Func[Dictionary[string, Object?]], JsonElement]? = nil,
     validateSaved Action[Data]? = nil,
     doctor Action[Args, ToolCheck]? = nil,
     beforeRun Action[Data, RuntimeBudget]? = nil,
@@ -54,7 +54,7 @@ internal class Harness(
     ] = prepare
     internal let Read Func[string, Data, JsonElement, CommandResult, Action[JsonElement], Evidence] = read
     internal let Activity Action[string] = activity
-    internal let Select Func[Args, Dictionary[string, Object?], JsonElement]? = choose
+    internal let Select Func[Args, Func[Dictionary[string, Object?]], JsonElement]? = choose
     internal let ValidateSaved Action[Data]? = validateSaved
     internal let Doctor Action[Args, ToolCheck]? = doctor
     internal let BeforeRun Action[Data, RuntimeBudget]? = beforeRun

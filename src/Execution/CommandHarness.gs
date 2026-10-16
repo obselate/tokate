@@ -82,7 +82,11 @@ internal class CommandHarness {
                 output == "claude" ? ClaudeHarness.Read(directory, run, record, result, validateModels):
                 OmpHarness.Read(directory, run, record, result, validateModels),
                 activity,
-                (args Args, selected Dictionary[string, Object?]) -> Select(args, selected, J.Get(tool, "command")),
+                (args Args, selection Func[Dictionary[string, Object?]]) -> Select(
+                    args,
+                    selection(),
+                    J.Get(tool, "command")
+                ),
                 catalog: true,
                 continues: false
             )

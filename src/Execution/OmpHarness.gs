@@ -18,11 +18,12 @@ internal class OmpHarness {
             }
         }
 
-        internal func Select(args Args, selected Dictionary[string, Object?]) JsonElement {
+        internal func Select(args Args, selection Func[Dictionary[string, Object?]]) JsonElement {
             let provider = RequestData.Token(args.Need("provider"))
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
+            let selected = selection()
             let runtime = OmpRuntime.Runtime(args)
             let limits = OmpRuntime.Model(args.Need("harness-path"), provider, model)
             OmpRuntime.CheckEffort(limits, effort)

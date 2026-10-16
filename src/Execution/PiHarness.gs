@@ -211,10 +211,11 @@ internal class PiHarness {
             }
         }
 
-        internal func Select(args Args, selected Dictionary[string, Object?]) JsonElement {
+        internal func Select(args Args, selection Func[Dictionary[string, Object?]]) JsonElement {
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
+            let selected = selection()
             let endpoint = PiBoundary.Endpoint(args.Need("endpoint"))
             Runtime(args)
             PiBoundary.Probe(args.Need("pi-root"), args.Need("node"))

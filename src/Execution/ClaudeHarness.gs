@@ -7,7 +7,8 @@ import System.Text.Json
 
 internal class ClaudeHarness {
     shared {
-        internal func Select(args Args, selected Dictionary[string, Object?]) JsonElement {
+        internal func Select(args Args, selection Func[Dictionary[string, Object?]]) JsonElement {
+            let selected = selection()
             let runtime = ClaudeCode.Runtime(args)
 
             selected["capability"] = "native configured tools inside whole-process isolation"
