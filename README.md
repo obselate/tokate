@@ -33,7 +33,7 @@ See [agent installation steps](AGENTS.md#install-tokate-and-its-dependencies) fo
 
 ## Start here
 
-```sh
+```bash
 # Install Tokate, log in to GitHub and check the machine
 curl -qfsSL https://tokate.dev/install.sh | sh
 gh auth login
@@ -42,7 +42,7 @@ tokate doctor
 
 - **Owners:** [Set up the repository, approve tasks and review donations](docs/owners.md).
 
-  ```sh
+  ```bash
   # Set up once: preview the changes, apply them, then merge the setup PR
   tokate init OWNER/REPO
   tokate init OWNER/REPO --yes
@@ -52,38 +52,38 @@ tokate doctor
   tokate approve OWNER/REPO#42
 
   # Optional: let one donor you do not trust yet work that issue
-  tokate access grant LOGIN OWNER/REPO#42
+  tokate approve OWNER/REPO#42 LOGIN
 
   # Check a donated PR, then merge it
-  tokate checks OWNER/REPO#PR
-  gh pr ready PR -R OWNER/REPO
-  gh pr merge PR -R OWNER/REPO
+  tokate checks OWNER/REPO#10
+  gh pr ready 10 -R OWNER/REPO
+  gh pr merge 10 -R OWNER/REPO
   ```
 
 - **Donors:** [Choose a tool, claim an issue and donate work](docs/donors.md).
 
-  ```sh
+  ```bash
   # Work one approved issue, then open its PR
-  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
+  tokate work OWNER/REPO#42 --harness codex --model MODEL --effort high --time 1h
   tokate submit OWNER/REPO#42
   ```
 
 - **Gratis donors:** [Donate to a repository without Tokate, with an AI agent template](docs/gratis.md).
 
-  ```sh
+  ```bash
   # Let the harness choose tasks for one hour, or stop early
-  tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
+  tokate work OWNER/REPO --harness codex --model MODEL --effort high --time 1h --total 1h --yes
   tokate work OWNER/REPO stop
 
   # Work the listed issues in order and publish each one
-  tokate work OWNER/REPO#12,15 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
+  tokate work OWNER/REPO#12,15 --harness codex --model MODEL --effort high --time 1h --yes
   ```
 
   Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](docs/donors.md#local-inference-with-pi).
 
 - **Existing work:** [Recover a run or update a PR](docs/recovery.md).
 
-  ```sh
+  ```bash
   # List your saved work, or show one run with its checkout path
   tokate status
   tokate status OWNER/REPO#42
@@ -96,15 +96,15 @@ tokate doctor
 
 - **Before running:** [Understand data access and isolation](docs/security.md).
 
-  ```sh
+  ```bash
   # Check a repository's policy and coordinator, and your harness
   tokate doctor repo OWNER/REPO
-  tokate doctor HARNESS
+  tokate doctor codex
   ```
 
 - **Source builders:** [Build, test and package Tokate](docs/development.md).
 
-  ```sh
+  ```bash
   # Build and run the fast gate
   git clone https://github.com/obselate/tokate.git
   cd tokate

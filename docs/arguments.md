@@ -27,7 +27,7 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `work` stop | `tokate work OWNER/REPO stop --yes` | Wait for the current task and print the session report. |
 | `claim` | `tokate claim ISSUE [NAME] [options]` | Reserve a named issue without inference or publication. Under your active reservation, prepare a fresh attempt. `OWNER/REPO` alone is invalid. |
 | `claim` saved run | `tokate claim RUN [--yes]` | Finish or recheck a saved claim and its preparation without inference. |
-| `submit` | `tokate submit RUN [--incomplete]` | Push saved work and request a draft PR. |
+| `submit` | `tokate submit RUN [--incomplete] [--yes]` | Push saved work and request a draft PR. Gratis work previews the exact PR text before consent. |
 | `status` | `tokate status [--all]` | List your saved work as a table. Inside a checkout, list only that repository. Finished runs are hidden and counted. `--all` shows them. One GitHub query marks merged or closed PRs as finished. Offline, saved state is used. |
 | `status` repository | `tokate status OWNER/REPO` | List approved issues with title, state, whether you act next and the next command. |
 | `status` issue or run | `tokate status ISSUE \| RUN` | Show issue, state, PR and next action in a short table. `--json` adds the details, and issue data includes `coordination`. |
@@ -36,15 +36,14 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `resume` | `tokate resume RUN` | Resume your paused reservation. |
 | `renew` | `tokate renew RUN` | Renew before expiry. |
 | `release` | `tokate release RUN` | Release your reservation. |
-| `init` | `tokate init [OWNER/REPO] [options]` | Preview GitHub settings, the access record and a setup PR with the policy and pinned workflow, then ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
-| `approve` | `tokate approve ISSUE [--base-branch BRANCH] [--yes]` | Approve an existing issue. Create issues with `gh issue create` or the GUI. |
+| `init` | `tokate init [OWNER/REPO] [options]` | Preview required Actions settings and one setup PR with the policy and `v0` workflow. Use `--pin` for an exact release commit. Ask once in a terminal or apply with `--yes`. Non-terminal preview returns `applied=false`. |
+| `approve` | `tokate approve ISSUE [LOGIN] [--base-branch BRANCH] [--yes]` | Approve an existing issue. `LOGIN` allows one donor without persistent trust. Denial still blocks that donor. |
 | `revoke` | `tokate revoke ISSUE` | Revoke approval and block publication. |
 | `access` | `tokate access [list\|history] [LOGIN] [OWNER/REPO]` | Inspect donor membership, requests and history. |
-| `access init` | `tokate access init [OWNER/REPO]` | Initialize access authority. |
+| `access init` | `tokate access init [OWNER/REPO]` | Optionally create an empty access record. An absent ref is already empty. |
 | `access trust`, `untrust`, `deny`, `restore` | `tokate access OPERATION LOGIN [OWNER/REPO]` | Change persistent donor membership. |
-| `access grant`, `remove` | `tokate access OPERATION LOGIN ISSUE` | Change one issue grant. |
 | `access check` | `tokate access check ISSUE` | Check your eligibility. |
-| `access request` | `tokate access request ISSUE [--trust]` | Request an issue grant or persistent trust. |
+| `access request` | `tokate access request ISSUE [--trust]` | Post a plain comment to request issue access or persistent trust. The owner uses `approve ISSUE LOGIN` or `access trust`. |
 | `doctor` | `tokate doctor [repo\|managed\|external\|HARNESS] [OWNER/REPO\|HARNESS] [options]` | Check prerequisites, or read repository policy and coordinator health. `--fix` explains installations and asks once in a terminal, `--fix --yes` applies them. Use `--harness-path FILE` for an existing harness. |
 | `doctor claude` | `tokate doctor claude --model MODEL --effort EFFORT [--policy FILE] [--path DIR] [--file REPORT]` | Also check the Claude invocation for one owner-permitted model and effort. |
 | `defaults` | `tokate defaults [list\|set\|show\|remove\|use] [NAME] [options]` | Save or select tool and model profiles. |
@@ -52,12 +51,8 @@ Bare `tokate` prints help. The GUI is the other interface.
 | `update` | `tokate update [--yes]` | Show the current and latest stable version, then install it. Without a terminal, preview unless `--yes`. |
 | `uninstall` | `tokate uninstall [--yes]` | Show the files to remove, then remove the managed installation and keep runs. Without a terminal, preview unless `--yes`. |
 | `overlaps` | `tokate overlaps PR PR...` | Inspect filename overlap and issue dependencies. |
-| `recover-request` | `tokate recover-request ISSUE` | Owner: process the latest unprocessed request with the installed coordinator. |
-| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
+| `amend` | `tokate amend RUN [--time TIME] [--commit SHA] [--tools FILE] [--summary FILE] [--resume]` | Archive completed unpublished work, resume publication or verify and publish a correction with `--time`. |
 | `external` | `tokate external RUN [--commit SHA] [--summary FILE]` | Fetch and verify an exact external commit. |
-| `reconcile` | `tokate reconcile RUN [--resume]` | Merge the current target into a saved published checkout. |
-| `sync` authorize | `tokate sync PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]` | Owner: grant synchronization for exact commits. |
-| `sync` revoke | `tokate sync PR revoke --grant SHA` | Owner: revoke a synchronization grant of the PR. |
 | `completion` | `tokate completion bash\|zsh\|fish` | Print shell completion. |
 | `help` | `tokate help [COMMAND]` | Show command help. |
 | `--version` | `tokate --version` | Print the installed version. |
@@ -93,7 +88,7 @@ offer continuation. Other saved status reads are offline.
 
 | Input | Examples |
 | --- | --- |
-| Exact commit or authority | `--commit SHA`, `--upstream SHA`, `--grant SHA` |
+| Exact commit | `--commit SHA` |
 | File input or output | `--tools FILE`, `--summary FILE`, `--file FILE`, `--event FILE` |
 | Execution selection | `--harness codex`, `--model MODEL`, `--effort high`, `--provider openai` |
 | Time with a required unit | `--time 30m`, `--total 8h`, `--verify-time 10m`, `--max-time 2h`, `--reservation-time 1d`, `--timeout 45s` |

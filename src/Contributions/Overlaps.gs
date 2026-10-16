@@ -268,8 +268,8 @@ internal class Overlaps {
 
             if base != target {
                 facts["upstream_next"] = paths.Count > 0 ?
-                "Owner: ask the current donor to reconcile these overlapping paths with the current target, then verify the resulting commit. Further coding requires a new donor budget.":
-                "Owner: no filename overlap was found. Review semantic compatibility and choose merge order; old checks do not verify a reconciled commit."
+                "Owner: ask the current donor to merge the target, resolve overlapping paths, then run tokate amend with a verification budget. Further coding requires a new donor budget.":
+                "Owner: no filename overlap was found. Review semantic compatibility and choose merge order. After merging the target, run tokate amend with a verification budget."
             }
         }
 
@@ -312,7 +312,7 @@ internal class Overlaps {
                     J.Get(pull, "mergeable").ValueKind == JsonValueKind.False ? false as Object: nil
                 )
 
-                let binding = ReceiptVerification.Verify(repo, item.Number, ready: false, paths: false)
+                let binding = ReceiptVerification.Verify(repo, item.Number, paths: false)
 
                 item.Binding = binding
                 facts["binding_status"] = "validated"
@@ -322,8 +322,9 @@ internal class Overlaps {
                 )
 
                 try {
-                    let history = J.Items(J.Get(binding.Element(), "synchronizations"))
-                    let base = history.Count > 0 ? J.Text(history[history.Count - 1], "upstream"): binding.Text("base")
+                    let base = binding.Text("verified_target_revision") == "" ? binding.Text("base"): binding.Text(
+                        "verified_target_revision"
+                    )
 
                     let files = GitHubPathEvidence.Diff(
                         repo,
@@ -418,8 +419,8 @@ internal class Overlaps {
                     }
 
                     if let binding = item.Binding {
-                        let live = ReceiptVerification.Verify(repo, item.Number, ready: false, paths: false)
-                        let fields = "version,issue,approval,authority_revision,base,base_branch,commit,synchronizations"
+                        let live = ReceiptVerification.Verify(repo, item.Number, paths: false)
+                        let fields = "version,issue,approval,authority_revision,base,base_branch,commit,verified_target_revision"
                         let current = J.Write(J.Select(live.Element(), fields))
                         let original = J.Write(J.Select(binding.Element(), fields))
 

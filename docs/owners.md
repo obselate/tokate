@@ -24,26 +24,29 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
 3. Preview the setup. No checkout is necessary.
 
    ```sh
-   tokate init OWNER/REPO --verification '[["bash","scripts/verify.sh"]]' --required-checks '["verify"]'
+   tokate init OWNER/REPO
    ```
 
-   Use the project's real test command and CI check names. Verification takes JSON argv arrays.
    Defaults: the default branch as target, `trusted` access, and codex, claude and pi with any model.
+   Verification commands and required checks are optional and default to none.
+   Use `--verification JSON` for JSON argv arrays and `--required-checks JSON` for CI check names.
    Use `--eligibility open`, `--base-branch BRANCH`, `--max-time TIME`,
    `--reservation-time TIME` and `--allowed-tools JSON` to change choices.
-   Existing policy values are kept unless a flag changes them.
+   Existing policy values are kept unless a flag changes them. Omitted optional fields stay omitted.
+   Set `"maintainer_edits": false` in the policy to prevent maintainer edits. The default is true.
+   Donor submit completion enables maintainer edits after the coordinator creates the PR.
 
    Init checks GitHub authentication and write access. Before a change, it lists:
 
    | Item | Change |
    | --- | --- |
    | Actions workflow permissions | Allow GitHub Actions to create and approve pull requests. Default permissions stay. |
-   | Actions event policy | Allow `issues`, `issue_comment`, `pull_request_target` and `workflow_call` for the coordinator workflow. |
-   | Actions allowlist | Add the pinned `obselate/tokate` shared workflow. Other entries stay. |
-   | Branch protection | Require the policy checks on the target branch. |
-   | `tokate/access` | Create the empty donor access record. |
+   | Actions allowlist | Add the shared workflow only when the current allowlist blocks it and has no explicit deny. Other entries stay. |
    | `tokate-setup` | Create or advance a branch with `.github/tokate.json` and `.github/workflows/tokate-coordinator.yml`. |
    | Setup PR | Open a PR from `tokate-setup` into the default branch, or reuse the open one. |
+
+   Init never writes branch protection or creates the access record. It does not create
+   an event policy when no policy restricts the coordinator. Doctor keeps settings diagnosis read-only.
 
    Each setting shows its current and proposed value. Steps that init cannot apply
    are printed as `Manual:` and listed in `data.manual`. Init asks once in a terminal.
@@ -67,8 +70,6 @@ It changes nothing. Exit 0 means the read succeeded, even when problems are foun
 | Public GitHub repository | Repository visibility is public. |
 | GitHub CLI and repository admin rights | `tokate init` checks them. |
 | Actions is enabled | `gh api repos/OWNER/REPO/actions/permissions` |
-| CI already ran on `main` | `gh run list --repo OWNER/REPO --branch main` |
-| Test command works on Linux from a clean clone | Run your test command from the repository root. |
 | No tracked build output | Keep generated build files out of Git. |
 
 Init stops when Actions is disabled or an event policy blocks Tokate events. When
@@ -77,10 +78,11 @@ manual setting. Fix it before donors submit requests.
 
 | Who can contribute? | Access |
 | --- | --- |
-| **Trusted people** | Trusted donors or donors with an issue grant. Newcomers request access first. |
-| **Anyone eligible** | Authenticated GitHub users who are not denied. |
+| `trusted` | Trusted donors or donors named in the issue approval with `approve ISSUE LOGIN`. |
+| `open` | Authenticated GitHub users who are not denied. |
 
-With no trusted donors, **Trusted people** requires an issue grant for each donor.
+Denial blocks every donor, including trusted donors and donors named in an approval.
+An absent `tokate/access` ref is an empty record. The first access write creates it.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
@@ -111,10 +113,8 @@ the argv without a shell or a sandbox. It sends the prompt on standard input.
 | `output` | `codex`, `claude` or `session` JSONL. Tokate reads it with the parser of that format. |
 | `models` | Required. Session output must report this provider and model. |
 
-Tokate reads only version 3. Init migrates a version 2 policy to version 3 and
-updates the coordinator pin in the same setup PR. The version 2 model whitelist
-becomes the `models` map of each tool. `manual` eligibility becomes `trusted`.
-Re-approve open tasks after the setup PR is merged. Old whole-text approvals become stale once.
+Tokate reads only policy version 3. Convert older policy files before init.
+Re-approve open tasks when the setup PR changes task fields.
 
 ## Approve an issue and donor
 
@@ -130,14 +130,14 @@ Re-approve open tasks after the setup PR is merged. Old whole-text approvals bec
    tokate access trust DONOR
    ```
 
-3. For access to only one issue, grant that issue instead.
+3. Create an issue with `gh issue create` or the GUI. Include scope and acceptance criteria.
+   To allow one donor without persistent trust, name that donor after the issue.
 
    ```sh
-   tokate access grant DONOR 42
+   tokate approve 42 DONOR
    ```
 
-4. Create an issue with `gh issue create` or the GUI. Include scope and acceptance criteria.
-5. Approve that existing issue.
+4. Or approve the issue for donors who meet the repository eligibility policy.
 
    ```sh
    tokate approve 42
@@ -147,17 +147,23 @@ Re-approve open tasks after the setup PR is merged. Old whole-text approvals bec
    is used when this flag is absent. Replacing an active reservation or published PR
    asks once in a terminal, or requires `--yes` in non-terminal use.
 
+   At claim, the coordinator records the target tip in the reservation. Work and
+   receipts use that base. The tip must descend from the approved revision.
+   A changed policy at the tip makes the approval stale. Approve the issue again.
+
 You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
 that the label sender has write, maintain or admin permission, then records approval.
 It keeps the previous non-revoked target branch, or uses the default branch.
 An unauthorized label is removed. An already valid approval is kept.
 Use `tokate approve N --base-branch BRANCH` to change a target. Add `--yes` to replace active authority.
 
-Access requests grant no access. Explicit denial blocks every access mode.
+Access requests are plain comments and grant no access. Use `access trust DONOR`
+or `approve ISSUE DONOR` after review. Re-approval replaces the allowed donor
+list. Old issue grants grant no access in 0.7.0. Re-approve with a donor where needed.
 
 Issue, task-field or PR-template changes need fresh approval. Task fields are
 verification commands, required checks, protected paths, tools and their models,
-runtime and unlimited-coding limits, and reservation duration. Formatting,
+runtime, maintainer edits, unlimited-coding limits and reservation duration. Formatting,
 eligibility, target-branch defaults and descriptive text keep approvals valid.
 Current eligibility still controls claims, work and publication. `tokate init`
 lists affected approved issues and the commands to run after the change is merged.
@@ -167,11 +173,10 @@ Tokate keeps its records in `tokate/` branches of your repository. Init names th
 
 | Branch | Holds |
 | --- | --- |
-| `tokate/access` | Donor trust, grants and denials |
+| `tokate/access` | Donor trust and denials |
 | `tokate/contributions/N` | Reservation and publication record for issue N |
-| `tokate/synchronizations/...` | Your grants to update a donor PR from the target branch |
 
-Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and grants. Deleting a contribution branch removes that issue's record. Receipt verification reads the synchronization branches of a synchronized PR.
+Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and deny entries. Deleting a contribution branch removes that issue's record.
 
 Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are not records.
 
@@ -212,31 +217,28 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    gh pr merge 10
    ```
 
-Checks do not accept the task or merge the PR. Target movement needs synchronization only for conflicts or required up-to-date branches.
+Checks do not accept the task or merge the PR. Checks accept clean target-branch merges after the receipt head. Other later changes need owner review and a verified amendment. Required CI checks use the exact current PR head.
 
 ## Update the coordinator
 
-1. Update the local CLI.
+The default workflow calls `obselate/tokate/.github/workflows/tokate-shared.yml@v0`.
+It follows releases automatically. The shared workflow resolves its exact executed
+commit, selects that commit's release and checks the release archive checksum.
+No repository PR is needed for each patch or minor release.
 
-   ```sh
-   tokate update --yes
-   ```
+To migrate an existing setup, run `tokate init OWNER/REPO --yes` once and merge the setup PR.
 
-2. Preview the new pin, then apply it. Init opens a setup PR.
+For an exact release commit instead, update the local CLI, then preview and apply:
 
-   ```sh
-   tokate init OWNER/REPO
-   tokate init OWNER/REPO --yes
-   ```
+```sh
+tokate update --yes
+tokate init OWNER/REPO --pin
+tokate init OWNER/REPO --pin --yes
+```
 
-   Init shows the current and proposed workflow and a comparison URL for the shared
-   workflow commits. It adds the new exact commit to a selected-actions allowlist and
-   keeps other entries. Remove the old exact entry after the new workflow runs.
-   A custom workflow with the current pin stays unchanged.
-
-3. Review and merge the setup PR.
-
-The local update does not change the repository pin. See [donors](donors.md), [arguments](arguments.md) and [recovery](recovery.md).
+Review and merge the setup PR. Pin mode needs this step for each coordinator update.
+Run init without `--pin` to return to `v0`. Doctor accepts both forms and reports version
+differences only for exact pins. See [donors](donors.md), [arguments](arguments.md) and [recovery](recovery.md).
 
 ## If something fails
 

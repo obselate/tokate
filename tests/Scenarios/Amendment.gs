@@ -349,7 +349,13 @@ internal class AmendmentFlow {
             )
             let replay = Path.Combine(flow.Temp.Root, "amendment-replay-" + commit)
             flow.Git("clone", "--no-local", Path.Combine(run, "checkout"), replay)
-            flow.Git("-C", replay, "checkout", "--detach", Check.Text(Saved(run)["base"]))
+            flow.Git(
+                "-C",
+                replay,
+                "checkout",
+                "--detach",
+                Check.Text(change["base"]) == "" ? Check.Text(Saved(run)["base"]): Check.Text(change["base"])
+            )
             flow.Git("-C", replay, "apply", "--index", Path.Combine(run, "amendments", commit, "candidate.patch"))
             Check.That(
                 flow.Git("-C", replay, "write-tree") == flow.Git("-C", replay, "rev-parse", commit + "^{tree}"),
@@ -625,7 +631,7 @@ internal class AmendmentFlow {
                 let summary = Check.Text(Saved(location)["summary_argument"])
                 let summaryInput = File.ReadAllText(summary)
                 let toolsInput = File.ReadAllText(flow.Tools)
-                for key in[]string{"summary", "tools", "time", "sync"} {
+                for key in[]string{"summary", "tools", "time"} {
                     let arguments = List[string]{
                         "amend",
                         "--run",
@@ -644,8 +650,6 @@ internal class AmendmentFlow {
                     let originalInput = File.ReadAllText(file)
                     if key == "summary" || key == "tools" {
                         File.AppendAllText(file, "\n")
-                    } else if key == "sync" {
-                        arguments.AddRange([]string{"--sync", String('a', 40)})
                     }
                     let rejected = Check.Envelope(
                         flow.Flow.Call(arguments.ToArray(), 1),
@@ -785,13 +789,49 @@ internal class AmendmentFlow {
             )
             Check.That(flow.State()["state"]?["amendments"]?.AsArray().Count == 1, "V2 history missing")
             if mode == "" {
-                let second = Edit(flow.Flow, run, "Second v2 correction\n")
+                File.WriteAllText(Path.Combine(flow.Flow.Upstream, "result.txt"), "Owner target result\n")
+                Directory.CreateDirectory(Path.Combine(flow.Flow.Upstream, ".github/workflows"))
+                File.WriteAllText(
+                    Path.Combine(flow.Flow.Upstream, ".github/workflows/owner.yml"),
+                    "name: Owner target\n"
+                )
+                flow.Flow.Commit("Owner updates target and protected workflow")
+                let target = flow.Flow.Git("-C", flow.Flow.Upstream, "rev-parse", "HEAD")
+                let checkout = Path.Combine(run, Check.Text(Saved(run)["source"]) == "external" ? "coding": "checkout")
+                flow.Flow.Git("-C", checkout, "fetch", Path.Combine(run, "checkout"), "HEAD")
+                flow.Flow.Git("-C", checkout, "checkout", "--detach", "FETCH_HEAD")
+                flow.Flow.Git("-C", checkout, "fetch", flow.Flow.Upstream, target)
+                let merge = TestProcess.Run(
+                    "/usr/bin/git",
+                    []string{
+                        "-C",
+                        checkout,
+                        "-c",
+                        "user.name=Donor",
+                        "-c",
+                        "user.email=donor@example.test",
+                        "merge",
+                        "--no-commit",
+                        "--no-ff",
+                        target
+                    },
+                    flow.Flow.Temp.Env
+                )
+                Check.That(merge.Code == 1, "Expected target merge conflict: " + merge.Output + merge.Error)
+                File.WriteAllText(Path.Combine(checkout, "result.txt"), "Second v2 conflict resolution\n")
+                flow.Flow.Git("-C", checkout, "add", "-A")
+                flow.Flow.DonorGit(checkout, "commit", "-m", "Resolve owner target conflict")
+                let second = flow.Flow.Git("-C", checkout, "rev-parse", "HEAD")
                 Amend(flow.Flow, run, second)
                 flow.Flow.Reload()
                 let nextRequest = Check.PostedRequest(flow.Flow.State)
                 flow.Coordinate(flow.Event(nextRequest))
                 Amend(flow.Flow, run, second)
                 AssertPublished(flow.Flow, run, second)
+                Check.That(
+                    Check.Text(Saved(Path.Combine(run, "amendments", second))["base"]) == target,
+                    "Conflict amendment did not bind the merged owner target"
+                )
                 let current = Check.Envelope(
                     flow.Flow.Call([]string{"status", "owner/project#1", "--json"}),
                     "status",
@@ -1945,7 +1985,7 @@ internal class AmendmentFlow {
                     let posted = Check.PostedRequest(flow.Flow.State)
                     let path = flow.Event(posted)
                     flow.Flow.Mode("lost_state_response")
-                    flow.Coordinate(path, 1)
+                    flow.Coordinate(path)
                     flow.Flow.Call([]string{"submit", "--run", run})
                     flow.Coordinate(path)
                     Once(flow.Flow, 1)

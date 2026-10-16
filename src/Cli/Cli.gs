@@ -20,7 +20,7 @@ internal class CliOption(spec string) {
     internal prop Choices string -> String.Join(" ", Words.Skip(2))
 
     internal func Describe(command string) string -> switch Name {
-        case "yes" when command == "init": "Apply the listed GitHub settings, access record and setup PR"
+        case "yes" when command == "init": "Apply the listed required GitHub settings and setup PR"
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
         case "yes" when command == "approve": "Confirm ending an existing reservation or published PR authority"
@@ -124,8 +124,9 @@ internal class Cli {
             "fix: Preview missing prerequisite installations; --yes applies them; use --harness-path for an existing harness",
             "allowed-tools TOOLS: Tool names, harness/provider pairs or a JSON array with per-tool models; replaces the list; default: codex, claude and pi with any model",
             "eligibility MODE trusted open: Task eligibility; new repositories default to trusted",
-            "verification JSON: Existing project verification commands as JSON argv arrays",
-            "required-checks JSON: Required GitHub check names as a JSON array",
+            "pin: Pin the coordinator to the exact release commit instead of stable-major v0",
+            "verification JSON: Optional project verification commands as JSON argv arrays; default: none",
+            "required-checks JSON: Optional GitHub check names as a JSON array; default: none",
             "reservation-time TIME: Reservation lifetime from 5m to 7d",
             "pr-text TEXT: Optional literal owner text appended to PRs; no template expressions",
             "close-message TEXT: Optional literal admission message reserved for later admission integration",
@@ -162,10 +163,7 @@ internal class Cli {
             "summary FILE: Bounded public JSON summary for the exact candidate commit",
             "file FILE: Strict claim or publication request JSON",
             "event FILE: Trusted GitHub event JSON",
-            "sync SHA: Exact live owner synchronization grant",
-            "resume: Inspect saved reconciliation intent and physical Git state without repeating a merge",
-            "grant SHA: Synchronization grant to revoke",
-            "upstream SHA: Exact current trusted target revision",
+            "resume: Resume saved amendment publication",
             "commit SHA: Exact candidate commit to verify",
             "help: Show help (-h); no tools, network or inference",
             "prompt URL|FILE: Gratis task instruction from a bounded file or HTTPS URL",
@@ -201,8 +199,6 @@ internal class Cli {
             "defaults remove": "local_read,local_write",
             "defaults check": "local_read,github_read",
             "work stop": "local_read,local_write",
-            "sync authorize": "local_read,github_read,github_write commit,upstream",
-            "sync revoke": "local_read,github_read,github_write grant",
         }
 
         internal let Commands[]CliCommand = []CliCommand{
@@ -272,16 +268,16 @@ internal class Cli {
             CliCommand(
                 "init own local_read,github_read,github_write repo",
                 "[OWNER/REPO] [options]",
-                "allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,non-interactive,yes",
-                "Set up or update a repository: Actions settings, access record and a setup PR with the policy and pinned workflow; options change only what they name.",
-                "init owner/project --verification '[[\"bash\",\"scripts/verify.sh\"]]' --required-checks '[\"verify\"]'"
+                "allowed-tools,eligibility,verification,required-checks,base-branch,max-time,reservation-time,pr-text,close-message,pin,non-interactive,yes",
+                "Set up or update a repository: required Actions settings and one setup PR with the policy and coordinator workflow.",
+                "init owner/project"
             ),
             CliCommand(
                 "approve own local_read,github_read,github_write repo,issue",
-                "ISSUE [--base-branch BRANCH] [--yes]",
+                "ISSUE [LOGIN] [--base-branch BRANCH] [--yes]",
                 "base-branch,yes,non-interactive",
-                "Approve an existing issue for donors with a GitHub record and label; create issues with gh issue create or the GUI.",
-                "approve 42"
+                "Approve an existing issue with a bound record and label. LOGIN allows one donor without persistent trust. Create issues with gh issue create or the GUI.",
+                "approve 42 donor"
             ),
             CliCommand(
                 "revoke own local_read,github_read,github_write repo,issue",
@@ -292,9 +288,9 @@ internal class Cli {
             ),
             CliCommand(
                 "access own local_read,github_read,github_write repo",
-                "[list|history] [LOGIN] [OWNER/REPO]\ninit [OWNER/REPO]\ntrust|untrust|deny|restore LOGIN [OWNER/REPO]\ngrant|remove LOGIN ISSUE\ncheck ISSUE\nrequest ISSUE [--trust]",
+                "[list|history] [LOGIN] [OWNER/REPO]\ninit [OWNER/REPO]\ntrust|untrust|deny|restore LOGIN [OWNER/REPO]\ncheck ISSUE\nrequest ISSUE [--trust]",
                 "trust",
-                "Request or manage donor access; inspect pending requests and history; no scoring.",
+                "Request access in a plain comment or manage trusted and denied donors. Owners can use approve ISSUE LOGIN for issue access.",
                 "access trust donor"
             ),
             CliCommand(
@@ -333,16 +329,9 @@ internal class Cli {
                 "overlaps owner/project#12 owner/project#34"
             ),
             CliCommand(
-                "recover-request more local_read,github_read,github_write repo,issue",
-                "ISSUE",
-                "",
-                "Owner: process the latest unprocessed request with the installed coordinator and current login.",
-                "recover-request 42"
-            ),
-            CliCommand(
                 "amend more local_read,local_write,github_read,github_write run",
-                "RUN\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--sync GRANT] [--resume]",
-                "run,commit,time,tools,sync,summary,resume",
+                "RUN\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--resume]",
+                "run,commit,time,tools,summary,resume",
                 "Archive completed work, or verify and publish a same-donor correction before or after publication; no inference.",
                 "amend 42 --time 5m"
             ),
@@ -352,20 +341,6 @@ internal class Cli {
                 "run,commit,summary,time,tools",
                 "Fetch and verify an exact external commit in isolation; no inference or publication.",
                 "external 42"
-            ),
-            CliCommand(
-                "reconcile more local_read,local_write,github_read run",
-                "RUN [--resume]",
-                "run,resume",
-                "Merge the exact current target in a saved published workspace; no inference, checks or publication.",
-                "reconcile 42"
-            ),
-            CliCommand(
-                "sync more local_read,github_read,github_write repo,pr",
-                "PR authorize --commit SHA --upstream SHA [--sync PREVIOUS_GRANT]\nPR revoke --grant SHA",
-                "commit,upstream,sync,grant",
-                "Owner: grant an exact candidate synchronization, or revoke a grant by nonforce ref advance; no candidate inspection or acceptance.",
-                "sync 10 authorize --commit 0123456789abcdef0123456789abcdef01234567 --upstream 89abcdef0123456789abcdef0123456789abcdef"
             ),
             CliCommand(
                 "completion more local_read",
@@ -953,7 +928,7 @@ internal class Cli {
                 }
             }
 
-            for key in[]string{"commit", "grant", "upstream", "sync"} {
+            for key in[]string{"commit"} {
                 if args.Get(key) != "" {
                     RepositoryIdentity.CommitSha(args.Get(key))
                 }
@@ -969,22 +944,6 @@ internal class Cli {
 
             if args.Help {
                 return
-            }
-
-            if args.Command == "sync" {
-                if args.Subject != "authorize" && args.Subject != "revoke" {
-                    throw Exception("Use tokate sync PR authorize or tokate sync PR revoke")
-                }
-
-                for key in(args.Subject == "authorize" ? "commit,upstream": "grant").Split(',') {
-                    args.Need(key)
-                }
-
-                for key in(args.Subject == "authorize" ? "grant": "commit,upstream,sync").Split(',') {
-                    if args.Get(key) != "" {
-                        throw Exception("Unknown option for sync " + args.Subject + ": --" + key)
-                    }
-                }
             }
 
             if args.Command == "defaults" {

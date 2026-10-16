@@ -1094,15 +1094,13 @@ internal class PreparationChecks {
             Check.Contains(envelope["next_actions"]?.ToJsonString() ?? "", run)
             Check.Contains(
                 Check.Text(envelope["data"]?["next"]?["action"]),
-                "owner must update the coordinator, then re-process the request"
+                "reruns the failed coordinator workflow run in Actions"
             )
-            Check.Contains(Check.Text(envelope["data"]?["next"]?["action"]), "donor runs the same saved command again")
             let status = Check.Json(flow.Call([]string{"status", "--run", run, "--json"}).Output)
             Check.Contains(
                 Check.Text(status["data"]?["next"]?["action"]),
-                "owner must update the coordinator, then re-process the request"
+                "reruns the failed coordinator workflow run in Actions"
             )
-            Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "donor runs the same saved command again")
             Check.That(status["data"]?["coordinator"] == nil, "Absent workflow changed pending guidance")
             Check.Contains(result.Error, "Claim pending. Run:")
             let endpoint = "repos/owner/project/actions/workflows/tokate-coordinator.yml/runs?event=issue_comment&actor=donor&created=%3E%3D2026-10-12T00%3A00%3A00Z&per_page=10"

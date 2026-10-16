@@ -46,7 +46,7 @@ internal class TargetBranches {
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             Check.That(
                 Check.Text(saved["base"]) == base && Check.Text(saved["base_branch"]) == branch,
-                "Run silently changed its approved base"
+                "Run changed its claim base"
             )
         }
 
@@ -64,7 +64,7 @@ internal class TargetBranches {
             let current = flow.Git("-C", flow.Upstream, "rev-parse", branch)
             let checked = Check.Json(flow.Call([]string{"checks", "owner/project#10", "--json"}, owner: true).Output)
             Check.That(
-                Check.Text(checked["data"]?["reconciliation_required"]) == "false" && Check.Text(
+                Check.Text(checked["data"]?["target_merge_required"]) == "false" && Check.Text(
                     checked["data"]?["gates"]?["freshness"]?["status"]
                 ) == "passed" &&
                     Check.Text(checked["data"]?["verified_target_revision"]) == base && Check.Text(
@@ -118,7 +118,7 @@ internal class TargetBranches {
                     "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
                 )
             }
-            let moved = Move(flow, branch)
+            Move(flow, branch)
             let run = test.Prepare(external ? "external": "tokate")
             RunBase(run, base, branch)
             if external {
@@ -136,7 +136,7 @@ internal class TargetBranches {
                     Path.Combine(flow.Bin, "fork"),
                     "HEAD:refs/heads/tokate/v2-" + Check.Text(claim["uuid"])
                 )
-                let result = flow.Call(
+                flow.Call(
                     []string{
                         "external",
                         "--run",
@@ -151,16 +151,11 @@ internal class TargetBranches {
                         )
                     }
                 )
-                Check.Contains(result.Error, base)
-                Check.Contains(result.Error, moved)
                 flow.NoInference()
             } else {
                 flow.Call([]string{"work", "--run", run})
             }
-            Check.That(
-                !File.Exists(Path.Combine(run, "checkout/moved.txt")),
-                "V2 prepared the moving target instead of approved base"
-            )
+            Check.That(!File.Exists(Path.Combine(run, "checkout/moved.txt")), "V2 changed its base after the claim")
             RunBase(run, base, branch)
             flow.Call([]string{"submit", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))

@@ -157,7 +157,18 @@ internal partial class Fixture {
         let header = Array.IndexOf(args, "-H")
         Conditional = header >= 0 ? args[header + 1]: ""
         let calls = State["api_calls"]?.AsArray() ?? JsonArray()
-        let call = Check.Map("method", method, "path", path, "conditional", Conditional != "", "validator", Conditional)
+        let call = Check.Map(
+            "method",
+            method,
+            "path",
+            path,
+            "conditional",
+            Conditional != "",
+            "validator",
+            Conditional,
+            "sha",
+            Check.Text(body["sha"])
+        )
         call["start"] = JsonValue.Create(Stopwatch.GetTimestamp())
         calls.Add(call)
         State["api_calls"] = calls
@@ -315,6 +326,16 @@ internal partial class Fixture {
         }
         if path.StartsWith("repos/obselate/tokate/git/tags/") {
             return Answer(Check.Map("object", Check.Map("type", "commit", "sha", String('a', 40))))
+        }
+        if path.StartsWith("repos/obselate/tokate/contents/VERSION?ref=") {
+            return Answer(
+                Check.Map(
+                    "encoding",
+                    "base64",
+                    "content",
+                    Convert.ToBase64String(Encoding.UTF8.GetBytes(Check.Text(State["release_version"])))
+                )
+            )
         }
         if path.StartsWith("repos/obselate/tokate/contents/.github/workflows/tokate-shared.yml?ref=") {
             if Check.Text(State["hosted_workflow"]) != "true" {
@@ -679,7 +700,8 @@ internal partial class Fixture {
             }
             State["check_read_effect"] = nil
             let runs = JsonArray()
-            for check in State["checks"]?.AsArray() ?? JsonArray() {
+            let checks = State["checks_by_head"]?[tail.Split('/')[1]] ?? State["checks"]
+            for check in checks?.AsArray() ?? JsonArray() {
                 let bucket = Check.Text(check["bucket"])
                 runs.Add(
                     Check.Map(
@@ -740,9 +762,6 @@ internal partial class Fixture {
             }
             if file == "state.json" && State["coordination_state_override"] != nil {
                 content = Check.Text(State["coordination_state_override"])
-            }
-            if file == "synchronization.json" && State["synchronization_override"] != nil {
-                content = Check.Text(State["synchronization_override"])
             }
             return Answer(
                 Check.Map("encoding", "base64", "content", Convert.ToBase64String(Encoding.UTF8.GetBytes(content)))
@@ -1016,23 +1035,8 @@ internal partial class Fixture {
                 }
                 entries.Add(entry)
             }
-            let fault = recursive && Check.Text(State["tree_fault_sha"]) != "" && Check.Text(
-                State["tree_fault_sha"]
-            ) != sha ? "": Check.Text(State[recursive ? "tree_fault": "decree_tree_fault"])
+            let fault = recursive ? "": Check.Text(State["decree_tree_fault"])
             let result = Check.Map("sha", sha, "truncated", fault == "truncated", "tree", entries)
-            if recursive && fault == "missing" {
-                result.AsObject().Remove("tree")
-            } else if recursive && fault == "identity" {
-                result["sha"] = JsonValue.Create(String('a', 40))
-            } else if recursive && fault == "ancestor" {
-                for i in 0 ... entries.Count {
-                    if Check.Text(entries[i]?["path"]) == ".github" {
-                        entries.RemoveAt(i)
-                        break
-                    }
-                }
-                result["tree"] = entries.DeepClone()
-            }
             return Answer(result)
         }
         if tail.StartsWith("git/blobs/") {
@@ -1104,6 +1108,18 @@ internal partial class Fixture {
             return Answer(Check.Map("sha", sha))
         }
         if tail == "git/refs" {
+            if Check.Text(body["ref"]) == "refs/heads/tokate/access" && Check.Text(
+                State["mode"]
+            ) == "access_create_conflict" {
+                Git(
+                    folder,
+                    []string{"update-ref", "refs/heads/tokate/access", Check.Text(body["sha"]), String('0', 40)}
+                )
+                DenyAccess()
+                State["mode"] = JsonValue.Create("")
+                Save()
+                return Response(422)
+            }
             if folder == "fork" && Check.Text(body["ref"]).StartsWith("refs/heads/tokate/") {
                 Git(folder, []string{"fetch", Path.Combine(Root, "upstream"), Check.Text(body["sha"])})
             }
@@ -1208,6 +1224,13 @@ internal partial class Fixture {
             }
             let pull = selected ?? throw Exception("Missing PR")
             if method == "PATCH" {
+                if body["maintainer_can_modify"] != nil && !String.Equals(
+                    Check.Text(State["viewer_login"] ?? JsonValue.Create(actor)),
+                    Check.Text(pull["head"]?["repo"]?["full_name"]).Split('/')[0],
+                    StringComparison.OrdinalIgnoreCase
+                ) {
+                    return Response(403)
+                }
                 if Check.Text(State["mode"]) == "body_fail" {
                     return Response(500)
                 }
@@ -1307,7 +1330,7 @@ internal partial class Fixture {
         let reference = "refs/heads/tokate/access"
         let previous = Git("upstream", []string{"rev-parse", reference})
         let access = Check.Json(Git("upstream", []string{"show", previous + ":access.json"}))
-        access["members"] = Check.Json("[{\"actor\":123,\"trusted\":true,\"denied\":true,\"issues\":[1]}]")
+        access["members"] = Check.Json("[{\"actor\":123,\"trusted\":true,\"denied\":true}]")
         let blob = Git("upstream", []string{"hash-object", "-w", "--stdin"}, access.ToJsonString())
         let tree = Git("upstream", []string{"mktree"}, "100644 blob " + blob + "\taccess.json\n")
         let next = Git("upstream", []string{"commit-tree", tree, "-p", previous}, "Concurrent owner denial")
@@ -1334,12 +1357,12 @@ internal partial class Fixture {
         )
         let proposed = Check.Json(Git("upstream", []string{"show", sha + ":state.json"}))
         let outcomes = proposed["outcomes"]?.AsArray() ?? throw Exception("Missing mutation outcomes")
-        let participant = Check.Text(outcomes[outcomes.Count - 1]?["uuid"])
+        let request = Check.Text(outcomes[outcomes.Count - 1]?["uuid"])
         let first = Check.Text(rendezvous["first"])
         let second = Check.Text(rendezvous["second"])
-        Check.That(participant == first || participant == second, "Unexpected claim rendezvous participant")
+        Check.That(request == first || request == second, "Unexpected claim rendezvous request")
+        var participant = request
         let directory = Check.Text(rendezvous["directory"])
-        let peer = Path.Combine(directory, (participant == first ? second: first) + ".arrived")
         let changed = Chan[bool](1)
         using let watcher = FileSystemWatcher(directory, "*.arrived")
         watcher.Created += (sender Object?, event FileSystemEventArgs) -> {
@@ -1350,7 +1373,16 @@ internal partial class Fixture {
         }
         watcher.EnableRaisingEvents = true
         let deadline = after(TimeSpan.FromMilliseconds(Int32.Parse(Check.Text(rendezvous["timeout_ms"]))))
-        File.WriteAllText(Path.Combine(directory, participant + ".arrived"), "")
+        try {
+            File.Open(Path.Combine(directory, participant + ".arrived"), FileMode.CreateNew).Dispose()
+        } catch (error IOException) {
+            if !File.Exists(Path.Combine(directory, participant + ".arrived")) {
+                throw error
+            }
+            participant = participant == first ? second: first
+            File.WriteAllText(Path.Combine(directory, participant + ".arrived"), "")
+        }
+        let peer = Path.Combine(directory, (participant == first ? second: first) + ".arrived")
         while !File.Exists(peer) {
             select {
                 case <- changed { }

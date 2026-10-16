@@ -69,7 +69,7 @@ internal class ContributionStatusChecks {
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
             Check.That(
-                !Check.Text(Row(eligible)["next"]?["action"]).Contains("re-process the request"),
+                !Check.Text(Row(eligible)["next"]?["action"]).Contains("reruns the failed coordinator workflow"),
                 "Status added unrelated workflow recovery text"
             )
             Check.That(

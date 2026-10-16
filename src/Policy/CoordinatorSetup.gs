@@ -162,7 +162,7 @@ internal class CoordinatorSetup {
         internal func Pin(yaml string) string {
             let uses = Regex.Matches(
                 yaml,
-                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@([0-9a-f]{40})['\"]?\\s*$"
+                "(?m)^\\s*uses:\\s*['\"]?obselate/tokate/\\.github/workflows/tokate-shared\\.yml@(v0|[0-9a-f]{40})['\"]?\\s*$"
             )
             return uses.Count == 1 ? uses[0].Groups[1].Value: ""
         }
@@ -204,7 +204,10 @@ internal class CoordinatorSetup {
             RegexOptions.IgnoreCase
         )
 
-        internal func Resolve() string {
+        internal func Resolve(pin bool = false) string {
+            if !pin {
+                return Workflow("v0")
+            }
             let version = ApplicationInfo.Version()
             let release = GitHub.Api("repos/obselate/tokate/releases/tags/v" + version, missing: true)
 
@@ -304,22 +307,18 @@ internal class CoordinatorSetup {
                     )
                 }
 
-                return "name: Tokate\non:\n  issues:\n    types: [labeled]\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
-                    "    permissions:\n      contents: write\n      issues: write\n      pull-requests: write\n" +
-                    "    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
-                    commit +
-                    "\n" +
-                    "    with:\n      archive_url: '" +
-                    archiveUrl +
-                    "'\n      archive_sha256: '" +
-                    hash +
-                    "'\n      member: '" +
-                    member +
-                    "'\n"
+                return Workflow(commit)
             } finally {
                 Directory.Delete(directory, true)
             }
         }
+
+        private func Workflow(reference string) string ->
+        "name: Tokate\non:\n  issues:\n    types: [labeled]\n  issue_comment:\n    types: [created]\n  pull_request_target:\n    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, labeled, unlabeled, assigned, unassigned]\npermissions: {}\njobs:\n  coordinate:\n" +
+            "    permissions:\n      actions: read\n      contents: write\n      issues: write\n      pull-requests: write\n" +
+            "    uses: obselate/tokate/.github/workflows/tokate-shared.yml@" +
+            reference +
+            "\n"
 
         private func AssetUrl(asset JsonElement) string {
             var id int64

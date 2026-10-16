@@ -108,9 +108,38 @@ internal class LeaseLifecycle {
                     )
                 }
 
+                let approval = J.Get(value, "approval")
+                let repo = J.Text(value, "repo")
                 let same = Supported(value) && RepositoryIdentity.PositiveId(
                     J.Get(identity, "actor")
                 ) == RepositoryIdentity.PositiveId(actor)
+                let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
+                GitHub.Branch(repo, J.Text(approval, "base_branch"))
+                let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
+                let authority = GitHub.Branch(repo, J.Text(approval, "authority_branch"))
+                if Policy.Load(repo, authority).Digest != J.Text(approval, "policy_hash") {
+                    throw CoordinationState.ApprovalFailure(
+                        repo,
+                        J.Number(value, "issue"),
+                        "Repository policy changed."
+                    )
+                }
+                if base != approved {
+                    let comparison = GitHub.Api(
+                        "repos/" + repo + "/compare/" + approved + "..." + repo.Split('/')[0] + ":" + base
+                    )
+                    if J.Text(comparison, "status") != "ahead" || J.Text(
+                        J.Get(comparison, "merge_base_commit"),
+                        "sha"
+                    ) != approved {
+                        throw CoordinationState.ApprovalFailure(
+                            repo,
+                            J.Number(value, "issue"),
+                            "Target no longer descends from the approved base."
+                        )
+                    }
+                }
+
                 let id = same ? J.Text(identity, "id"): uuid
 
                 if !same {
@@ -133,6 +162,7 @@ internal class LeaseLifecycle {
 
                 let outcome = map[string, Object?]{
                     "reservation": id,
+                    "base": base,
                     "lease": uuid,
                     "donor": donor,
                     "actor": actor,

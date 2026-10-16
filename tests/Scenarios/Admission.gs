@@ -6,12 +6,8 @@ import System.Text.Json.Nodes
 
 internal class AdmissionChecks {
     shared {
-        private func Access(test CoordinationFixture, operation string, issue string = "") {
-            if issue == "" {
-                test.Flow.Call([]string{"access", operation, "donor", "owner/project"}, owner: true)
-            } else {
-                test.Flow.Call([]string{"access", operation, "donor", "owner/project#" + issue}, owner: true)
-            }
+        private func Access(test CoordinationFixture, operation string) {
+            test.Flow.Call([]string{"access", operation, "donor", "owner/project"}, owner: true)
         }
 
         private func Setup(test CoordinationFixture, mode string, message string? = nil) {
@@ -141,7 +137,7 @@ internal class AdmissionChecks {
                 Access(test, "trust")
                 Pull(test, "<!-- tokate-receipt:{\"repo\":\"other/project\",\"issue\":1,\"donor\":\"owner\"} -->")
                 Admit(test, "open")
-                Access(test, "grant", "1")
+                test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
                 Pull(test, "Fixes #1\nIncomplete draft without a receipt or verification")
                 Admit(test, "open")
                 Target(test, "other")
@@ -174,7 +170,7 @@ internal class AdmissionChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             Setup(test, "trusted")
-            Access(test, "grant", "1")
+            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
             let head = test.Candidate(request)
@@ -451,12 +447,16 @@ internal class AdmissionChecks {
             setup.Flow.State["actions_policy"] = nil
             setup.Flow.State["actions_policies"] = Check.Map("total_count", 0, "policies", JsonArray())
             setup.Flow.Save()
+            setup.Flow.ResetTraffic()
             setup.Flow.Call(init, owner: true)
             setup.Flow.Reload()
-            Check.That(
-                Check.Text(setup.Flow.State["actions_policy"]?["name"]) == "Tokate coordinator events",
-                "Missing event policy was not created"
-            )
+            Check.That(setup.Flow.State["actions_policy"] == nil, "Setup created an unneeded event policy")
+            for call in setup.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
+                Check.That(
+                    Check.Text(call["method"]) == "GET",
+                    "Unrestricted Actions setup changed repository settings"
+                )
+            }
             let central = TestResources.Template("coordinator.yml")
             Check.Contains(central, "contents: read")
             Check.Contains(central, "admit \"$$TOKATE_REPOSITORY\"")

@@ -5,22 +5,14 @@ import System.Text.Json
 
 internal class ReceiptVerification {
     shared {
-        internal func Verify(repo string, number int32, ready bool = true, paths bool = true) Data -> Verify(
+        internal func Verify(repo string, number int32, paths bool = true) Data -> Verify(
             repo,
             number,
             GitHub.Api("repos/" + repo + "/pulls/" + number.ToString()),
-            ready,
             paths
         )
 
-        internal func Verify(
-            repo string,
-            number int32,
-            pull JsonElement,
-            ready bool = true,
-            paths bool = true,
-            pending string = ""
-        ) Data {
+        internal func Verify(repo string, number int32, pull JsonElement, paths bool = true) Data {
             let body = J.Text(pull, "body")
             let receipt = RequestData.Parse(
                 PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"),
@@ -31,10 +23,10 @@ internal class ReceiptVerification {
                 throw CliFailure("invalid_state", "Unsupported receipt protocol")
             }
 
-            return VerifyCurrent(repo, number, pull, receipt, ready, paths, pending)
+            return VerifyCurrent(repo, number, pull, receipt, paths)
         }
 
-        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string) {
+        internal func Binding(run Data, receipt JsonElement, approval JsonElement, revision string, base string) {
             for key in "version,issue,approval,donor,expected,reservation,incomplete,requested_model,reported_model"
                 .Split(',') {
                 if J.Get(receipt, key).ValueKind != JsonValueKind.Undefined {
@@ -42,9 +34,8 @@ internal class ReceiptVerification {
                 }
             }
 
-            for key in[]string{"base", "base_branch"} {
-                run.Fields[key] = J.Get(approval, key)
-            }
+            run.Fields["base"] = base
+            run.Fields["base_branch"] = J.Get(approval, "base_branch")
 
             run.Fields["authority_revision"] = revision
             run.Fields["receipt_hash"] = Data.Hash(RequestData.Canonical(receipt))
@@ -56,13 +47,11 @@ internal class ReceiptVerification {
             number int32,
             pull JsonElement,
             receipt JsonElement,
-            ready bool = true,
-            paths bool = true,
-            pending string = ""
+            paths bool = true
         ) Data {
             RequestData.Keys(
                 receipt,
-                "version,repo,issue,approval,expected,reservation,donor,head,correction,amendment,synchronizations,predecessor,import_manifest_sha256,attempt,incomplete,handoff,requested_model,reported_model"
+                "version,repo,issue,approval,expected,reservation,donor,head,correction,amendment,predecessor,import_manifest_sha256,attempt,incomplete,handoff,requested_model,reported_model"
             )
 
             let state = CoordinationState.Load(repo, J.Number(receipt, "issue"))
@@ -187,46 +176,11 @@ internal class ReceiptVerification {
             }
 
             if physicalHead != exactHead {
-                let grant = pending == "" ? default(JsonElement): Synchronization.Load(repo, pending)
-
-                if J.Text(grant, "previous") != exactHead || J.Text(grant, "candidate") != physicalHead || J.Text(
-                    grant,
-                    "expected"
-                ) != state.Sha ||
-                    !RequestData.Same(J.Get(grant, "receipt"), receipt) || GitHub.Branch(repo, target) == J.Text(
-                    grant,
-                    "upstream"
-                ) {
-                    throw CliFailure("stale_approval", failure)
+                try {
+                    GitHubPathEvidence.CleanMerges(repo, fork, approval, exactHead, physicalHead)
+                } catch (error Exception) when error.GetType() == typeof(Exception) {
+                    throw CliFailure("stale_approval", failure + ". " + error.Message)
                 }
-
-                let history = Synchronization.Append(repo, Synchronization.History(receipt), pending)
-
-                Synchronization.Live(
-                    repo,
-                    number,
-                    record,
-                    approvalId,
-                    history,
-                    fork,
-                    branch,
-                    physicalHead,
-                    pending,
-                    state.Sha,
-                    exactHead,
-                    ready: false,
-                    contribution: contribution
-                )
-
-                Synchronization.Remote(
-                    repo,
-                    policy.Value,
-                    approval,
-                    J.Text(approval, "base"),
-                    history,
-                    fork,
-                    physicalHead
-                )
             }
 
             if J.Text(head, "ref") != branch || !RepositoryIdentity.SameRepo(J.Text(headRepo, "full_name"), fork) {
@@ -324,15 +278,13 @@ internal class ReceiptVerification {
                 throw CliFailure("stale_approval", "Receipt claims an amendment without coordination authority")
             }
 
-            let history = Synchronization.History(receipt)
-            let synchronizationFailure = "Synchronization receipt differs from authoritative coordination history"
-
-            if J.Text(amendment, "sync") != J.Text(current, "sync") {
-                throw CliFailure("stale_approval", synchronizationFailure)
+            let baseline = J.Text(amendment, "base") == "" ? J.Text(reservation, "base"): J.Text(amendment, "base")
+            if J.Text(amendment, "base") != J.Text(current, "base") {
+                throw CliFailure("stale_approval", "Amendment base differs from coordination authority")
             }
-
-            if RequestData.Canonical(history) != RequestData.Canonical(Synchronization.History(current)) {
-                throw CliFailure("stale_approval", synchronizationFailure)
+            if baseline != J.Text(reservation, "base") {
+                GitHubPathEvidence.Target(repo, approval, baseline)
+                GitHubPathEvidence.Ancestor(repo, baseline, fork, exactHead)
             }
 
             let correction = J.Get(receipt, "correction")
@@ -345,62 +297,14 @@ internal class ReceiptVerification {
                 RequestData.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
             }
 
-            Synchronization.Live(
-                repo,
-                number,
-                record,
-                J.Text(value, "approval_id"),
-                history,
-                J.Text(metadata, "fork"),
-                J.Text(metadata, "branch"),
-                exactHead,
-                ready: ready,
-                contribution: contribution,
-                current: false
-            )
-
-            if paths && history.GetArrayLength() > 0 {
-                Synchronization.Remote(
-                    repo,
-                    policy.Value,
-                    approval,
-                    J.Text(approval, "base"),
-                    history,
-                    J.Text(metadata, "fork"),
-                    exactHead
-                )
-            } else if paths {
+            if paths {
                 GitHubPathEvidence.Check(
                     repo,
                     J.Get(record, "policy"),
                     approval,
-                    J.Text(approval, "base"),
+                    baseline,
                     J.Text(metadata, "fork"),
                     exactHead
-                )
-            }
-
-            if history.GetArrayLength() > 0 {
-                let live = CoordinationState.Load(repo, J.Number(receipt, "issue"))
-
-                if live.Sha != state.Sha {
-                    throw CliFailure("stale_approval", "Coordination authority changed during receipt validation")
-                }
-
-                live.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
-
-                Synchronization.Live(
-                    repo,
-                    number,
-                    record,
-                    J.Text(value, "approval_id"),
-                    history,
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "branch"),
-                    exactHead,
-                    ready: ready,
-                    contribution: contribution,
-                    current: false
                 )
             }
 
@@ -431,8 +335,8 @@ internal class ReceiptVerification {
                 run.Fields["public_summary"] = authority
             }
 
-            ReceiptVerification.Binding(run, receipt, approval, state.Sha)
-            Synchronization.Keep(run.Fields, history)
+            ReceiptVerification.Binding(run, receipt, approval, state.Sha, J.Text(reservation, "base"))
+            run.Fields["verified_target_revision"] = baseline
 
             return run
         }

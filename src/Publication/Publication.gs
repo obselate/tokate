@@ -112,7 +112,17 @@ internal class Publication {
             return pulls[0]
         }
 
-        internal func SavePr(directory string, run Data, pull JsonElement) {
+        internal func SavePr(directory string, run Data, pull JsonElement, maintainerEdits bool = false) {
+            if maintainerEdits && !J.Bool(pull, "maintainer_can_modify") {
+                let updated = GitHub.Api(
+                    "repos/" + run.Text("repo") + "/pulls/" + J.Number(pull, "number").ToString(),
+                    map[string, Object?]{"maintainer_can_modify": true},
+                    "PATCH"
+                )
+                if !J.Bool(updated, "maintainer_can_modify") {
+                    throw CliFailure("invalid_state", "PR did not enable policy maintainer edits")
+                }
+            }
             run.Fields["pr"] = J.Number(pull, "number")
             run.Fields["pr_url"] = J.Text(pull, "html_url")
             run.Fields["state"] = "published"

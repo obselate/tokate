@@ -13,12 +13,13 @@ internal class Policy {
     internal var Tools JsonElement
     internal var Eligibility string = ""
     internal var TaskFields JsonElement
+    internal var MaintainerEdits bool = true
 
-    internal init(text string, gratis bool = false) {
+    internal init(text string) {
         Value = J.Parse(text)
         let version = J.Number(Value, "version")
         if version != 3 {
-            throw Exception("Policy requires version 3; run tokate init OWNER/REPO to migrate it")
+            throw Exception("Policy requires version 3")
         }
 
         for key in[]string{"pr_text", "close_message", "target_branch"} {
@@ -99,11 +100,22 @@ internal class Policy {
         if unlimited != JsonValueKind.Undefined {
             RequestData.Parse(text, 1024 * 1024)
         }
+        let edits = J.Get(Value, "maintainer_edits")
+        if edits.ValueKind != JsonValueKind.Undefined &&
+            edits.ValueKind != JsonValueKind.True &&
+            edits.ValueKind != JsonValueKind.False {
+            throw Exception("maintainer_edits must be boolean")
+        }
+        MaintainerEdits = edits.ValueKind != JsonValueKind.False
+
+        for key in[]string{"verification", "required_checks"} {
+            let kind = J.Get(Value, key).ValueKind
+            if kind != JsonValueKind.Undefined && kind != JsonValueKind.Array {
+                throw Exception(key + " must be an array")
+            }
+        }
 
         let commands = J.Items(J.Get(Value, "verification"))
-        if commands.Count == 0 && !gratis {
-            throw Exception("At least one verification command is required")
-        }
 
         for command in commands {
             let words = J.Items(command)
@@ -119,9 +131,6 @@ internal class Policy {
         }
 
         let checks = J.Items(J.Get(Value, "required_checks"))
-        if checks.Count == 0 && !gratis {
-            throw Exception("At least one required check is needed")
-        }
 
         for check in checks {
             if check.ValueKind != JsonValueKind.String || String.IsNullOrWhiteSpace(check.GetString()) {
@@ -162,8 +171,8 @@ internal class Policy {
 
         Tools = J.Get(Value, "allowed_tools")
         let task = map[string, Object?]{
-            "verification": J.Get(Value, "verification"),
-            "required_checks": J.Get(Value, "required_checks"),
+            "verification": commands,
+            "required_checks": checks,
             "protected_paths": J.Items(J.Get(Value, "protected_paths")),
             "allowed_tools": Tools,
             "max_seconds": maxSeconds,
@@ -172,6 +181,9 @@ internal class Policy {
                 Value,
                 "reservation_seconds"
             )
+        }
+        if edits.ValueKind != JsonValueKind.Undefined {
+            task["maintainer_edits"] = MaintainerEdits
         }
         TaskFields = J.Parse(J.Write(task))
         Digest = Data.Hash(RequestData.Canonical(TaskFields))

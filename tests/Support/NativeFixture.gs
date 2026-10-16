@@ -57,6 +57,7 @@ internal open class NativeFixture : IDisposable {
         let policy = Check.Json(File.ReadAllText(path))
         Check.That(Check.Text(policy["max_seconds"]) == "3600", "New policy budget must be 3600 seconds")
         policy["verification"] = Check.Json("[[\"/bin/sh\",\"-c\",\"test -f result.txt\"]]")
+        policy["required_checks"] = Check.Json("[\"verify\"]")
         File.WriteAllText(path, policy.ToJsonString())
         Commit("Initial")
         Git("clone", "--bare", Upstream, Path.Combine(Bin, "fork"))
@@ -315,7 +316,10 @@ internal open class NativeFixture : IDisposable {
     }
 
     internal func MetadataOnly() {
-        File.WriteAllText(Path.Combine(Bin, "git"), "#!/bin/sh\necho unexpected-local-git >&2\nexit 91\n")
+        File.WriteAllText(
+            Path.Combine(Bin, "git"),
+            "#!/bin/sh\nif [ \"$1\" = --version ]; then exec /usr/bin/git --version; fi\necho unexpected-local-git >&2\nexit 91\n"
+        )
         File.SetUnixFileMode(
             Path.Combine(Bin, "git"),
             UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute

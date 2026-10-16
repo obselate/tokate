@@ -71,14 +71,12 @@ internal class ContributionReceipt {
                     "tools": J.Get(current, "tools")
                 }
 
-                if J.Text(current, "sync") != "" {
-                    amended["sync"] = J.Text(current, "sync")
+                if J.Text(current, "base") != "" {
+                    amended["base"] = J.Text(current, "base")
                 }
 
                 fields["amendment"] = PublicSummary.Attach(amended, J.Get(current, "summary"))
             }
-
-            Synchronization.Keep(fields, Synchronization.History(current))
 
             return J.Parse(J.Write(fields))
         }

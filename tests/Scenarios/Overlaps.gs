@@ -116,7 +116,7 @@ internal class OverlapFlow : IDisposable {
 
     public func Dispose() -> Test.Dispose()
 
-    internal func Synchronize() string {
+    internal func AmendTarget() string {
         Flow.Reload()
         for pull in Flow.State["pulls"]?.AsArray() ?? throw Exception("Missing pulls") {
             let item = pull ?? throw Exception("Missing pull")
@@ -134,27 +134,6 @@ internal class OverlapFlow : IDisposable {
                 Flow.Git("-C", checkout, "fetch", Flow.Upstream, upstream)
                 Flow.DonorGit(checkout, "merge", "--no-ff", "--no-edit", upstream)
                 let candidate = Flow.Git("-C", checkout, "rev-parse", "HEAD")
-                let grant = Check.Text(
-                    Check
-                        .Envelope(
-                        Flow.Call(
-                            []string{
-                                "sync",
-                                "owner/project#" + (issue + 9).ToString(),
-                                "authorize",
-                                "--commit",
-                                candidate,
-                                "--upstream",
-                                upstream,
-                                "--json"
-                            },
-                            owner: true
-                        ),
-                        "sync",
-                        "ok"
-                    )["data"]?["grant"]
-                )
-                Check.That(grant.Length == 40, "Missing owner synchronization grant")
                 Flow.Git(
                     "-C",
                     checkout,
@@ -174,7 +153,7 @@ internal class OverlapFlow : IDisposable {
                 metadata["previous"] = JsonValue.Create(Heads[issue - 1])
                 metadata["pr"] = JsonValue.Create(issue + 9)
                 metadata["seconds"] = JsonValue.Create(30)
-                metadata["sync"] = JsonValue.Create(grant)
+                metadata["base"] = JsonValue.Create(upstream)
                 Test.Coordinate(Test.Event(request))
                 Heads[issue - 1] = candidate
             }
@@ -354,15 +333,15 @@ internal class OverlapChecks {
             "Rename endpoints lost"
         )
 
-        private func Synchronized(test OverlapFlow) {
-            let upstream = test.Synchronize()
+        private func AmendedTarget(test OverlapFlow) {
+            let upstream = test.AmendTarget()
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "later.txt"), "Later target change\n")
-            test.Flow.Commit("Target advanced after synchronization")
+            test.Flow.Commit("Target advanced after amendment")
             let target = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
-            let synchronized = test.Report()["data"] ?? throw Exception("Missing synchronized report")
-            Renamed(synchronized["pairs"]?[0])
+            let amended = test.Report()["data"] ?? throw Exception("Missing amended report")
+            Renamed(amended["pairs"]?[0])
             for i in 0 ... 2 {
-                let item = synchronized["contributions"]?[i]
+                let item = amended["contributions"]?[i]
                 Check.That(
                     Check.Text(item?["binding_status"]) == "validated" && Check.Text(item?["head"]) == test.Heads[i] &&
                         Check.Text(item?["checks_head"]) == test.Heads[i] && Check.Text(
@@ -371,16 +350,16 @@ internal class OverlapChecks {
                         Check.Text(item?["diff_base"]) == upstream && Check.Text(item?["target_revision"]) == target &&
                         upstream != test.Bases[i] &&
                         upstream != target,
-                    "Synchronization confused approved, authorized and current target revisions"
+                    "Amendment confused approved, merged and current target revisions"
                 )
                 Check.That(
                     Check.Text(item?["upstream_status"]) == "changed" && Check.Text(
                         item?["upstream_overlap_count"]
                     ) == "0",
-                    "Post-synchronization target changes used an obsolete approved base"
+                    "Post-amendment target changes used an obsolete approved base"
                 )
             }
-            Console.WriteLine("PASS V" + test.Version.ToString() + " synchronized overlap files: rename")
+            Console.WriteLine("PASS V" + test.Version.ToString() + " target-amended overlap files: rename")
         }
 
         private func Evidence(test OverlapFlow) {
@@ -618,7 +597,7 @@ internal class OverlapChecks {
                 Freshness(test, change)
             }
             baseline.Restore()
-            Synchronized(test)
+            AmendedTarget(test)
         }
 
         private func Targets(binary string) {

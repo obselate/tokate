@@ -80,6 +80,10 @@ internal class Coordinator {
                 args.Values["--base-branch"] = J.Text(previous, "base_branch")
             }
             let approval = OwnerApproval.Capture(args, info, issue)
+            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") {
+                approval["allowed_actor_ids"] = J.Get(previous, "allowed_actor_ids").ValueKind == JsonValueKind.Array ?
+                J.Get(previous, "allowed_actor_ids"): J.Parse("[]")
+            }
             approval["nonce"] = J.Text(previous, "nonce")
             if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && RequestData.Canonical(
                 J.Parse(J.Write(approval))
@@ -105,74 +109,29 @@ internal class Coordinator {
             Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
         }
 
-        internal func RecoverRequest(args Args) {
-            let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let number = args.Number("issue")
-            let info = RepositoryAccess.RequireOwner(repo)
-            let owner = RepositoryIdentity.Login(J.Text(GitHub.Api("user"), "login"))
-            let issue = GitHub.Api("repos/" + repo + "/issues/" + number.ToString())
-            if J.Number(issue, "number") != number {
-                throw Exception("Canonical issue identity changed")
+        private func Replay(
+            repo string,
+            number int32,
+            state CoordinationState,
+            request JsonElement,
+            actor JsonElement,
+            donor string,
+            outcome JsonElement
+        ) {
+            let action = J.Text(request, "action")
+            if action != "release" {
+                state.Check(repo, number, donor, actor)
             }
-            let state = CoordinationState.Load(repo, number).Value()
-            let requests = List[JsonElement]()
-
-            for page in 1 ... 11 {
-                let comments = GitHub.Api(
-                    "repos/" + repo + "/issues/" + number.ToString() + "/comments?per_page=100&page=" + page.ToString()
-                )
-
-                if comments.ValueKind != JsonValueKind.Array {
-                    throw Exception("Malformed canonical issue comments")
-                }
-
-                for comment in comments.EnumerateArray() {
-                    if J.Text(comment, "body").StartsWith("/tokate ", StringComparison.Ordinal) {
-                        requests.Add(comment)
-                    }
-                }
-
-                if comments.GetArrayLength() < 100 {
-                    break
-                }
-
-                if page == 10 {
-                    throw Exception("Request comment inspection exceeded its bounded page limit")
-                }
+            if action == "amend" {
+                ReceiptVerification.Verify(repo, J.Number(outcome, "pr"))
             }
-
-            var index = requests.Count - 1
-            while index >= 0 {
-                let comment = requests[index]
-                let request = RequestData.CommentData(J.Text(comment, "body"))
-                RequestData.Request(request)
-                if RequestData.Recorded(state, J.Get(J.Get(comment, "user"), "id"), request).ValueKind ==
-                JsonValueKind.Undefined {
-                    Terminal.Step("Recovering request as " + owner)
-                    Process(
-                        repo,
-                        J.Parse(
-                            J.Write(
-                                map[string, Object?]{
-                                    "action": "created",
-                                    "repository": info,
-                                    "issue": issue,
-                                    "comment": comment
-                                }
-                            )
-                        ),
-                        "issue_comment",
-                        recover: true
-                    )
-                    return
-                }
-                index--
+            if action == "publish" {
+                ContributionHandoff.Supersede(state, request)
             }
-
-            throw Exception("No unprocessed request comment found; recorded requests cannot be recovered")
+            Terminal.Json(outcome, "Recorded request outcome")
         }
 
-        private func Process(repo string, event JsonElement, eventName string, recover bool = false) {
+        private func Process(repo string, event JsonElement, eventName string) {
             let eventComment = J.Get(event, "comment")
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
@@ -237,27 +196,11 @@ internal class Coordinator {
 
             for old in outcomes {
                 if J.Text(old, "uuid") == J.Text(request, "uuid") {
-                    if recover {
-                        throw Exception("Request is already recorded; recovery refused")
-                    }
-
                     if J.Text(old, "binding") != binding {
                         throw Exception("UUID replay changed actor or request contents")
                     }
 
-                    if J.Text(request, "action") != "release" {
-                        state.Check(repo, number, donor, actor)
-                    }
-
-                    if J.Text(request, "action") == "amend" {
-                        ReceiptVerification.Verify(repo, J.Number(J.Get(old, "outcome"), "pr"))
-                    }
-
-                    if J.Text(request, "action") == "publish" {
-                        ContributionHandoff.Supersede(state, request)
-                    }
-
-                    Terminal.Json(J.Get(old, "outcome"), "Recorded request outcome")
+                    Replay(repo, number, state, request, actor, donor, J.Get(old, "outcome"))
                     return
                 }
             }
@@ -268,7 +211,6 @@ internal class Coordinator {
             ) {
                 throw CliFailure("stale_approval", "Stale state or approval; evicted requests cannot repeat effects")
             }
-
             let action = J.Text(request, "action")
             let record = action == "release" ? JsonElement{}: state.Check(repo, number, donor, actor)
             var outcome Object = map[string, Object?]{}
@@ -427,7 +369,6 @@ internal class Coordinator {
             if action == "publish" || action == "amend" {
                 state.Fields["publication_revision"] = nil
             }
-
             let retained = List[Object]()
             for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
                 retained.Add(outcomes[i])
@@ -437,17 +378,22 @@ internal class Coordinator {
             state.Fields["outcomes"] = retained
 
             let updated = state.Value()
-            if J.Text(request, "action") == "amend" {
+            if action == "amend" {
                 Revalidate(repo, number, state, actor, donor)
-                SyncProof(repo, record, updated, J.Get(request, "metadata"), J.Text(request, "expected"))
+                GitHubPathEvidence.Amendment(repo, record, J.Get(request, "metadata"))
             }
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
+                let recorded = RequestData.Recorded(live.Value(), actor, request)
+                if recorded.ValueKind != JsonValueKind.Undefined {
+                    Replay(repo, number, live, request, actor, donor, recorded)
+                    return
+                }
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
-
             let previous = live.Sha
+
             if LeaseLifecycle.Transition(action) {
                 LeaseLifecycle.Owner(live, actor)
             }
@@ -472,10 +418,8 @@ internal class Coordinator {
                 let inspected = CoordinationState.Load(repo, number)
                 let recorded = RequestData.Recorded(inspected.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
-                    throw Exception(
-                        "Coordination write response was lost; exact UUID outcome is recorded. Inspect current state before redelivery.",
-                        error
-                    )
+                    Replay(repo, number, inspected, request, actor, donor, recorded)
+                    return
                 }
 
                 throw Exception(
@@ -496,6 +440,11 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
+                let recorded = RequestData.Recorded(acquired.Value(), actor, request)
+                if recorded.ValueKind != JsonValueKind.Undefined {
+                    Replay(repo, number, acquired, request, actor, donor, recorded)
+                    return
+                }
                 throw CliFailure(
                     "stale_approval",
                     "Coordination changed after reservation update; inspect current state"
@@ -570,8 +519,7 @@ internal class Coordinator {
             }
 
             RepositoryAccess.ValidateFork(repo, metadata, actor)
-            let history = Synchronization.Append(repo, Synchronization.History(current), J.Text(metadata, "sync"))
-            SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+            GitHubPathEvidence.Amendment(repo, record, metadata)
 
             let run = Data()
             run.Fields["version"] = 2
@@ -591,11 +539,9 @@ internal class Coordinator {
                 amendment.Fields["public_summary"] = J.Get(metadata, "summary")
             }
 
-            if J.Text(metadata, "sync") != "" {
-                amendment.Fields["sync"] = J.Text(metadata, "sync")
+            if J.Text(metadata, "base") != "" {
+                amendment.Fields["base"] = J.Text(metadata, "base")
             }
-
-            Synchronization.Keep(amendment.Fields, history)
 
             let receipt = Amendment.Receipt(
                 ContributionReceipt.FromState(value),
@@ -655,7 +601,7 @@ internal class Coordinator {
 
                 let updated = PrBody.ReplaceBody(body, report, receipt)
                 Revalidate(repo, number, state, actor, donor)
-                SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+                GitHubPathEvidence.Amendment(repo, record, metadata)
                 RepositoryAccess.ValidateFork(repo, metadata, actor)
 
                 let fresh = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
@@ -679,7 +625,7 @@ internal class Coordinator {
             }
 
             Revalidate(repo, number, state, actor, donor)
-            SyncProofHistory(repo, record, value, metadata, J.Text(request, "expected"), history)
+            GitHubPathEvidence.Amendment(repo, record, metadata)
             RepositoryAccess.ValidateFork(repo, metadata, actor)
 
             let latest = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
@@ -714,93 +660,13 @@ internal class Coordinator {
                 entry["summary"] = J.Get(metadata, "summary")
             }
 
-            if J.Text(metadata, "sync") != "" {
-                entry["sync"] = J.Text(metadata, "sync")
+            if J.Text(metadata, "base") != "" {
+                entry["base"] = J.Text(metadata, "base")
             }
-
-            Synchronization.Keep(entry, history)
             retainedHistory.Add(entry)
             state.Fields["amendments"] = retainedHistory
 
             return outcome
-        }
-
-        private func SyncProof(
-            repo string,
-            record JsonElement,
-            state JsonElement,
-            metadata JsonElement,
-            expected string
-        ) {
-            SyncProofHistory(
-                repo,
-                record,
-                state,
-                metadata,
-                expected,
-                Synchronization.History(CoordinationState.Current(state))
-            )
-        }
-
-        private func SyncProofHistory(
-            repo string,
-            record JsonElement,
-            state JsonElement,
-            metadata JsonElement,
-            expected string,
-            history JsonElement
-        ) {
-            Synchronization.Live(
-                repo,
-                J.Number(metadata, "pr"),
-                record,
-                J.Text(state, "approval_id"),
-                history,
-                J.Text(metadata, "fork"),
-                J.Text(metadata, "branch"),
-                J.Text(metadata, "head"),
-                J.Text(metadata, "sync"),
-                expected,
-                J.Text(metadata, "previous"),
-                contribution: J.Get(state, "contribution")
-            )
-
-            if history.GetArrayLength() > 0 {
-                Synchronization.Remote(
-                    repo,
-                    J.Get(record, "policy"),
-                    J.Get(record, "approval"),
-                    J.Text(J.Get(record, "approval"), "base"),
-                    history,
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "head")
-                )
-            } else {
-                ValidateDiff(repo, record, metadata)
-                GitHubPathEvidence.Check(
-                    repo,
-                    J.Get(record, "policy"),
-                    J.Get(record, "approval"),
-                    J.Text(metadata, "previous"),
-                    J.Text(metadata, "fork"),
-                    J.Text(metadata, "head")
-                )
-            }
-
-            Synchronization.Live(
-                repo,
-                J.Number(metadata, "pr"),
-                record,
-                J.Text(state, "approval_id"),
-                history,
-                J.Text(metadata, "fork"),
-                J.Text(metadata, "branch"),
-                J.Text(metadata, "head"),
-                J.Text(metadata, "sync"),
-                expected,
-                J.Text(metadata, "previous"),
-                contribution: J.Get(state, "contribution")
-            )
         }
 
         private func Revalidate(repo string, issue int32, state CoordinationState, actor JsonElement, donor string) {
@@ -819,7 +685,7 @@ internal class Coordinator {
                 repo,
                 J.Get(record, "policy"),
                 J.Get(record, "approval"),
-                J.Text(J.Get(record, "approval"), "base"),
+                J.Text(record, "base"),
                 J.Text(metadata, "fork"),
                 J.Text(metadata, "head")
             )
@@ -839,7 +705,7 @@ internal class Coordinator {
             values["model"] = "see original donor-reported tools in report"
             values["effort"] = "per-tool declaration; not independently attested"
             values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
-            values["base"] = J.Text(J.Get(record, "approval"), "base")
+            values["base"] = J.Text(record, "base")
             values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
             values["usage"] = "per-tool donor declaration; not independently attested"
             values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"

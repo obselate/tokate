@@ -79,7 +79,7 @@ internal class ContributionPreparation {
             source string
         ) Data {
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
-            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: state == nil)
+            let policy = Policy(J.Write(J.Get(record, "policy")))
 
             var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(args.Need("tools"), 8192)
             var selection = JsonElement{}
@@ -210,6 +210,7 @@ internal class ContributionPreparation {
 
         private func Bind(run Data, state CoordinationState) {
             let reservation = J.Get(state.Value(), "reservation")
+            run.Fields["base"] = RepositoryIdentity.CommitSha(J.Text(reservation, "base"))
             run.Fields["id"] = J.Text(reservation, "reservation")
             run.Fields["state_sha"] = state.Sha
             run.Fields["attempt"] = J.Text(reservation, "attempt")
@@ -226,7 +227,7 @@ internal class ContributionPreparation {
                 let context = Data.From(gratis)
                 context.Fields.Remove("pulls")
                 run.Fields["gratis_context"] = context.Element()
-                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy")), gratis: true).Digest
+                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy"))).Digest
                 let id = Guid.NewGuid().ToString("N")
                 run.Fields["id"] = id
                 run.Fields["attempt"] = id
@@ -500,7 +501,7 @@ internal class ContributionPreparation {
                 Bind(run, state)
 
                 WorkspacePreparation.Select(run, run.Text("requested_fork"))
-                WorkspacePreparation.Promote(directory, run)
+                WorkspacePreparation.Promote(directory, run, J.Text(J.Get(state.Value(), "approval"), "base"))
                 Complete(directory, run)
             } else {
                 PublicOutput.ResultData = PublicOutput.RunSummary(directory)

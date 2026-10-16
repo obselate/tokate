@@ -29,7 +29,7 @@ Use Linux x86_64 with glibc 2.34+ or Alpine 3.24. Install the system packages fi
 | Alpine 3.24 | `doas apk add git github-cli curl tar ca-certificates coreutils findutils util-linux-misc setpriv bash bubblewrap socat nodejs npm` |
 
 Doctor checks `gh`, `git`, `setsid`, `env`, `setpriv`, `unshare` and `cp`.
-Owner setup also checks `curl` and `tar`. Alpine verification checks GNU `find`.
+Exact-pin owner setup also checks `curl` and `tar`. Alpine verification checks GNU `find`.
 Pi and Claude need Bash. Claude also needs `bwrap` and `socat`.
 User and PID namespaces must work. See [Linux security](docs/linux-security.md),
 [Alpine](docs/alpine.md) and [Nix](docs/nix.md) for host setup.
@@ -66,27 +66,26 @@ Finish with `tokate doctor`. Owners also run `tokate doctor external --auth` and
 3. `tokate init OWNER/REPO --yes` applies it and opens the setup PR.
 4. Review and merge the setup PR before approving tasks.
 
-Add `--verification JSON` and `--required-checks JSON` for a new policy. No checkout
-is necessary. Defaults: the default branch, `trusted` access and codex, claude and pi
-with any model. Use `--allowed-tools JSON` for per-tool models. Init checks GitHub
-authentication and write access. It lists each Actions setting, event policy,
-allowlist entry and required check with its current and proposed value, the
-`tokate/access` record, the files and the `tokate-setup` branch and PR. In a terminal
-without `--yes`, init asks once. Non-terminal preview returns `applied=false`.
-Run init again after `tokate update --yes` to update the coordinator pin. Init migrates a
-version 2 policy to version 3 in the setup PR.
+No checkout is necessary. Defaults: the default branch, `trusted` access, codex,
+claude and pi with any model, no verification commands and no required checks.
+Use `--verification JSON`, `--required-checks JSON` and `--allowed-tools JSON` to restrict policy.
+Init lists only required Actions setting changes and a setup PR with two files.
+It never writes branch protection or creates access state. In a terminal without
+`--yes`, init asks once. Non-terminal preview returns `applied=false`.
+The coordinator uses `obselate/tokate/.github/workflows/tokate-shared.yml@v0`. Use `init --pin` for an exact release commit.
+Existing setup repositories run init once and merge the setup PR. Policies require version 3.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
-Approve existing issues with `tokate approve N [--base-branch BRANCH]`.
+Approve existing issues with `tokate approve N [LOGIN] [--base-branch BRANCH]`.
 Use `--yes` to replace active reservation or published PR authority.
-Then trust the donor or grant that issue.
-Never grant access merely because someone requested it. In `trusted` eligibility,
-trusted donors and donors granted the issue may claim. With no trusted donors,
-grant each issue with `tokate access grant LOGIN N`. In `open`, anyone not denied
-may claim.
+In `trusted` eligibility, trust the donor or name the donor in the approval with
+`tokate approve N LOGIN`. In `open`, anyone not denied may claim. Deny always wins.
+Maintainer edits default to true. Set `"maintainer_edits": false` in the policy to opt out.
+Access requests are plain comments and grant no access.
+An absent `tokate/access` ref is an empty record. The first access write creates it.
 
 A change to task fields or the PR template revokes existing approvals. Task fields
-cover verification, required checks, protected paths, tool models, runtime and
-unlimited-coding limits, and reservation duration. Eligibility, formatting and
+cover verification, required checks, protected paths, tool models, runtime,
+maintainer edits, unlimited-coding limits and reservation duration. Eligibility, formatting and
 descriptive edits keep approvals valid. Current eligibility still controls access.
 Init lists affected issues and approval commands. Re-approve them after merge.
 Old whole-text approvals become stale once after upgrading to current main.
@@ -95,7 +94,7 @@ pin change, confirm that Actions permits
 `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
 Otherwise every request stays pending. Tokate keeps its records in `tokate/`
 branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
-open PRs from them. Deleting `tokate/access` removes all trust and grants.
+open PRs from them. Deleting `tokate/access` removes all trust and denials.
 
 Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing

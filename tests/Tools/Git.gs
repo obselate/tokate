@@ -47,18 +47,6 @@ internal partial class Fixture {
     }
 
     internal func RunGit(args[]string) int32 {
-        if Array.IndexOf(args, "ls-tree") >= 0 && Array.IndexOf(args, "--full-tree") >= 0 {
-            let fault = Check.Text(State["local_tree_fault"])
-            if fault == "truncated" || fault == "malformed" {
-                Console.Write(fault == "truncated" ? "100644 blob " + String('a', 40) + "\tresult.txt": "invalid\0")
-                return 0
-            }
-        }
-        if Check.Text(State["local_final_ancestry_fault"]) == "true" && Array.IndexOf(args, "merge-base") >= 0 &&
-            Array.IndexOf(args, "--is-ancestor") >= 0 && args[args.Length - 2] == args[args.Length - 1] {
-            Console.Error.WriteLine("Missing local synchronization ancestry evidence")
-            return 1
-        }
         let pathFault = Check.Text(State["git_diff_fault"])
         if pathFault != "" && Array.IndexOf(args, "--name-only") >= 0 && Array.IndexOf(args, "-z") >= 0 {
             if pathFault == "missing-nul" {
@@ -111,20 +99,6 @@ internal partial class Fixture {
             } else {
                 command.Add(github && arg == "protocol.file.allow=never" ? "protocol.file.allow=always": arg)
             }
-        }
-        if Check.Text(State["mode"]) == "reconcile_merge_pause" && command.Contains("merge") && command.Contains(
-            "--no-ff"
-        ) {
-            let entered = Path.Combine(Root, "reconcile-merge-entered")
-            if File.Exists(entered) {
-                File.WriteAllText(Path.Combine(Root, "reconcile-merge-repeated"), "")
-                return 91
-            }
-            File.WriteAllText(entered, "")
-            select {
-                case <- after(TimeSpan.FromSeconds(60.0)) { }
-            }
-            return 91
         }
         if Check.Text(State["mode"]) == "slow_candidate" && command.Contains("diff") && command.Contains("--binary") {
             select {
@@ -293,21 +267,6 @@ internal partial class Fixture {
             Check.SaveJson(StatePath, latest)
             Console.Error.WriteLine("Synthetic lost push response")
             return 1
-        }
-        if push >= 0 && result.Code == 0 && Check.Text(State["mode"]) == "revoke_sync_after_push" {
-            let reference = Git(
-                "upstream",
-                []string{"for-each-ref", "--format=%(refname)", "refs/heads/tokate/synchronizations"}
-            ).Split('\n')[0]
-            let grant = Git("upstream", []string{"rev-parse", reference})
-            let tree = Git("upstream", []string{"rev-parse", grant + "^{tree}"})
-            let revoked = Git(
-                "upstream",
-                []string{"commit-tree", tree, "-p", grant, "-m", "Revoked during publication"}
-            )
-            Git("upstream", []string{"update-ref", reference, revoked, grant})
-            State["mode"] = JsonValue.Create("")
-            Save()
         }
         if result.Code == 0 && command.Contains("checkout") && State["decree_checkout_replacement"] != nil {
             File.WriteAllText(

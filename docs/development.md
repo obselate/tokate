@@ -103,6 +103,19 @@ Find selectors in [the test entry point](https://github.com/obselate/tokate/blob
 
 3. Inspect the archive and checksum before publication.
 
+4. Publish the stable version tag and its archive and checksum assets from the release commit.
+   Move the `v0` tag to that same commit for every stable 0.x release:
+
+   ```sh
+   version=$(cat VERSION)
+   commit=$(git rev-parse "v$version^{commit}")
+   git tag -f v0 "$commit"
+   git push origin refs/tags/v0 --force
+   ```
+
+   Never move `v0` before the matching release assets are available. The reusable
+   workflow resolves its executed commit and refuses a release with a different commit.
+
 | Target | Setting or output |
 | --- | --- |
 | Linux x86_64 | glibc 2.34 or newer. Output: `artifacts/linux-x64`. |

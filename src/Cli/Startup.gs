@@ -134,7 +134,9 @@ internal class Startup {
                 command == "external" ||
                 command == "submit" ||
                 command == "amend" ||
-                command == "reconcile" {
+                command == "checks" ||
+                command == "overlaps" ||
+                command == "coordinate" {
                 names.Add("git")
             }
 
@@ -155,7 +157,7 @@ internal class Startup {
                 }
             }
 
-            if command == "init" {
+            if command == "init" && options.Get("pin") == "true" {
                 names.Add("curl")
                 names.Add("tar")
             }

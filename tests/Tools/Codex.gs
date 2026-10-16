@@ -14,6 +14,9 @@ import System.Text.Json.Nodes
 @DllImport("libc", EntryPoint: "close")
 func CloseFixtureInput(descriptor int32) int32;
 
+@DllImport("libc", EntryPoint: "setrlimit")
+func SetFixtureFileSizeLimit(resource int32, limit[]uint64) int32;
+
 internal partial class Fixture {
     internal func Codex(args[]string) int32 {
         if (args.Length == 2 && args[0] == "exec" && args[1] == "--help") ||
@@ -127,6 +130,12 @@ internal partial class Fixture {
         let count = Check.Text(State["exec_count"])
         State["exec_count"] = JsonValue.Create(count == "" ? 1: Int32.Parse(count) + 1)
         let mode = Check.Text(State["mode"])
+        if mode == "capture_write_failure" {
+            Check.That(
+                SetFixtureFileSizeLimit(1, []uint64{UInt64.MaxValue, UInt64.MaxValue}) == 0,
+                "Cannot remove the fixture file-size limit"
+            )
+        }
         if mode == "blocked_input" || mode == "closed_input" {
             Save()
             Console.Write("synthetic-blocked-prefix")

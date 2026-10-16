@@ -10,11 +10,8 @@ permissions: {}
 jobs:
   coordinate:
     permissions:
+      actions: read
       contents: write
       issues: write
       pull-requests: write
-    uses: obselate/tokate/.github/workflows/tokate-shared.yml@96379b66450ea5aeda89cf8b900c1c0274ec9025
-    with:
-      archive_url: 'https://api.github.com/repos/obselate/tokate/releases/assets/644004386'
-      archive_sha256: 'fd431e65b63f34f0d9ab235c044f709165f225a785579618088ccd6adb3546c1'
-      member: 'tokate-0.6.5-linux-x64/tokate'
+    uses: obselate/tokate/.github/workflows/tokate-shared.yml@v0

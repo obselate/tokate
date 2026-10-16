@@ -149,7 +149,7 @@ internal class CliDiscovery {
             flow.ReleaseReady(hosted: false)
             Publish(flow, nil)
             let shared = "obselate/tokate/.github/workflows/tokate-shared.yml@"
-            let pin = shared + String('a', 40)
+            let pin = shared + "v0"
             let args = []string{
                 "init",
                 "owner/project",
@@ -159,9 +159,32 @@ internal class CliDiscovery {
                 "[\"verify\"]",
                 "--plain"
             }
-            Check.Contains(flow.Call([]string{"init", "owner/project", "--yes"}, 1, true).Error, "--verification")
-            flow.ResetTraffic()
-            Check.Contains(flow.Call(Plus(args, "--yes"), 1, true).Error, "Bootstrap required")
+            let fresh = Check
+                .Envelope(flow.Call([]string{"init", "owner/project", "--json"}, owner: true), "init", "ok")["data"]?[
+                "changes"
+            ]
+                ?.AsArray() ?? throw Exception("Missing setup preview")
+            var fileCount int32
+            for change in fresh {
+                let name = Check.Text(change["change"])
+                if name.StartsWith(".github/") {
+                    fileCount++
+                }
+                Check.That(
+                    !name.Contains("protection") && !name.Contains("access") && !name.Contains("event policy") &&
+                        !name.Contains("Required checks"),
+                    "Unneeded setup mutation"
+                )
+            }
+            Check.That(fileCount == 2, "Fresh setup must list exactly two files")
+            Check.That(
+                !fresh.ToJsonString().Contains("required_checks") && !fresh.ToJsonString().Contains("verification") &&
+                    !fresh
+                    .ToJsonString().Contains("maintainer_edits"),
+                "Omitted optional policy fields were generated"
+            )
+            Unchanged(flow, "Preview changed GitHub")
+            Check.Contains(flow.Call(Plus(args, "--pin", "--yes"), 1, true).Error, "Bootstrap required")
             Unchanged(flow, "Failed setup changed GitHub")
             flow.Reload()
             flow.State["repo_permissions"] = Check.Map("push", true)
@@ -204,9 +227,6 @@ internal class CliDiscovery {
                     "Actions allowed workflows",
                     pin,
                     "Allow GitHub Actions to create and approve pull requests",
-                    "Actions event policy",
-                    "Required checks on main",
-                    "Branch tokate/access",
                     ".github/tokate.json",
                     ".github/workflows/tokate-coordinator.yml",
                     "Branch tokate-setup",
@@ -219,7 +239,7 @@ internal class CliDiscovery {
                 if flag == "--json" {
                     let data = Check.Envelope(preview, "init", "ok")["data"]
                     Check.That(
-                        Check.Text(data?["applied"]) == "false" && data?["changes"]?.AsArray().Count == 9,
+                        Check.Text(data?["applied"]) == "false" && data?["changes"]?.AsArray().Count == 6,
                         "Preview data did not list every change"
                     )
                 }
@@ -244,16 +264,8 @@ internal class CliDiscovery {
                 flow.State["selected_actions"]?.ToJsonString() == selected.ToJsonString(),
                 "Setup did not add the pin and preserve the allowlist"
             )
-            Check.That(
-                flow.State["branch_protection"]?.ToJsonString() ==
-                "{\"required_status_checks\":{\"strict\":false,\"contexts\":[\"verify\"]},\"enforce_admins\":false,\"required_pull_request_reviews\":null,\"restrictions\":null}",
-                "Setup did not require the policy checks with the exact protection settings"
-            )
-            Check.That(
-                flow.State["actions_policy"]?.ToJsonString() ==
-                "{\"name\":\"Tokate coordinator events\",\"enforcement\":\"active\",\"conditions\":{\"workflow_path\":{\"include\":[\".github/workflows/tokate-coordinator.yml\"],\"exclude\":[]}},\"rules\":[{\"type\":\"restrict_action_events\",\"parameters\":{\"allowed_events\":[\"issues\",\"issue_comment\",\"pull_request_target\",\"workflow_call\"]}}]}",
-                "Setup created the wrong Actions event policy"
-            )
+            Check.That(flow.State["branch_protection"] == nil, "Setup wrote branch protection")
+            Check.That(flow.State["actions_policy"] == nil, "Setup created an unneeded event policy")
             Check.That(
                 flow.State["workflow_permissions"]?.ToJsonString() ==
                 "{\"default_workflow_permissions\":\"read\",\"can_approve_pull_request_reviews\":true}",
@@ -265,7 +277,10 @@ internal class CliDiscovery {
                 ) == "main",
                 "Setup PR has the wrong branches"
             )
-            Check.Contains(flow.Git("-C", flow.Upstream, "show", "tokate/access:access.json"), "\"members\":[]")
+            Check.That(
+                flow.Git("-C", flow.Upstream, "branch", "--list", "tokate/access") == "",
+                "Setup created an access ref"
+            )
             Check.That(
                 !File.Exists(Path.Combine(flow.Upstream, ".github/tokate.json")),
                 "Setup changed the default branch"
@@ -322,6 +337,7 @@ internal class CliDiscovery {
             Merge(flow)
             Check.Contains(flow.Call(Plus(args, "--yes"), owner: true).Output, "Nothing to change")
             Unchanged(flow, "Repeated setup changed GitHub")
+            flow.OwnerAccess()
             flow.Approve()
             flow.Reload()
             let second = flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
@@ -406,35 +422,14 @@ internal class CliDiscovery {
             Unchanged(flow, "Unsupported GitHub policy was rewritten")
             let legacy = Check.Json(original)
             legacy["version"] = JsonValue.Create(2)
-            legacy["eligibility"] = JsonValue.Create("manual")
-            legacy["model_policy"] = JsonValue.Create("whitelist")
-            legacy["models"] = Check.Json("{\"model-a\":[\"high\"]}")
-            legacy["allowed_tools"] = Check.Json(
-                "[{\"harness\":\"claude\",\"provider\":\"anthropic\"},{\"harness\":\"omp\",\"provider\":\"openrouter\"}]"
-            )
             Publish(flow, legacy.ToJsonString())
-            Check.Contains(
-                flow.Call([]string{"doctor", "repo", "owner/project", "--json"}).Output,
-                "tokate init OWNER/REPO"
-            )
-            flow.Call([]string{"init", "owner/project", "--yes"}, owner: true)
-            let migrated = Check.Json(Proposed(flow, ".github/tokate.json"))
-            Check.That(
-                Check.Text(migrated["version"]) == "3" && Check.Text(migrated["eligibility"]) == "trusted" &&
-                    migrated["models"] == nil &&
-                    migrated["model_policy"] == nil &&
-                    migrated["allowed_tools"]?[0]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString() &&
-                    migrated["allowed_tools"]?[1]?["models"]?.ToJsonString() == legacy["models"]?.ToJsonString(),
-                "Version 2 migration changed model permissions or lost trusted eligibility"
-            )
-            Merge(flow)
+            flow.Call([]string{"init", "owner/project", "--yes"}, 1, true)
+            Unchanged(flow, "Version 2 policy was migrated")
+            Publish(flow, original)
             let workflow = Path.Combine(flow.Upstream, ".github/workflows/tokate-coordinator.yml")
-            File.WriteAllText(
-                workflow,
-                yaml.Replace(String('a', 40), String('c', 40)) + "# synthetic-preview-\x1b[31m\n"
-            )
+            File.WriteAllText(workflow, yaml.Replace("@v0", "@" + String('c', 40)) + "\n# synthetic-preview-\x1b[31m\n")
             flow.Commit("Install old coordinator pin")
-            let update = flow.Call([]string{"init", "owner/project", "--yes", "--plain"}, owner: true)
+            let update = flow.Call([]string{"init", "owner/project", "--pin", "--yes", "--plain"}, owner: true)
             Check.That(!update.Error.Contains('\x1b'), "Owner preview emitted terminal control bytes")
             Check.Contains(
                 update.Error,
@@ -444,9 +439,14 @@ internal class CliDiscovery {
                     String('a', 40)
             )
             Check.That(
-                Proposed(flow, ".github/workflows/tokate-coordinator.yml") == yaml,
+                Proposed(flow, ".github/workflows/tokate-coordinator.yml") == yaml.Replace(
+                    "@v0",
+                    "@" + String('a', 40)
+                ),
                 "Init did not update the pin"
             )
+            Merge(flow)
+            flow.Call([]string{"init", "owner/project", "--yes"}, owner: true)
             Merge(flow)
             for mode in[]string{"excluded", "local_only"} {
                 flow.Reload()
@@ -480,7 +480,7 @@ internal class CliDiscovery {
             }
             flow.NoInference()
             Console.WriteLine(
-                "PASS CLI owner setup: defaults, exact preview, one question, settings, access, setup PR, repeat, approvals, options, migration and pin update"
+                "PASS CLI owner setup: minimal defaults, exact preview, one question, required settings, setup PR, repeat, approvals, options and optional pin"
             )
         }
 
@@ -497,7 +497,7 @@ internal class CliDiscovery {
                 File.SetUnixFileMode(tool, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute)
             }
             let metadata = Check.Envelope(Call(binary, []string{"help", "--json"}, temp), "help", "ok")
-            let expected = "work claim submit status checks pause resume renew release init approve revoke access doctor defaults update uninstall overlaps recover-request amend external reconcile sync completion help --version request admit coordinate"
+            let expected = "work claim submit status checks pause resume renew release init approve revoke access doctor defaults update uninstall overlaps amend external completion help --version request admit coordinate"
             Check.That(
                 String.Join(
                     " ",
@@ -545,55 +545,11 @@ internal class CliDiscovery {
                 []string{"status", "--run", "saved", "owner/project#10", "--json"},
                 []string{"status", "--run", "saved", "1", "--json"},
                 []string{"amend", "--run", "saved", "--commit", String('a', 40) + "\n", "--time", "30s", "--json"},
-                []string{"sync", "owner/project#10", "revoke", "--grant", "invalid", "--json"},
-                []string{"sync", "owner/project#10", "revoke", "--grant", String('a', 40) + "\n", "--json"},
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "authorize",
-                    "--commit",
-                    String('a', 40),
-                    "--upstream",
-                    "invalid",
-                    "--json"
-                },
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "authorize",
-                    "--commit",
-                    String('a', 40),
-                    "--upstream",
-                    String('a', 40) + "\n",
-                    "--json"
-                },
-                []string{
-                    "amend",
-                    "--run",
-                    "saved",
-                    "--commit",
-                    String('a', 40),
-                    "--time",
-                    "30s",
-                    "--sync",
-                    "invalid",
-                    "--json"
-                },
-                []string{
-                    "amend",
-                    "--run",
-                    "saved",
-                    "--commit",
-                    String('a', 40),
-                    "--time",
-                    "30s",
-                    "--sync",
-                    String('a', 40) + "\n",
-                    "--json"
-                },
                 []string{"approve", "0", "--json"},
                 []string{"approve", "owner/project", "--json"},
                 []string{"approve", "owner/project#1", "--title", "Removed", "--json"},
+                []string{"access", "grant", "donor", "owner/project#1", "--json"},
+                []string{"access", "remove", "donor", "owner/project#1", "--json"},
                 []string{"doctor", "--set-default", "--json"}
             } {
                 Check.Envelope(Call(binary, argv, temp, 1), argv[0], "error", "invalid_arguments")
@@ -632,18 +588,7 @@ internal class CliDiscovery {
                 ),
                 "Defaults set required inputs differ"
             )
-            let sync = Check.Envelope(Call(binary, []string{"help", "sync", "--json"}, temp), "help", "ok")["data"]?[
-                "commands"
-            ]?[0]?["operations"]
-            Check.That(
-                Check.Text(sync?[0]?["name"]) == "authorize" && JsonNode.DeepEquals(
-                    sync?[0]?["required_input_sets"],
-                    Check.Json("[[\"commit\",\"upstream\"]]")
-                ) &&
-                    Check.Text(sync?[1]?["name"]) == "revoke",
-                "Sync operations missing from metadata"
-            )
-            for subject in[]string{"defaults", "access", "sync"} {
+            for subject in[]string{"defaults", "access"} {
                 let command = Check.Envelope(Call(binary, []string{"help", subject, "--json"}, temp), "help", "ok")[
                     "data"
                 ]?["commands"]?[0]
@@ -1231,14 +1176,6 @@ internal class CliDiscovery {
                 []string{"revoke", "https://github.com/owner/project/issues/0"},
                 []string{"revoke", "https://github.com/owner/project/issues/999999999999"},
                 []string{"claim", "owner/project#1", "--source=invalid"},
-                []string{"sync", "owner/project#10", "merge"},
-                []string{
-                    "sync",
-                    "owner/project#10",
-                    "revoke",
-                    "--grant=" + String('a', 40),
-                    "--commit=" + String('b', 40)
-                },
                 []string{"external", "--run=x", "--commit=HEAD"},
                 []string{"request", "owner/project#1"},
                 []string{"coordinate", "--repo=owner/project"},

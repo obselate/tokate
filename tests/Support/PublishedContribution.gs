@@ -24,20 +24,14 @@ internal class PublishedContribution : IDisposable {
         internal func Create(
             binary string,
             external bool = false,
-            synchronization bool = false,
             baseBranch string = "",
             mutating bool = false
         ) PublishedContribution {
             let coordination = CoordinationFixture(binary)
             try {
-                let run = external ? PublishRun(
-                    coordination,
-                    synchronization: synchronization,
-                    baseBranch: baseBranch
-                ): Original(
+                let run = external ? PublishRun(coordination, baseBranch: baseBranch): Original(
                     coordination.Flow,
                     mutating: mutating,
-                    synchronization: synchronization,
                     baseBranch: baseBranch
                 )
                 coordination.Flow.Receipt("owner/project#10", owner: true)
@@ -53,13 +47,9 @@ internal class PublishedContribution : IDisposable {
             owner bool = false,
             mutating bool = false,
             interruptible bool = false,
-            synchronization bool = false,
             baseBranch string = ""
         ) string {
             flow.Initialize()
-            if synchronization {
-                SetupOwner(flow)
-            }
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
             policy["verification"] = Check.Json(
@@ -93,15 +83,11 @@ internal class PublishedContribution : IDisposable {
             flow CoordinationFixture,
             native bool = false,
             modelPolicy string = "",
-            synchronization bool = false,
             baseBranch string = ""
         ) string {
             flow.Initialize(approve: false)
-            if synchronization {
-                SetupOwner(flow.Flow)
-                if baseBranch != "" {
-                    flow.Flow.Git("-C", flow.Flow.Upstream, "branch", baseBranch)
-                }
+            if baseBranch != "" {
+                flow.Flow.Git("-C", flow.Flow.Upstream, "branch", baseBranch)
             }
             if modelPolicy != "" {
                 let path = Path.Combine(flow.Flow.Upstream, ".github/tokate.json")
@@ -174,25 +160,6 @@ internal class PublishedContribution : IDisposable {
                     .ToJsonString()
             )
             return path
-        }
-
-        private func SetupOwner(flow NativeFixture) {
-            let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
-            let policy = Check.Json(File.ReadAllText(policyPath))
-            policy["protected_paths"] = Check.Json("[\"protected/\",\"guard/missing\",\"new-parent/missing\"]")
-            policy["verification"] = Check.Json(
-                "[[\"/bin/sh\",\"-c\",\"test -f result.txt\"],[\"/bin/sh\",\"-c\",\"test -s result.txt && ! grep -q BAD result.txt\"]]"
-            )
-            File.WriteAllText(policyPath, policy.ToJsonString())
-            Write(flow.Upstream, ".github/workflows/verify.yml", "timeout-minutes: 15\n")
-            Write(flow.Upstream, ".github/workflows/old.yml", "old workflow\n")
-            Write(flow.Upstream, "protected/content", "owner data\n")
-            Write(flow.Upstream, "protected/gone", "remove upstream\n")
-            Write(flow.Upstream, "protected/link", "regular upstream\n")
-            Write(flow.Upstream, "guard/other", "nonprotected sibling\n")
-            Write(flow.Upstream, "DECREE.md", "Approved owner instructions\n")
-            Write(flow.Upstream, "shared.txt", "original shared line\n")
-            flow.Commit("Approved protected fixtures")
         }
 
         internal func Write(root string, path string, text string) {

@@ -738,7 +738,12 @@ internal class Submission {
                         pull,
                         "html_url"
                     ) {
-                        Publication.SavePr(directory, run, pull)
+                        Publication.SavePr(
+                            directory,
+                            run,
+                            pull,
+                            Policy(J.Write(J.Get(published.Element(), "policy"))).MaintainerEdits
+                        )
                     }
 
                     return

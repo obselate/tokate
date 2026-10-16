@@ -80,7 +80,7 @@ internal class ClaudeHarness {
 
             let checkout = Path.Combine(directory, "checkout")
             let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
-            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
+            let policy = Policy(J.Write(J.Get(record, "policy")))
             let invocation = ClaudeCode.Invocation(
                 run.Text("model"),
                 run.Text("effort"),
@@ -101,7 +101,7 @@ internal class ClaudeHarness {
         }
 
         internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
-            let policy = Policy(J.Write(J.Get(record, "policy")), gratis: run.Flag("gratis"))
+            let policy = Policy(J.Write(J.Get(record, "policy")))
             let evidence = Evidence()
             let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), evidence)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
