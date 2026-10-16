@@ -12,10 +12,6 @@ internal open class OutputSink {
         get
     }
 
-    public open prop Plain bool {
-        get
-    }
-
     public open prop Donating bool {
         get
     }
@@ -56,17 +52,9 @@ internal open class OutputSink {
 
     public open func Active() bool;
 
-    public open func Start() bool;
-
     public open func Append(text string);
 
-    public open func Status(text string);
-
-    public open suspend func Close();
-
     public open func Progress(phase string, budget RuntimeBudget, total RuntimeBudget? = nil) IDisposable;
-
-    public open func Confirm(args Args, question string = "Apply these changes?") bool;
 
     public open func ConfirmSelection(args Args, selection JsonElement, run Data? = nil);
 

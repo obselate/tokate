@@ -7,8 +7,6 @@ import System.Text.Json
 internal class CliOutput : OutputSink {
     public override prop Enabled bool -> PublicOutput.Enabled
 
-    public override prop Plain bool -> Terminal.Plain
-
     public override prop Donating bool -> Donate.Active
 
     public override prop RunDirectory string {
@@ -49,24 +47,13 @@ internal class CliOutput : OutputSink {
 
     public override func Active() bool -> DonationView.Active()
 
-    public override func Start() bool -> DonationView.Start()
-
     public override func Append(text string) -> DonationView.Append(text)
-
-    public override func Status(text string) -> DonationView.Status(text)
-
-    public override suspend func Close() -> DonationView.Close()
 
     public override func Progress(
         phase string,
         budget RuntimeBudget,
         total RuntimeBudget? = nil
     ) IDisposable -> TerminalProgress(phase, budget, total)
-
-    public override func Confirm(args Args, question string = "Apply these changes?") bool -> OwnerSetup.Confirm(
-        args,
-        question
-    )
 
     public override func ConfirmSelection(args Args, selection JsonElement, run Data? = nil) -> DonorSelection.Confirm(
         args,
