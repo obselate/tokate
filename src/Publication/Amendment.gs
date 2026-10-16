@@ -41,34 +41,6 @@ internal class Amendment {
             }
         }
 
-        internal func Summary(
-            previous string,
-            head string,
-            seconds int32,
-            tools JsonElement,
-            summary JsonElement = default(JsonElement),
-            original JsonElement = default(JsonElement)
-        ) string {
-            if summary.ValueKind != JsonValueKind.Undefined {
-                PublicSummary.Validate(summary, head)
-            }
-
-            return PublicSummary.Report(
-                summary,
-                "Donor-reported: all original owner checks passed locally; coordinator did not observe execution."
-            ) +
-                "\n\n- Review amendment: " +
-                previous +
-                " → " +
-                head +
-                "; separate " +
-                seconds.ToString() +
-                " second verification budget; no inference launched by amend.\n" +
-                "- Original execution and usage cover original work only." +
-                PublicSummary.Tools(tools, "Amendment donor-reported tools") +
-                (original.ValueKind == JsonValueKind.Undefined ? "": PrBody.OriginalProvenance(original))
-        }
-
         internal func Pull(run Data, number int32, previous string, candidate string) JsonElement {
             let pull = GitHub.Api("repos/" + run.Text("repo") + "/pulls/" + number.ToString())
             let head = J.Get(pull, "head")
@@ -796,19 +768,6 @@ internal class Amendment {
 
                 let original = J.Get(J.Get(authority, "state"), "contribution")
 
-                amendment.Fields["body"] = PrBody.ReplaceBody(
-                    J.Text(pull, "body"),
-                    Summary(
-                        amendment.Text("previous"),
-                        amendment.Text("commit"),
-                        amendment.Number("seconds"),
-                        J.Get(amendment.Element(), "tools"),
-                        J.Get(amendment.Element(), "public_summary"),
-                        J.Get(original, "metadata")
-                    ),
-                    updatedReceipt
-                )
-
                 let metadata = PublicSummary.Attach(
                     map[string, Object?]{
                         "fork": run.Text("head_repo"),
@@ -822,6 +781,11 @@ internal class Amendment {
                         "verification": "donor-reported-pass"
                     },
                     J.Get(amendment.Element(), "public_summary")
+                )
+                amendment.Fields["body"] = PrBody.ReplaceBody(
+                    J.Text(pull, "body"),
+                    PrBody.PublicReport(J.Parse(J.Write(metadata)), J.Get(original, "metadata")),
+                    updatedReceipt
                 )
 
                 if amendment.Text("base") != "" {

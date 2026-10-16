@@ -200,10 +200,9 @@ internal class Gratis {
                 donor +
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
-            let marker = "<!-- tokate-receipt:" + J.Write(receipt) + " -->"
-            let report = PrBody.Report(
-                PublicSummary.Report(summary, "Tokate ran no repository checks. Checks below are donor-reported.")
-            )
+            let receiptText = J.Write(receipt)
+            let marker = "<!-- tokate-receipt:" + receiptText + " -->"
+            let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
             let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
                 report +
                 "\n\n" +
