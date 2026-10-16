@@ -810,31 +810,6 @@ internal class Cli {
             return text.ToString().TrimEnd()
         }
 
-        internal func PullNumbers(value string) List[int32] {
-            let parts = value.Split(',')
-
-            if parts.Length < 2 || parts.Length > 16 {
-                throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
-            }
-
-            let numbers = List[int32]()
-            let seen = HashSet[int32]()
-
-            for part in parts {
-                var number int32
-
-                if !Regex.IsMatch(part, "^[0-9]+\\z") || !Int32.TryParse(part, out number) || number < 1 || !seen.Add(
-                    number
-                ) {
-                    throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
-                }
-
-                numbers.Add(number)
-            }
-
-            return numbers
-        }
-
         internal func Validate(args Args) {
             let command = Find(args.Command)
 
@@ -1030,7 +1005,7 @@ internal class Cli {
             }
 
             if args.Get("prs") != "" {
-                PullNumbers(args.Get("prs"))
+                Overlaps.PullNumbers(args.Get("prs"))
             }
 
             for key in[]string{"seconds", "verification-reserve", "timeout", "pr"} {

@@ -1,6 +1,7 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
@@ -357,6 +358,14 @@ private func RunCommand(options Args) int32 {
 
         case "overlaps" {
             Overlaps.Run(options)
+
+            if !PublicOutput.Enabled {
+                let result = PublicOutput.ResultData as Dictionary[string, Object?] ??
+                    throw Exception("Invalid overlaps result")
+                result["truncated"] = PublicOutput.Truncated
+                Terminal.Message(result["advisory"]?.ToString() ?? "", "cyan")
+                Terminal.Json(J.Parse(J.Write(result)), "Selected contributions")
+            }
         }
 
         case "checks" {
@@ -364,11 +373,15 @@ private func RunCommand(options Args) int32 {
         }
 
         case "status" when options.Get("run") == "" {
-            ContributionStatus.Run(options)
+            RunReference.Status(options)
         }
 
         case "status" {
             ContributionStatus.Attempt(options)
+
+            if !PublicOutput.Enabled {
+                RunReference.PrintStatus(J.Parse(J.Write(PublicOutput.ResultData)))
+            }
 
             return 0
         }

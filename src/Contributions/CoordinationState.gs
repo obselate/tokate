@@ -223,7 +223,7 @@ internal class CoordinationState {
             let state = Load(repo, issue, true)
             let warning = state.ApprovalWarning(repo)
             if warning != "" {
-                Terminal.Message(warning, error: true)
+                Output.Sink.Message(warning, error: true)
             }
 
             let approved = J.Parse(J.Write(approval))

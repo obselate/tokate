@@ -4,9 +4,150 @@ import System
 import System.Collections.Generic
 import System.IO
 import System.Linq
+import System.Text.Json
 
 internal class RunReference {
     shared {
+        internal func Status(options Args) {
+            let failure = ContributionStatus.Run(options)
+
+            if !PublicOutput.Enabled {
+                PrintStatus(J.Parse(J.Write(PublicOutput.ResultData)), options.Get("issue") == "")
+            }
+
+            if let error = failure {
+                throw error
+            }
+        }
+
+        internal func PrintStatus(value JsonElement, repository bool = false) {
+            let repo = J.Text(value, "repo")
+            let work = J.Get(value, "work")
+
+            if work.ValueKind != JsonValueKind.Array {
+                var next = Action(J.Get(value, "next"))
+
+                for action in Output.Sink.Actions {
+                    if action.Length > 1 && action[1] != "status" {
+                        next = Output.Sink.Hint(action)
+                        break
+                    }
+                }
+
+                let issue = J.Get(value, "issue").ToString()
+                let correction = J.Get(value, "correction")
+                var state = J.Text(value, "outcome") != "" ? J.Text(value, "outcome"): J.Text(value, "state")
+                var reason = J.Text(J.Get(value, "error"), "message")
+
+                if J.Text(correction, "state") != "" {
+                    state += ", correction " + J.Text(correction, "state")
+                    reason = reason == "" ? J.Text(J.Get(correction, "error"), "message"): reason
+                }
+
+                Table(
+                    repo == "" ? "": repo + (issue == "" ? "": "#" + issue),
+                    state + (reason == "" ? "": ": " + reason),
+                    J.Text(value, "pr_url"),
+                    next
+                )
+                let checkout = J.Text(J.Get(value, "artifacts"), "checkout")
+                if checkout != "" {
+                    Cell("Path", checkout, "default")
+                }
+                return
+            }
+
+            let observed = J.Text(value, "remote_status") == "observed"
+
+            if repository {
+                Repository(value, J.Items(work), observed)
+                return
+            }
+
+            for row in J.Items(work) {
+                let drafts = J.Items(J.Get(row, "drafts"))
+                Table(
+                    repo + "#" + J.Number(row, "issue").ToString(),
+                    J.Text(row, "state"),
+                    drafts.Count == 0 ? "": J.Text(drafts[drafts.Count - 1], "url"),
+                    Action(J.Get(J.Count(work) == 1 || !observed ? value: row, "next"))
+                )
+            }
+
+            if J.Count(work) == 0 {
+                Table(
+                    repo,
+                    observed ? "no_work_observed": J.Text(value, "remote_status"),
+                    "",
+                    Action(J.Get(value, "next"))
+                )
+            }
+        }
+
+        private func Repository(value JsonElement, work List[JsonElement], observed bool) {
+            if !observed || work.Count == 0 {
+                Cell("State", observed ? "no_work_observed": J.Text(value, "remote_status"), "yellow")
+            }
+
+            if !observed || work.Count == 0 || J.Count(J.Get(value, "pending_requests")) > 0 {
+                Cell("Next", Action(J.Get(value, "next")), "default")
+            }
+
+            if work.Count > 0 {
+                let viewer = J.Get(value, "viewer")
+                let me = J.Get(viewer, "actor").ToString()
+                let table = List[[]string]{[]string{"ISSUE", "TITLE", "STATE", "YOU"}}
+
+                for task in work {
+                    let next = J.Get(task, "next")
+                    let role = J.Text(next, "role")
+                    let reservation = J.Get(task, "reservation")
+                    let holder = J.Bool(reservation, "expired") || J.Text(reservation, "status") == "released" ? "":
+                    J.Get(reservation, "actor").ToString()
+                    let eligible = J.Text(task, "eligibility_status") == "eligible"
+                    let mine = role == "donor" ? (
+                        holder == "" ? J.Text(viewer, "role") == "donor" || eligible: holder == me
+                    ):
+                    role == J.Text(viewer, "role")
+                    table.Add(
+                        []string{
+                            "#" + J.Number(task, "issue").ToString(),
+                            J.Text(task, "title"),
+                            J.Text(task, "state"),
+                            J.Text(viewer, "role") == "" ? "?": mine ? "yes": "no"
+                        }
+                    )
+                    table.Add([]string{"Next: " + Action(next)})
+                }
+
+                Terminal.Table(table, fit: 1)
+            }
+
+            if J.Bool(value, "truncated") {
+                Output.Sink.Message("Bounded snapshot: some data was omitted.", "default")
+            }
+        }
+
+        private func Action(next JsonElement) string {
+            let command = Output.Sink.Hint(
+                J.Items(J.Get(next, "command")).ConvertAll(word -> word.ToString()).ToArray()
+            )
+            return command == "" ? J.Text(next, "action"): command
+        }
+
+        private func Table(issue string, state string, pr string, next string) {
+            Cell("Issue", issue, "default")
+            Cell("State", state, state.Contains("failed") ? "red": "yellow")
+            Cell("PR", pr, "default")
+            Cell("Next", next, "default")
+        }
+
+        private func Cell(label string, value string, color string) -> Terminal.Line(
+            Tokate.Output.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
+            color,
+            false
+        )
+
         private var Here string? = nil
 
         internal func Locate() string {
@@ -20,16 +161,6 @@ internal class RunReference {
             return Here ?? ""
         }
 
-        internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
-            Math.Max(0, rows.Count - 16),
-            Math.Min(16, rows.Count)
-        )
-
-        internal func Pick(rows List[SavedRun]) SavedRun? {
-            let active = rows.FindAll(row -> row.Text("state") != "failed")
-            return active.Count > 1 ? nil: active.Count == 1 ? active[0]: rows.Count > 0 ? rows[rows.Count - 1]: nil
-        }
-
         internal func Label(row SavedRun, saved SavedRuns, pull bool = false) string {
             let repo = row.Text("repo")
             let name = repo.Substring(repo.IndexOf('/') + 1)
@@ -40,7 +171,7 @@ internal class RunReference {
                 return prefix + J.Number(row.Value, "pr").ToString()
             }
 
-            let picked = Pick(saved.For(repo, row.Issue))?.Location == row.Location
+            let picked = SavedRuns.Pick(saved.For(repo, row.Issue))?.Location == row.Location
             return prefix + row.Issue.ToString() + (picked ? "": "-" + row.Number.ToString())
         }
 
@@ -141,7 +272,7 @@ internal class RunReference {
                 throw Exception("Saved run name " + name + " is not unique; use --run DIR")
             }
 
-            let row = Pick(rows) ??
+            let row = SavedRuns.Pick(rows) ??
                 throw Exception(
                 "Saved run name " + name + " is ambiguous: " + String.Join(
                     ", ",
@@ -172,7 +303,7 @@ internal class RunReference {
                 .OrderByDescending(row -> row.Modified)
                 .ThenBy(row -> row.Location, StringComparer.Ordinal)
                 .ToList()
-            Outcomes(rows)
+            SavedRuns.Outcomes(rows)
             let shown = args.Get("all") == "true" ? rows: rows.FindAll(row -> !row.Finished)
             let hidden = rows.Count - shown.Count
 
@@ -195,37 +326,6 @@ internal class RunReference {
                     hidden.ToString() + " finished runs hidden. Show them with tokate status --all.",
                     "default"
                 )
-            }
-        }
-
-        internal func Outcomes(rows List[SavedRun]) {
-            let pulls = rows.Where(row -> J.Number(row.Value, "pr") > 0 && !row.Finished).Take(100).ToList()
-
-            if pulls.Count == 0 {
-                return
-            }
-
-            var query = ""
-
-            for i in 0 ... pulls.Count {
-                let repo = pulls[i].Text("repo").Split('/')
-                query += "p" + i.ToString() + ":repository(owner:\"" + repo[0] + "\",name:\"" + repo[1] + "\")"
-                query += "{pullRequest(number:" + J.Number(pulls[i].Value, "pr").ToString() + "){state}}"
-            }
-
-            ApiTransport.BeginDeadline(10)
-            try {
-                let data = J.Get(GitHub.Api("graphql", map[string, Object?]{"query": "query{" + query + "}"}), "data")
-
-                for i in 0 ... pulls.Count {
-                    let state = J.Text(J.Get(J.Get(data, "p" + i.ToString()), "pullRequest"), "state")
-
-                    if state == "MERGED" || state == "CLOSED" {
-                        pulls[i].Outcome = state.ToLowerInvariant()
-                    }
-                }
-            } catch (error Exception) { } finally {
-                ApiTransport.EndDeadline()
             }
         }
     }

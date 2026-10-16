@@ -4,6 +4,7 @@ import System
 import System.Collections.Generic
 import System.Text
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class OverlapContribution {
     internal let Number int32
@@ -50,7 +51,7 @@ internal class Overlaps {
         private func Retain(rows List[Object], item Object) {
             let bytes = Encoding.UTF8.GetByteCount(J.Write(item))
             if bytes > Remaining {
-                PublicOutput.Truncated = true
+                Output.Sink.Truncated = true
                 return
             }
 
@@ -464,7 +465,7 @@ internal class Overlaps {
             Remaining = 24000
 
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let numbers = Cli.PullNumbers(args.Need("prs"))
+            let numbers = Overlaps.PullNumbers(args.Need("prs"))
             let items = List[OverlapContribution]()
             let targets = Dictionary[string, string](StringComparer.Ordinal)
             let changes = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
@@ -528,9 +529,7 @@ internal class Overlaps {
             for item in items {
                 contributions.Add(item.Facts)
                 if item.Binding != nil {
-                    PublicOutput.Actions.Add(
-                        []string{"tokate", "checks", repo + "#" + item.Number.ToString(), "--json"}
-                    )
+                    Output.Sink.Actions.Add([]string{"tokate", "checks", repo + "#" + item.Number.ToString(), "--json"})
                 }
             }
 
@@ -540,13 +539,32 @@ internal class Overlaps {
                 "pairs": pairs,
                 "advisory": Advisory
             }
-            PublicOutput.ResultData = result
+            Output.Sink.ResultData = result
+        }
 
-            if !PublicOutput.Enabled {
-                result["truncated"] = PublicOutput.Truncated
-                Terminal.Message(Advisory, "cyan")
-                Terminal.Json(J.Parse(J.Write(result)), "Selected contributions")
+        internal func PullNumbers(value string) List[int32] {
+            let parts = value.Split(',')
+
+            if parts.Length < 2 || parts.Length > 16 {
+                throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
             }
+
+            let numbers = List[int32]()
+            let seen = HashSet[int32]()
+
+            for part in parts {
+                var number int32
+
+                if !Regex.IsMatch(part, "^[0-9]+\\z") || !Int32.TryParse(part, out number) || number < 1 || !seen.Add(
+                    number
+                ) {
+                    throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
+                }
+
+                numbers.Add(number)
+            }
+
+            return numbers
         }
     }
 }
