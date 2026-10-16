@@ -409,6 +409,12 @@ internal class AttemptContinuation {
 
             WorkspacePreparation.Source(Path.Combine(directory, "checkout"), source)
 
+            CheckRepositories(source, run, viewer)
+
+            return source
+        }
+
+        private func CheckRepositories(source Data, run Data, viewer JsonElement) {
             let upstream = GitHub.Api("repos/" + run.Text("repo"))
             let head = GitHub.Api("repos/" + RepositoryIdentity.Repo(source.Text("head_repo")))
             let repoId = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
@@ -445,8 +451,6 @@ internal class AttemptContinuation {
                     "Source branch changed or publication is pending; source is preserved"
                 )
             }
-
-            return source
         }
     }
 }

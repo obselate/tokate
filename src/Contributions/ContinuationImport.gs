@@ -516,6 +516,17 @@ internal class ContinuationImport {
                 throw CliFailure("invalid_state", "Continuation exceeds 1000 changed paths")
             }
 
+            return ScanEntries(checkout, record, baseline, index, files, changed)
+        }
+
+        private func ScanEntries(
+            checkout string,
+            record JsonElement,
+            baseline Dictionary[string, string],
+            index Dictionary[string, string],
+            files HashSet[string],
+            changed HashSet[string]
+        ) JsonElement {
             let entries = List[Object]()
             let ordered = List[string](changed)
             ordered.Sort(StringComparer.Ordinal)
