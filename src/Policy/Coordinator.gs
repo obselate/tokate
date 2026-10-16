@@ -84,11 +84,14 @@ internal class Coordinator {
                 approval["allowed_actor_ids"] = J.Get(previous, "allowed_actor_ids").ValueKind == JsonValueKind.Array ?
                 J.Get(previous, "allowed_actor_ids"): J.Parse("[]")
             }
-            approval["nonce"] = J.Text(previous, "nonce")
-            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && RequestData.Canonical(
-                J.Parse(J.Write(approval))
-            ) ==
-            RequestData.Canonical(previous) {
+            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && Object.Equals(
+                approval["policy_hash"],
+                J.Text(previous, "policy_hash")
+            ) &&
+                Object.Equals(approval["template_hash"], J.Text(previous, "template_hash")) && Object.Equals(
+                approval["issue_hash"],
+                J.Text(previous, "issue_hash")
+            ) {
                 Terminal.Message("Issue approval is already current.")
                 return
             }

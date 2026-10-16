@@ -85,16 +85,35 @@ internal partial class CoordinationFlow {
 
         internal func LabelApprovalLifecycle(binary string) {
             using let test = CoordinationFixture(binary)
-            test.Initialize()
+            test.Initialize(approve: false)
+            test.Flow.OwnerAccess()
+            test.Flow.Call([]string{"approve", "owner/project#1", "donor", "--yes"}, owner: true)
+            let approved = test.State()
             let pending = test.ClaimRequest()
             let pendingPath = test.Event(pending)
+            File.WriteAllText(Path.Combine(test.Flow.Upstream, "target.txt"), "Updated target.\n")
+            test.Flow.Commit("Advance target before label approval")
             test.Coordinate(test.LabelEvent())
+            let unchanged = test.State()
+            Check.That(
+                Check.FixtureDigest(unchanged) == Check.FixtureDigest(approved),
+                "Label event replaced the named donor approval after the target moved"
+            )
+            Check.That(
+                Check.Text(unchanged["state"]?["approval_id"]) == Check.Text(approved["state"]?["approval_id"]) &&
+                    unchanged["state"]?["approval"]?["allowed_actor_ids"]?.ToJsonString() == "[123]",
+                "Label event changed the approval ID or named donor"
+            )
             Check.That(
                 test.State()["state"]?["reservation"] == nil,
                 "Label event processed a request from a different comment"
             )
             test.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "issue_comment"
             test.Coordinate(pendingPath)
+            Check.That(
+                Check.Text(test.State()["state"]?["reservation"]?["actor"]) == "123",
+                "Named donor could not claim after the label event"
+            )
             let initial = test.State()
             let path = test.LabelEvent()
             test.Coordinate(path)
@@ -104,20 +123,14 @@ internal partial class CoordinationFlow {
                 "Label event reset a current approval or reservation"
             )
 
-            File.WriteAllText(Path.Combine(test.Flow.Upstream, "target.txt"), "Updated target.\n")
+            File.WriteAllText(Path.Combine(test.Flow.Upstream, "target.txt"), "Updated target again.\n")
             test.Flow.Commit("Advance target")
             test.Coordinate(test.LabelEvent())
             let advanced = test.State()
             Check.That(
-                Check.Text(advanced["state"]?["approval"]?["base"]) == test.Flow.Git(
-                    "-C",
-                    test.Flow.Upstream,
-                    "rev-parse",
-                    "main"
-                ),
-                "Label approval kept an old target commit"
+                Check.FixtureDigest(advanced) == Check.FixtureDigest(initial),
+                "Label event reset a current approval or reservation after the target moved"
             )
-            Check.That(advanced["state"]?["reservation"] == nil, "New target kept the old reservation")
             test.Coordinate(path)
             Check.That(
                 Check.FixtureDigest(test.State()) == Check.FixtureDigest(advanced),
