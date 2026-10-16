@@ -44,7 +44,7 @@ internal class ContributionPreparation {
             }
 
             if run.Text("source") == "tokate" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
+                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
             }
 
             Create(directory)
@@ -57,12 +57,12 @@ internal class ContributionPreparation {
 
         private func Complete(directory string, run Data) string {
             if run.Text("source") == "tokate" {
-                Terminal.Step(RuntimeBudget.Description(run))
+                Output.Sink.Step(RuntimeBudget.Description(run))
             }
 
-            Terminal.Step("Preparing contribution. Run: " + directory)
+            Output.Sink.Step("Preparing contribution. Run: " + directory)
             WorkspacePreparation.Complete(directory, run)
-            Terminal.Message("Prepared contribution. Run: " + directory)
+            Output.Sink.Message("Prepared contribution. Run: " + directory)
 
             return directory
         }
@@ -206,7 +206,7 @@ internal class ContributionPreparation {
                 id,
                 AttemptContinuation.Stopped
             )
-            PublicOutput.RunDirectory = directory
+            Output.Sink.RunDirectory = directory
             run.Fields["name"] = Path.GetFileName(directory)
             return directory
         }
@@ -265,7 +265,7 @@ internal class ContributionPreparation {
 
             if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
                 CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                if !Donate.Active && RepositoryIdentity.PositiveId(
+                if !Output.Sink.Donating && RepositoryIdentity.PositiveId(
                     J.Get(reservation, "actor")
                 ) == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && J.Get(state.Value(), "contribution")
                     .ValueKind != JsonValueKind.Object {
@@ -293,7 +293,7 @@ internal class ContributionPreparation {
             run.Transition("claim_pending")
 
             if run.Text("source") != "external" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
+                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
             }
 
             let request = J.Parse(
@@ -323,7 +323,7 @@ internal class ContributionPreparation {
         }
 
         internal func Resume(directory string, args Args) string {
-            PublicOutput.RunDirectory = directory
+            Output.Sink.RunDirectory = directory
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
 
@@ -332,7 +332,7 @@ internal class ContributionPreparation {
             }
 
             if run.Text("source") == "tokate" {
-                DonorSelection.Confirm(args, J.Get(run.Element(), "selection"), run)
+                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
             }
 
             return run.Text("state") == "claim_pending" ? Pending(directory, run, args): Complete(directory, run)
@@ -459,14 +459,14 @@ internal class ContributionPreparation {
                 J.Get(run.Element(), "donor_id")
             )
 
-            ApiTransport.BeginDeadline(Donate.Active ? args.Number("seconds"): 30)
+            ApiTransport.BeginDeadline(Output.Sink.Donating ? args.Number("seconds"): 30)
 
             var accepted CoordinationState? = nil
 
             try {
                 while true {
                     ApiTransport.CheckDeadline()
-                    if Donate.Active {
+                    if Output.Sink.Donating {
                         Submission.ResetWorkflow()
                         if let guidance = Submission.PendingWorkflow(directory, run) {
                             if guidance["role"]?.ToString() == "owner" {
@@ -498,7 +498,7 @@ internal class ContributionPreparation {
 
                     ApiTransport.PollWait("repos/" + repo + "/actions/")
                 }
-            } catch (error ApiDeadlineException) when !Donate.Active { } finally {
+            } catch (error ApiDeadlineException) when !Output.Sink.Donating { } finally {
                 ApiTransport.EndDeadline()
             }
 
@@ -512,18 +512,18 @@ internal class ContributionPreparation {
                 WorkspacePreparation.Promote(directory, run, J.Text(J.Get(state.Value(), "approval"), "base"))
                 Complete(directory, run)
             } else {
-                PublicOutput.ResultData = PublicOutput.RunSummary(directory)
+                Output.Sink.ResultData = Output.Sink.RunSummary(directory)
                 if let guidance = Submission.PendingWorkflow(directory, run) {
-                    Terminal.Message(guidance["action"]?.ToString() ?? "")
+                    Output.Sink.Message(guidance["action"]?.ToString() ?? "")
                     return directory
                 }
-                Terminal.Message(
+                Output.Sink.Message(
                     "Claim pending. Run: " +
                         directory +
                         "; resume explicitly with work --run DIR. If the Tokate workflow failed: " +
                         ApiTransport.MutationRecovery
                 )
-                PublicOutput.Actions.Add([]string{"tokate", "work", "--run", directory, "--json"})
+                Output.Sink.Actions.Add([]string{"tokate", "work", "--run", directory, "--json"})
             }
 
             return directory

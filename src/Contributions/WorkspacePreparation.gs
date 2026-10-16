@@ -227,14 +227,16 @@ internal class WorkspacePreparation {
 
             run.Save(directory)
 
-            Terminal.Step(
+            Output.Sink.Step(
                 (run.Flag("gratis") ? "Selected source ": "Approved source ") + run.Text("base") +
                     " for target " +
                     run.Text("base_branch")
             )
             if run.Text("source") == "external" {
-                Terminal.Step("External coding checkout: " + checkout + "; independent verification uses DIR/checkout")
-                Terminal.Step(
+                Output.Sink.Step(
+                    "External coding checkout: " + checkout + "; independent verification uses DIR/checkout"
+                )
+                Output.Sink.Step(
                     "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
                         "' push https://github.com/" +
                         run.Text("head_repo") + ".git HEAD:refs/heads/" + run.Text("branch")
