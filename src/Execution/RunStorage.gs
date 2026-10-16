@@ -10,6 +10,8 @@ import System.Threading
 
 internal class RunStorage {
     shared {
+        internal const RunFileByteLimit int32 = 1024 * 1024
+
         internal func Root() string -> Path.Combine(LocalPaths.StateDirectory(), "runs")
 
         internal func ControlPaths(directory string) {

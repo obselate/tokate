@@ -1132,8 +1132,10 @@ internal class CliDiscovery {
             Directory.CreateSymbolicLink(Path.Combine(finished, "outside"), outside)
             Directory.CreateSymbolicLink(Path.Combine(cache, "outside"), outside)
             File.WriteAllText(Path.Combine(cache, "build"), "build output")
+            Directory.CreateDirectory(Path.Combine(checkout, "logs"))
+            File.WriteAllText(Path.Combine(checkout, "logs/a.log"), "ignored log")
             File.WriteAllText(Path.Combine(checkout, ".env"), "SYNTHETIC=keep")
-            File.WriteAllText(Path.Combine(checkout, ".gitignore"), ".env\ncache/\n")
+            File.WriteAllText(Path.Combine(checkout, ".gitignore"), ".env\ncache/\n*.log\n")
             flow.Git("init", "-b", "main", checkout)
             flow.DonorGit(checkout, "add", ".gitignore")
             flow.DonorGit(checkout, "commit", "-qm", "Ignore local output")
@@ -1231,9 +1233,7 @@ internal class CliDiscovery {
                     .Trim() == head,
                 "Selected ignored cleanup changed kept records, commits or configuration"
             )
-            Console.WriteLine(
-                "PASS previewed saved-run cleanup, consent, open-issue preservation and isolated ignored-directory removal"
-            )
+            Console.WriteLine("PASS saved-run cleanup, consent and ignored-directory isolation")
         }
 
         private func Completes(path string, commands JsonArray, temp Temp) {

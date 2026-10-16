@@ -57,7 +57,7 @@ internal class CleanCommand {
             }
 
             for row in selecting ? rows: saved.Rows {
-                let reason = args.Get("ignored") != "" ? (row.Busy() ? "Run is in use.": ""): CleanupEligibility.Reason(
+                var reason = args.Get("ignored") != "" ? (row.Busy() ? "Run is in use.": ""): CleanupEligibility.Reason(
                     row
                 )
 
@@ -65,17 +65,23 @@ internal class CleanCommand {
                     if args.Get("ignored") != "" {
                         selected.AddRange(CleanupPaths.Ignored(row, args.Get("ignored")))
                     } else {
-                        let target = CleanupTarget(row, row.Location, false)
+                        try {
+                            let target = CleanupTarget(row, row.Location, false)
 
-                        candidates.Add(target)
+                            candidates.Add(target)
 
-                        if selecting {
-                            selected.Add(target)
-                        } else {
-                            total += target.Bytes
+                            if selecting {
+                                selected.Add(target)
+                            } else {
+                                total += target.Bytes
+                            }
+                        } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                            reason = "Cannot measure run: " + error.Message
                         }
                     }
-                } else {
+                }
+
+                if reason != "" {
                     refused = selecting
                     kept.Add(map[string, Object?]{"run": row.Location, "reason": reason})
 
@@ -189,7 +195,10 @@ internal class CleanCommand {
                 for target in targets {
                     RunStorage.ControlPaths(target.Run.Location)
                     leases.Add(RunStorage.Lock(target.Run.Location))
-                    let value = RequestData.FileData(Path.Combine(target.Run.Location, "run.json"), 1024 * 1024)
+                    let value = RequestData.FileData(
+                        Path.Combine(target.Run.Location, "run.json"),
+                        RunStorage.RunFileByteLimit
+                    )
 
                     if !RequestData.Same(value, target.Run.Value) {
                         throw CliFailure("invalid_state", "Saved run changed. Preview it again: " + target.Run.Location)
