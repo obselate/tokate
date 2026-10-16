@@ -112,13 +112,7 @@ internal class ReceiptVerification {
             }
 
             let donor = RepositoryIdentity.Login(J.Text(receipt, "donor"))
-            var record JsonElement
-            try {
-                record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
-            } catch (error Exception) when error.GetType() == typeof(Exception) &&
-                error.Message == "Choose an open issue" {
-                throw CliFailure("invalid_state", error.Message)
-            }
+            let record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
             let publicationRevision = J.Text(value, "publication_revision")
             let authenticated = publicationRevision == "" ? state: CoordinationState.At(
                 repo,

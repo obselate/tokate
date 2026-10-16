@@ -233,7 +233,7 @@ internal class PublicDescriptions {
             flow.Initialize()
             flow.Approve()
             let run = flow.Claim()
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             let original = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             Check.That(
                 Check.Text(original["public_summary"]?["head"]) == Check.Text(original["commit"]),
@@ -295,7 +295,7 @@ internal class PublicDescriptions {
                 invalid["changes"]?.AsArray().Add(JsonValue.Create("Fix content from /tmp/private.log") as JsonNode)
                 flow.State["public_summary"] = JsonValue.Create(missing ? "missing": invalid.ToJsonString())
                 flow.Save()
-                let work = flow.Call([]string{"work", "--run", run}, missing ? 0: 1)
+                let work = flow.Call([]string{"work", "--yes", "--run", run}, missing ? 0: 1)
                 if missing {
                     flow.Publish(run)
                     Check.Contains(Body(flow), "Change summary unavailable for this candidate")
@@ -439,7 +439,7 @@ internal class PublicDescriptions {
             flow.Reload()
             flow.State["public_summary"] = JsonValue.Create(oversized.ToJsonString())
             flow.Save()
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.NoPr()
             Check.That(
                 Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["commit"] == nil,
@@ -488,7 +488,7 @@ internal class PublicDescriptions {
                     File.WriteAllText(path, request.ToJsonString())
                     flow.Flow.ResetTraffic()
                     Check.Contains(
-                        flow.Flow.Call([]string{"request", "owner/project#1", "--file", path}, 1).Error,
+                        flow.Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", path}, 1).Error,
                         "invalid public identifier"
                     )
                     flow.Flow.Reload()

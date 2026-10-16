@@ -638,6 +638,16 @@ internal class ContributionStatusChecks {
                     )
                 }
             }
+            published.Restore()
+            Close(test, merged: false)
+            let foreign = test.State()["state"] ?? throw Exception("Missing state")
+            (foreign["reservation"] ?? throw Exception("Missing reservation"))["actor"] = JsonValue.Create(456)
+            (foreign["identity"] ?? throw Exception("Missing identity"))["actor"] = JsonValue.Create(456)
+            test.RewriteState(foreign)
+            Check.That(
+                Check.Text(Row(Read(test))["next"]?["command"]?[0]) == "gh",
+                "Closed contribution suggested releasing another donor's reservation"
+            )
             for stale in[]string{"issue", "revoked", "expired"} {
                 published.Restore()
                 Close(test, deleted: true)

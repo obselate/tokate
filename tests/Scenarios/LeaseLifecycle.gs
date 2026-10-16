@@ -17,11 +17,11 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let request = LifecycleRequest(action)
         let file = Path.Combine(Flow.Temp.Root, "lease-" + Check.Text(request["uuid"]) + ".json")
         File.WriteAllText(file, request.ToJsonString())
-        Flow.Call([]string{"request", "owner/project#1", "--file", file}, code)
+        Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", file}, code)
         if code == 0 {
             Coordinate(Event(request))
             let applied = Check.Text(State()["sha"])
-            Flow.Call([]string{"request", "owner/project#1", "--file", file})
+            Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", file})
             Coordinate(Event(request))
             Check.That(Check.Text(State()["sha"]) == applied, "Lifecycle replay changed authority")
         }
@@ -200,7 +200,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
 
     shared {
         private func Executing(binary string, run string, env Dictionary[string, string], output Chan[Result]) {
-            output <- TestProcess.Run(binary, []string{"work", "--run", run}, env)
+            output <- TestProcess.Run(binary, []string{"work", "--yes", "--run", run}, env)
         }
     }
 
@@ -282,7 +282,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Coordinate(Event(request), 1)
         request["expected"] = JsonValue.Create(Check.Text(State()["sha"]))
         File.WriteAllText(path, request.ToJsonString())
-        Flow.Call([]string{"request", "owner/project#1", "--file", path}, 1)
+        Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", path}, 1)
         File.WriteAllText(path, saved)
         Flow.NoInference()
         Flow.Reload()

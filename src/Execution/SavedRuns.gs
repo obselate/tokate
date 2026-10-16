@@ -154,11 +154,7 @@ internal class SavedRuns {
                             }
                         }
 
-                        if J.Number(value, "version") != 2 ||
-                            (
-                            J.Number(value, "issue") < 1 && !(J.Bool(value, "gratis") && J.Number(value, "issue") == 0)
-                        ) ||
-                            J.Text(value, "state") == "" {
+                        if Data.InvalidField(value) != "" {
                             reason = "Unsupported version or incomplete saved contribution."
                             throw ExecutionFailure.Create(
                                 "invalid_state",

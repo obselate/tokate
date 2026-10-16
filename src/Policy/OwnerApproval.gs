@@ -11,7 +11,12 @@ internal class OwnerApproval {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let number = args.Number("issue")
             let info = RepositoryAccess.RequireOwner(repo)
-            let issue = GitHub.Issue(repo, number)
+            var issue JsonElement
+            try {
+                issue = GitHub.Issue(repo, number)
+            } catch (error CliFailure) when error.Code == "invalid_state" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
+            }
             let approval = Capture(args, info, issue)
             let firstApproval = !PublicOutput.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
@@ -62,7 +67,12 @@ internal class OwnerApproval {
             let policy = Policy.Load(repo, authorityBase)
             let configuredTarget = J.Text(policy.Value, "target_branch")
             let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
-            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+            var revision string
+            try {
+                revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+            } catch (error CliFailure) when error.Code == "invalid_state" && args.Get("base-branch") != "" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing --base-branch.")
+            }
 
             AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
 

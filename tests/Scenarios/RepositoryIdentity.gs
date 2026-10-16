@@ -8,6 +8,7 @@ internal class RepositoryIdentityChecks {
     shared {
         private func WorkArgs(flow NativeFixture, repo string, command string = "work")[]string -> []string{
             command,
+            "--yes",
             repo + "#1",
             "--model",
             "gpt-6.1-sol",
@@ -72,7 +73,7 @@ internal class RepositoryIdentityChecks {
             let claim = Check.Envelope(flow.Acquire(WorkArgs(flow, "owner/project", "claim")), "claim", "ok")
             let run = Check.Text(claim["data"]?["run"])
             let path = Path.Combine(run, "run.json")
-            RepositoryFaults.Reject(flow, run, []string{"work", "--run", run})
+            RepositoryFaults.Reject(flow, run, []string{"work", "--yes", "--run", run})
             var saved = Check.Json(File.ReadAllText(path))
             let original = saved.ToJsonString()
             for field in[]string{"approval", "base", "policy_hash", "base_branch", "branch", "repo"} {
@@ -81,20 +82,23 @@ internal class RepositoryIdentityChecks {
                     field == "base_branch" ? "Main": field == "repo" ? "owner/other": text.ToUpperInvariant()
                 )
                 File.WriteAllText(path, saved.ToJsonString())
-                flow.Call([]string{"work", "--run", run}, 1)
+                flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 saved = Check.Json(original)
             }
             File.WriteAllText(path, original)
             flow.Reload()
             flow.State["viewer_login"] = JsonValue.Create("other")
             flow.Save()
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.Reload()
             flow.State.AsObject().Remove("viewer_login")
             let issue = flow.State["issue"] ?? throw Exception("Missing issue")
             issue["title"] = JsonValue.Create("Changed issue")
             flow.Save()
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "Approval revoked or task changed")
+            Check.Contains(
+                flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
+                "Approval revoked or task changed"
+            )
             flow.Reload()
             let originalIssue = flow.State["issue"] ?? throw Exception("Missing issue")
             originalIssue["title"] = JsonValue.Create("Implement fixture")
@@ -105,14 +109,14 @@ internal class RepositoryIdentityChecks {
             policy["max_seconds"] = JsonValue.Create(3601)
             File.WriteAllText(policyPath, policy.ToJsonString())
             flow.Commit("Changed policy")
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "policy or template changed")
+            Check.Contains(flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "policy or template changed")
             File.WriteAllText(policyPath, originalPolicy)
             flow.Commit("Restored policy")
             flow.NoInference()
             saved["repo"] = JsonValue.Create("OWNER/PROJECT")
             saved["head_repo"] = JsonValue.Create("DONOR/PROJECT")
             File.WriteAllText(path, saved.ToJsonString())
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             saved = Check.Json(File.ReadAllText(path))
             saved["repo"] = JsonValue.Create("owner/project")
             saved["head_repo"] = JsonValue.Create("donor/project")

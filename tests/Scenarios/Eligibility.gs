@@ -213,7 +213,7 @@ internal class EligibilityChecks {
                 let saved = File.ReadAllText(Path.Combine(run, "run.json"))
                 let state = Check.Text(test.State()["sha"])
                 Access(test, operation)
-                let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
+                let refused = test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 Check.Contains(
                     refused.Error,
                     operation == "deny" ? "Donor is denied. The owner must run: tokate access restore donor owner/project":
@@ -311,7 +311,7 @@ internal class EligibilityChecks {
                     }
                     test.Flow.Save()
                 }
-                let refused = test.Flow.Call([]string{"work", "--run", run}, 1)
+                let refused = test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 if fault == "task" {
                     Check.Contains(
                         refused.Error,
@@ -412,7 +412,7 @@ internal class EligibilityChecks {
             let acquired = test.Coordinate(path, traffic: true)
             test.Flow.Traffic(35, 3, 0, acquired)
             let run = test.Prepare("tokate")
-            test.Flow.Call([]string{"work", "--run", run})
+            test.Flow.Call([]string{"work", "--yes", "--run", run})
             test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(publish))
@@ -544,7 +544,7 @@ internal class EligibilityChecks {
             Claim(execution)
             let run = execution.Prepare("tokate")
             RevokeAt(execution, 2)
-            execution.Flow.Call([]string{"work", "--run", run}, 1)
+            execution.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
             execution.Flow.NoInference()
             execution.Flow.NoPr()
             for read in[]int32{2, 4} {

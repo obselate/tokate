@@ -54,7 +54,7 @@ internal class ProgressChecks {
         private func Live(flow NativeFixture, run string, phase string, unlimited bool = false) Result {
             let info = TestProcess.StartInfo(
                 flow.Binary,
-                []string{"work", "--run", run, "--json", "--plain", "--traffic"},
+                []string{"work", "--yes", "--run", run, "--json", "--plain", "--traffic"},
                 flow.Temp.Env
             )
             using let process = Process.Start(info) ?? throw Exception("Cannot start progress fixture")
@@ -296,7 +296,7 @@ internal class ProgressChecks {
             let phase = inference ? "Inference": "Owner verification 1"
             let live = timeout || scenario == "verification_failure"
             let result = live ? Live(flow, run, phase):
-            flow.Call([]string{"work", "--run", run, "--json", "--plain"}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run, "--json", "--plain"}, 1)
             let code = inference ? "inference_failed": (verification ? "verification_failed": "command_failed")
             let failedPhase = publication ? "Publication": (inference ? "Inference": "Verification")
             let next = "status"

@@ -330,7 +330,7 @@ internal class AttemptContinuationChecks {
             if full {
                 Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
                 test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
-                test.Flow.Call([]string{"work", "--run", fresh}, 1)
+                test.Flow.Call([]string{"work", "--yes", "--run", fresh}, 1)
                 Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
                 let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
                 Directory.CreateDirectory(copied)

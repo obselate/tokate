@@ -19,7 +19,7 @@ internal class TerminalOutput {
             flow.Initialize()
             flow.Approve()
             let run = flow.Claim()
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             flow.Publish(run)
             flow.Reload()
             let name = "[red]literal[/]-" + String('n', 130) + "\u001b[31mcontrol\u001b[0m"

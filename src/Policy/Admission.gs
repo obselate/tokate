@@ -22,21 +22,6 @@ internal class Admission {
                 "assigned",
                 "unassigned"
             }
-            for field in[]string{"action", "pull_request", "repository"} {
-                let value = J.Get(event, field)
-                if (
-                    field == "action" ? value.ValueKind != JsonValueKind.String:
-                    value.ValueKind != JsonValueKind.Object
-                ) {
-                    throw CliFailure(
-                        "invalid_arguments",
-                        "Admission event " + args.Need("event") +
-                            " has a missing or invalid field: " +
-                            field +
-                            ". Supply a complete pull_request_target event with --event."
-                    )
-                }
-            }
             let number = J.Number(J.Get(event, "pull_request"), "number")
             let repository = J.Get(event, "repository")
 

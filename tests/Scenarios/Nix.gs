@@ -30,7 +30,7 @@ internal class NixChecks {
                 flow.Git("-C", Path.Combine(flow.Bin, "fork"), "fetch", flow.Upstream, "main")
                 flow.Approve()
                 let run = flow.Claim()
-                flow.Call([]string{"work", "--run", run})
+                flow.Call([]string{"work", "--yes", "--run", run})
                 Check.Contains(File.ReadAllText(Path.Combine(run, "verification.json")), "nix-closure-verified")
                 Check.That(listener.Pending(), "Nix verification had no network access")
                 using let client = listener.AcceptTcpClient()

@@ -23,7 +23,6 @@ internal class CliOption(spec string) {
         case "yes" when command == "init": "Apply the listed required GitHub settings and setup PR"
         case "yes" when command == "doctor": "Confirm the listed missing-package and harness installations; no inference"
         case "yes" when command == "work": "Confirm inference, every repository task within the selected limits, or stopping after the current task"
-        case "yes" when command == "approve": "Confirm applying the approval"
         case "yes" when command == "update": "Install the listed release version"
         case "yes" when command == "uninstall": "Remove the listed files"
         case "yes": "Confirm the change; required without a terminal prompt"
@@ -215,7 +214,7 @@ internal class Cli {
                 "claim donate local_read,local_write,github_read,github_write repo,issue",
                 "ISSUE [NAME] [--model MODEL --effort EFFORT] [options]\nISSUE --source external --tools FILE --time TIME\nRUN [--yes]",
                 "source,tools,harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,unlimited,fork,runs,run,continue-from,from-pr",
-                "Reserve an approved issue and save a claim; name an issue, not only a repository. With your active reservation, prepare a fresh attempt. RUN finishes a saved claim or its preparation. No inference or PR publication. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Reserve an approved issue and save a claim; name an issue, not only a repository. With your active reservation, prepare a fresh attempt. RUN finishes a saved claim or its preparation. No inference or PR publication.",
                 "claim 42 --model gpt-6.1-sol --effort high"
             ),
             CliCommand(
@@ -236,35 +235,35 @@ internal class Cli {
                 "checks donate local_read,local_write,github_read repo,pr",
                 "PR|RUN [--watch] [--timeout TIME] [--verbose] [--yes]",
                 "run,watch,timeout,verbose,yes,non-interactive",
-                "Read PR receipt, report, CI and freshness gates for an open, unmerged PR. A saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed, including closed or merged PRs. Owners retain acceptance and merge. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Read PR receipt, report, CI and freshness gates for an open, unmerged PR. A saved run also stores results locally. Exit: 0 machine gates passed, 8 pending, 1 failed, including closed or merged PRs. Owners retain acceptance and merge.",
                 "checks 10 --watch"
             ),
             CliCommand(
                 "pause donate local_read,local_write,github_read,github_write run",
                 "RUN [--yes]",
                 "run,yes,non-interactive",
-                "Pause your reservation of saved work; no inference. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Pause your reservation of saved work; no inference.",
                 "pause 42"
             ),
             CliCommand(
                 "resume donate local_read,local_write,github_read,github_write run",
                 "RUN [--yes]",
                 "run,yes,non-interactive",
-                "Resume your paused reservation; no inference. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Resume your paused reservation; no inference.",
                 "resume 42"
             ),
             CliCommand(
                 "renew donate local_read,local_write,github_read,github_write run",
                 "RUN [--yes]",
                 "run,yes,non-interactive",
-                "Renew your reservation before it expires; no inference. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Renew your reservation before it expires; no inference.",
                 "renew 42"
             ),
             CliCommand(
                 "release donate local_read,local_write,github_read,github_write run",
                 "RUN [--yes]",
                 "run,yes,non-interactive",
-                "Release your reservation for other donors; no inference. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Release your reservation for other donors; no inference.",
                 "release 42"
             ),
             CliCommand(
@@ -278,21 +277,21 @@ internal class Cli {
                 "approve own local_read,github_read,github_write repo,issue",
                 "ISSUE [LOGIN] [--base-branch BRANCH] [--yes]",
                 "base-branch,yes,non-interactive",
-                "Approve an existing issue with a bound record and label. LOGIN allows one donor without persistent trust. Create issues with gh issue create or the GUI. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Approve an existing issue with a bound record and label. LOGIN allows one donor without persistent trust. Create issues with gh issue create or the GUI.",
                 "approve 42 donor"
             ),
             CliCommand(
                 "revoke own local_read,github_read,github_write repo,issue",
                 "ISSUE [--yes]",
                 "yes,non-interactive",
-                "Remove GitHub approval; blocks publication, not active computation. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Remove GitHub approval; blocks publication, not active computation.",
                 "revoke 42"
             ),
             CliCommand(
                 "access own local_read,github_read,github_write repo",
                 "[list|history] [LOGIN] [OWNER/REPO]\ninit [OWNER/REPO] [--yes]\ntrust|untrust|deny|restore LOGIN [OWNER/REPO] [--yes]\ncheck ISSUE\nrequest ISSUE [--trust] [--yes]",
                 "trust,yes,non-interactive",
-                "Request access in a plain comment or manage trusted and denied donors. Owners can use approve ISSUE LOGIN for issue access. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Request access in a plain comment or manage trusted and denied donors. Owners can use approve ISSUE LOGIN for issue access.",
                 "access trust donor"
             ),
             CliCommand(
@@ -334,14 +333,14 @@ internal class Cli {
                 "amend more local_read,local_write,github_read,github_write run",
                 "RUN [--yes]\nRUN --time TIME [--commit SHA] [--tools FILE] [--summary FILE] [--resume] [--yes]",
                 "run,commit,time,tools,summary,resume,yes,non-interactive",
-                "Archive completed work, or verify and publish a same-donor correction before or after publication; no inference. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Archive completed work, or verify and publish a same-donor correction before or after publication; no inference.",
                 "amend 42 --time 5m"
             ),
             CliCommand(
                 "external more local_read,local_write,github_read run",
                 "RUN [--commit SHA] [--summary FILE] [--yes]\nRUN --time TIME --tools FILE [--commit NEW] [--yes]",
                 "run,commit,summary,time,tools,yes,non-interactive",
-                "Fetch and verify an exact external commit in isolation; no inference or publication. Consent asks once in a terminal; with --json, --non-interactive or no terminal, the command previews without changes and requires --yes.",
+                "Fetch and verify an exact external commit in isolation; no inference or publication.",
                 "external 42"
             ),
             CliCommand(
@@ -361,8 +360,8 @@ internal class Cli {
             CliCommand("--version more local_read", "", "", "Print installed version locally.", "--version"),
             CliCommand(
                 "request internal local_read,local_write,github_read,github_write repo,issue,file",
-                "ISSUE --file FILE",
-                "file",
+                "ISSUE --file FILE [--yes]",
+                "file,yes,non-interactive",
                 "Post a strict claim or publication request; no inference.",
                 "request 42 --file request.json"
             ),

@@ -644,6 +644,26 @@ internal class Submission {
                 return
             }
 
+            if args.Get("yes") != "true" {
+                let change = Cli.Find("submit").Brief
+                PublicOutput.ResultData = map[string, Object?]{
+                    "operation": "submit",
+                    "subject": args.Subject,
+                    "repo": args.Get("repo"),
+                    "issue": args.Get("issue"),
+                    "donor": args.Get("donor"),
+                    "base_branch": args.Get("base-branch"),
+                    "changes": []string{change},
+                    "run_directory": directory,
+                    "applied": false
+                }
+                Terminal.Message(change + ". Target: " + directory + ".", error: true)
+                if !OwnerSetup.Confirm(args) {
+                    throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
+                }
+                args.Values["--yes"] = "true"
+            }
+
             if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
                 "failure_reason"
             ) == "public_summary_invalid" &&

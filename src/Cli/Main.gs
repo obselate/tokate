@@ -192,7 +192,7 @@ func Dispatch(options Args) int32 {
             options.Command == "resume" ||
             options.Command == "renew" ||
             options.Command == "release" ||
-            (options.Command == "submit" && !Data.Load(Path.GetFullPath(options.Need("run"))).Flag("gratis")) ||
+            options.Command == "request" ||
             (
             options.Command == "work" && options.Get("run") != "" && Data.Load(Path.GetFullPath(options.Need("run")))
                 .Text("source") == "external"
@@ -204,9 +204,13 @@ func Dispatch(options Args) int32 {
 
     if consent {
         var change = Cli.Find(options.Command).Brief
+        var question = "Apply these changes?"
 
         if options.Command == "approve" {
             let state = CoordinationState.Load(options.Need("repo"), options.Number("issue"), true)
+            if state.Sha != "" {
+                question = "Replace approval?"
+            }
             let warning = state.ApprovalWarning(options.Need("repo"))
             if warning != "" {
                 change += ". " + warning.TrimEnd('.')
@@ -234,7 +238,7 @@ func Dispatch(options Args) int32 {
             error: true
         )
 
-        if !OwnerSetup.Confirm(options, options.Command == "approve" ? "Replace approval?": "Apply these changes?") {
+        if !OwnerSetup.Confirm(options, question) {
             throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
         }
 

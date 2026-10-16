@@ -43,7 +43,7 @@ internal class CommandTrafficChecks {
         ) Result {
             let path = Path.Combine(flow.Flow.Temp.Root, file)
             File.WriteAllText(path, request.ToJsonString())
-            return flow.Flow.Call([]string{"request", "owner/project#1", "--file", path}, code, traffic: true)
+            return flow.Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", path}, code, traffic: true)
         }
 
         private func RequestReuse(binary string) {
@@ -128,7 +128,7 @@ internal class CommandTrafficChecks {
         }
 
         private func RequestAttempt(binary string, path string, env Dictionary[string, string], output Chan[Result]) {
-            output <- TestProcess.Run(binary, []string{"request", "owner/project#1", "--file", path}, env)
+            output <- TestProcess.Run(binary, []string{"request", "--yes", "owner/project#1", "--file", path}, env)
         }
 
         private func SameFileRequest(binary string) {
@@ -171,7 +171,7 @@ internal class CommandTrafficChecks {
             flow.Flow.ResetTraffic()
             Budgets(
                 flow.Flow,
-                flow.Flow.Call([]string{"request", "owner/project#1", "--file", path}, traffic: true),
+                flow.Flow.Call([]string{"request", "--yes", "owner/project#1", "--file", path}, traffic: true),
                 14,
                 0,
                 0
@@ -377,7 +377,7 @@ internal class CommandTrafficChecks {
             }
             flow.Approve()
             let run = flow.Claim()
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             flow.Publish(run)
             flow.Reload()
             return run

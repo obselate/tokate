@@ -47,7 +47,7 @@ internal class ReserveChecks {
                 "Allocation not saved"
             )
             flow.Mode(mode == "success" ? "": mode)
-            let result = flow.Call([]string{"work", "--run", run}, mode == "success" ? 0: 1)
+            let result = flow.Call([]string{"work", "--yes", "--run", run}, mode == "success" ? 0: 1)
             flow.Reload()
             let elapsed = Stopwatch.GetElapsedTime(Int64.Parse(Check.Text(flow.State["exec_start"])))
             Check.Contains(result.Error, "total allowance 8s, coding allowance 6s, verification reserve 2s")
@@ -98,7 +98,7 @@ internal class ReserveChecks {
                     )
                 }
             }
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Failed reserve run retried inference")
             flow.NoPr()
@@ -124,7 +124,7 @@ internal class ReserveChecks {
                 )
             }
             Check.Contains(
-                flow.Call([]string{"work", "--run", flow.Temp.Root, "--verify-time", "1s"}, 1).Error,
+                flow.Call([]string{"work", "--yes", "--run", flow.Temp.Root, "--verify-time", "1s"}, 1).Error,
                 "--run conflicts with --verify-time"
             )
             let args = []string{

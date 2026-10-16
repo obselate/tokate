@@ -325,7 +325,11 @@ internal class AccessState {
             }
 
             let issue = args.Number("issue")
-            GitHub.Issue(repo, issue)
+            try {
+                GitHub.Issue(repo, issue)
+            } catch (error CliFailure) when error.Code == "invalid_state" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
+            }
             let viewer = GitHub.Api("user")
             let actor = RepositoryIdentity.PositiveId(J.Get(viewer, "id"))
             let requestScope = args.Get("trust") == "true" ? "trust": "issue"

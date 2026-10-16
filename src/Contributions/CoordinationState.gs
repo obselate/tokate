@@ -119,7 +119,16 @@ internal class CoordinationState {
     internal func CheckApproval(repo string, issue int32, quiet bool = false) JsonElement {
         let state = Value()
         let approval = J.Get(state, "approval")
-        let task = GitHub.Issue(repo, issue)
+        var task JsonElement
+        try {
+            task = GitHub.Issue(repo, issue)
+        } catch (error CliFailure) when error.Code == "invalid_state" {
+            throw CliFailure(
+                "invalid_state",
+                error.Message + " Owner: reopen the issue before continuing this contribution.",
+                []string{"gh", "issue", "reopen", issue.ToString(), "--repo", repo}
+            )
+        }
         if approval.ValueKind == JsonValueKind.Undefined || approval.ValueKind == JsonValueKind.Null {
             throw ApprovalFailure(repo, issue, "Issue is not approved.")
         }

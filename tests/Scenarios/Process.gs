@@ -32,7 +32,10 @@ internal class ProcessChecks {
                 baseline.Restore()
                 let run = flow.Claim()
                 flow.Mode(outcome == "closed" ? "closed_input": "blocked_input")
-                let result = outcome == "cancel" ? CancelInput(flow, run): flow.Call([]string{"work", "--run", run}, 1)
+                let result = outcome == "cancel" ? CancelInput(flow, run): flow.Call(
+                    []string{"work", "--yes", "--run", run},
+                    1
+                )
                 Check.That(result.Code == 1, "Interrupted stdin became success")
                 Check.Contains(result.Error.ToLowerInvariant(), outcome == "cancel" ? "cancelled": "broken pipe")
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
@@ -49,7 +52,7 @@ internal class ProcessChecks {
                     File.ReadAllText(Path.Combine(flow.Bin, "child.pid")),
                     "Child survived interrupted stdin"
                 )
-                flow.Call([]string{"work", "--run", run}, 1)
+                flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 flow.Reload()
                 Check.That(Check.Text(flow.State["exec_count"]) == "1", "Interrupted stdin repeated inference")
                 flow.NoPr()
@@ -60,7 +63,7 @@ internal class ProcessChecks {
         }
 
         private func CancelInput(flow NativeFixture, run string) Result {
-            let info = TestProcess.StartInfo(flow.Binary, []string{"work", "--run", run}, flow.Temp.Env)
+            let info = TestProcess.StartInfo(flow.Binary, []string{"work", "--yes", "--run", run}, flow.Temp.Env)
             using let process = Process.Start(info) ?? throw Exception("Cannot start input cancellation")
             process.StandardInput.Close()
             let output = Chan[string](1)
@@ -104,7 +107,7 @@ internal class ProcessChecks {
             for mode in[]string{"capture_prefix", "capture_scalar", "capture_unicode"} {
                 baseline.Restore()
                 flow.Mode(mode)
-                Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "output was truncated")
+                Check.Contains(flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "output was truncated")
                 let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                 Check.That(
                     Check.Text(saved["inference_exit_code"]) == "0" && Check.Text(saved["output_truncated"]) == "true",
@@ -173,7 +176,7 @@ internal class ProcessChecks {
                 } else {
                     File.CreateSymbolicLink(path, mode == "link" ? sentinel: sentinel + "-missing")
                 }
-                let failed = flow.Call([]string{"work", "--run", run}, 1)
+                let failed = flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 Check.Contains(failed.Error, "events.jsonl")
                 Check.That(
                     File.ReadAllText(sentinel) == "synthetic-private-evidence",
@@ -200,7 +203,13 @@ internal class ProcessChecks {
             flow.Mode("capture_write_failure")
             let result = TestProcess.Run(
                 "/bin/bash",
-                []string{"-c", "trap '' XFSZ; ulimit -S -f 64; exec \"$1\" work --run \"$2\"", "fixture", binary, run},
+                []string{
+                    "-c",
+                    "trap '' XFSZ; ulimit -S -f 64; exec \"$1\" work --yes --run \"$2\"",
+                    "fixture",
+                    binary,
+                    run
+                },
                 flow.Temp.Env
             )
             Check.That(
@@ -238,6 +247,7 @@ internal class ProcessChecks {
                 info.Environment[entry.Key] = entry.Value
             }
             info.ArgumentList.Add("work")
+            info.ArgumentList.Add("--yes")
             info.ArgumentList.Add("--run")
             info.ArgumentList.Add(run)
             using let process = Process.Start(info) ?? throw Exception("Cannot start abrupt CLI fixture")

@@ -264,67 +264,43 @@ internal class DonorSelection {
         }
 
         internal func Confirm(args Args, selection JsonElement, run Data? = nil) {
-            if args.Get("yes") != "true" && !PublicOutput.Enabled && args.Get("json") != "true" && args.Get(
-                "non-interactive"
-            ) != "true" &&
-                !Console.IsInputRedirected &&
-                !Console.IsOutputRedirected &&
-                !Console
-                .IsErrorRedirected {
-                let reserve = args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString())
-                Terminal.Message(
-                    "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
-                        "issue",
-                        (run?.Number("issue") ?? 0).ToString()
-                    ) +
-                        "\nTool: " +
-                        J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
-                        selection,
-                        "model"
-                    ) +
-                        "\nEffort: " +
-                        J.Text(selection, "effort") +
-                        "\nBudget: " +
-                        (
-                        args.Get("unlimited") == "true" || run?.Flag("unlimited") == true ? "Unlimited coding":
-                        args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
-                    ) +
-                        "; " +
-                        (
-                        reserve == "0" ? "no verification reserve, verification gets only the time coding leaves":
-                        reserve + " seconds reserved for verification"
-                    ) +
-                        (
-                        J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""
-                    ),
-                    error: true
-                )
-                let posting = run?.Text("state") == "claim_pending"
-                let question = args.Command != "claim" ? "Start this donation?":
-                posting ? "Post this claim?": "Prepare this attempt?"
-                if !OwnerSetup.Confirm(args, question) {
-                    throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
-                }
-                args.Values["--yes"] = "true"
+            if args.Get("yes") == "true" {
                 return
             }
 
-            let source = (run?.Text("continuation_source") ?? "") == "" ? J.Text(selection, "source"):
-            "explicit continuation import"
-
-            if args.Get("yes") == "true" ||
-                source == "explicit invocation" ||
-                source == "saved donor default" ||
-                source.StartsWith("saved donor profile ") {
-                return
-            }
-
-            let pair = J.Text(selection, "model") + " / " + J.Text(selection, "effort")
-
-            throw CliFailure(
-                "confirmation_required",
-                "Inference confirmation required for " + pair + ": pass --yes explicitly. No inference started."
+            let reserve = args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString())
+            Terminal.Message(
+                "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
+                    "issue",
+                    (run?.Number("issue") ?? 0).ToString()
+                ) +
+                    "\nTool: " +
+                    J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
+                    selection,
+                    "model"
+                ) +
+                    "\nEffort: " +
+                    J.Text(selection, "effort") +
+                    "\nBudget: " +
+                    (
+                    args.Get("unlimited") == "true" || run?.Flag("unlimited") == true ? "Unlimited coding":
+                    args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
+                ) +
+                    "; " +
+                    (
+                    reserve == "0" ? "no verification reserve, verification gets only the time coding leaves":
+                    reserve + " seconds reserved for verification"
+                ) +
+                    (J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""),
+                error: true
             )
+            let posting = run?.Text("state") == "claim_pending"
+            let question = args.Command != "claim" ? "Start this donation?":
+            posting ? "Post this claim?": "Prepare this attempt?"
+            if !OwnerSetup.Confirm(args, question) {
+                throw CliFailure("confirmation_required", "Donation requires --yes. No claim or inference started.")
+            }
+            args.Values["--yes"] = "true"
         }
 
         internal func Revalidate(run Data, policy Policy) {

@@ -158,7 +158,7 @@ internal class TargetBranches {
                 )
                 flow.NoInference()
             } else {
-                flow.Call([]string{"work", "--run", run})
+                flow.Call([]string{"work", "--yes", "--run", run})
             }
             Check.That(!File.Exists(Path.Combine(run, "checkout/moved.txt")), "V2 changed its base after the claim")
             RunBase(run, base, branch)
@@ -211,7 +211,8 @@ internal class TargetBranches {
                 let result = flow.Call([]string{"external", "--yes", "--run", run, "--commit", base}, 1)
                 Check.Contains(
                     result.Error,
-                    change == "deleted" ? "GitHub read failed (HTTP 404)": "The owner must run: tokate approve owner/project#1"
+                    change == "deleted" ? "Branch " + branch + " does not exist in owner/project.":
+                    "The owner must run: tokate approve owner/project#1"
                 )
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == saved,
@@ -239,7 +240,7 @@ internal class TargetBranches {
             flow.Git("-C", flow.Upstream, "checkout", branch)
             test.Text("Changed selected instructions\n")
             flow.Git("-C", flow.Upstream, "checkout", "main")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Check.That(
                 File.ReadAllText(Path.Combine(run, "run.json")) == saved,
                 "Changed instructions rewrote saved work"
@@ -253,7 +254,7 @@ internal class TargetBranches {
             File.CreateSymbolicLink(path, "target.txt")
             flow.Commit("Unsupported authority instructions are outside selected target")
             Move(flow, branch)
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             test.Prompt(DecreeFlow.Exact, true)
             flow.NoPr()
             Console.WriteLine("PASS V2 target instruction boundary: authority and unrelated target changes")
@@ -331,7 +332,7 @@ internal class TargetBranches {
                         binary +
                         "' " +
                         command +
-                        " owner/project#1 --json 2> '" +
+                        " owner/project#1 --yes --json 2> '" +
                         Path.Combine(flow.Temp.Root, "diagnostics") + "'"
                     let result = TestProcess.Run(
                         "/usr/bin/script",

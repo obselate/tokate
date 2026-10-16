@@ -198,7 +198,7 @@ internal class PreparationChecks {
             )
             File.WriteAllText(Path.Combine(checkout, "private.txt"), "preserve me")
             Check.Contains(Resume(flow, run, 1).Error, "Preserved")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Check.That(
                 File.ReadAllText(Path.Combine(checkout, "private.txt")) == "preserve me",
                 "Dirty local work was overwritten"
@@ -286,7 +286,7 @@ internal class PreparationChecks {
                 prepared["tools"]?.ToJsonString() == File.ReadAllText(test.Tools),
                 "External claim changed donor tool declarations"
             )
-            flow.Call([]string{"work", "--run", run, "--json"}, 0)
+            flow.Call([]string{"work", "--yes", "--run", run, "--json"}, 0)
             flow.Reload()
             Check.That(Check.Text(flow.State["request_count"]) == "1", "External claim was posted twice")
             flow.NoInference()
@@ -403,7 +403,7 @@ internal class PreparationChecks {
             test.Claim()
             let run = test.Prepare("tokate", seconds: "4", reserve: "1")
             flow.Mode("timeout")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let checkout = Path.Combine(run, "checkout")
             Check.That(File.Exists(Path.Combine(checkout, "partial.txt")), "Interrupted work was not retained")
             using let baseline = FixtureSnapshot(flow.Temp.Root)
@@ -452,7 +452,7 @@ internal class PreparationChecks {
             (changed["metadata"] ?? throw Exception("Missing metadata"))["incomplete"] = JsonValue.Create("true")
             File.WriteAllText(invalidPath, changed.ToJsonString())
             Check.Contains(
-                flow.Call([]string{"request", "owner/project#1", "--file", invalidPath}, 1).Error,
+                flow.Call([]string{"request", "--yes", "owner/project#1", "--file", invalidPath}, 1).Error,
                 "Incomplete work must be declared explicitly"
             )
             saved["commit"] = JsonValue.Create("")
@@ -463,7 +463,7 @@ internal class PreparationChecks {
             let posted = flow.State["request_comments"]?[0] ?? throw Exception("Missing partial publication request")
             test.Coordinate(PostedEvent(test, posted))
             flow.Call([]string{"submit", "--yes", "--run", run})
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.Reload()
             let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing incomplete draft")
             Check.That(Check.Text(pull["draft"]) == "true", "Partial publication removed draft status")
@@ -717,7 +717,7 @@ internal class PreparationChecks {
             File.WriteAllText(path, altered.ToJsonString())
             Resume(flow, run, 1)
             File.WriteAllText(path, saved.ToJsonString())
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             flow.Reload()
             Check.Contains(Check.Text(flow.State["prompts"]?[0]), "Continue the published work of another donor")
             flow.Publish(run)
@@ -903,7 +903,7 @@ internal class PreparationChecks {
             )
             Check.That(Directory.Exists(Path.Combine(run, "checkout")), "Revoked preparation deleted progress")
             Resume(flow, run, 1)
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.NoInference()
             flow.NoPr()
             using let external = CoordinationFixture(binary)
@@ -958,7 +958,7 @@ internal class PreparationChecks {
                             File.WriteAllText(Path.Combine(run, "correction.json"), "{}")
                         }
                         let name = corrected ? command.Replace("-correction", ""): command
-                        let args = List[string]{name, "--run", run}
+                        let args = List[string]{name, "--yes", "--run", run}
                         if command == "external" || command == "amend" {
                             args.AddRange([]string{"--commit", String('0', 40)})
                         }
@@ -999,6 +999,7 @@ internal class PreparationChecks {
 
         private func AcquisitionArgs(flow NativeFixture, command string)[]string -> []string{
             command,
+            "--yes",
             "https://github.com/owner/project/issues/1",
             "--model",
             "gpt-6.1-sol",
@@ -1094,7 +1095,7 @@ internal class PreparationChecks {
                 )
             )
             test.Flow.Save()
-            test.Flow.Call([]string{"work", "--run", run}, 1)
+            test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
             test.Flow.NoInference()
             test.Flow.NoPr()
         }
@@ -1121,6 +1122,7 @@ internal class PreparationChecks {
             let result = flow.Call(
                 []string{
                     "work",
+                    "--yes",
                     "https://github.com/owner/project/issues/1",
                     "ready",
                     "--time",
@@ -1210,7 +1212,7 @@ internal class PreparationChecks {
                 }
                 Check.That(reads == 1, "Pending lookup did not use one filtered workflow read")
                 if conclusion == "failure" {
-                    let waiting = Check.Json(flow.Call([]string{"work", "--run", run, "--json"}, 8).Output)
+                    let waiting = Check.Json(flow.Call([]string{"work", "--yes", "--run", run, "--json"}, 8).Output)
                     Check.Contains(
                         Check.Text(waiting["data"]?["next"]?["action"]),
                         "GitHub mutation failed (HTTP 422)."
@@ -1278,7 +1280,7 @@ internal class PreparationChecks {
             (flow.State["comments"] ?? throw Exception("Missing comments"))[id] = comment.DeepClone()
             flow.Save()
             test.Coordinate(PostedEvent(test, comment))
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             Check.That(
                 Check.Text(saved["attempt"]) == uuid && Check.Text(saved["effort"]) == "high",
@@ -1369,7 +1371,7 @@ internal class PreparationChecks {
                         test.RewriteState(state)
                     }
                 }
-                flow.Call([]string{"work", "--run", run}, 1)
+                flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 flow.Reload()
                 Check.That(
                     Check.Text(flow.State["request_count"]) == "1" && flow.State["fork_creations"] == nil,
@@ -1400,7 +1402,7 @@ internal class PreparationChecks {
             test.Flow.NoInference()
             Resume(test.Flow, run)
             test.Flow.NoInference()
-            test.Flow.Call([]string{"work", "--run", run})
+            test.Flow.Call([]string{"work", "--yes", "--run", run})
             let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
             Check.That(
                 Check.Text(saved["attempt"]) == Check.Text(original["attempt"]),

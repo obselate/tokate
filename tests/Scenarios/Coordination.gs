@@ -235,7 +235,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 changed["model"] = JsonValue.Create("gpt-6.1-sol")
                 changed["effort"] = JsonValue.Create("unknown")
                 File.WriteAllText(savedPath, changed.ToJsonString())
-                test.Flow.Call([]string{"work", "--run", run}, 1)
+                test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 File.WriteAllText(savedPath, saved)
                 for effort in[]string{"absent", "", "invalid"} {
                     declaration["effort"] = JsonValue.Create(effort)
@@ -294,10 +294,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
             let savedTool = changed["tools"]?[0] ?? throw Exception("Missing saved tool")
             savedTool["effort"] = JsonValue.Create("absent")
             File.WriteAllText(path, changed.ToJsonString())
-            test.Flow.Call([]string{"work", "--run", run}, 1)
+            test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
             test.Flow.NoInference()
             File.WriteAllText(path, original)
-            test.Flow.Call([]string{"work", "--run", run})
+            test.Flow.Call([]string{"work", "--yes", "--run", run})
             test.Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
@@ -597,7 +597,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         let run = Prepare("tokate")
         Flow.Mode("protected_entrypoint")
-        Check.Contains(Flow.Call([]string{"work", "--run", run}, 1).Error, "protected owner path")
+        Check.Contains(Flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "protected owner path")
         Check.That(File.Exists(Path.Combine(run, "checkout/scripts/verify.sh")), "Rejected verifier edit was discarded")
         Check.That(!File.Exists(Path.Combine(run, "verification.json")), "Protected verifier was executed")
         Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
@@ -1073,6 +1073,20 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Traffic(12, 0, 0, duplicate)
         Flow.Receipt("owner/project#10", owner: true)
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
+        Flow.Reload()
+        let issue = Flow.State["issue"] ?? throw Exception("Missing issue")
+        issue["state"] = JsonValue.Create("closed")
+        Flow.Save()
+        let closed = Check.Envelope(
+            Flow.Call([]string{"checks", "owner/project#10", "--json"}, 1),
+            "checks",
+            "error",
+            "invalid_state"
+        )
+        Check.Contains(Check.Text(closed["error"]?["message"]), "Owner: reopen the issue")
+        Check.Contains(closed["next_actions"]?.ToJsonString() ?? "", "\"reopen\"")
+        issue["state"] = JsonValue.Create("open")
+        Flow.Save()
         Expire()
         Flow.Receipt("owner/project#10", false, true)
         Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
@@ -1524,7 +1538,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
         )
         let run = Prepare("tokate")
-        Flow.Call([]string{"work", "--run", run})
+        Flow.Call([]string{"work", "--yes", "--run", run})
         Flow.Call([]string{"amend", "--yes", "--run", run})
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(policyPath))
@@ -1572,7 +1586,12 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let saved = Check.Json(File.ReadAllText(path))
         saved["effort"] = JsonValue.Create("xhigh")
         File.WriteAllText(path, saved.ToJsonString())
-        Check.Envelope(Flow.Call([]string{"work", "--run", run, "--json"}, 1), "work", "error", "stale_approval")
+        Check.Envelope(
+            Flow.Call([]string{"work", "--yes", "--run", run, "--json"}, 1),
+            "work",
+            "error",
+            "stale_approval"
+        )
         Flow.NoInference()
     }
 

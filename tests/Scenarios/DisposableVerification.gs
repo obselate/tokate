@@ -49,7 +49,7 @@ internal class DisposableVerificationChecks {
                 let before = Directory.GetDirectories("/tmp", "tokate-workspace-*").Length
                 let cancelled = mode == "cancel" || mode == "terminate"
                 let result = cancelled ? Cancel(flow, run, mode == "terminate" ? "-TERM": "-INT", mode == "cancel"):
-                flow.Call([]string{"work", "--run", run}, mode == "success" ? 0: 1)
+                flow.Call([]string{"work", "--yes", "--run", run}, mode == "success" ? 0: 1)
                 if mode == "failure" || mode == "timeout" || mode == "cancel" {
                     Check.Contains(
                         result.Error + result.Output,
@@ -216,6 +216,7 @@ internal class DisposableVerificationChecks {
                     "--",
                     binary,
                     "work",
+                    "--yes",
                     "--run",
                     run
                 },
@@ -242,7 +243,7 @@ internal class DisposableVerificationChecks {
 
         private func Cancel(flow NativeFixture, run string, signal string, terminal bool) Result {
             var exe = flow.Binary
-            var args = []string{"work", "--run", run}
+            var args = []string{"work", "--yes", "--run", run}
             if terminal {
                 File.Copy(flow.Binary, Path.Combine(flow.Temp.Root, "tokate-verifier"))
                 exe = "/usr/bin/script"
@@ -346,7 +347,7 @@ internal class DisposableVerificationChecks {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("disposable_verification")
-            flow.Call([]string{"work", "--run", run})
+            flow.Call([]string{"work", "--yes", "--run", run})
             flow.Publish(run)
             let checkout = Path.Combine(run, "checkout")
             Check.That(!Directory.Exists(Path.Combine(checkout, "build-output")), "Initial output retained")

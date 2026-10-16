@@ -86,7 +86,21 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
             if amendment {
                 return run
             }
-            let value = run.Element()
+            let field = InvalidField(run.Element())
+            if field != "" {
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved run " +
+                        path +
+                        " has a missing or invalid field: " +
+                        field +
+                        ". Restore the original saved run file. No approval change is required."
+                )
+            }
+            return run
+        }
+
+        internal func InvalidField(value JsonElement) string {
             for field in[]string{"version", "repo", "issue", "state"} {
                 let item = J.Get(value, field)
                 var number int32
@@ -94,21 +108,14 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                     case "version": item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out number) &&
                         number == 2
                     case "issue": item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out number) &&
-                        (number > 0 || (run.Flag("gratis") && number == 0))
+                        (number > 0 || (J.Bool(value, "gratis") && number == 0))
                     default: item.ValueKind == JsonValueKind.String && item.GetString() != ""
                 }
                 if !valid {
-                    throw CliFailure(
-                        "invalid_state",
-                        "Saved run " +
-                            path +
-                            " has a missing or invalid field: " +
-                            field +
-                            ". Restore the original saved run file. No approval change is required."
-                    )
+                    return field
                 }
             }
-            return run
+            return ""
         }
 
         internal func LegacyCorrection(path string) Data {

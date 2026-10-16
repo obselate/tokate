@@ -74,7 +74,7 @@ internal class PublishedContribution : IDisposable {
             flow.Approve(baseBranch)
             let claimed = flow.Acquire(flow.ClaimArgs(seconds: "20"), owner: owner)
             let run = claimed.Output.Substring(claimed.Output.LastIndexOf("Run: ") + 5).Trim()
-            flow.Call([]string{"work", "--run", run}, owner: owner)
+            flow.Call([]string{"work", "--yes", "--run", run}, owner: owner)
             flow.Publish(run)
             return run
         }
@@ -113,7 +113,7 @@ internal class PublishedContribution : IDisposable {
             }
             let run = flow.Prepare(native ? "tokate": "external")
             if native {
-                flow.Flow.Call([]string{"work", "--run", run})
+                flow.Flow.Call([]string{"work", "--yes", "--run", run})
             } else {
                 let commit = flow.Candidate(claim)
                 flow.Flow.Call(

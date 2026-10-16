@@ -344,17 +344,20 @@ internal class DonorSelectionChecks {
             unselected.AsObject().Remove("provider")
             File.WriteAllText(path, unselected.ToJsonString())
             let stripped = File.ReadAllText(path)
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "require saved selection metadata")
+            Check.Contains(
+                flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
+                "require saved selection metadata"
+            )
             Check.That(File.ReadAllText(path) == stripped, "Invalid selection changed saved work")
             flow.NoInference()
             File.WriteAllText(path, original)
             Set(flow, effort: "xhigh")
             flow.Mode("capability_changed")
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "no longer compatible")
+            Check.Contains(flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "no longer compatible")
             flow.NoInference()
             Check.That(File.ReadAllText(path) == original, "Capability rejection changed saved work")
             flow.Mode("model_failure")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Model failure retried or fell back")
             Check.That(
@@ -364,7 +367,7 @@ internal class DonorSelectionChecks {
             let requested = flow.State["exec_args"]?.ToJsonString() ?? ""
             Check.Contains(requested, "high")
             Check.That(!requested.Contains("xhigh"), "Preferences substituted the saved effort")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             flow.Reload()
             Check.That(Check.Text(flow.State["exec_count"]) == "1", "Failed run spent inference again")
             flow.NoPr()
@@ -401,6 +404,28 @@ internal class DonorSelectionChecks {
                 "--time",
                 "30s",
                 "--plain"
+            }
+            for option in[]string{"--json", "--non-interactive"} {
+                let unattended = List[string](work)
+                unattended.Add(option)
+                let refused = flow.Call(unattended.ToArray(), 1)
+                if option == "--json" {
+                    Check.Envelope(refused, "work", "error", "confirmation_required")
+                }
+                for detail in[]string{
+                    "Task: owner/project #1",
+                    "Model: gpt-6.1-sol",
+                    "Effort: high",
+                    "30 seconds total",
+                    "--yes"
+                } {
+                    Check.Contains(refused.Error, detail)
+                }
+                Check.That(!Directory.Exists(Path.Combine(flow.Temp.Root, "runs")), "Unconfirmed work saved a claim")
+                flow.Reload()
+                Check.That(flow.State["request_count"] == nil, "Unconfirmed work posted a claim")
+                flow.NoInference()
+                flow.NoPr()
             }
             let declined = TestTerminal.Pty(binary, work, flow.Temp, 80, "\n")
             Check.That(declined.Code == 1, "Declined confirmation launched work")
@@ -464,7 +489,11 @@ internal class DonorSelectionChecks {
             )
             Check.That(saved["tools"]?.AsArray().Count == 1, "V2 default invented tool declarations")
             flow.Mode("model_failure")
-            let result = TestProcess.Run(binary, []string{"work", "--run", run, "--non-interactive"}, flow.Temp.Env)
+            let result = TestProcess.Run(
+                binary,
+                []string{"work", "--yes", "--run", run, "--non-interactive"},
+                flow.Temp.Env
+            )
             Check.That(result.Code == 1, "Synthetic model failure succeeded")
             Check.Contains(result.Error, "Codex failed")
             flow.Reload()
@@ -657,7 +686,7 @@ internal class DonorSelectionChecks {
             flow.Reload()
             Check.That(JsonNode.DeepEquals(calls, flow.State["api_calls"]), "Rejected profile reached GitHub")
             for args in[][]string{
-                []string{"work", "--run", "unused", "--profile", "cloud", "--json"},
+                []string{"work", "--yes", "--run", "unused", "--profile", "cloud", "--json"},
                 []string{
                     "claim",
                     "--yes",
