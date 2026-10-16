@@ -308,7 +308,7 @@ internal class PiHarness {
             run Data,
             record JsonElement,
             coding RuntimeBudget,
-            models Func[List[string]?]
+            models Func[string, string, string, List[string]?]
         ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let runtime = PiBoundary.Probe(run.Text("pi_root"), run.Text("pi_node"), coding)
             let endpoint = PiBoundary.Endpoint(run.Text("pi_endpoint"))
@@ -346,7 +346,7 @@ internal class PiHarness {
             run Data,
             record JsonElement,
             result CommandResult,
-            validateModels Action[JsonElement]
+            allowsModel Func[string, bool]
         ) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw ExecutionFailure.Create(

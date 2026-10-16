@@ -21,10 +21,10 @@ internal class Harness(
         Data,
         JsonElement,
         RuntimeBudget,
-        Func[List[string]?],
+        Func[string, string, string, List[string]?],
         ValueTuple[[]string, Dictionary[string, Object?]?]
     ],
-    read Func[string, Data, JsonElement, CommandResult, Action[JsonElement], Evidence],
+    read Func[string, Data, JsonElement, CommandResult, Func[string, bool], Evidence],
     activity Action[string],
     choose Func[Args, Func[Dictionary[string, Object?]], JsonElement]? = nil,
     validateSaved Action[Data]? = nil,
@@ -49,10 +49,10 @@ internal class Harness(
         Data,
         JsonElement,
         RuntimeBudget,
-        Func[List[string]?],
+        Func[string, string, string, List[string]?],
         ValueTuple[[]string, Dictionary[string, Object?]?]
     ] = prepare
-    internal let Read Func[string, Data, JsonElement, CommandResult, Action[JsonElement], Evidence] = read
+    internal let Read Func[string, Data, JsonElement, CommandResult, Func[string, bool], Evidence] = read
     internal let Activity Action[string] = activity
     internal let Select Func[Args, Func[Dictionary[string, Object?]], JsonElement]? = choose
     internal let ValidateSaved Action[Data]? = validateSaved

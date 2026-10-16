@@ -4,6 +4,7 @@ import System
 import System.Collections.Generic
 import System.IO
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class ClaudeHarness {
     shared {
@@ -68,7 +69,7 @@ internal class ClaudeHarness {
             run Data,
             record JsonElement,
             coding RuntimeBudget,
-            models Func[List[string]?]
+            models Func[string, string, string, List[string]?]
         ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let options = Args([]string{"work", "--harness", "claude"})
             options.Values["--harness-path"] = run.Text("harness_path")
@@ -82,7 +83,7 @@ internal class ClaudeHarness {
 
             let checkout = Path.Combine(directory, "checkout")
             let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
-            let allowedModels = models()
+            let allowedModels = models("claude", "anthropic", ClaudeCode.ModelPattern)
             let invocation = ClaudeCode.Invocation(
                 run.Text("model"),
                 run.Text("effort"),
@@ -107,7 +108,7 @@ internal class ClaudeHarness {
             run Data,
             record JsonElement,
             result CommandResult,
-            validateModels Action[JsonElement]
+            allowsModel Func[string, bool]
         ) Evidence {
             let evidence = Evidence()
             let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), evidence)
@@ -118,7 +119,23 @@ internal class ClaudeHarness {
                 )
             }
 
-            validateModels(J.Get(reports, "model_usage"))
+            let models = J.Get(reports, "model_usage")
+
+            if models.ValueKind == JsonValueKind.Object {
+                for used in models.EnumerateObject() {
+                    let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
+
+                    if !allowsModel(name) && !allowsModel(used.Name) {
+                        throw ExecutionFailure.Create(
+                            "inference_failed",
+                            "Claude used " +
+                                used.Name +
+                                ", which the repository policy does not allow. Remove it from your Claude subagent or model settings."
+                        )
+                    }
+                }
+            }
+
             evidence.Usage = J.Select(J.Get(reports, "usage"), "input_tokens,output_tokens")
             let cached = J.Get(J.Get(reports, "usage"), "cache_read_input_tokens")
             if cached.ValueKind != JsonValueKind.Undefined {

@@ -70,17 +70,17 @@ internal class CommandHarness {
                     run Data,
                     record JsonElement,
                     coding RuntimeBudget,
-                    models Func[List[string]?]
+                    models Func[string, string, string, List[string]?]
                 ) -> Prepare(tool, directory, run),
                 (
                     directory string,
                     run Data,
                     record JsonElement,
                     result CommandResult,
-                    validateModels Action[JsonElement]
-                ) -> output == "codex" ? Worker.Read(directory, run, record, result, validateModels):
-                output == "claude" ? ClaudeHarness.Read(directory, run, record, result, validateModels):
-                OmpHarness.Read(directory, run, record, result, validateModels),
+                    allowsModel Func[string, bool]
+                ) -> output == "codex" ? Worker.Read(directory, run, record, result, allowsModel):
+                output == "claude" ? ClaudeHarness.Read(directory, run, record, result, allowsModel):
+                OmpHarness.Read(directory, run, record, result, allowsModel),
                 activity,
                 (args Args, selection Func[Dictionary[string, Object?]]) -> Select(
                     args,

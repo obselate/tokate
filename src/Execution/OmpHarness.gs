@@ -89,7 +89,7 @@ internal class OmpHarness {
             run Data,
             record JsonElement,
             coding RuntimeBudget,
-            models Func[List[string]?]
+            models Func[string, string, string, List[string]?]
         ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
             let runtime = OmpRuntime.Runtime(options, coding)
@@ -130,7 +130,7 @@ internal class OmpHarness {
             run Data,
             record JsonElement,
             result CommandResult,
-            validateModels Action[JsonElement]
+            allowsModel Func[string, bool]
         ) Evidence {
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 let reason = OmpEvidence.Failure(result.Output)

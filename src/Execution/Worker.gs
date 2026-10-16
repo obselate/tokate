@@ -221,7 +221,7 @@ internal class Worker {
             run Data,
             record JsonElement,
             coding RuntimeBudget,
-            models Func[List[string]?]
+            models Func[string, string, string, List[string]?]
         ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let harnessPath = run.Text("harness_path")
             let selected = J.Get(run.Element(), "selection")
@@ -253,7 +253,7 @@ internal class Worker {
             run Data,
             record JsonElement,
             result CommandResult,
-            validateModels Action[JsonElement]
+            allowsModel Func[string, bool]
         ) Evidence {
             if result.Code != 0 {
                 throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")

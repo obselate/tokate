@@ -6,7 +6,6 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.IO
 import System.Text.Json
-import System.Text.RegularExpressions
 
 internal class HarnessRunner {
     shared {
@@ -115,24 +114,7 @@ internal class HarnessRunner {
                 run,
                 record,
                 result,
-                (models JsonElement) -> {
-                    if models.ValueKind == JsonValueKind.Object {
-                        for used in models.EnumerateObject() {
-                            let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
-
-                            if !policy.AllowsModel(run.Text("harness"), run.Text("provider"), name) &&
-                                !policy
-                                .AllowsModel(run.Text("harness"), run.Text("provider"), used.Name) {
-                                throw ExecutionFailure.Create(
-                                    "inference_failed",
-                                    "Claude used " +
-                                        used.Name +
-                                        ", which the repository policy does not allow. Remove it from your Claude subagent or model settings."
-                                )
-                            }
-                        }
-                    }
-                }
+                name -> policy.AllowsModel(run.Text("harness"), run.Text("provider"), name)
             )
 
             File.WriteAllText(Path.Combine(directory, "report.md"), evidence.Report)
@@ -169,13 +151,7 @@ internal class HarnessRunner {
                 let checkout = Path.Combine(directory, "checkout")
 
                 WorkspacePreparation.Ready(directory, run)
-                let prepared = adapter.Prepare.Invoke(
-                    directory,
-                    run,
-                    record,
-                    coding,
-                    () -> policy.AllowedModels("claude", "anthropic", ClaudeCode.ModelPattern)
-                )
+                let prepared = adapter.Prepare.Invoke(directory, run, record, coding, policy.AllowedModels)
                 ContributionAuthority.Recheck(run)
                 WorkspacePreparation.Ready(directory, run)
 
