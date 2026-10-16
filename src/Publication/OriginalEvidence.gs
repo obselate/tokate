@@ -385,7 +385,7 @@ internal class OriginalEvidence {
                         throw CliFailure("invalid_state", "Saved original amendment must not be a link")
                     }
 
-                    first = Data.Load(location)
+                    first = Data.Load(location, amendment: true)
 
                     if first.Text("id") != J.Text(history[0], "id") {
                         throw CliFailure("invalid_state", "Saved first amendment differs from contribution history")

@@ -53,7 +53,10 @@ internal class OverlapFlow : IDisposable {
         for issue in 1 ... 3 {
             Test.Issue = issue
             let target = layout == "targets" && issue == 2 ? "release": "main"
-            Flow.Call([]string{"approve", "owner/project#" + issue.ToString(), "--base-branch", target}, owner: true)
+            Flow.Call(
+                []string{"approve", "--yes", "owner/project#" + issue.ToString(), "--base-branch", target},
+                owner: true
+            )
             var approval JsonNode
             var revision string
             var claim JsonNode? = nil

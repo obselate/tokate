@@ -116,6 +116,15 @@ internal class ReservationRequest {
 
                     request = JsonElement{}
                 }
+
+                if outcome.ValueKind == JsonValueKind.Undefined && action == "release" && J.Text(
+                    request,
+                    "expected"
+                ) != state.Sha {
+                    request = JsonElement{}
+                    run.Fields.Remove("reservation_request")
+                    run.Save(directory)
+                }
             }
 
             let value = state.Value()

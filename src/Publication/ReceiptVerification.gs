@@ -58,6 +58,29 @@ internal class ReceiptVerification {
             let value = state.Value()
             let contribution = J.Get(value, "contribution")
 
+            if contribution.ValueKind != JsonValueKind.Object && J.Text(value, "approval_id") == J.Text(
+                receipt,
+                "approval"
+            ) &&
+                state.Sha == J.Text(receipt, "expected") && RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) {
+                let reservation = J.Get(value, "reservation")
+                if J.Text(reservation, "reservation") == J.Text(receipt, "reservation") && J.Text(
+                    J.Get(pull, "head"),
+                    "sha"
+                ) == J
+                    .Text(receipt, "head") {
+                    state.Check(repo, J.Number(receipt, "issue"), J.Text(receipt, "donor"), J.Get(reservation, "actor"))
+                    LeaseLifecycle.Owner(state, J.Get(reservation, "actor"), active: true)
+                    throw CliFailure(
+                        "evidence_pending",
+                        "PR publication is awaiting coordinator adoption. Wait, then run tokate checks " +
+                            repo +
+                            "#" +
+                            number.ToString() + " again."
+                    )
+                }
+            }
+
             if J.Text(value, "approval_id") != J.Text(receipt, "approval") ||
                 contribution.ValueKind != JsonValueKind.Object {
                 throw CliFailure("stale_approval", "PR approval or contribution no longer matches")
@@ -89,13 +112,7 @@ internal class ReceiptVerification {
             }
 
             let donor = RepositoryIdentity.Login(J.Text(receipt, "donor"))
-            var record JsonElement
-            try {
-                record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
-            } catch (error Exception) when error.GetType() == typeof(Exception) &&
-                error.Message == "Choose an open issue" {
-                throw CliFailure("invalid_state", error.Message)
-            }
+            let record = state.Check(repo, J.Number(receipt, "issue"), donor, J.Get(contribution, "actor"))
             let publicationRevision = J.Text(value, "publication_revision")
             let authenticated = publicationRevision == "" ? state: CoordinationState.At(
                 repo,

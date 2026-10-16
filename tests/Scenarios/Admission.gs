@@ -7,11 +7,11 @@ import System.Text.Json.Nodes
 internal class AdmissionChecks {
     shared {
         private func Access(test CoordinationFixture, operation string) {
-            test.Flow.Call([]string{"access", operation, "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", operation, "donor", "owner/project"}, owner: true)
         }
 
         private func Setup(test CoordinationFixture, mode string, message string? = nil) {
-            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
             let path = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(path))
             policy["approval_scope"] = JsonValue.Create("task")
@@ -24,7 +24,7 @@ internal class AdmissionChecks {
                 File.WriteAllText(path, configured)
                 test.Flow.Commit("Owner admission configuration")
             }
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
         }
 
         private func Pull(
@@ -137,7 +137,7 @@ internal class AdmissionChecks {
                 Access(test, "trust")
                 Pull(test, "<!-- tokate-receipt:{\"repo\":\"other/project\",\"issue\":1,\"donor\":\"owner\"} -->")
                 Admit(test, "open")
-                test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor"}, owner: true)
                 Pull(test, "Fixes #1\nIncomplete draft without a receipt or verification")
                 Admit(test, "open")
                 Target(test, "other")
@@ -153,7 +153,7 @@ internal class AdmissionChecks {
                 Access(test, "untrust")
                 Pull(test, "Fixes #1")
                 Admit(test, "open")
-                test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                 Pull(test, "Fixes #1")
                 Admit(test, mode == "open" ? "open": "closed")
                 Pull(
@@ -170,7 +170,7 @@ internal class AdmissionChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             Setup(test, "trusted")
-            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor"}, owner: true)
             let request = test.ClaimRequest()
             test.Coordinate(test.Event(request))
             let head = test.Candidate(request)
@@ -287,6 +287,28 @@ internal class AdmissionChecks {
         }
 
         private func Safety(binary string) {
+            using let invalid = CoordinationFixture(binary)
+            invalid.Initialize(approve: false)
+            Setup(invalid, "trusted")
+            let existing = Check.Envelope(
+                invalid.Flow.Call([]string{"access", "--yes", "init", "owner/project", "--json"}, 1, owner: true),
+                "access",
+                "error",
+                "invalid_state"
+            )
+            Check.Contains(Check.Text(existing["error"]?["message"]), "already exists")
+            Check.Contains(Check.Text(existing["error"]?["message"]), "tokate access list owner/project")
+            let eventPath = Path.Combine(invalid.Flow.Temp.Root, "invalid-event.json")
+            File.WriteAllText(eventPath, "{}")
+            let malformed = Check.Envelope(
+                invalid.Flow.Call([]string{"admit", "owner/project", "--event", eventPath, "--json"}, 1, owner: true),
+                "admit",
+                "error",
+                "invalid_arguments"
+            )
+            Check.Contains(Check.Text(malformed["error"]?["message"]), eventPath)
+            Check.Contains(Check.Text(malformed["error"]?["message"]), "action")
+            Check.Contains(Check.Text(malformed["error"]?["message"]), "--event")
             for fault in[]string{
                 "api",
                 "malformed",

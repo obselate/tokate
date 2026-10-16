@@ -22,7 +22,7 @@ internal class AmendmentFlow {
             json bool = false,
             head bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--time", "30s"}
+            let args = List[string]{"amend", "--yes", "--run", run, "--time", "30s"}
             if !head {
                 args.AddRange([]string{"--commit", commit})
             }
@@ -141,7 +141,7 @@ internal class AmendmentFlow {
             RepositoryFaults.Reject(
                 flow,
                 run,
-                []string{"amend", "--run", run, "--commit", commit, "--time", "30s"},
+                []string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "30s"},
                 repositoryError: "identity changed"
             )
             Check.That(!Directory.Exists(Path.Combine(run, "amendments", commit)), "Fork refusal created an amendment")
@@ -372,7 +372,7 @@ internal class AmendmentFlow {
             flow.Receipt("owner/project#10", owner: owner)
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\",\"state\":\"SUCCESS\"}]")
             flow.Save()
-            let checks = flow.Call([]string{"checks", "--run", run}, summary ? 0: 1, owner: owner)
+            let checks = flow.Call([]string{"checks", "--yes", "--run", run}, summary ? 0: 1, owner: owner)
             if !summary {
                 Check.Contains(checks.Error, "PR report has no change summary for this candidate")
             }
@@ -387,7 +387,7 @@ internal class AmendmentFlow {
             let run = PublishedContribution.Original(flow, interruptible: true)
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             let commit = Edit(flow, run, "slow-check", "slow")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "1s", "--json"}
+            let args = []string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "1s", "--json"}
             let failure = flow.Call(args, 1)
             Check.That(
                 Check.Text(Check.Json(failure.Output)["error"]?["code"]) == "verification_failed",
@@ -493,7 +493,10 @@ internal class AmendmentFlow {
                     )
                 } else if failure == "budget" {
                     let rejected = Check.Envelope(
-                        flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "3601s", "--json"}, 1),
+                        flow.Call(
+                            []string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "3601s", "--json"},
+                            1
+                        ),
                         "amend",
                         "error",
                         "stale_approval"
@@ -556,6 +559,7 @@ internal class AmendmentFlow {
         private func V2(binary string, mode string = "", native bool = false, modelPolicy string = "") {
             using let flow = CoordinationFixture(binary)
             let run = PublishedContribution.PublishRun(flow, native, modelPolicy)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run})
             if native {
                 flow.Flow.Reload()
                 let pull = flow.Flow.State["pulls"]?[0] ?? throw Exception("Missing recorded PR")
@@ -641,6 +645,7 @@ internal class AmendmentFlow {
                 for key in[]string{"summary", "tools", "time"} {
                     let arguments = List[string]{
                         "amend",
+                        "--yes",
                         "--run",
                         run,
                         "--commit",
@@ -679,6 +684,7 @@ internal class AmendmentFlow {
                     flow.Flow.Call(
                         []string{
                             "amend",
+                            "--yes",
                             "--run",
                             run,
                             "--commit",
@@ -700,7 +706,7 @@ internal class AmendmentFlow {
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--summary")
                 File.Delete(summary)
                 File.Delete(flow.Tools)
-                flow.Flow.Call([]string{"amend", "--run", run, "--json"})
+                flow.Flow.Call([]string{"amend", "--yes", "--run", run, "--json"})
                 Check.That(
                     File.ReadAllText(Path.Combine(location, "run.json")) == saved,
                     "Saved continuation changed the request"
@@ -737,6 +743,20 @@ internal class AmendmentFlow {
             for call in flow.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                 Check.That(Check.Text(call["method"]) == "GET", "Applied amendment request repeated writes")
             }
+            flow.Flow.Reload()
+            flow.Flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
+            flow.Flow.Save()
+            let checked = Check.Envelope(
+                flow.Flow.Call([]string{"checks", "--yes", "--run", run, "--json"}),
+                "checks",
+                "ok"
+            )
+            Check.That(
+                Check.Text(checked["data"]?["commit"]) == commit && Check.Text(
+                    checked["data"]?["machine_status"]
+                ) == "passed",
+                "Checks rejected the accepted amendment before local completion"
+            )
             let status = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
             let pending = status["data"]?["amendment"]
             let previous = Check.Text(Check.Json(original)["commit"])
@@ -776,11 +796,11 @@ internal class AmendmentFlow {
                 let toolsInput = File.ReadAllText(flow.Tools)
                 File.Delete(summary)
                 File.Delete(flow.Tools)
-                flow.Flow.Call([]string{"amend", "--run", run, "--json"})
+                flow.Flow.Call([]string{"amend", "--yes", "--run", run, "--json"})
                 File.WriteAllText(summary, summaryInput)
                 File.WriteAllText(flow.Tools, toolsInput)
             }
-            flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).ToArray())
+            flow.Flow.Call(command.Skip(1).Select(word -> Check.Text(word)).Concat([]string{"--yes"}).ToArray())
             let completed = Check.Envelope(flow.Flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
             Check.That(
                 completed["data"]?["amendment"] == nil && completed["data"]?["next"] == nil && Check.Text(
@@ -972,7 +992,7 @@ internal class AmendmentFlow {
             seconds string = "30",
             json bool = false
         ) Result {
-            let args = List[string]{"amend", "--run", run, "--commit", commit, "--time", seconds + "s"}
+            let args = List[string]{"amend", "--yes", "--run", run, "--commit", commit, "--time", seconds + "s"}
             if tools != "" {
                 args.AddRange([]string{"--tools", tools})
             }
@@ -1003,7 +1023,7 @@ internal class AmendmentFlow {
             let failed = File.Exists(Path.Combine(run, "verification.json")) ? File.ReadAllText(
                 Path.Combine(run, "verification.json")
             ): ""
-            let prepared = Check.Envelope(flow.Call([]string{"amend", "--run", run, "--json"}), "amend", "ok")
+            let prepared = Check.Envelope(flow.Call([]string{"amend", "--yes", "--run", run, "--json"}), "amend", "ok")
             Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == original, "Preparation rewrote saved work")
             Check.That(Read(run)["amendment"] == nil, "Preparation created an attempt")
             let archive = Path.Combine(run, "original-evidence")
@@ -1022,7 +1042,7 @@ internal class AmendmentFlow {
                 Check.That(File.ReadAllText(Path.Combine(archive, "verification.json")) == failed, "Prior checks lost")
             }
             let manifest = File.ReadAllText(Path.Combine(archive, "manifest.json"))
-            flow.Call([]string{"amend", "--run", run})
+            flow.Call([]string{"amend", "--yes", "--run", run})
             Check.That(
                 File.ReadAllText(Path.Combine(archive, "manifest.json")) == manifest,
                 "Preparation retry replaced original archive"
@@ -1037,7 +1057,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "trailing whitespace")
+            Check.Contains(flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "trailing whitespace")
             Check.That(
                 !File.Exists(Path.Combine(run, "candidate.patch")),
                 "Whitespace failure unexpectedly saved a candidate"
@@ -1074,7 +1094,7 @@ internal class AmendmentFlow {
             File.Delete(Path.Combine(checkout, "untracked.bin"))
             let commit = Correct(flow, run)
             let amended = Check.Envelope(
-                flow.Call([]string{"amend", "--run", run, "--time", "30s", "--json"}),
+                flow.Call([]string{"amend", "--yes", "--run", run, "--time", "30s", "--json"}),
                 "amend",
                 "ok"
             )
@@ -1105,7 +1125,7 @@ internal class AmendmentFlow {
             Check.Contains(flow.Body(), "cover only the original completed turn")
             Check.That(!flow.Body().Contains("Fresh attempt seeded"), "Ordinary correction invented interrupted origin")
             flow.Receipt("owner/project#10", owner: true)
-            flow.Call([]string{"amend", "--run", run}, 1)
+            flow.Call([]string{"amend", "--yes", "--run", run}, 1)
             ReworkAndSubmit(flow, run, commit, 1)
             Once(flow, 1)
         }
@@ -1129,7 +1149,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim("120")
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let checkout = Path.Combine(run, "checkout")
             Directory.CreateDirectory(Path.Combine(checkout, "branding"))
             flow.Git("-C", checkout, "mv", "artwork.bin", "branding/artwork.bin")
@@ -1183,7 +1203,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("verification_fail")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let originalRun = File.ReadAllText(Path.Combine(run, "run.json"))
             let original = File.ReadAllText(Path.Combine(run, "candidate.patch"))
             let failed = File.ReadAllText(Path.Combine(run, "verification.json"))
@@ -1302,7 +1322,7 @@ internal class AmendmentFlow {
             )
             flow.Approve()
             let run = flow.Claim("10")
-            Check.Contains(flow.Call([]string{"work", "--run", run}, 1).Error, "Runtime limit reached")
+            Check.Contains(flow.Call([]string{"work", "--yes", "--run", run}, 1).Error, "Runtime limit reached")
             let interrupted = Read(run, "verification.json")[0]
             Check.That(interrupted?["exit_code"] == nil, "Timeout fabricated a completed check")
             Check.Contains(Check.Text(interrupted?["output"]), "synthetic-verifier-prefix")
@@ -1345,7 +1365,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             using let baseline = FixtureSnapshot(flow.Temp.Root)
             for stage in[]string{"amend", "prepare"} {
                 baseline.Restore()
@@ -1379,7 +1399,7 @@ internal class AmendmentFlow {
                 flow.State["pulls"] = pulls
                 flow.Save()
                 if stage == "prepare" {
-                    Check.Contains(flow.Call([]string{"amend", "--run", run}, 1).Error, "physical PR")
+                    Check.Contains(flow.Call([]string{"amend", "--yes", "--run", run}, 1).Error, "physical PR")
                     Check.That(!Directory.Exists(Path.Combine(run, "original-evidence")), "Published work was prepared")
                 } else {
                     Check.Contains(ReworkAndSubmit(flow, run, commit, 1).Error, "physical PR")
@@ -1402,7 +1422,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Prepared(flow, run)
             let commit = Correct(flow, run)
             let path = Path.Combine(flow.Temp.Root, "correction-tools.json")
@@ -1424,10 +1444,10 @@ internal class AmendmentFlow {
             flow.Initialize()
             flow.Approve()
             let run = flow.Claim()
-            flow.Call([]string{"amend", "--run", run}, 1)
+            flow.Call([]string{"amend", "--yes", "--run", run}, 1)
             flow.NoInference()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let original = File.ReadAllText(Path.Combine(run, "run.json"))
             for key in[]string{"viewer_login", "viewer_id"} {
                 flow.Reload()
@@ -1435,7 +1455,7 @@ internal class AmendmentFlow {
                     999
                 ) as JsonNode
                 flow.Save()
-                flow.Call([]string{"amend", "--run", run}, 1)
+                flow.Call([]string{"amend", "--yes", "--run", run}, 1)
                 Check.That(!Directory.Exists(Path.Combine(run, "original-evidence")), "Another donor archived work")
                 flow.Reload()
                 flow.State.AsObject().Remove(key)
@@ -1488,9 +1508,9 @@ internal class AmendmentFlow {
                 baseline.Restore()
                 flow.Reload()
                 flow.Mode(mode)
-                flow.Call([]string{"work", "--run", run}, 1)
+                flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
-                Check.Contains(flow.Call([]string{"amend", "--run", run}, 1).Error, "incomplete_turn")
+                Check.Contains(flow.Call([]string{"amend", "--yes", "--run", run}, 1).Error, "incomplete_turn")
                 Check.That(
                     !Directory.Exists(Path.Combine(run, "original-evidence")),
                     "Incomplete turn archived evidence"
@@ -1510,7 +1530,7 @@ internal class AmendmentFlow {
             protectedFlow.Approve()
             let protectedRun = protectedFlow.Claim()
             protectedFlow.Mode("staged_whitespace")
-            protectedFlow.Call([]string{"work", "--run", protectedRun}, 1)
+            protectedFlow.Call([]string{"work", "--yes", "--run", protectedRun}, 1)
             let archive = Prepared(protectedFlow, protectedRun)
             let checkout = Path.Combine(protectedRun, "checkout")
             using let baseline = FixtureSnapshot(protectedFlow.Temp.Root)
@@ -1581,7 +1601,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Prepared(flow, run)
             let commit = Correct(flow, run)
             Check.Contains(ReworkAndSubmit(flow, run, commit, 1).Error, "candidate_changed")
@@ -1604,7 +1624,7 @@ internal class AmendmentFlow {
             )
             let run = flow.Prepare("tokate")
             flow.Flow.Mode(mode)
-            flow.Flow.Call([]string{"work", "--run", run}, mode == "" ? 0: 1)
+            flow.Flow.Call([]string{"work", "--yes", "--run", run}, mode == "" ? 0: 1)
             return run
         }
 
@@ -1618,7 +1638,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Prepared(flow, run)
             let commit = Correct(flow, run)
             Check.Contains(Rework(flow, run, commit, 1, seconds: "1").Error, "verification_failed")
@@ -1661,7 +1681,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             Prepared(flow, run)
             let commit = Correct(flow, run)
             let tree = flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD^{tree}")
@@ -1690,7 +1710,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let head = flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD")
             Check.Contains(Rework(flow, run, head, 1).Error, "original-evidence")
             Check.That(Read(run)["amendment"] == nil, "Missing archive accepted a candidate")
@@ -1741,7 +1761,7 @@ internal class AmendmentFlow {
             flow.Approve()
             let run = flow.Claim()
             flow.Mode("staged_whitespace")
-            flow.Call([]string{"work", "--run", run}, 1)
+            flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let original = Prepared(flow, run)
             let commit = Correct(flow, run)
             using let baseline = FixtureSnapshot(flow.Temp.Root)
@@ -1767,7 +1787,7 @@ internal class AmendmentFlow {
                         flow.Commit("Changed policy")
                     }
                     case "access" {
-                        flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
+                        flow.Call([]string{"access", "--yes", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "branch" {
                         let fork = Path.Combine(flow.Bin, "fork")
@@ -1816,7 +1836,7 @@ internal class AmendmentFlow {
                         flow.Expire()
                     }
                     case "revocation" {
-                        flow.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                        flow.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                     }
                     case "identity" {
                         flow.Flow.Reload()
@@ -1838,7 +1858,7 @@ internal class AmendmentFlow {
                     ) == saved,
                     "Refused recovery rewrote correction"
                 )
-                flow.Flow.Call([]string{"submit", "--run", run}, 1)
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
                 flow.Flow.Reload()
                 Check.That(flow.Flow.State["request_count"] == nil, "Refused authority posted a publication request")
                 Once(flow.Flow)
@@ -1853,9 +1873,9 @@ internal class AmendmentFlow {
                 using let rejected = CoordinationFlow(binary)
                 rejected.Initialize()
                 let saved = ManagedRun(rejected, "")
-                rejected.Flow.Call([]string{"submit", "--run", saved}, 8)
+                rejected.Flow.Call([]string{"submit", "--yes", "--run", saved}, 8)
                 var previous = Read(saved, "request.json")
-                rejected.Flow.Call([]string{"amend", "--run", saved})
+                rejected.Flow.Call([]string{"amend", "--yes", "--run", saved})
                 for text in[]string{"First corrected intent\n", "Second corrected intent\n"} {
                     rejected.Lifecycle("renew")
                     rejected.Coordinate(rejected.Event(previous), 1)
@@ -1870,7 +1890,7 @@ internal class AmendmentFlow {
                     previous = request
                 }
                 rejected.Coordinate(rejected.Event(previous))
-                rejected.Flow.Call([]string{"submit", "--run", saved})
+                rejected.Flow.Call([]string{"submit", "--yes", "--run", saved})
                 Once(rejected.Flow, 1)
                 rejected.Flow.Receipt("owner/project#10", owner: true)
             }
@@ -1907,7 +1927,7 @@ internal class AmendmentFlow {
                 ) == results,
                 "Repeated v2 correction reran checks"
             )
-            flow.Flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             let request = Read(run, "request.json")
             Check.That(Check.Text(request["metadata"]?["source"]) == "tokate", "Correction replaced v2 source")
             Check.That(
@@ -1922,7 +1942,7 @@ internal class AmendmentFlow {
                 ),
                 "Publication changed correction tools"
             )
-            flow.Flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             flow.Flow.Reload()
             Check.That(
                 Check.Text(flow.Flow.State["request_count"]) == "1",
@@ -1934,8 +1954,8 @@ internal class AmendmentFlow {
             flow.Coordinate(path)
             flow.Coordinate(path)
             flow.Lifecycle("renew")
-            flow.Flow.Call([]string{"submit", "--run", run})
-            flow.Flow.Call([]string{"submit", "--run", run})
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run})
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run})
             Once(flow.Flow, 1)
             Check.That(Check.Text(Read(run)["state"]) == "published", "v2 exact outcome not adopted")
             Check.That(
@@ -1961,7 +1981,7 @@ internal class AmendmentFlow {
             )
             AmendCorrected(flow.Flow, run, archive, flow)
             flow.Expire()
-            flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
             Once(flow.Flow, 1)
         }
 
@@ -1975,11 +1995,14 @@ internal class AmendmentFlow {
                 flow.Flow.State["request_response_fault"] = JsonValue.Create(fault)
                 flow.Flow.State["request_response_missing"] = JsonValue.Create(true)
                 flow.Flow.Save()
-                Check.Contains(flow.Flow.Call([]string{"submit", "--run", run}, 1).Error, "Uncertain request write")
+                Check.Contains(
+                    flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error,
+                    "Uncertain request write"
+                )
             }
             let request = File.ReadAllText(Path.Combine(run, "request.json"))
             Check.Envelope(
-                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 1),
                 "submit",
                 "error",
                 "invalid_state"
@@ -1995,14 +2018,14 @@ internal class AmendmentFlow {
             flow.Flow.State["request_response_fault"] = nil
             flow.Flow.State["request_response_missing"] = nil
             flow.Flow.Save()
-            flow.Flow.Call([]string{"submit", "--run", run}, 1)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
             flow.Flow.Reload()
             let comment = flow.Flow.State["request_comments"]?[0] ?? throw Exception("Missing posted comment")
             (flow.Flow.State["comments"] ?? throw Exception("Missing comments"))[
                 Check.Text(comment["id"])
             ] = comment.DeepClone()
             flow.Flow.Save()
-            flow.Flow.Call([]string{"submit", "--run", run}, 8)
+            flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             flow.Flow.Reload()
             Check.That(Check.Text(flow.Flow.State["request_count"]) == "1", "Response recovery duplicated POST")
             Check.That(Check.Text(Read(run)["verification"]) == results, "Response recovery reran verification")
@@ -2062,7 +2085,7 @@ internal class AmendmentFlow {
                 flow.Flow.Reload()
                 flow.Flow.State["coordination_state_override"] = JsonValue.Create(state.ToJsonString())
                 flow.Flow.Save()
-                flow.Flow.Call([]string{"submit", "--run", run}, 1)
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
                 Check.That(
                     File.ReadAllText(Path.Combine(run, "run.json")) == original,
                     "Changed recorded outcome published a run"
@@ -2070,7 +2093,7 @@ internal class AmendmentFlow {
                 flow.Flow.Reload()
                 flow.Flow.State["coordination_state_override"] = nil
                 flow.Flow.Save()
-                flow.Flow.Call([]string{"submit", "--run", run})
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run})
                 Check.That(Check.Text(Read(run)["state"]) == "published", "Exact recorded outcome was not recovered")
                 Check.That(
                     Check.Text(
@@ -2107,7 +2130,7 @@ internal class AmendmentFlow {
                     Read(run, "amendments/" + Check.Text(Read(run)["amendment"]) + "/run.json")["verification"]
                 )
                 flow.Flow.Mode("")
-                flow.Flow.Call([]string{"submit", "--run", run}, mode == "request_fail_before_write" ? 1: 8)
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run}, mode == "request_fail_before_write" ? 1: 8)
                 flow.Flow.Reload()
                 Check.That(
                     Check.Text(flow.Flow.State["request_count"]) == (mode == "request_fail_before_write" ? "": "1"),
@@ -2138,7 +2161,7 @@ internal class AmendmentFlow {
                     let path = flow.Event(posted)
                     flow.Flow.Mode("lost_state_response")
                     flow.Coordinate(path)
-                    flow.Flow.Call([]string{"submit", "--run", run})
+                    flow.Flow.Call([]string{"submit", "--yes", "--run", run})
                     flow.Coordinate(path)
                     Once(flow.Flow, 1)
                 }
@@ -2156,7 +2179,7 @@ internal class AmendmentFlow {
             external.Initialize()
             external.Claim()
             let externalRun = external.Prepare()
-            Check.Contains(external.Flow.Call([]string{"amend", "--run", externalRun}, 1).Error, "external")
+            Check.Contains(external.Flow.Call([]string{"amend", "--yes", "--run", externalRun}, 1).Error, "external")
             external.Flow.NoInference()
         }
 
@@ -2170,7 +2193,7 @@ internal class AmendmentFlow {
             let corrected = Check.Text(Read(run)["commit"])
             for text in[]string{"First amendment\n", "Second amendment\n"} {
                 let commit = Correct(flow, run, text)
-                let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
+                let args = []string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "30s"}
                 flow.Call(args)
                 if let managed = coordinator {
                     flow.Reload()
@@ -2208,7 +2231,8 @@ internal class AmendmentFlow {
             File.WriteAllText(Path.Combine(run, "checkout/scripts/verify.sh"), "exit 0\n")
             let protectedCommit = Correct(flow, run)
             Check.Contains(
-                flow.Call([]string{"amend", "--run", run, "--commit", protectedCommit, "--time", "30s"}, 1).Error,
+                flow.Call([]string{"amend", "--yes", "--run", run, "--commit", protectedCommit, "--time", "30s"}, 1)
+                    .Error,
                 "protected owner path"
             )
             Check.That(
@@ -2277,7 +2301,7 @@ internal class AmendmentFlow {
             test.Flow.Approve()
             let run = test.Start()
             test.Flow.Mode("staged_whitespace")
-            test.Flow.Call([]string{"work", "--run", run}, 1)
+            test.Flow.Call([]string{"work", "--yes", "--run", run}, 1)
             let archive = Prepared(test.Flow, run)
             let original = Read(run)
             let decree = Path.Combine(run, "checkout/DECREE.md")
@@ -2297,11 +2321,11 @@ internal class AmendmentFlow {
             commit = Correct(test.Flow, run)
             Rework(test.Flow, run, commit)
             let coordinator = test.Coordination
-            test.Flow.Call([]string{"submit", "--run", run}, 8)
+            test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             test.Flow.Reload()
             let request = Check.PostedRequest(test.Flow.State)
             coordinator.Coordinate(coordinator.Event(request))
-            test.Flow.Call([]string{"submit", "--run", run})
+            test.Flow.Call([]string{"submit", "--yes", "--run", run})
             let saved = File.ReadAllText(Path.Combine(run, "run.json"))
             let correction = File.ReadAllText(
                 Path.Combine(run, "amendments", Check.Text(Read(run)["amendment"]), "run.json")
@@ -2309,7 +2333,7 @@ internal class AmendmentFlow {
             let previous = Check.Text(Read(run)["commit"])
             File.WriteAllText(decree, "Amended instruction edit\n")
             commit = Correct(test.Flow, run, "Amendment with instruction edit\n")
-            let args = []string{"amend", "--run", run, "--commit", commit, "--time", "30s"}
+            let args = []string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "30s"}
             Check.Contains(test.Flow.Call(args, 1).Error, "approved root DECREE.md")
             Check.That(
                 !Directory.Exists(Path.Combine(run, "amendments", commit)),

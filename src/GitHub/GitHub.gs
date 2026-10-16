@@ -59,15 +59,29 @@ internal class GitHub {
 
         internal func Branch(repo string, branch string) string {
             let name = Uri.EscapeDataString(RepositoryIdentity.Branch(branch))
-            let reference = Api("repos/" + repo + "/git/ref/heads/" + name)
+            let reference = Api("repos/" + repo + "/git/ref/heads/" + name, missing: true)
+            if reference.ValueKind == JsonValueKind.Undefined {
+                throw CliFailure("invalid_state", "Branch " + branch + " does not exist in " + repo + ".")
+            }
             return RepositoryIdentity.CommitSha(J.Text(J.Get(reference, "object"), "sha"))
         }
 
         internal func Issue(repo string, number int32) JsonElement {
-            let issue = Api("repos/" + repo + "/issues/" + number.ToString())
+            let target = repo + "#" + number.ToString()
+            let issue = Api("repos/" + repo + "/issues/" + number.ToString(), missing: true)
+            if issue.ValueKind == JsonValueKind.Undefined {
+                throw CliFailure("invalid_state", "Issue " + target + " does not exist.")
+            }
 
             if J.Text(issue, "state") != "open" || J.Get(issue, "pull_request").ValueKind != JsonValueKind.Undefined {
-                throw Exception("Choose an open issue")
+                throw CliFailure(
+                    "invalid_state",
+                    target +
+                        (
+                        J.Get(issue, "pull_request")
+                            .ValueKind != JsonValueKind.Undefined ? " is a pull request.": " is closed."
+                    )
+                )
             }
 
             return issue

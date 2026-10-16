@@ -69,6 +69,7 @@ internal class ClaudeChecks {
                 let prepared = flow.Acquire(
                     []string{
                         "claim",
+                        "--yes",
                         "owner/project#1",
                         "claude",
                         "--time",

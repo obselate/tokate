@@ -48,7 +48,7 @@ internal class PublicOutput {
             case "stale_approval": "Owner approval is absent or changed. Fresh owner approval is required."
             case "invalid_state": "The saved run or command state does not permit this operation. Inspect its artifacts."
             case "verification_failed": "Independent verification failed. Inspect the private verification artifact."
-            case "inference_failed": "Inference did not complete successfully. Inspect private events and report artifacts; fresh owner approval is required for another attempt."
+            case "inference_failed": "Inference did not complete successfully. Inspect private events and report artifacts and read saved status for recovery."
             case "endpoint_unavailable": "Selected local endpoint did not provide valid bounded metadata advertising the exact model ID. No inference started."
             case "output_too_large": "The complete result cannot fit within 64 KiB. Use focused help or private artifacts for details."
             default: "Command failed. Inspect relevant state and private artifacts before any explicit next action."
@@ -291,7 +291,7 @@ internal class PublicOutput {
                         continue
                     }
 
-                    let amendment = Data.Load(location)
+                    let amendment = Data.Load(location, amendment: true)
 
                     if amendment.Text("state") != "requested" || amendment.Text("previous") != run.Text("commit") {
                         continue
@@ -307,7 +307,7 @@ internal class PublicOutput {
 
             if run.Text("amendment") != "" {
                 let location = Path.Combine(directory, "amendments", run.Text("amendment"))
-                let correction = Data.Load(location)
+                let correction = Data.Load(location, amendment: true)
                 result["correction"] = ChangeSummary(correction, location)
                 if correction.Text("state") == "verified" && J.Get(correction.Element(), "publication")
                     .ValueKind == JsonValueKind.Object &&
@@ -324,7 +324,9 @@ internal class PublicOutput {
                 ) ? "inference_failed": run.Text("failure_reason")
 
                 let code = KnownReason(reason) ? reason: "command_failed"
-                result["failure_reason"] = code
+                result["failure_reason"] = run.Text(
+                    "failure_reason"
+                ) == "inference_interrupted" ? "inference_interrupted": code
                 result["error"] = map[string, Object?]{
                     "code": code,
                     "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": Message(
@@ -339,10 +341,12 @@ internal class PublicOutput {
                         "action": "Inspect saved work, then use tokate work for a fresh attempt under current authority with an explicit new time budget.",
                         "command": []string{"tokate", "help", "work", "--json"}
                     }
-                    if AttemptContinuation.TimeLimited(run) {
+                    if AttemptContinuation.Stopped(run) {
                         result["error"] = map[string, Object?]{
                             "code": code,
-                            "message": "Runtime limit reached. Preserve partial work and prepare a fresh attempt under unchanged approval with a new time budget."
+                            "message": run.Text("failure_reason") == "inference_interrupted" ?
+                            "Inference was interrupted. Preserve partial work and prepare a fresh attempt under current authority with a new time budget.":
+                            "Runtime limit reached. Preserve partial work and prepare a fresh attempt under unchanged approval with a new time budget."
                         }
                         result["next"] = AttemptContinuation.Next(directory, run)
                     }
@@ -535,7 +539,7 @@ internal class PublicOutput {
                         let location = Path.Combine(RunDirectory, "amendments", options.Get("commit"))
 
                         if File.Exists(Path.Combine(location, "run.json")) {
-                            fields["amendment"] = ChangeSummary(Data.Load(location), location)
+                            fields["amendment"] = ChangeSummary(Data.Load(location, amendment: true), location)
                         }
                     }
 

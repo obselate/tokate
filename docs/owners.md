@@ -144,8 +144,8 @@ Re-approve open tasks when the setup PR changes task fields.
    ```
 
    Use `--base-branch BRANCH` to change its target. The policy target or default branch
-   is used when this flag is absent. Replacing an active reservation or published PR
-   asks once in a terminal, or requires `--yes` in non-terminal use.
+   is used when this flag is absent. Every approval asks once in a terminal.
+   JSON and non-terminal approval preview without changes unless you pass `--yes`.
 
    At claim, the coordinator records the target tip in the reservation. Work and
    receipts use that base. The tip must descend from the approved revision.
@@ -155,7 +155,7 @@ You can also add `tokate:approved` to an issue on GitHub. The coordinator checks
 that the label sender has write, maintain or admin permission, then records approval.
 It keeps the previous non-revoked target branch, or uses the default branch.
 An unauthorized label is removed. An already valid approval is kept.
-Use `tokate approve N --base-branch BRANCH` to change a target. Add `--yes` to replace active authority.
+Use `tokate approve N --base-branch BRANCH` to change a target. Use `--yes` to apply without a prompt.
 
 Access requests are plain comments and grant no access. Use `access trust DONOR`
 or `approve ISSUE DONOR` after review. Re-approval replaces the allowed donor
@@ -204,9 +204,10 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    tokate checks 10 --watch
    ```
 
-   If GitHub reports a pushed PR head before Git can fetch it, checks returns pending
-   with exit 8. Run checks again after the head is available. Direct code commits
-   after the receipt need owner review and a verified amendment.
+   Checks returns pending with exit 8 while the coordinator adopts a submitted PR
+   or GitHub makes a pushed head available. Wait, then run checks again.
+   Direct code commits after the receipt need owner review and a verified amendment.
+   Closed or merged PRs return exit 1 with `invalid_state`. Their gates are not evaluated.
 
 4. Review scope, acceptance criteria, limitations and conflicts.
 5. Mark the accepted draft ready.

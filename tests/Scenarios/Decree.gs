@@ -124,7 +124,7 @@ internal class DecreeFlow : IDisposable {
                     test.Flow.Approve()
                     test.Snapshot(text, present)
                     let run = test.Start()
-                    test.Flow.Call([]string{"work", "--run", run})
+                    test.Flow.Call([]string{"work", "--yes", "--run", run})
                     test.Prompt(text, present)
                     let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
                     Check.That(saved["decree"] == nil, "Full instructions duplicated in saved run")
@@ -151,7 +151,7 @@ internal class DecreeFlow : IDisposable {
             let decree = Path.Combine(run, "checkout/DECREE.md")
             File.WriteAllText(decree, "Donor-controlled replacement")
             Check.Contains(
-                test.Flow.Call([]string{"work", "--run", run}, 1).Error,
+                test.Flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
                 "Preserved unidentified, dirty or divergent preparation"
             )
             test.Flow.NoInference()
@@ -165,7 +165,7 @@ internal class DecreeFlow : IDisposable {
             test.Flow.State["decree_donor_change"] = JsonValue.Create(true)
             test.Flow.Save()
             Check.Contains(
-                test.Flow.Call([]string{"work", "--run", run}, 1).Error,
+                test.Flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
                 "Contribution changes approved root DECREE.md"
             )
             test.Prompt(Exact, true)
@@ -197,7 +197,7 @@ internal class DecreeFlow : IDisposable {
                 }
                 test.Flow.Commit("Target " + change)
                 if change == "unrelated" {
-                    test.Flow.Call([]string{"work", "--run", run})
+                    test.Flow.Call([]string{"work", "--yes", "--run", run})
                     test.Prompt(Exact, true)
                     Check.That(
                         Check.Text(Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["base"]) == base,
@@ -205,17 +205,17 @@ internal class DecreeFlow : IDisposable {
                     )
                 } else {
                     Check.Contains(
-                        test.Flow.Call([]string{"work", "--run", run}, 1).Error,
+                        test.Flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
                         "fresh owner approval is required"
                     )
                     test.Flow.NoInference()
                     if change == "unsupported" {
-                        let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
+                        let failure = test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, true)
                         Check.Contains(failure.Error, "regular Git blob")
                     } else {
                         test.Flow.Git("-C", Path.Combine(test.Flow.Bin, "fork"), "fetch", test.Flow.Upstream, "main")
                         test.Flow.Approve()
-                        test.Flow.Call([]string{"work", "--run", test.Start()})
+                        test.Flow.Call([]string{"work", "--yes", "--run", test.Start()})
                         test.Prompt(change == "delete" ? "": "New owner instructions\n", change != "delete")
                     }
                 }
@@ -295,7 +295,7 @@ internal class DecreeFlow : IDisposable {
                 )
                 test.Flow.Save()
                 test.Flow.ResetTraffic()
-                let failure = test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
+                let failure = test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, true)
                 Check.That(
                     failure.Error.Contains("DECREE.md"),
                     "Unsupported " + kind + " did not report DECREE.md: " + failure.Error
@@ -320,7 +320,7 @@ internal class DecreeFlow : IDisposable {
             limit.Text(text)
             limit.Flow.Approve()
             limit.Snapshot(text, true)
-            limit.Flow.Call([]string{"work", "--run", limit.Start()})
+            limit.Flow.Call([]string{"work", "--yes", "--run", limit.Start()})
             limit.Prompt(text, true)
         }
 
@@ -374,7 +374,7 @@ internal class DecreeFlow : IDisposable {
                 let run = test.Start()
                 test.Flow.Mode(mode)
                 Check.Contains(
-                    test.Flow.Call([]string{"work", "--run", run}, 1).Error,
+                    test.Flow.Call([]string{"work", "--yes", "--run", run}, 1).Error,
                     "Contribution changes approved root DECREE.md"
                 )
                 Check.That(
@@ -429,7 +429,7 @@ internal class DecreeFlow : IDisposable {
                     Path.Combine(test.Flow.Bin, "fork"),
                     "HEAD:refs/heads/tokate/v2-" + Check.Text(claim["uuid"])
                 )
-                let external = test.Flow.Call([]string{"external", "--run", run, "--commit", commit}, 1)
+                let external = test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit}, 1)
                 Check.Contains(external.Error, "changes approved root DECREE.md")
                 Check.That(
                     !File.Exists(Path.Combine(run, "verification.json")),

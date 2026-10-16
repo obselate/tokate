@@ -32,7 +32,13 @@ internal class Admission {
                 number < 1 ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(repository, "full_name"), repo) {
-                throw Exception("Expected a supported upstream pull_request_target event")
+                throw CliFailure(
+                    "invalid_arguments",
+                    "Admission event " + args.Need("event") +
+                        " requires a supported action, pull_request.number and repository.full_name matching " +
+                        repo +
+                        ". Run admission in the upstream pull_request_target workflow with its complete --event."
+                )
             }
 
             let repoId = RepositoryIdentity.PositiveId(J.Get(repository, "id"))

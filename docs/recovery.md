@@ -105,9 +105,9 @@ Amend checks donor changes against the merged target commit. That commit must de
 
 ## Continue stopped work
 
-For a Codex, Pi or OMP managed run stopped with `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget.
+For a Codex, Pi or OMP managed run stopped by SIGINT or `Runtime limit reached`, keep its checkout and use a fresh attempt. This example uses issue 42 and adds a two-hour total budget with 20 minutes reserved for verification. The policy must permit that budget. With bounded continuation, `--verify-time` is optional, as for fresh work.
 
-1. Inspect the stopped run. Status for a time-limit failure reads current authority and shows the continuation command.
+1. Inspect the stopped run. Status shows the interruption and reads current authority for the continuation command.
 
    ```sh
    tokate status --run PRIOR_RUN_DIR --json
@@ -158,6 +158,11 @@ Keep saved work and inspect current state before any explicit next action.
 
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
+| `invalid_arguments` | Approval names a missing login or branch, a closed issue or a pull request | Select the existing login, target branch or open issue named in the message. |
+| `invalid_arguments` | Requested `--time` exceeds the policy maximum | Set `--time` within the stated limit. No inference started. |
+| `invalid_arguments` | Admission event has a missing or invalid field | Supply the complete upstream `pull_request_target` event with `--event`. |
+| `invalid_state` | Saved file cannot be read, has malformed JSON or has a missing required field | Preserve the file at the stated path. Select an existing run with `tokate status` or restore the original file. Do not renew approval to repair local data. |
+| `invalid_state` | Access already exists | Inspect membership with `tokate access list OWNER/REPO`. |
 | `invalid_state` | `An unexpired reservation already owns this contribution` or `Reservation state does not permit this operation` | Inspect `tokate status --run DIR --json` and use the existing reservation. |
 | `invalid_state` | `Preparation is incomplete` or `Continuation import is incomplete` followed by the saved command | Use `tokate work --run DIR` after inspecting the saved evidence. Use `tokate claim --run DIR` to finish preparation without inference. |
 | `invalid_state` | `Ambiguous or incomplete fork discovery` or `Incomplete fork discovery after 60 seconds` | Select `--fork DONOR/NAME` explicitly in a fresh preparation. |
@@ -174,6 +179,7 @@ Amendment publication keeps the underlying error code. Inspect saved publication
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
 | `invalid_state` | `No PR has been published for this run` | Inspect `tokate status --run DIR --json` before submitting or reading checks. |
+| `invalid_state` | `PR #N was closed without merge.` or `PR #N was merged.` | Checks requires an open, unmerged PR. Use `gh pr view N` to inspect its history. |
 | `invalid_state` | `Public summary needs bounded changes, verification and limitations lists`, `Set head in the summary to SHA.` or invalid public text | Supply a valid summary for the exact candidate before an explicit submit or amend command. |
 | `invalid_state` | Malformed or ambiguous Tokate receipt or report, unsupported receipt protocol, missing public report or changed original evidence | Preserve saved evidence. Restore the report from its current authority or declare a corrected candidate. |
 | `invalid_state` | `incomplete_turn:` followed by the failure | Correction requires a completed successful inference turn. Inspect stopped work before continuation or incomplete publication. |

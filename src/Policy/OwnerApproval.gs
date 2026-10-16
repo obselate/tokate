@@ -11,7 +11,12 @@ internal class OwnerApproval {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let number = args.Number("issue")
             let info = RepositoryAccess.RequireOwner(repo)
-            let issue = GitHub.Issue(repo, number)
+            var issue JsonElement
+            try {
+                issue = GitHub.Issue(repo, number)
+            } catch (error CliFailure) when error.Code == "invalid_state" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
+            }
             let approval = Capture(args, info, issue)
             let firstApproval = !PublicOutput.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
@@ -33,7 +38,7 @@ internal class OwnerApproval {
 
             approval["issue"] = number
             approval["issue_hash"] = GitHub.Fingerprint(issue)
-            CoordinationState.Approve(repo, number, approval, args.Get("yes") == "true", args)
+            CoordinationState.Approve(repo, number, approval)
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
@@ -62,7 +67,12 @@ internal class OwnerApproval {
             let policy = Policy.Load(repo, authorityBase)
             let configuredTarget = J.Text(policy.Value, "target_branch")
             let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
-            let revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+            var revision string
+            try {
+                revision = branch == authority ? authorityBase: GitHub.Branch(repo, branch)
+            } catch (error CliFailure) when error.Code == "invalid_state" && args.Get("base-branch") != "" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing --base-branch.")
+            }
 
             AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
 
@@ -74,7 +84,14 @@ internal class OwnerApproval {
             var allowed = []int64{}
             if args.Get("donor") != "" {
                 let donor = RepositoryIdentity.Login(args.Get("donor"))
-                allowed = []int64{RepositoryIdentity.PositiveId(J.Get(GitHub.Api("users/" + donor), "id"))}
+                let user = GitHub.Api("users/" + donor, missing: true)
+                if user.ValueKind == JsonValueKind.Undefined {
+                    throw CliFailure(
+                        "invalid_arguments",
+                        "GitHub login " + donor + " does not exist. Choose an existing donor login for tokate approve."
+                    )
+                }
+                allowed = []int64{RepositoryIdentity.PositiveId(J.Get(user, "id"))}
             }
 
             Terminal.Step(
@@ -116,7 +133,8 @@ internal class OwnerApproval {
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + args.Number("issue").ToString() + "/labels/tokate%3Aapproved",
-                method: "DELETE"
+                method: "DELETE",
+                missing: true
             )
 
             Terminal.Message(

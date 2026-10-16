@@ -12,6 +12,23 @@ internal class CoordinationState {
 
     internal func Value() JsonElement -> J.Parse(J.Write(Fields))
 
+    internal func ApprovalWarning(repo string) string {
+        let value = Value()
+        let reservation = J.Get(value, "reservation")
+        let contribution = J.Get(value, "contribution")
+        let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        let active = reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
+            Unix(reservation, "expires") > now
+        var warning = active ? "Re-approval ends the active reservation's authority.": ""
+
+        if contribution.ValueKind == JsonValueKind.Object {
+            let pr = repo + "#" + J.Number(J.Get(contribution, "outcome"), "pr").ToString()
+            warning += (active ? " ": "") + "Re-approval ends the authority of published PR " + pr + "."
+        }
+
+        return warning
+    }
+
     internal func Write(repo string, issue int32, expected string, expires int64 = 0) {
         let tree = GitHub.Api(
             "repos/" + repo + "/git/trees",
@@ -102,7 +119,16 @@ internal class CoordinationState {
     internal func CheckApproval(repo string, issue int32, quiet bool = false) JsonElement {
         let state = Value()
         let approval = J.Get(state, "approval")
-        let task = GitHub.Issue(repo, issue)
+        var task JsonElement
+        try {
+            task = GitHub.Issue(repo, issue)
+        } catch (error CliFailure) when error.Code == "invalid_state" {
+            throw CliFailure(
+                "invalid_state",
+                error.Message + " Owner: reopen the issue before continuing this contribution.",
+                []string{"gh", "issue", "reopen", issue.ToString(), "--repo", repo}
+            )
+        }
         if approval.ValueKind == JsonValueKind.Undefined || approval.ValueKind == JsonValueKind.Null {
             throw ApprovalFailure(repo, issue, "Issue is not approved.")
         }
@@ -193,26 +219,11 @@ internal class CoordinationState {
             return result
         }
 
-        internal func Approve(repo string, issue int32, approval Object, yes bool, options Args? = nil) {
+        internal func Approve(repo string, issue int32, approval Object) {
             let state = Load(repo, issue, true)
-            let value = state.Value()
-            let reservation = J.Get(value, "reservation")
-            let contribution = J.Get(value, "contribution")
-            let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-            let active = reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                Unix(reservation, "expires") > now
-
-            if active || contribution.ValueKind == JsonValueKind.Object {
-                var warning = active ? "Re-approval ends the active reservation's authority.": ""
-                if contribution.ValueKind == JsonValueKind.Object {
-                    let pr = repo + "#" + J.Number(J.Get(contribution, "outcome"), "pr").ToString()
-                    warning += (active ? " ": "") + "Re-approval ends the authority of published PR " + pr + "."
-                }
-
+            let warning = state.ApprovalWarning(repo)
+            if warning != "" {
                 Terminal.Message(warning, error: true)
-                if !yes && !OwnerSetup.Confirm(options ?? Args([]string{"approve"}), "Replace approval?") {
-                    throw CliFailure("confirmation_required", warning + " Pass --yes to confirm.")
-                }
             }
 
             let approved = J.Parse(J.Write(approval))

@@ -164,7 +164,7 @@ internal partial class CoordinationFlow {
                 "Label replay replaced a fresh approval"
             )
 
-            test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
             test.Coordinate(test.LabelEvent())
             Check.That(
                 Check.Text(test.State()["state"]?["revoked"]) == "false",

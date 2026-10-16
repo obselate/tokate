@@ -49,8 +49,8 @@ internal class ContributionStatusChecks {
             test.Initialize(false)
             let waiting = Row(Read(test))
             Check.That(Check.Text(waiting["state"]) == "approval_waiting", "Absent approval is ready")
-            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             let needsRequest = Row(Read(test))
             Check.That(
                 Check.Text(needsRequest["next"]?["role"]) == "donor" && Check.Text(
@@ -58,13 +58,13 @@ internal class ContributionStatusChecks {
                 ) == "request",
                 "Missing donor access request action"
             )
-            test.Flow.Call([]string{"access", "request", "owner/project#1", "--trust"})
+            test.Flow.Call([]string{"access", "--yes", "request", "owner/project#1", "--trust"})
             let pending = Read(test, owner: true, index: true)
             Check.That(pending["data"]?["pending_requests"]?.AsArray().Count == 1, "Status hid pending access")
             Check.That(Check.Text(pending["data"]?["next"]?["role"]) == "owner", "Request responsibility missing")
             Check.That(Check.Text(Row(pending)["approval_status"]) == "current", "Task approval was not validated")
             Check.That(Check.Text(Row(Read(test))["state"]) == "access_waiting", "Untrusted donor became eligible")
-            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "trust", "donor", "owner/project"}, owner: true)
             let eligible = Read(test)
             Check.That(eligible["data"]?["pending_requests"]?.AsArray().Count == 0, "Granted access remained pending")
             Check.That(Check.Text(Row(eligible)["state"]) == "reservation_needed", "Trusted donor was not eligible")
@@ -98,7 +98,7 @@ internal class ContributionStatusChecks {
             test.Flow.Reload()
             test.Flow.State["access_revoke_after_path"] = nil
             test.Flow.Save()
-            test.Flow.Call([]string{"access", "restore", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "restore", "donor", "owner/project"}, owner: true)
 
             test.Flow.Reload()
             let task = test.Flow.State["issue"] ?? throw Exception("Missing task")
@@ -573,10 +573,10 @@ internal class ContributionStatusChecks {
                         "History required a live donor branch"
                     )
                     Check.Contains(Check.Text(row["drafts"]?[0]?["receipt"]), "current readiness is not established")
-                    Check.Contains(Check.Text(row["next"]?["action"]), "remaining open issue")
+                    Check.Contains(Check.Text(row["next"]?["action"]), merged ? "remaining open issue": "release")
                     Check.That(
-                        Check.Text(row["next"]?["command"]?[1]) == "issue",
-                        "History suggested completion or PR review"
+                        Check.Text(row["next"]?["command"]?[1]) == (merged ? "issue": "release"),
+                        "History omitted release of the active reservation"
                     )
                     for call in test.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                         let path = Check.Text(call["path"])
@@ -588,7 +588,10 @@ internal class ContributionStatusChecks {
                     }
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, "State  " + lifecycle + "_contribution")
-                    Check.Contains(human.Output, "Next   gh issue view 1 --repo owner/project")
+                    Check.Contains(
+                        human.Output,
+                        merged ? "Next   gh issue view 1 --repo owner/project": "Next   tokate release owner/project#1"
+                    )
                     if !deleted {
                         let copy = Path.Combine(test.Flow.Temp.Env["HOME"], ".local/state/tokate/runs/published")
                         let record = Check.Json(File.ReadAllText(Path.Combine(published.Run, "run.json")))
@@ -635,6 +638,16 @@ internal class ContributionStatusChecks {
                     )
                 }
             }
+            published.Restore()
+            Close(test, merged: false)
+            let foreign = test.State()["state"] ?? throw Exception("Missing state")
+            (foreign["reservation"] ?? throw Exception("Missing reservation"))["actor"] = JsonValue.Create(456)
+            (foreign["identity"] ?? throw Exception("Missing identity"))["actor"] = JsonValue.Create(456)
+            test.RewriteState(foreign)
+            Check.That(
+                Check.Text(Row(Read(test))["next"]?["command"]?[0]) == "gh",
+                "Closed contribution suggested releasing another donor's reservation"
+            )
             for stale in[]string{"issue", "revoked", "expired"} {
                 published.Restore()
                 Close(test, deleted: true)

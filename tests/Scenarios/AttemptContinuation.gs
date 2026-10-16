@@ -79,8 +79,8 @@ internal class AttemptContinuationChecks {
             endpoint string = ""
         ) string {
             test.Initialize(approve: false)
-            test.Flow.Call([]string{"access", "init", "owner/project"}, owner: true)
-            test.Flow.Call([]string{"access", "trust", "donor", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "trust", "donor", "owner/project"}, owner: true)
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "tracked.txt"), "approved\n")
             File.WriteAllText(Path.Combine(test.Flow.Upstream, "baseline.txt"), "baseline\n")
             Directory.CreateDirectory(Path.Combine(test.Flow.Upstream, "folder"))
@@ -100,7 +100,7 @@ internal class AttemptContinuationChecks {
             }
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Continuation authority and complete-diff verification fixture")
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             test.Coordinate(test.Event(test.ClaimRequest()))
             let args = List[string](
                 Args(
@@ -162,9 +162,11 @@ internal class AttemptContinuationChecks {
                         case <- after(TimeSpan.FromMilliseconds(20)) { }
                     }
                 }
-                test.Lifecycle("pause")
-                test.Lifecycle("resume")
-                Prepare(test, Args(test, source), 1)
+                if mode == "crash" {
+                    test.Lifecycle("pause")
+                    test.Lifecycle("resume")
+                    Prepare(test, Args(test, source), 1)
+                }
                 Check.Success(
                     TestProcess.Run(
                         "/usr/bin/kill",
@@ -231,35 +233,40 @@ internal class AttemptContinuationChecks {
             let source = Setup(test, mode, harness, endpoint)
             let original = Bytes(source)
             let prior = Read(source)
-            if mode == "timeout" {
+            if mode == "timeout" || mode == "cancel" {
                 let status = Check.Envelope(
                     test.Flow.Call([]string{"status", "--run", source, "--json"}),
                     "status",
                     "ok"
                 )
                 Check.That(
-                    Check.Text(status["data"]?["next"]?["action"]).Contains("tokate pause --run"),
-                    "Time-limited status omitted pause guidance: " + status.ToJsonString() + " after " + Check.Text(
-                        prior["error"]
-                    )
-                )
-                Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "tokate resume --run")
-                Check.That(
                     Check.Text(status["data"]?["next"]?["command"]?[1]) == "work",
                     "Time-limited status omitted the continuation command"
                 )
+                if mode == "cancel" {
+                    Check.That(
+                        Check.Text(status["data"]?["failure_reason"]) == "inference_interrupted",
+                        "Status hid the interruption"
+                    )
+                    Check.That(
+                        !Check.Text(status["data"]?["error"]?["message"]).Contains("fresh owner approval"),
+                        "Interrupted status required fresh approval"
+                    )
+                }
+                Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "tokate pause --run")
+                Check.Contains(Check.Text(status["data"]?["next"]?["action"]), "tokate resume --run")
                 let refused = test.Flow.Call(Args(test, source, harness, endpoint: endpoint), 1)
                 Check.Contains(refused.Error, source)
                 Check.Contains(refused.Error, "tokate pause --run")
                 Check.Contains(refused.Error, "tokate resume --run")
                 Preserved(source, original)
             }
-            if mode != "crash" && mode != "cancel" {
+            if mode != "crash" {
                 FreshAttempt(test, mode == "incomplete_turn")
             }
             let state = Check.Text(test.State()["sha"])
             var args = Args(test, source, harness, endpoint: endpoint)
-            if mode == "timeout" {
+            if mode == "timeout" || mode == "cancel" {
                 let status = Check.Envelope(
                     test.Flow.Call([]string{"status", "--run", source, "--json"}),
                     "status",
@@ -308,7 +315,7 @@ internal class AttemptContinuationChecks {
                 "Continuation inherited budgets"
             )
             Check.That(
-                mode == "timeout" ||
+                args[0] == "work" ||
                     run["usage"] == nil &&
                     run["turn_completed"] == nil &&
                     run["verification"] == nil &&
@@ -323,7 +330,7 @@ internal class AttemptContinuationChecks {
             if full {
                 Prepare(test, Args(test, source, harness, endpoint: endpoint), 1)
                 test.Flow.Call([]string{"work", "--run", source, "--yes"}, 1)
-                test.Flow.Call([]string{"work", "--run", fresh}, 1)
+                test.Flow.Call([]string{"work", "--yes", "--run", fresh}, 1)
                 Check.That(Check.Text(test.State()["sha"]) == state, "Preparation acquired or renewed authority")
                 let copied = Path.Combine(test.Flow.Temp.Root, "runs/copied-attempt")
                 Directory.CreateDirectory(copied)
@@ -336,7 +343,7 @@ internal class AttemptContinuationChecks {
                 )
                 Directory.Delete(copied, true)
             }
-            if mode != "timeout" {
+            if args[0] != "work" {
                 test.Flow.Call([]string{"work", "--run", fresh, "--yes"})
             }
             Preserved(source, original)
@@ -376,7 +383,7 @@ internal class AttemptContinuationChecks {
         }
 
         private func Publish(test CoordinationFlow, source string, fresh string) {
-            test.Flow.Call([]string{"submit", "--run", source}, 1)
+            test.Flow.Call([]string{"submit", "--yes", "--run", source}, 1)
             let preserved = File.ReadAllText(Path.Combine(fresh, "run.json"))
             let omitted = Read(fresh)
             for key in[]string{
@@ -388,9 +395,9 @@ internal class AttemptContinuationChecks {
                 omitted.AsObject().Remove(key)
             }
             Save(fresh, omitted)
-            test.Flow.Call([]string{"submit", "--run", fresh}, 1)
+            test.Flow.Call([]string{"submit", "--yes", "--run", fresh}, 1)
             File.WriteAllText(Path.Combine(fresh, "run.json"), preserved)
-            test.Flow.Call([]string{"submit", "--run", fresh, "--json"}, 8)
+            test.Flow.Call([]string{"submit", "--yes", "--run", fresh, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(fresh, "request.json")))
             let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
             Check.That(
@@ -547,7 +554,7 @@ internal class AttemptContinuationChecks {
                         run["state_sha"] = test.State()["sha"]?.DeepClone()
                     }
                     case "revoked" {
-                        test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                        test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                     }
                     case "task-changed" {
                         let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
@@ -555,7 +562,7 @@ internal class AttemptContinuationChecks {
                         test.Flow.Save()
                     }
                     case "denied" {
-                        test.Flow.Call([]string{"access", "deny", "donor", "owner/project"}, owner: true)
+                        test.Flow.Call([]string{"access", "--yes", "deny", "donor", "owner/project"}, owner: true)
                     }
                     case "expired" {
                         test.Expire()
@@ -593,24 +600,11 @@ internal class AttemptContinuationChecks {
 
         private func Budget(test CoordinationFlow, source string) {
             let before = Check.Text(test.State()["sha"])
-            for mode in[]string{
-                "seconds",
-                "verification-reserve",
-                "zero",
-                "equal",
-                "consent",
-                "selection",
-                "external",
-                "claim",
-                "store"
-            } {
+            for mode in[]string{"seconds", "zero", "equal", "consent", "selection", "external", "claim", "store"} {
                 let args = List[string](Args(test, source, consent: mode != "consent"))
                 switch mode {
                     case "seconds" {
                         args.RemoveRange(args.IndexOf("--time"), 2)
-                    }
-                    case "verification-reserve" {
-                        args.RemoveRange(args.IndexOf("--verify-time"), 2)
                     }
                     case "zero" {
                         args[args.IndexOf("--verify-time") + 1] = "0s"
@@ -633,6 +627,7 @@ internal class AttemptContinuationChecks {
                         test.Flow.Call(
                             []string{
                                 "claim",
+                                "--yes",
                                 "owner/project#1",
                                 "--continue-from",
                                 source,
@@ -653,6 +648,13 @@ internal class AttemptContinuationChecks {
                 )
             }
             Check.That(Check.Text(test.State()["sha"]) == before, "Budget refusal acquired or renewed authority")
+            let defaults = List[string](Args(test, source))
+            defaults.RemoveRange(defaults.IndexOf("--verify-time"), 2)
+            let fresh = Prepare(test, defaults.ToArray())
+            Check.That(
+                Check.Text(Read(fresh)["verification_reserve"]) == "",
+                "Bounded continuation changed the reserve default"
+            )
             test.Flow.NoInference()
             test.Flow.NoPr()
         }

@@ -75,9 +75,47 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     }
 
     shared {
-        internal func Load(directory string) Data {
-            RunStorage.ControlPaths(directory)
-            return Read(Path.Combine(directory, "run.json"))
+        internal func Load(directory string, amendment bool = false) Data {
+            let path = Path.Combine(directory, "run.json")
+            try {
+                RunStorage.ControlPaths(directory)
+            } catch (error CliFailure) {
+                throw CliFailure("invalid_state", "Cannot read saved run " + path + ": " + error.Message)
+            }
+            let run = Read(path)
+            if amendment {
+                return run
+            }
+            let field = InvalidField(run.Element())
+            if field != "" {
+                throw CliFailure(
+                    "invalid_state",
+                    "Saved run " +
+                        path +
+                        " has a missing or invalid field: " +
+                        field +
+                        ". Restore the original saved run file. No approval change is required."
+                )
+            }
+            return run
+        }
+
+        internal func InvalidField(value JsonElement) string {
+            for field in[]string{"version", "repo", "issue", "state"} {
+                let item = J.Get(value, field)
+                var number int32
+                let valid = switch field {
+                    case "version": item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out number) &&
+                        number == 2
+                    case "issue": item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out number) &&
+                        (number > 0 || (J.Bool(value, "gratis") && number == 0))
+                    default: item.ValueKind == JsonValueKind.String && item.GetString() != ""
+                }
+                if !valid {
+                    return field
+                }
+            }
+            return ""
         }
 
         internal func LegacyCorrection(path string) Data {
@@ -172,13 +210,33 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
 
         internal func Read(path string) Data {
             try {
-                return From(J.Parse(File.ReadAllText(path)))
+                let value = J.Parse(File.ReadAllText(path))
+                if value.ValueKind != JsonValueKind.Object {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Saved file " + path + " must contain a JSON object. Restore the original saved file."
+                    )
+                }
+                return From(value)
             } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure(
+                    "invalid_state",
+                    "Malformed JSON in " + path + ": " + error.Message + " Restore the original saved file."
+                )
             } catch (error IOException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot read saved file " +
+                        path +
+                        ": " +
+                        error.Message +
+                        " Select an existing run with tokate status."
+                )
             } catch (error UnauthorizedAccessException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot read saved file " + path + ": " + error.Message + " Check file access before retrying."
+                )
             }
         }
 

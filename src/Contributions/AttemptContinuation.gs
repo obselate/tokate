@@ -10,14 +10,20 @@ internal class AttemptContinuation {
     shared {
         internal func Has(run Data) bool -> run.Text("continuation_source") != ""
 
-        internal func TimeLimited(run Data) bool -> Harness.Resumes(run.Text("harness"), run.Text("provider")) &&
-            run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Number("preparation_version") == 1 &&
-            !run.Flag("unlimited") && run.Text("failure_stage") == "inference" && !run.Flag("turn_completed") &&
-            run.Text("commit") == "" && run.Number("pr") == 0 &&
+        internal func Stopped(run Data) bool -> Harness.Resumes(run.Text("harness"), run.Text("provider")) && run.Text(
+            "source"
+        ) == "tokate" &&
+            run.Text("state") == "failed" && run.Number("preparation_version") == 1 && run.Text(
+            "failure_stage"
+        ) == "inference" &&
+            !run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 &&
             (
-            run.Text("error").StartsWith("Runtime limit reached", StringComparison.Ordinal) || run.Text(
-                "error"
-            ) == "Runtime allowance exhausted"
+            run.Text("failure_reason") == "inference_interrupted" || !run.Flag("unlimited") &&
+                (
+                run.Text("error").StartsWith("Runtime limit reached", StringComparison.Ordinal) || run.Text(
+                    "error"
+                ) == "Runtime allowance exhausted"
+            )
         )
 
         internal func Next(directory string, run Data) Dictionary[string, Object?] {
@@ -281,15 +287,11 @@ internal class AttemptContinuation {
                 return
             }
 
-            if !AttemptContinuation.Has(run) || run.Text("source") != "tokate" || run.Number(
-                "verification_reserve"
-            ) < 1 ||
-                !Regex
-                .IsMatch(run.Text("continuation_source_metadata_sha256"), "^[0-9a-f]{64}$") {
-                throw CliFailure(
-                    "invalid_state",
-                    "Saved continuation lost its explicit import identity or verification budget"
-                )
+            if !AttemptContinuation.Has(run) || run.Text("source") != "tokate" || !Regex.IsMatch(
+                run.Text("continuation_source_metadata_sha256"),
+                "^[0-9a-f]{64}$"
+            ) {
+                throw CliFailure("invalid_state", "Saved continuation lost its explicit import identity")
             }
 
             RuntimeBudget.Validate(run)

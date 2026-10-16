@@ -325,7 +325,11 @@ internal class AccessState {
             }
 
             let issue = args.Number("issue")
-            GitHub.Issue(repo, issue)
+            try {
+                GitHub.Issue(repo, issue)
+            } catch (error CliFailure) when error.Code == "invalid_state" {
+                throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
+            }
             let viewer = GitHub.Api("user")
             let actor = RepositoryIdentity.PositiveId(J.Get(viewer, "id"))
             let requestScope = args.Get("trust") == "true" ? "trust": "issue"
@@ -629,7 +633,13 @@ internal class AccessState {
                 let expected = access.Sha == "" ? GitHub.Branch(repo, J.Text(info, "default_branch")): access.Sha
                 if operation == "init" {
                     if access.Sha != "" {
-                        throw Exception("Access already exists; inspect current membership")
+                        throw CliFailure(
+                            "invalid_state",
+                            "Access already exists for " +
+                                repo +
+                                ". Inspect current membership with: tokate access list " +
+                                repo
+                        )
                     }
                 } else {
                     var trusted bool
@@ -674,7 +684,13 @@ internal class AccessState {
                     break
                 }
                 if operation == "init" {
-                    throw CliFailure("invalid_state", "Access already exists. Inspect current membership.")
+                    throw CliFailure(
+                        "invalid_state",
+                        "Access already exists for " +
+                            repo +
+                            ". Inspect current membership with: tokate access list " +
+                            repo
+                    )
                 }
                 access = Load(repo, repoId)
             }
