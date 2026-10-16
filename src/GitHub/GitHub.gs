@@ -97,7 +97,7 @@ internal class GitHub {
             return false
         }
 
-        internal func Fingerprint(issue JsonElement) string -> Data.Hash(
+        internal func Fingerprint(issue JsonElement) string -> J.Hash(
             J.Write(map[string, Object?]{"title": J.Text(issue, "title"), "body": J.Text(issue, "body")})
         )
     }

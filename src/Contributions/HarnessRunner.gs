@@ -6,149 +6,7 @@ import System.Collections.Generic
 import System.Diagnostics
 import System.IO
 import System.Text.Json
-
-internal class Evidence {
-    internal var Report string = ""
-    internal var Usage Dictionary[string, Object?] = map[string, Object?]{}
-    internal var Model string? = nil
-}
-
-internal class Harness(
-    title string,
-    billing string,
-    provider string,
-    hint string,
-    label string,
-    prepare Func[string, Data, JsonElement, RuntimeBudget, ValueTuple[[]string, Dictionary[string, Object?]?]],
-    read Func[string, Data, JsonElement, CommandResult, Evidence],
-    activity Action[string],
-    choose Func[Args, Policy, string, JsonElement]? = nil,
-    validateSaved Action[Data]? = nil,
-    doctor Action[Args, ToolCheck]? = nil,
-    beforeRun Action[Data, RuntimeBudget]? = nil,
-    pair Func[string, string, bool]? = nil,
-    options[]string? = nil,
-    tools[]string? = nil,
-    catalog bool = false,
-    continues bool = true,
-    nix string = "",
-    installer string = "",
-    config string = ""
-) {
-    internal let Title string = title
-    internal let Billing string = billing
-    internal let Provider string = provider
-    internal let Hint string = hint
-    internal let Label string = label
-    internal let Prepare Func[
-        string,
-        Data,
-        JsonElement,
-        RuntimeBudget,
-        ValueTuple[[]string, Dictionary[string, Object?]?]
-    ] = prepare
-    internal let Read Func[string, Data, JsonElement, CommandResult, Evidence] = read
-    internal let Activity Action[string] = activity
-    internal let Select Func[Args, Policy, string, JsonElement]? = choose
-    internal let ValidateSaved Action[Data]? = validateSaved
-    internal let Doctor Action[Args, ToolCheck]? = doctor
-    internal let BeforeRun Action[Data, RuntimeBudget]? = beforeRun
-    internal let Pair Func[string, string, bool]? = pair
-    internal let Options[]string = options ?? []string{}
-    internal let Tools[]string = tools ?? []string{}
-    internal let Catalog bool = catalog
-    internal let Continues bool = continues
-    internal let Nix string = nix
-    internal let Installer string = installer
-    internal let Config string = config
-
-    shared {
-        internal let Table Dictionary[string, Harness] = map[string, Harness]{
-            "codex": Harness(
-                "Codex",
-                "Subscription",
-                "openai",
-                "Add native Linux x64 Codex or the @openai/codex npm launcher with its matching codex-linux-x64 native runtime to PATH; user-local installations are supported. Use --harness-path FILE for a custom location.",
-                "Inference",
-                Worker.Prepare,
-                Worker.Read,
-                Worker.Activity,
-                nix: "nixpkgs#codex",
-                config: ".codex"
-            ),
-            "pi": Harness(
-                "Pi",
-                "Local",
-                "local-chat-completions",
-                "Use --harness-path FILE, or --pi-root DIR and --node FILE for an existing installation.",
-                "Pi inference",
-                PiHarness.Prepare,
-                PiHarness.Read,
-                PiHarness.Activity,
-                PiHarness.Select,
-                PiHarness.ValidateSaved,
-                PiHarness.Doctor,
-                PiHarness.BeforeRun,
-                options: []string{"endpoint", "pi-root", "node"},
-                tools: []string{"/bin/bash"},
-                catalog: true,
-                nix: "github:earendil-works/pi/stable",
-                installer: "https://pi.dev/install.sh"
-            ),
-            "claude": Harness(
-                "Claude Code",
-                "Subscription",
-                "anthropic",
-                "Use an installed Claude Code with its existing login.",
-                "Claude inference",
-                ClaudeHarness.Prepare,
-                ClaudeHarness.Read,
-                ClaudeHarness.Activity,
-                ClaudeHarness.Select,
-                ClaudeHarness.ValidateSaved,
-                ClaudeHarness.Doctor,
-                pair: ClaudeCode.Pair,
-                options: []string{"claude-profile"},
-                tools: []string{"/bin/bash", "bwrap", "socat"},
-                continues: false
-            ),
-            "omp": Harness(
-                "OMP",
-                "",
-                "",
-                "Install OMP with its official installer and sign in, or use --harness-path FILE.",
-                "OMP inference",
-                OmpHarness.Prepare,
-                OmpHarness.Read,
-                OmpHarness.Activity,
-                OmpHarness.Select,
-                OmpHarness.ValidateSaved,
-                OmpHarness.Doctor,
-                catalog: true
-            )
-        }
-
-        internal func Find(name string) Harness? -> Table.ContainsKey(name) ? Table[name]: nil
-
-        internal func DefaultProvider(name string) string -> Find(name)?.Provider ?? ""
-
-        internal func Accepts(name string, provider string) bool -> Find(name) is Harness adapter &&
-            (adapter.Provider == "" || adapter.Provider == provider)
-
-        internal func Describe(name string, provider string) string {
-            let billing = Find(name)?.Billing ?? ""
-            return (Find(name)?.Title ?? name) + " (" + (billing == "" ? provider: billing) + ")"
-        }
-
-        internal func Owns(name string, option string) bool {
-            let options = Find(name)?.Options ?? []string{}
-            return Array.IndexOf(options, option) >= 0
-        }
-
-        internal func Resumes(name string, provider string) bool -> Find(name)?.Continues == true &&
-            Accepts(name, provider)
-    }
-}
+import System.Text.RegularExpressions
 
 internal class HarnessRunner {
     shared {
@@ -181,9 +39,19 @@ internal class HarnessRunner {
                     "This destination attempt already started execution; no second inference is allowed"
                 )
             }
+
+            Output.Sink.Step(
+                run.Flag("gratis") ? "Checking donor login...": "Checking owner approval and donor login..."
+            )
         }
 
         private func Authenticate(run Data, options Args, policy Policy, harness string, codex bool) Harness {
+            DonorSelection.Revalidate(run, policy)
+
+            Output.Sink.ConfirmSelection(options, J.Get(run.Element(), "selection"), run)
+
+            RuntimeBudget.Validate(run)
+
             let adapter = policy.Adapter(harness, run.Text("provider")) ??
                 throw Exception("Unsupported managed harness/provider")
 
@@ -223,7 +91,7 @@ internal class HarnessRunner {
             run.Fields["error"] = error.Message
 
             if codex && !run.Fields.ContainsKey("failure_reason") {
-                run.Fields["failure_reason"] = PublicOutput.FailureCode
+                run.Fields["failure_reason"] = Output.Sink.FailureCode
             }
 
             run.Save(directory)
@@ -233,6 +101,7 @@ internal class HarnessRunner {
             directory string,
             run Data,
             record JsonElement,
+            policy Policy,
             adapter Harness,
             result CommandResult,
             timer Stopwatch
@@ -241,7 +110,30 @@ internal class HarnessRunner {
             run.Fields["error_truncated"] = result.ErrorTruncated
             run.Fields["inference_exit_code"] = result.Code
 
-            let evidence = adapter.Read.Invoke(directory, run, record, result)
+            let evidence = adapter.Read.Invoke(
+                directory,
+                run,
+                record,
+                result,
+                (models JsonElement) -> {
+                    if models.ValueKind == JsonValueKind.Object {
+                        for used in models.EnumerateObject() {
+                            let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
+
+                            if !policy.AllowsModel(run.Text("harness"), run.Text("provider"), name) &&
+                                !policy
+                                .AllowsModel(run.Text("harness"), run.Text("provider"), used.Name) {
+                                throw ExecutionFailure.Create(
+                                    "inference_failed",
+                                    "Claude used " +
+                                        used.Name +
+                                        ", which the repository policy does not allow. Remove it from your Claude subagent or model settings."
+                                )
+                            }
+                        }
+                    }
+                }
+            )
 
             File.WriteAllText(Path.Combine(directory, "report.md"), evidence.Report)
 
@@ -262,19 +154,9 @@ internal class HarnessRunner {
 
                 ValidateUnexecuted(directory, run)
 
-                Terminal.Step(
-                    run.Flag("gratis") ? "Checking donor login...": "Checking owner approval and donor login..."
-                )
-
                 let record = ContributionAuthority.Recheck(run)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 policy.Digest = run.Text("policy_hash")
-                DonorSelection.Revalidate(run, policy)
-
-                DonorSelection.Confirm(options, J.Get(run.Element(), "selection"), run)
-
-                RuntimeBudget.Validate(run)
-
                 let harness = run.Text("harness")
                 let codex = harness == "codex"
                 let adapter = Authenticate(run, options, policy, harness, codex)
@@ -287,7 +169,13 @@ internal class HarnessRunner {
                 let checkout = Path.Combine(directory, "checkout")
 
                 WorkspacePreparation.Ready(directory, run)
-                let prepared = adapter.Prepare.Invoke(directory, run, record, coding)
+                let prepared = adapter.Prepare.Invoke(
+                    directory,
+                    run,
+                    record,
+                    coding,
+                    () -> policy.AllowedModels("claude", "anthropic", ClaudeCode.ModelPattern)
+                )
                 ContributionAuthority.Recheck(run)
                 WorkspacePreparation.Ready(directory, run)
 
@@ -309,20 +197,24 @@ internal class HarnessRunner {
 
                     if codex {
                         let allowance = RuntimeBudget.Description(run)
-                        Terminal.Step(
+                        Output.Sink.Step(
                             "Running " + run.Text("model") + " / " + run.Text("effort") + ": " + allowance + "..."
                         )
                         timer.Restart()
                     }
 
                     inferenceStarted = true
-                    PublicOutput.FailureCode = "inference_failed"
+                    Output.Sink.FailureCode = "inference_failed"
                     var result CommandResult
                     {
-                        using let progress = TerminalProgress(adapter.Label, coding, RuntimeBudget(timer, totalSeconds))
+                        using let progress = Output.Sink.Progress(
+                            adapter.Label,
+                            coding,
+                            RuntimeBudget(timer, totalSeconds)
+                        )
                         var activity Action[string]? = nil
 
-                        if DonationView.Active() {
+                        if Output.Sink.Active() {
                             activity = adapter.Activity
                         }
 
@@ -337,7 +229,7 @@ internal class HarnessRunner {
                         }
 
                         if harness == "command" {
-                            Terminal.Step("Running " + String.Join(" ", prepared.Item1) + "...")
+                            Output.Sink.Step("Running " + String.Join(" ", prepared.Item1) + "...")
                         }
 
                         result = Commands.Run(
@@ -356,9 +248,9 @@ internal class HarnessRunner {
                         )
                     }
 
-                    let evidence = SaveEvidence(directory, run, record, adapter, result, timer)
+                    let evidence = SaveEvidence(directory, run, record, policy, adapter, result, timer)
 
-                    PublicOutput.FailureCode = "invalid_state"
+                    Output.Sink.FailureCode = "invalid_state"
                     Contribution.Finish(directory, run, record, evidence.Usage, timer, seconds, reserve)
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
                     if codex && !inferenceStarted {
@@ -367,7 +259,7 @@ internal class HarnessRunner {
 
                     RecordFailure(directory, run, codex, error)
 
-                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
+                    throw ExecutionFailure.From(error, Output.Sink.FailureCode)
                 }
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||

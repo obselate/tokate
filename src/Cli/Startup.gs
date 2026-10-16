@@ -6,18 +6,82 @@ import System.IO
 import System.Linq
 import System.Text.Json
 
-internal class ToolCheck {
-    internal var Name string = ""
-    internal var Path string = ""
-    internal var Hint string = ""
-    internal var Status string = "missing"
-    internal var Detail string = ""
-    internal var Code string = ""
-    internal var Report Object? = nil
-}
-
 internal class Startup {
     shared {
+        internal func Gate(args Args, runtime JsonElement) Object {
+            let model = args.Need("model")
+            let effort = args.Need("effort")
+            let path = args.Get(
+                "policy",
+                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
+            )
+            var text string
+            var policy Policy
+
+            try {
+                text = File.ReadAllText(path)
+            } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
+                throw CliFailure(
+                    "invalid_state",
+                    "Cannot read the policy at " + path + ". Pass --policy FILE or run in a checkout."
+                )
+            }
+
+            try {
+                policy = Policy(text)
+                policy.Validate("claude", "anthropic", model, effort, 1)
+            } catch (error Exception) {
+                throw CliFailure("verification_failed", error.Message)
+            }
+
+            let environment = List[string]()
+
+            for entry in ClaudeCode.EnvironmentControls() {
+                environment.Add(entry.Key + "=" + entry.Value)
+            }
+
+            let result = map[string, Object?]{
+                "version": J.Text(runtime, "version"),
+                "auth_status": J.Get(runtime, "auth_status"),
+                "policy_hash": policy.Digest,
+                "requested": map[string, Object?]{"model": model, "effort": effort},
+                "invocation": ClaudeCode.Invocation(
+                    model,
+                    effort,
+                    args.Need("claude-profile"),
+                    policy.AllowedModels("claude", "anthropic", ClaudeCode.ModelPattern)
+                ),
+                "environment_controls": environment,
+                "managed_execution_enabled": true,
+                "limitations": []string{
+                    "Local authentication schema and required interfaces checked; remote entitlement and model availability are not proven.",
+                    "File restrictions and Bash sandboxing are Claude Code's own. Native reports are not remote identity attestations."
+                }
+            }
+
+            if args.Get("path") != "" {
+                result["configured_command"] = ClaudeCode.Command(
+                    args.Need("harness-path"),
+                    args.Need("claude-profile"),
+                    args.Need("path")
+                )
+            }
+
+            if args.Get("file") != "" {
+                try {
+                    result["native_reports"] = ClaudeCode.Reports(
+                        ClaudeCode.Report(args.Need("file"), args.Need("claude-profile")),
+                        model,
+                        effort
+                    )
+                } catch (error Exception) {
+                    throw CliFailure("verification_failed", error.Message)
+                }
+            }
+
+            return result
+        }
+
         internal func Scan(names[]string, harnessPath string = "") List[ToolCheck] {
             let tools = List[ToolCheck]()
 
@@ -527,7 +591,7 @@ internal class Startup {
             Show(listed)
 
             if tools.FirstOrDefault(tool -> tool.Report != nil)?.Report is JsonElement native {
-                let report = ClaudeCode.Gate(options, native)
+                let report = Gate(options, native)
 
                 if PublicOutput.ResultData is Dictionary[string, Object?]fields {
                     fields["claude"] = report

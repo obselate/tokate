@@ -48,20 +48,20 @@ internal class Worker {
             let kind = J.Text(item, "type")
 
             if type == "item.completed" && kind == "agent_message" {
-                DonationView.Append("Assistant: " + J.Text(item, "text"))
+                Output.Sink.Append("Assistant: " + J.Text(item, "text"))
             } else if type == "item.started" && kind == "command_execution" {
-                DonationView.Append("Run: " + J.Text(item, "command"))
+                Output.Sink.Append("Run: " + J.Text(item, "command"))
             } else if type == "item.completed" && kind == "command_execution" {
-                DonationView.Append(J.Text(item, "aggregated_output"))
-                DonationView.Append(
+                Output.Sink.Append(J.Text(item, "aggregated_output"))
+                Output.Sink.Append(
                     "Command " + J.Text(item, "status") + " (exit " + J.Get(item, "exit_code").ToString() + ")"
                 )
             } else if type == "item.completed" && kind == "file_change" {
                 for change in J.Items(J.Get(item, "changes")) {
-                    DonationView.Append(J.Text(change, "kind") + ": " + J.Text(change, "path"))
+                    Output.Sink.Append(J.Text(change, "kind") + ": " + J.Text(change, "path"))
                 }
             } else if type == "error" || type == "turn.failed" {
-                DonationView.Append(
+                Output.Sink.Append(
                     "Harness error: " + J.Text(value, "message") + J.Text(J.Get(value, "error"), "message")
                 )
             }
@@ -216,10 +216,13 @@ internal class Worker {
             run.Fields["codex_version"] = version
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
-            []string,
-            Dictionary[string, Object?]?
-        ] {
+        internal func Prepare(
+            directory string,
+            run Data,
+            record JsonElement,
+            coding RuntimeBudget,
+            models Func[List[string]?]
+        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let harnessPath = run.Text("harness_path")
             let selected = J.Get(run.Element(), "selection")
             let checkout = Path.Combine(directory, "checkout")
@@ -245,7 +248,13 @@ internal class Worker {
             return ValueTuple[[]string, Dictionary[string, Object?]?](Command(args.ToArray(), harnessPath), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
+        internal func Read(
+            directory string,
+            run Data,
+            record JsonElement,
+            result CommandResult,
+            validateModels Action[JsonElement]
+        ) Evidence {
             if result.Code != 0 {
                 throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")
             }

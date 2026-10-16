@@ -108,7 +108,7 @@ internal class OwnerApproval {
                 "allowed_actor_ids": allowed,
                 "issue_hash": GitHub.Fingerprint(issue),
                 "policy_hash": policy.Digest,
-                "template_hash": Data.Hash(template),
+                "template_hash": J.Hash(template),
                 "base": revision,
                 "base_branch": branch,
                 "decree": decree,

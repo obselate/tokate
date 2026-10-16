@@ -40,9 +40,7 @@ internal class ContributionPreparation {
                 let source = AttemptContinuation.Source(sourceDirectory, run, record)
                 run.Fields["continuation_source"] = sourceDirectory
                 run.Fields["continuation"] = AttemptContinuation.Provenance(source)
-                run.Fields["continuation_source_metadata_sha256"] = Data.Hash(
-                    ContinuationImport.Metadata(sourceDirectory)
-                )
+                run.Fields["continuation_source_metadata_sha256"] = J.Hash(ContinuationImport.Metadata(sourceDirectory))
             }
 
             if run.Text("source") == "tokate" {
@@ -201,7 +199,13 @@ internal class ContributionPreparation {
         }
 
         private func Allocate(store string, run Data, id string) string {
-            let directory = RunStorage.Allocate(store, run.Text("repo"), run.Number("issue"), id)
+            let directory = RunStorage.Allocate(
+                store,
+                run.Text("repo"),
+                run.Number("issue"),
+                id,
+                AttemptContinuation.Stopped
+            )
             PublicOutput.RunDirectory = directory
             run.Fields["name"] = Path.GetFileName(directory)
             return directory

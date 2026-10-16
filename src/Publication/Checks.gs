@@ -38,7 +38,7 @@ internal class Checks {
             result["base"] = J.Select(J.Get(pull, "base"), "ref")
             result["base_repo"] = J.Select(J.Get(J.Get(pull, "base"), "repo"), "id,full_name")
             result["author"] = J.Select(J.Get(pull, "user"), "id,login")
-            result["body_hash"] = Data.Hash(J.Text(pull, "body"))
+            result["body_hash"] = J.Hash(J.Text(pull, "body"))
 
             return J.Write(result)
         }

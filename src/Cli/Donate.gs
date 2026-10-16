@@ -217,7 +217,7 @@ internal class Donate {
                 },
                 "guidance": guidance,
                 "prompt": prompt,
-                "prompt_sha256": Data.Hash(prompt)
+                "prompt_sha256": J.Hash(prompt)
             }
             if gratis {
                 Gratis.Context(context, List[Object]())

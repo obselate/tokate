@@ -72,23 +72,6 @@ internal class PublicSummary {
         private func Safe(text string) bool -> text.Length >= 3 && text.Length <= 200 && text == text.Trim() &&
             Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(text, RestrictedTextPattern)
 
-        internal func Identifier(text string, model bool = false) string {
-            if text == "" && !model {
-                return "unknown"
-            }
-
-            let pattern = model ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
-
-            if !Regex.IsMatch(text, pattern) || text.Contains("://") || Regex.IsMatch(
-                text,
-                "(?i)(gh[pousr]_|github_pat_|sk-|secret|password)"
-            ) {
-                throw CliFailure("invalid_state", "Tool declaration contains an invalid public identifier")
-            }
-
-            return text
-        }
-
         internal func FileSummary(path string, head string) JsonElement {
             try {
                 if path == "" {
@@ -157,8 +140,8 @@ internal class PublicSummary {
             Validate(summary)
 
             if run.Text("summary_patch_sha256") == "" {
-                run.Fields["summary_patch_sha256"] = Data.Hash(patch)
-            } else if run.Text("summary_patch_sha256") != Data.Hash(patch) {
+                run.Fields["summary_patch_sha256"] = J.Hash(patch)
+            } else if run.Text("summary_patch_sha256") != J.Hash(patch) {
                 run.Fields.Remove("public_summary")
                 run.Fields.Remove("summary_patch_sha256")
             }
@@ -341,7 +324,7 @@ internal class PublicSummary {
 
                 for key in[]string{"harness", "provider", "model", "effort"} {
                     let token = J.Text(tool, key)
-                    cells.Add(Identifier(token, model: key == "model"))
+                    cells.Add(RequestData.Identifier(token, model: key == "model"))
                 }
 
                 result += "\n| " +

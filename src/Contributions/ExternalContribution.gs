@@ -346,7 +346,7 @@ internal class ExternalContribution {
 
             let results = List[Object]()
             run.Fields["verification"] = results
-            PublicOutput.FailureCode = "verification_failed"
+            Output.Sink.FailureCode = "verification_failed"
             run.Fields["failure_stage"] = "owner_verification"
             run.Fields["failure_reason"] = "verification_failed"
 
@@ -383,13 +383,13 @@ internal class ExternalContribution {
                         }
                     }
 
-                    PublicOutput.FailureCode = "invalid_state"
+                    Output.Sink.FailureCode = "invalid_state"
                     run.Fields["failure_stage"] = "changed_candidate"
                     run.Fields["failure_reason"] = "candidate_changed"
                     workspace.Unchanged(budget)
                 }
 
-                PublicOutput.FailureCode = "invalid_state"
+                Output.Sink.FailureCode = "invalid_state"
                 run.Fields["failure_stage"] = "changed_candidate"
                 run.Fields["failure_reason"] = "candidate_changed"
                 Verification.Candidate(checkout)
@@ -435,7 +435,7 @@ internal class ExternalContribution {
 
                 run.Save(directory)
 
-                throw ExecutionFailure.From(error, PublicOutput.FailureCode)
+                throw ExecutionFailure.From(error, Output.Sink.FailureCode)
             }
         }
 
@@ -524,13 +524,13 @@ internal class ExternalContribution {
 
                     run.Save(directory)
 
-                    throw ExecutionFailure.From(error, PublicOutput.FailureCode)
+                    throw ExecutionFailure.From(error, Output.Sink.FailureCode)
                 }
 
                 VerifyExternal(directory, run, record, checkout, commit, seconds, retry, metadata)
 
-                Terminal.Message(
-                    "Exact external commit passed independent verification. Use " + Terminal.Command(
+                Output.Sink.Message(
+                    "Exact external commit passed independent verification. Use " + Output.Sink.Command(
                         []string{"tokate", "submit", "--run", directory}
                     )
                 )

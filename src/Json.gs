@@ -6,10 +6,14 @@ import System.Collections
 import System.Collections.Generic
 import System.IO
 import System.Text
+import System.Security.Cryptography
 import System.Text.Json
 
 internal class J {
     shared {
+        internal func Hash(text string) string -> Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))
+            .ToLowerInvariant()
+
         internal func Parse(text string) JsonElement {
             using let doc = JsonDocument.Parse(text)
             return doc.RootElement.Clone()
