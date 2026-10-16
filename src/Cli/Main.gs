@@ -1,6 +1,7 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
@@ -297,10 +298,15 @@ private func RunCommand(options Args) int32 {
 
         case "access" {
             AccessState.Run(options)
+            RenderAccess(options)
         }
 
         case "coordinate" {
-            Coordinator.Run(options)
+            let outcome = Coordinator.Run(options)
+
+            if outcome.Item1.ValueKind != JsonValueKind.Undefined {
+                Terminal.Json(outcome.Item1, outcome.Item2)
+            }
         }
 
         case "admit" {
@@ -379,6 +385,50 @@ private func RunCommand(options Args) int32 {
     }
 
     return 0
+}
+
+private func RenderAccess(options Args) {
+    if PublicOutput.Enabled || (options.Subject != "list" && options.Subject != "history") {
+        return
+    }
+
+    let value = PublicOutput.ResultData as Dictionary[string, Object?] ?? throw Exception("Missing donor access result")
+
+    if options.Subject == "history" {
+        Terminal.Json(J.Parse(J.Write(value)), "Donor access and owner review")
+        return
+    }
+
+    Terminal.Heading("Donor access")
+
+    let trusted = value["trusted"] as List[JsonElement] ?? throw Exception("Missing trusted donors")
+
+    for member in trusted {
+        Terminal.Row("Trusted donor", J.Text(member, "donor"))
+    }
+
+    let members = value["members"] as List[JsonElement] ?? throw Exception("Missing donor access members")
+    let pending = value["pending"] as List[JsonElement] ?? throw Exception("Missing donor access requests")
+
+    for member in members {
+        let login = J.Text(member, "donor")
+
+        if J.Bool(member, "denied") {
+            Terminal.Row("Denied donor", login)
+        }
+    }
+
+    for request in pending {
+        Terminal.Row(
+            "Pending request",
+            J.Text(request, "donor") + " #" + J.Number(request, "issue").ToString() + " (" + J.Text(request, "scope") +
+                ")"
+        )
+    }
+
+    if members.Count == 0 && pending.Count == 0 {
+        Terminal.Message("No donor access or pending requests.", "default")
+    }
 }
 
 private func SubmitCommand(options Args) int32? {

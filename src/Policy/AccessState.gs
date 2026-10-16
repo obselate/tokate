@@ -191,7 +191,9 @@ internal class AccessState {
         internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement, policy JsonElement) {
             Task(approval)
 
-            PublicOutput.ResultData = map[string, Object?]{
+            Output
+                .Sink
+                .ResultData = map[string, Object?]{
                 "repo": repo,
                 "issue": issue,
                 "eligible": false,
@@ -210,7 +212,9 @@ internal class AccessState {
                 let access = Load(repo, repoId)
                 let allowed = access.Allows(id, mode, approval)
 
-                PublicOutput.ResultData = map[string, Object?]{
+                Output
+                    .Sink
+                    .ResultData = map[string, Object?]{
                     "repo": repo,
                     "issue": issue,
                     "actor": id,
@@ -243,7 +247,9 @@ internal class AccessState {
             } catch (error ApiDeadlineException) {
                 throw error
             } catch (error Exception) {
-                PublicOutput.ResultData = map[string, Object?]{
+                Output
+                    .Sink
+                    .ResultData = map[string, Object?]{
                     "repo": repo,
                     "issue": issue,
                     "eligible": false,
@@ -343,7 +349,9 @@ internal class AccessState {
                     J.Get(request, "actor")
                 ) == actor &&
                     J.Text(request, "scope") == requestScope {
-                    PublicOutput.ResultData = map[string, Object?]{
+                    Output
+                        .Sink
+                        .ResultData = map[string, Object?]{
                         "repo": repo,
                         "issue": issue,
                         "scope": requestScope,
@@ -351,7 +359,7 @@ internal class AccessState {
                         "comment": J.Get(request, "comment")
                     }
 
-                    Terminal.Message("An access request already exists; owner review is still required.")
+                    Output.Sink.Message("An access request already exists; owner review is still required.")
                     return
                 }
             }
@@ -365,7 +373,9 @@ internal class AccessState {
                 }
             )
 
-            PublicOutput.ResultData = map[string, Object?]{
+            Output
+                .Sink
+                .ResultData = map[string, Object?]{
                 "repo": repo,
                 "issue": issue,
                 "scope": requestScope,
@@ -373,7 +383,7 @@ internal class AccessState {
                 "comment": J.Get(comment, "id")
             }
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Access requested. The owner can use approve ISSUE LOGIN or grant persistent trust. The request grants no eligibility."
             )
         }
@@ -506,47 +516,15 @@ internal class AccessState {
                 Pending(repo, access, pending, args.Get("issue") == "" ? 0: args.Number("issue"), actor)
             }
 
-            PublicOutput.ResultData = map[string, Object?]{
+            Output
+                .Sink
+                .ResultData = map[string, Object?]{
                 "repo": repo,
                 "access_sha": access.Sha,
                 "members": members,
                 "trusted": trusted,
                 "pending": pending,
                 "history": history
-            }
-
-            if !PublicOutput.Enabled {
-                if args.Subject == "history" {
-                    Terminal.Json(J.Parse(J.Write(PublicOutput.ResultData)), "Donor access and owner review")
-                } else {
-                    Terminal.Heading("Donor access")
-
-                    for member in trusted {
-                        Terminal.Row("Trusted donor", J.Text(member, "donor"))
-                    }
-
-                    for member in members {
-                        let login = J.Text(member, "donor")
-                        if J.Bool(member, "denied") {
-                            Terminal.Row("Denied donor", login)
-                        }
-                    }
-
-                    for request in pending {
-                        Terminal.Row(
-                            "Pending request",
-                            J.Text(request, "donor") + " #" + J.Number(request, "issue").ToString() + " (" + J.Text(
-                                request,
-                                "scope"
-                            ) +
-                                ")"
-                        )
-                    }
-
-                    if members.Count == 0 && pending.Count == 0 {
-                        Terminal.Message("No donor access or pending requests.", "default")
-                    }
-                }
             }
         }
 
@@ -616,8 +594,8 @@ internal class AccessState {
                 let state = CoordinationState.Load(repo, issue)
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), J.Get(viewer, "id"))
 
-                if !PublicOutput.Enabled {
-                    Terminal.Message("You are eligible for approved issue #" + issue.ToString() + ".")
+                if !Output.Sink.Enabled {
+                    Output.Sink.Message("You are eligible for approved issue #" + issue.ToString() + ".")
                 }
 
                 return
@@ -666,13 +644,15 @@ internal class AccessState {
                 access = Load(repo, repoId)
             }
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Eligibility changes do not alter task scope approval. Revoked access blocks new work and publication; every PR requires owner review.",
                 "cyan",
                 true
             )
 
-            PublicOutput.ResultData = map[string, Object?]{
+            Output
+                .Sink
+                .ResultData = map[string, Object?]{
                 "repo": repo,
                 "repo_id": repoId,
                 "actor": actor,
@@ -680,9 +660,9 @@ internal class AccessState {
                 "access_sha": access.Sha
             }
 
-            if !PublicOutput.Enabled {
+            if !Output.Sink.Enabled {
                 let donor = args.Get("donor")
-                Terminal.Message(
+                Output.Sink.Message(
                     switch operation {
                         case "trust": "Trusted " + donor + " for future approved issues."
                         case "untrust": "Removed trust for " + donor + " on future approved issues."
@@ -693,7 +673,7 @@ internal class AccessState {
                 )
 
                 if operation == "init" {
-                    Terminal.Message(
+                    Output.Sink.Message(
                         "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
                     )
                 }

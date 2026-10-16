@@ -226,7 +226,7 @@ internal class Donate {
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
-            let selection = DonorSelection.Resolve(options, policy)
+            let selection = SelectionPolicy.Resolve(options, policy)
             let limit = issues.Count > 0 ? issues.Count.ToString() +
                 (issues.Count == 1 ? " task": " tasks"): Double.IsPositiveInfinity(total) ? "until stopped":
             total.ToString() + " seconds"

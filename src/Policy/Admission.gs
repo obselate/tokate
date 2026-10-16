@@ -114,8 +114,8 @@ internal class Admission {
         }
 
         private func Result(repo string, number int32, state string) {
-            PublicOutput.ResultData = map[string, Object?]{"repo": repo, "pr": number, "admission": state}
-            Terminal.Message("Admission: PR #" + number.ToString() + " " + state)
+            Output.Sink.ResultData = map[string, Object?]{"repo": repo, "pr": number, "admission": state}
+            Output.Sink.Message("Admission: PR #" + number.ToString() + " " + state)
         }
 
         private func CurrentPolicy(repo string, repoId int64, pull JsonElement, number int32) Policy {
@@ -283,7 +283,7 @@ internal class Admission {
                 if error.Code == "stale_approval" ||
                     (
                     error.Code == "invalid_state" && J.Text(
-                        J.Parse(J.Write(PublicOutput.ResultData)),
+                        J.Parse(J.Write(Output.Sink.ResultData)),
                         "authority"
                     ) != "unknown"
                 ) {

@@ -23,7 +23,7 @@ internal class OmpHarness {
             let model = RequestData.ModelIdentifier(args.Need("model"))
             let effort = args.Need("effort")
 
-            let selected = DonorSelection.Selection(args, policy, source)
+            let selected = SelectionPolicy.Selection(args, policy, source)
             let runtime = OmpRuntime.Runtime(args)
             let limits = OmpRuntime.Model(args.Need("harness-path"), provider, model)
             OmpRuntime.CheckEffort(limits, effort)

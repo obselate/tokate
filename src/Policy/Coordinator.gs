@@ -36,7 +36,7 @@ internal class Coordinator {
             }
 
             if !GitHub.HasLabel(issue) {
-                Terminal.Message("Approval label is no longer present.")
+                Output.Sink.Message("Approval label is no longer present.")
                 return
             }
 
@@ -65,7 +65,7 @@ internal class Coordinator {
                         "body": "The tokate:approved label was removed. Approval requires repository write, maintain or admin permission."
                     }
                 )
-                Terminal.Message("Approval label removed because the sender lacks repository write permission.")
+                Output.Sink.Message("Approval label removed because the sender lacks repository write permission.")
                 return
             }
 
@@ -92,24 +92,24 @@ internal class Coordinator {
                 approval["issue_hash"],
                 J.Text(previous, "issue_hash")
             ) {
-                Terminal.Message("Issue approval is already current.")
+                Output.Sink.Message("Issue approval is already current.")
                 return
             }
 
             approval["nonce"] = Guid.NewGuid().ToString("N")
             CoordinationState.Approve(repo, number, approval)
-            Terminal.Message("Issue approved from the tokate:approved label.")
+            Output.Sink.Message("Issue approved from the tokate:approved label.")
         }
 
-        internal func Run(args Args) {
+        internal func Run(args Args) ValueTuple[JsonElement, string] {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
             if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
                 ApproveLabel(repo, event)
-                return
+                return ValueTuple[JsonElement, string](JsonElement{}, "")
             }
 
-            Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
+            return Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
         }
 
         private func Replay(
@@ -120,7 +120,7 @@ internal class Coordinator {
             actor JsonElement,
             donor string,
             outcome JsonElement
-        ) {
+        ) ValueTuple[JsonElement, string] {
             let action = J.Text(request, "action")
             if action != "release" {
                 state.Check(repo, number, donor, actor)
@@ -131,10 +131,10 @@ internal class Coordinator {
             if action == "publish" {
                 ContributionHandoff.Supersede(state, request)
             }
-            Terminal.Json(outcome, "Recorded request outcome")
+            return ValueTuple[JsonElement, string](outcome, "Recorded request outcome")
         }
 
-        private func Process(repo string, event JsonElement, eventName string) {
+        private func Process(repo string, event JsonElement, eventName string) ValueTuple[JsonElement, string] {
             let eventComment = J.Get(event, "comment")
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
@@ -203,8 +203,7 @@ internal class Coordinator {
                         throw Exception("UUID replay changed actor or request contents")
                     }
 
-                    Replay(repo, number, state, request, actor, donor, J.Get(old, "outcome"))
-                    return
+                    return Replay(repo, number, state, request, actor, donor, J.Get(old, "outcome"))
                 }
             }
 
@@ -242,7 +241,7 @@ internal class Coordinator {
             retained.Add(map[string, Object?]{"uuid": J.Text(request, "uuid"), "binding": binding, "outcome": outcome})
             state.Fields["outcomes"] = retained
 
-            CommitRequest(repo, number, state, record, request, actor, donor, outcome, originalExpiry)
+            return CommitRequest(repo, number, state, record, request, actor, donor, outcome, originalExpiry)
         }
 
         private func Publish(
@@ -387,7 +386,7 @@ internal class Coordinator {
             donor string,
             outcome Object,
             originalExpiry int64
-        ) {
+        ) ValueTuple[JsonElement, string] {
             let action = J.Text(request, "action")
             let updated = state.Value()
 
@@ -400,8 +399,7 @@ internal class Coordinator {
             if live.Sha != state.Sha {
                 let recorded = RequestData.Recorded(live.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
-                    Replay(repo, number, live, request, actor, donor, recorded)
-                    return
+                    return Replay(repo, number, live, request, actor, donor, recorded)
                 }
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
@@ -431,8 +429,7 @@ internal class Coordinator {
                 let inspected = CoordinationState.Load(repo, number)
                 let recorded = RequestData.Recorded(inspected.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
-                    Replay(repo, number, inspected, request, actor, donor, recorded)
-                    return
+                    return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
 
                 throw Exception(
@@ -455,8 +452,7 @@ internal class Coordinator {
             if acquired.Sha != state.Sha {
                 let recorded = RequestData.Recorded(acquired.Value(), actor, request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
-                    Replay(repo, number, acquired, request, actor, donor, recorded)
-                    return
+                    return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
                 throw CliFailure(
                     "stale_approval",
@@ -484,7 +480,7 @@ internal class Coordinator {
                 ContributionHandoff.Supersede(acquired, request)
             }
 
-            Terminal.Json(J.Parse(J.Write(outcome)), "Request outcome")
+            return ValueTuple[JsonElement, string](J.Parse(J.Write(outcome)), "Request outcome")
         }
 
         private func Amend(

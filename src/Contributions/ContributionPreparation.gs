@@ -108,7 +108,7 @@ internal class ContributionPreparation {
                 }
 
                 policy.Digest = J.Text(approval, "policy_hash")
-                selection = DonorSelection.Resolve(args, policy)
+                selection = SelectionPolicy.Resolve(args, policy)
 
                 if tools.ValueKind == JsonValueKind.Undefined {
                     tools = J.Parse(J.Write([]Object{J.Select(selection, "harness,provider,model,effort")}))
@@ -393,7 +393,7 @@ internal class ContributionPreparation {
             RuntimeBudget.Validate(run)
 
             if run.Text("source") == "tokate" {
-                DonorSelection.Revalidate(run, policy)
+                SelectionPolicy.Revalidate(run, policy)
             }
 
             Overlaps.RequireDependencies(run.Text("repo"), run.Number("issue"))
