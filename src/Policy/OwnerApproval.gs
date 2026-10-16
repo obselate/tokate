@@ -116,7 +116,8 @@ internal class OwnerApproval {
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + args.Number("issue").ToString() + "/labels/tokate%3Aapproved",
-                method: "DELETE"
+                method: "DELETE",
+                missing: true
             )
 
             Terminal.Message(

@@ -573,10 +573,10 @@ internal class ContributionStatusChecks {
                         "History required a live donor branch"
                     )
                     Check.Contains(Check.Text(row["drafts"]?[0]?["receipt"]), "current readiness is not established")
-                    Check.Contains(Check.Text(row["next"]?["action"]), "remaining open issue")
+                    Check.Contains(Check.Text(row["next"]?["action"]), merged ? "remaining open issue": "release")
                     Check.That(
-                        Check.Text(row["next"]?["command"]?[1]) == "issue",
-                        "History suggested completion or PR review"
+                        Check.Text(row["next"]?["command"]?[1]) == (merged ? "issue": "release"),
+                        "History omitted release of the active reservation"
                     )
                     for call in test.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
                         let path = Check.Text(call["path"])
@@ -588,7 +588,10 @@ internal class ContributionStatusChecks {
                     }
                     let human = test.Flow.Call([]string{"status", "owner/project#1", "--plain"})
                     Check.Contains(human.Output, "State  " + lifecycle + "_contribution")
-                    Check.Contains(human.Output, "Next   gh issue view 1 --repo owner/project")
+                    Check.Contains(
+                        human.Output,
+                        merged ? "Next   gh issue view 1 --repo owner/project": "Next   tokate release owner/project#1"
+                    )
                     if !deleted {
                         let copy = Path.Combine(test.Flow.Temp.Env["HOME"], ".local/state/tokate/runs/published")
                         let record = Check.Json(File.ReadAllText(Path.Combine(published.Run, "run.json")))

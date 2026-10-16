@@ -108,7 +108,7 @@ internal class RunStorage {
             for row in SavedRuns(roots.ToArray()).Rows {
                 if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
                     PublicOutput.RunDirectory = row.Location
-                    if AttemptContinuation.TimeLimited(Data.From(row.Value)) {
+                    if AttemptContinuation.Stopped(Data.From(row.Value)) {
                         throw ExecutionFailure.Create(
                             "invalid_state",
                             "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
