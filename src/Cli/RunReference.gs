@@ -27,9 +27,9 @@ internal class RunReference {
             if work.ValueKind != JsonValueKind.Array {
                 var next = Action(J.Get(value, "next"))
 
-                for action in Output.Sink.Actions {
+                for action in PublicOutput.Actions {
                     if action.Length > 1 && action[1] != "status" {
-                        next = Output.Sink.Hint(action)
+                        next = Terminal.Hint(action)
                         break
                     }
                 }
@@ -124,14 +124,12 @@ internal class RunReference {
             }
 
             if J.Bool(value, "truncated") {
-                Output.Sink.Message("Bounded snapshot: some data was omitted.", "default")
+                Terminal.Message("Bounded snapshot: some data was omitted.", "default")
             }
         }
 
         private func Action(next JsonElement) string {
-            let command = Output.Sink.Hint(
-                J.Items(J.Get(next, "command")).ConvertAll(word -> word.ToString()).ToArray()
-            )
+            let command = Terminal.Hint(J.Items(J.Get(next, "command")).ConvertAll(word -> word.ToString()).ToArray())
             return command == "" ? J.Text(next, "action"): command
         }
 
@@ -143,7 +141,7 @@ internal class RunReference {
         }
 
         private func Cell(label string, value string, color string) -> Terminal.Line(
-            Tokate.Output.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
+            Output.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
             color,
             false
         )

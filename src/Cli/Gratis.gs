@@ -37,7 +37,7 @@ internal class Gratis {
             consent string
         ) bool {
             PublicOutput.ResultData = preview
-            Terminal.Message(Tokate.Output.Clean(consent), error: true)
+            Terminal.Message(Output.Clean(consent), error: true)
 
             if OwnerSetup.Confirm(args, "Publish this contribution?") {
                 return true

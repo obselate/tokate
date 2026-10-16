@@ -25,14 +25,14 @@ internal class OwnerSetup {
                 return false
             }
 
-            Console.Error.Write(Tokate.Output.Clean(prompt) + " [y/N]: ")
+            Console.Error.Write(Output.Clean(prompt) + " [y/N]: ")
             return String.Equals(Console.ReadLine(), "y", StringComparison.OrdinalIgnoreCase)
         }
 
         private func Change(changes List[Object], name string, old string, next string) {
             changes.Add(map[string, Object?]{"change": name, "old": old, "new": next})
             Console.Error.WriteLine(
-                Tokate.Output.Clean(name + "\n  Current: " + (old == "" ? "none": old) + "\n  Proposed: " + next)
+                Output.Clean(name + "\n  Current: " + (old == "" ? "none": old) + "\n  Proposed: " + next)
             )
         }
 

@@ -20,7 +20,7 @@ internal class TerminalProgress : IDisposable {
     private let Live bool
 
     internal init(phase string, budget RuntimeBudget, total RuntimeBudget? = nil) {
-        Phase = Tokate.Output.Clean(phase).Replace('\n', ' ')
+        Phase = Output.Clean(phase).Replace('\n', ' ')
         Budget = budget
         Total = total
         Live = DonationView.Start()

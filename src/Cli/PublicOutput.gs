@@ -592,7 +592,7 @@ internal class PublicOutput {
             let failure Object? = exitCode == 0 ||
                 exitCode == 8 ? nil: map[string, Object?]{
                 "code": code == "" ? "command_failed": code,
-                "message": Tokate.Output.Prose(message == "" ? CliFailure.Message(code): message)
+                "message": Output.Prose(message == "" ? CliFailure.Message(code): message)
             }
 
             let envelope = map[string, Object?]{

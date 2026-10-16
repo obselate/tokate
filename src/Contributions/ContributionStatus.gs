@@ -68,7 +68,7 @@ internal class ContributionStatus {
 
         let row = map[string, Object?]{
             "issue": issue,
-            "title": Tokate.Output.Prose(J.Text(task, "title"), ref Truncated),
+            "title": Output.Prose(J.Text(task, "title"), ref Truncated),
             "url": "https://github.com/" + Repo + "/issues/" + issue.ToString(),
             "approval_status": "unknown",
             "eligibility_status": "unknown",
@@ -577,7 +577,7 @@ internal class ContributionStatus {
             } else {
                 displayed.Add(
                     map[string, Object?]{
-                        "name": Tokate.Output.Prose(J.Text(check, "name"), ref Truncated),
+                        "name": Output.Prose(J.Text(check, "name"), ref Truncated),
                         "state": J.Text(check, "state"),
                         "bucket": bucket,
                         "link": J.Text(check, "link")
@@ -607,10 +607,7 @@ internal class ContributionStatus {
             failed = failed || status == "failed"
             pending = pending || status == "pending" || status == "missing"
             required.Add(
-                map[string, Object?]{
-                    "name": Tokate.Output.Prose(name.GetString() ?? "", ref Truncated),
-                    "status": status
-                }
+                map[string, Object?]{"name": Output.Prose(name.GetString() ?? "", ref Truncated), "status": status}
             )
         }
 
