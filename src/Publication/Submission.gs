@@ -101,8 +101,8 @@ internal class Submission {
 
             run.Save(directory)
 
-            Terminal.Message(
-                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Terminal.Command(
+            Output.Sink.Message(
+                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Output.Sink.Command(
                     []string{"tokate", "submit", "--run", directory}
                 )
             )
@@ -427,12 +427,12 @@ internal class Submission {
             let outcome = RequestData.Recorded(state.Value(), actor, value)
 
             if outcome.ValueKind != JsonValueKind.Undefined {
-                Terminal.Json(outcome, "Recorded request outcome; no comment posted", raw: false)
+                Output.Sink.RequestOutcome(outcome)
                 return
             }
 
             if Posted(repo, issue, actor, value) {
-                Terminal.Message("Exact request already posted; awaiting coordinator outcome")
+                Output.Sink.Message("Exact request already posted; awaiting coordinator outcome")
                 return
             }
 
@@ -471,7 +471,7 @@ internal class Submission {
 
             WriteRequest(repo, issue, actor, value, expires)
 
-            Terminal.Message("Request posted; coordinator outcome is recorded in the issue state ref")
+            Output.Sink.Message("Request posted; coordinator outcome is recorded in the issue state ref")
         }
 
         internal func WriteRequest(repo string, issue int32, actor JsonElement, request JsonElement, expires int64) {
@@ -593,50 +593,7 @@ internal class Submission {
             )
         }
 
-        internal func Submit(args Args) {
-            try {
-                SubmitSaved(args)
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is CommandInterrupted ||
-                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
-                let code = (
-                    error is IOException || error is UnauthorizedAccessException
-                ) ? "invalid_state": "command_failed"
-                throw CliFailure(code, error.Message, summary: CliFailure.Message(code))
-            }
-        }
-
-        private func SubmitSaved(args Args) {
-            let directory = Path.GetFullPath(args.Need("run"))
-            using let lease = RunStorage.Lease(directory)
-            let run = Data.Load(directory)
-
-            if run.Flag("gratis") {
-                Gratis.Publish(directory, run, args)
-                return
-            }
-
-            if args.Get("yes") != "true" {
-                let change = Cli.Find("submit").Brief
-                PublicOutput.ResultData = map[string, Object?]{
-                    "operation": "submit",
-                    "subject": args.Subject,
-                    "repo": args.Get("repo"),
-                    "issue": args.Get("issue"),
-                    "donor": args.Get("donor"),
-                    "base_branch": args.Get("base-branch"),
-                    "changes": []string{change},
-                    "run_directory": directory,
-                    "applied": false
-                }
-                Terminal.Message(change + ". Target: " + directory + ".", error: true)
-                if !OwnerSetup.Confirm(args) {
-                    throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
-                }
-                args.Values["--yes"] = "true"
-            }
-
+        internal func Submit(args Args, directory string, run Data) {
             RetrySummary(args, directory, run)
 
             if args.Get("incomplete") == "true" {

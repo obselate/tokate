@@ -425,7 +425,7 @@ internal class Amendment {
                     }
                 }
 
-                Terminal.Message(
+                Output.Sink.Message(
                     "Original evidence preserved. Edit and commit the checkout, then amend --time TIME. No inference, checks or publication ran."
                 )
                 return true
@@ -630,7 +630,7 @@ internal class Amendment {
 
                 throw CliFailure(
                     failure.Code,
-                    PublicOutput.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
+                    Output.Sink.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
                         "failure_stage"
                     ) +
                         "): " +
@@ -724,8 +724,8 @@ internal class Amendment {
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
             Save(directory, change)
-            PublicOutput.FailureCode = "verification_failed"
-            Terminal.Step("Verifying the exact amendment independently. No inference will run.")
+            Output.Sink.FailureCode = "verification_failed"
+            Output.Sink.Step("Verifying the exact amendment independently. No inference will run.")
             let budget = RuntimeBudget(timer, seconds)
             {
                 using let workspace = VerificationWorkspace.Create(checkout, budget)
@@ -752,7 +752,7 @@ internal class Amendment {
                         )
                     }
                 }
-                PublicOutput.FailureCode = "invalid_state"
+                Output.Sink.FailureCode = "invalid_state"
                 change.Fields["failure_stage"] = "changed_candidate"
                 change.Fields["failure_reason"] = "candidate_changed"
                 workspace.Unchanged(budget)
@@ -763,7 +763,7 @@ internal class Amendment {
             )
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
-            PublicOutput.FailureCode = "verification_failed"
+            Output.Sink.FailureCode = "verification_failed"
             Verification.Results(change, record)
             change.Transition("verified")
             change.Fields.Remove("failure_stage")
@@ -933,7 +933,7 @@ internal class Amendment {
                 amendment.Save(location)
             }
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Amendment request saved. Await coordinator outcome, then repeat amend. The PR receipt is invalid until body and coordination state agree."
             )
         }
@@ -1204,7 +1204,7 @@ internal class Amendment {
                     )
                 }
                 SetStage(directory, change, "requested")
-                Terminal.Message(
+                Output.Sink.Message(
                     "Exact publication request is already posted; awaiting the coordinator. No write, checks or inference repeated."
                 )
                 return
@@ -1226,7 +1226,7 @@ internal class Amendment {
                 CoordinationState.Unix(J.Get(J.Get(latest, "state"), "reservation"), "expires")
             )
             SetStage(directory, change, "requested")
-            Terminal.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")
+            Output.Sink.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")
         }
 
         private func Preview(path string, expected string) {
@@ -1309,7 +1309,7 @@ internal class Amendment {
 
             Publication.SavePr(directory, run, pull)
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Verified amendment published; original evidence: " + Path.Combine(directory, "original-evidence")
             )
         }

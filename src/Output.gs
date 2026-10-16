@@ -88,6 +88,8 @@ internal open class OutputSink {
 
     public open func CheckResult(run Data, rows JsonElement, status string, facts Dictionary[string, Object?]);
 
+    public open func RequestOutcome(value JsonElement);
+
     public open suspend func Next(options Args?, code string);
 }
 

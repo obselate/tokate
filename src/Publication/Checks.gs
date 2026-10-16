@@ -82,16 +82,22 @@ internal class Checks {
             directory string,
             verbose bool,
             approval bool,
+            render Action[Dictionary[string, Object?]],
             ref previous string
         ) {
-            PublicOutput.Checks(run, J.Parse(J.Write(observed)), facts["checks_status"]?.ToString() ?? "unread", facts)
+            Output.Sink.CheckResult(
+                run,
+                J.Parse(J.Write(observed)),
+                facts["checks_status"]?.ToString() ?? "unread",
+                facts
+            )
             let view = []string{"gh", "pr", "view", run.Number("pr").ToString(), "--repo", run.Text("repo"), "--web"}
 
-            if PublicOutput.Enabled {
-                PublicOutput.Actions.Clear()
+            if Output.Sink.Enabled {
+                Output.Sink.Actions.Clear()
 
                 if approval {
-                    PublicOutput.Actions.Add(view)
+                    Output.Sink.Actions.Add(view)
                 }
             }
 
@@ -100,7 +106,7 @@ internal class Checks {
                     "head": run.Text("checks_head") == "" ? run.Text("commit"): run.Text("checks_head"),
                     "status": facts["checks_status"],
                     "checks": observed,
-                    "result": PublicOutput.ResultData
+                    "result": Output.Sink.ResultData
                 }
             )
 
@@ -119,42 +125,36 @@ internal class Checks {
             let status = facts["checks_status"]?.ToString() ?? "unread"
             let machine = facts["machine_status"]?.ToString() ?? "pending"
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Machine gates " + machine,
                 machine == "passed" ? "green": (machine == "failed" ? "red": "yellow")
             )
-            Terminal.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
+            Output.Sink.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
 
-            if !PublicOutput.Enabled {
+            if !Output.Sink.Enabled {
                 if approval {
-                    Terminal.Message(ApprovalAction, "yellow")
-                    Terminal.Message("Next: " + Terminal.Hint(view), "default")
+                    Output.Sink.Message(ApprovalAction, "yellow")
+                    Output.Sink.Message("Next: " + Output.Sink.Hint(view), "default")
                 } else if facts["owner_review"]?.ToString() == "required" {
-                    Terminal.Message(
+                    Output.Sink.Message(
                         machine == "passed" ? "Owner review: read the diff, then merge.": "Owner review: read the diff.",
                         "default"
                     )
                 }
 
                 if verbose {
-                    Terminal.Checks(
-                        J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks")
-                    )
-
-                    let evidence = Dictionary[string, Object?](facts)
-                    evidence.Remove("owner_inspection_required")
-                    Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
+                    render(facts)
                 }
             }
         }
 
-        internal func Run(args Args) int32 {
+        internal func Run(args Args, render Action[Dictionary[string, Object?]]) int32 {
             ApiTransport.BeginDeadline(args.Number("timeout", "1200"))
 
             try {
-                return ChecksWithinDeadline(args)
+                return ChecksWithinDeadline(args, render)
             } catch (error ApiDeadlineException) {
-                Terminal.Message(error.Message, "yellow")
+                Output.Sink.Message(error.Message, "yellow")
 
                 return 8
             } finally {
@@ -162,7 +162,7 @@ internal class Checks {
             }
         }
 
-        private func ChecksWithinDeadline(args Args) int32 {
+        private func ChecksWithinDeadline(args Args, render Action[Dictionary[string, Object?]]) int32 {
             let directory = args.Get("run") == "" ? "": Path.GetFullPath(args.Need("run"))
             var run = directory == "" ? Data(): Data.Load(directory)
 
@@ -201,7 +201,7 @@ internal class Checks {
                 observation.Pending = false
 
                 try {
-                    let result = Inspect(args, directory, observation, gates, facts, observed)
+                    let result = Inspect(args, render, directory, observation, gates, facts, observed)
 
                     if result >= 0 {
                         return result
@@ -230,10 +230,11 @@ internal class Checks {
                         directory,
                         args.Get("verbose") == "true",
                         observation.Approval,
+                        render,
                         ref observation.Previous
                     )
                     if settling {
-                        Terminal.Message(error.Message, "yellow")
+                        Output.Sink.Message(error.Message, "yellow")
                         return 8
                     }
 
@@ -252,6 +253,7 @@ internal class Checks {
 
         private func Inspect(
             args Args,
+            render Action[Dictionary[string, Object?]],
             directory string,
             observation ChecksObservation,
             gates Dictionary[string, Object?],
@@ -350,6 +352,7 @@ internal class Checks {
                 directory,
                 args.Get("verbose") == "true",
                 observation.Approval,
+                render,
                 ref observation.Previous
             )
 
@@ -526,7 +529,7 @@ internal class Checks {
                     if awaiting.Count < 64 {
                         awaiting.Add(J.Select(workflow, "id,name,head_sha,html_url,status,conclusion"))
                     } else {
-                        PublicOutput.Truncated = true
+                        Output.Sink.Truncated = true
                     }
                 }
 
@@ -590,7 +593,7 @@ internal class Checks {
                         }
                     )
                 } else {
-                    PublicOutput.Truncated = true
+                    Output.Sink.Truncated = true
                 }
             }
 
