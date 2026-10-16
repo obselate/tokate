@@ -103,6 +103,7 @@ workflow execution. The owner decides acceptance and merge.
 
 Use the donor's account and selected harness. Check project tools and access first.
 Read [local Pi setup](docs/donors.md#local-inference-with-pi) when applicable.
+For a repository without `.github/tokate.json`, follow [gratis donation](docs/gratis.md).
 Save choices with `tokate defaults set NAME --harness HARNESS --model MODEL --effort EFFORT`.
 Use `defaults` and `defaults check` to reuse a permitted model choice without inference.
 Machine doctor explains installations with `--fix`, asks once in a terminal, and applies with `--fix --yes`.

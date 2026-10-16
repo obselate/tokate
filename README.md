@@ -66,22 +66,17 @@ tokate doctor
   # Work one approved issue, then open its PR
   tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h
   tokate submit OWNER/REPO#42
+  ```
 
-  # Gratis free selection: let the harness choose tasks for one hour
+- **Gratis donors:** [Donate to a repository without Tokate, with an AI agent template](docs/gratis.md).
+
+  ```sh
+  # Let the harness choose tasks for one hour, or stop early
   tokate work OWNER/REPO --harness HARNESS --model MODEL --effort EFFORT --time 1h --total 1h --yes
   tokate work OWNER/REPO stop
 
-  # Gratis one issue: work issue 42, then publish
-  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
-
-  # Gratis issue list: work and publish each issue in this order
-  tokate work OWNER/REPO#12,15,40 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
-
-  # Gratis review: stop each task before publication
-  tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --review --yes
-  # Preview the exact PR title and body, then publish
-  tokate submit OWNER/REPO#42 --json
-  tokate submit OWNER/REPO#42 --yes
+  # Work the listed issues in order and publish each one
+  tokate work OWNER/REPO#12,15 --harness HARNESS --model MODEL --effort EFFORT --time 1h --yes
   ```
 
   Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](docs/donors.md#local-inference-with-pi).
