@@ -233,7 +233,7 @@ internal class DisposableVerificationChecks {
             )
             Check.That(File.Exists(Path.Combine(run, "checkout/result.txt")), "Copy failure deleted donor work")
             flow.NoPr()
-            flow.Call([]string{"amend", "--run", run})
+            flow.Call([]string{"amend", "--yes", "--run", run})
             let commit = AmendmentFlow.Correct(flow, run)
             AmendmentFlow.Rework(flow, run, commit)
             flow.Reload()
@@ -317,7 +317,7 @@ internal class DisposableVerificationChecks {
             let claim = test.Claim()
             let run = test.Prepare()
             let commit = test.Candidate(claim)
-            test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
+            test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
             Check.That(!Directory.Exists(Path.Combine(run, "checkout/build-output")), "External build output retained")
             Check.That(
                 test.Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == commit,
@@ -354,7 +354,7 @@ internal class DisposableVerificationChecks {
             flow.Git("-C", checkout, "add", "result.txt")
             flow.DonorGit(checkout, "commit", "-m", "Review correction")
             let commit = flow.Git("-C", checkout, "rev-parse", "HEAD")
-            flow.Call([]string{"amend", "--run", run, "--commit", commit, "--time", "30s"})
+            flow.Call([]string{"amend", "--yes", "--run", run, "--commit", commit, "--time", "30s"})
             Check.That(!Directory.Exists(Path.Combine(checkout, "build-output")), "Amendment output retained")
             let amended = Check.Json(File.ReadAllText(Path.Combine(run, "amendments", commit, "run.json")))
             Check.That(amended["verification"]?.AsArray().Count == 2, "Amendment lost ordered results")

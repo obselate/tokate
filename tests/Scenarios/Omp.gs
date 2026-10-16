@@ -55,7 +55,7 @@ internal class OmpChecks {
                 flow.NoPr()
                 let selection = mode == "normal" ? []string{"omp"}:
                 []string{"--harness", "omp", "--model", OmpTool.Model, "--effort", "low"}
-                let claim = List[string]{"claim", "owner/project#1"}
+                let claim = List[string]{"claim", "--yes", "owner/project#1"}
                 claim.AddRange(selection)
                 claim.AddRange(
                     []string{"--time", "60s", "--verify-time", "20s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
@@ -167,6 +167,7 @@ internal class OmpChecks {
                 let prepared = flow.Acquire(
                     []string{
                         "claim",
+                        "--yes",
                         "owner/project#1",
                         "--harness",
                         "command",
@@ -339,6 +340,7 @@ internal class OmpChecks {
             let prepared = flow.Acquire(
                 []string{
                     "claim",
+                    "--yes",
                     "owner/project#1",
                     "--harness",
                     "omp",

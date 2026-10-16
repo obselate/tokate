@@ -16,7 +16,7 @@ internal class EligibilityChecks {
             owner bool = true,
             traffic bool = false
         ) Result {
-            let args = List[string]{"access", operation}
+            let args = List[string]{"access", "--yes", operation}
             if operation == "init" {
                 args.Add("owner/project")
             } else if operation == "check" || operation == "request" {
@@ -48,7 +48,7 @@ internal class EligibilityChecks {
         private func Setup(test CoordinationFixture, mode string, version int32 = 0) {
             Access(test, "init")
             Policy(test, mode, version)
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             File.WriteAllText(
                 test.Tools,
                 "[{\"harness\":\"codex\",\"provider\":\"openai\",\"model\":\"gpt-6.1-sol\",\"effort\":\"high\"}]"
@@ -95,7 +95,7 @@ internal class EligibilityChecks {
                     Check.Contains(initial.Error, "tokate access trust donor owner/project")
                     for command in[]string{"claim", "work"} {
                         Check.Contains(
-                            test.Flow.Call([]string{command, "owner/project#1", "--time", "1s"}, 1).Error,
+                            test.Flow.Call([]string{command, "--yes", "owner/project#1", "--time", "1s"}, 1).Error,
                             "The owner must run: tokate approve owner/project#1 donor"
                         )
                     }
@@ -107,9 +107,9 @@ internal class EligibilityChecks {
                 Claim(test)
                 trusted.Restore()
                 Access(test, "untrust")
-                test.Flow.Call([]string{"approve", "owner/project#1", "other"}, owner: true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "other"}, owner: true)
                 Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
-                test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor"}, owner: true)
                 let bound = test.State()["state"] ?? throw Exception("Missing approval state")
                 Check.That(
                     Check.Text(bound["approval"]?["allowed_actor_ids"]?[0]) == "123" &&
@@ -127,9 +127,9 @@ internal class EligibilityChecks {
                 Claim(test, 1)
                 Access(test, "restore")
                 Access(test, "check", issue: "1", owner: false)
-                test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
                 Access(test, "check", issue: "1", code: mode == "open" ? 0: 1, owner: false)
-                test.Flow.Call([]string{"approve", "owner/project#1", "renamed"}, owner: true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "renamed"}, owner: true)
                 if mode != "open" {
                     Claim(test, 1, 124)
                 }
@@ -171,8 +171,8 @@ internal class EligibilityChecks {
                     ) == "open",
                     "Nontask edits revoked approval or retained the old access mode"
                 )
-                test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
-                test.Flow.Call([]string{"submit", "--run", run}, 8)
+                test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+                test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
                 let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
                 test.Coordinate(test.Event(publish))
                 test.Flow.Receipt("owner/project#10", owner: true)
@@ -194,7 +194,7 @@ internal class EligibilityChecks {
                 Access(test, "deny")
                 test.Flow.Receipt("owner/project#10", false, true)
                 Check.Contains(
-                    test.Flow.Call([]string{"submit", "--run", run}, 1).Error,
+                    test.Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error,
                     "Donor is denied. The owner must run: tokate access restore donor owner/project"
                 )
                 test.Coordinate(test.Event(publish), 1)
@@ -236,8 +236,8 @@ internal class EligibilityChecks {
             let request = Claim(publication)
             let run = publication.Prepare()
             let commit = publication.Candidate(request)
-            publication.Flow.Call([]string{"external", "--run", run, "--commit", commit})
-            publication.Flow.Call([]string{"submit", "--run", run}, 8)
+            publication.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+            publication.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             Access(publication, "untrust")
             publication.Coordinate(publication.Event(publish), 1)
@@ -270,7 +270,7 @@ internal class EligibilityChecks {
                 if fault == "approval_missing" {
                     test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/contributions/1")
                 } else if fault == "revoked" {
-                    test.Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+                    test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                 } else if fault == "template" {
                     File.AppendAllText(Path.Combine(test.Flow.Upstream, ".github/tokate-pr.md"), "Changed template\n")
                     test.Flow.Commit("Owner changes PR template")
@@ -379,7 +379,7 @@ internal class EligibilityChecks {
             )
             Check.That(Check.Text(test.State()["sha"]) == sha, "Duplicate claim repeated effects")
             let denied = Check.Envelope(
-                test.Flow.Call([]string{"access", "deny", "donor", "owner/project", "--json"}, owner: true),
+                test.Flow.Call([]string{"access", "--yes", "deny", "donor", "owner/project", "--json"}, owner: true),
                 "access",
                 "ok"
             )
@@ -413,7 +413,7 @@ internal class EligibilityChecks {
             test.Flow.Traffic(35, 3, 0, acquired)
             let run = test.Prepare("tokate")
             test.Flow.Call([]string{"work", "--run", run})
-            test.Flow.Call([]string{"submit", "--run", run}, 8)
+            test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             let publish = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(publish))
             test.Flow.Receipt("owner/project#10", owner: true)
@@ -554,8 +554,8 @@ internal class EligibilityChecks {
                 let claim = Claim(test)
                 let saved = test.Prepare()
                 let commit = test.Candidate(claim)
-                test.Flow.Call([]string{"external", "--run", saved, "--commit", commit})
-                test.Flow.Call([]string{"submit", "--run", saved}, 8)
+                test.Flow.Call([]string{"external", "--yes", "--run", saved, "--commit", commit})
+                test.Flow.Call([]string{"submit", "--yes", "--run", saved}, 8)
                 let publish = Check.Json(File.ReadAllText(Path.Combine(saved, "request.json")))
                 RevokeAt(test, read)
                 test.Coordinate(test.Event(publish), 1)
@@ -630,13 +630,13 @@ internal class EligibilityChecks {
             } {
                 File.WriteAllText(path, incomplete.ToJsonString().TrimEnd('}') + "," + invalid + "}")
                 test.Flow.Commit("Malformed owner declaration")
-                test.Flow.Call([]string{"approve", "owner/project#1"}, 1, true)
+                test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, true)
             }
             File.WriteAllText(path, original)
             test.Flow.Commit("Restore current policy")
             Policy(test, "open")
-            test.Flow.Call([]string{"approve", "owner/project#1", "donor", "other"}, 1, true)
-            test.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor", "other"}, 1, true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             for text in[]string{
                 "{\"version\":1,\"repo_id\":99,\"members\":[]}",
                 "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false}]}",
@@ -725,7 +725,7 @@ internal class EligibilityChecks {
                     "\n"
             )
             health.Flow.Commit("Add owner workflow")
-            health.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            health.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             health.Flow.Reload()
             health.Flow.State["release_version"] = JsonValue.Create(version)
             health.Flow.State["actions_permissions"] = Check.Map("enabled", true, "allowed_actions", "selected")
@@ -848,7 +848,7 @@ internal class EligibilityChecks {
                 empty.Flow.Call([]string{"access", "list", "owner/project"}).Output,
                 "No donor access or pending requests."
             )
-            let first = empty.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            let first = empty.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             Check.That(
                 first
                     .Output
@@ -859,19 +859,19 @@ internal class EligibilityChecks {
                 ),
                 "First repository approval did not explain state branches"
             )
-            let repeatedApproval = empty.Flow.Call([]string{"approve", "owner/project#1"}, owner: true)
+            let repeatedApproval = empty.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             Check.That(!repeatedApproval.Output.Contains(notice), "Repeated approval repeated the state notice")
             empty.Flow.Reload()
             let secondIssue = empty.Flow.State["issue"] ?? throw Exception("Missing issue")
             secondIssue["number"] = JsonValue.Create(2)
             empty.Flow.Save()
-            let laterApproval = empty.Flow.Call([]string{"approve", "owner/project#2"}, owner: true)
+            let laterApproval = empty.Flow.Call([]string{"approve", "--yes", "owner/project#2"}, owner: true)
             Check.That(!laterApproval.Output.Contains(notice), "Later issue approval repeated the state notice")
             using let structured = CoordinationFixture(binary)
             structured.Initialize(approve: false)
             for command in[][]string{
-                []string{"access", "init", "owner/project", "--json"},
-                []string{"approve", "owner/project#1", "--json"}
+                []string{"access", "--yes", "init", "owner/project", "--json"},
+                []string{"approve", "--yes", "owner/project#1", "--json"}
             } {
                 let result = structured.Flow.Call(command, owner: true)
                 Check.Envelope(result, command[0], "ok")
@@ -880,7 +880,7 @@ internal class EligibilityChecks {
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             Setup(test, "trusted")
-            let args = []string{"access", "request", "owner/project#1", "--trust", "--json"}
+            let args = []string{"access", "--yes", "request", "owner/project#1", "--trust", "--json"}
             let requested = Check.Envelope(test.Flow.Call(args), "access", "ok")
             Check.That(Check.Text(requested["data"]?["posted"]) == "true", "Donor request was not posted")
             test.Flow.Reload()
@@ -925,8 +925,8 @@ internal class EligibilityChecks {
                     .Count == 0,
                 "Revocation presentation retained trust"
             )
-            test.Flow.Call([]string{"access", "request", "owner/project#1"})
-            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+            test.Flow.Call([]string{"access", "--yes", "request", "owner/project#1"})
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor"}, owner: true)
             let approvedRequests = Check.Envelope(test.Flow.Call(listArgs), "access", "ok")
             Check.That(
                 approvedRequests["data"]?["pending"]?.AsArray().Count == 1,
@@ -945,7 +945,7 @@ internal class EligibilityChecks {
             File.WriteAllText(path, policy.ToJsonString())
             test.Flow.Commit("Built-in PR format with literal owner text")
             test.Flow.Git("-C", test.Flow.Upstream, "branch", "release")
-            test.Flow.Call([]string{"approve", "owner/project#1", "donor"}, owner: true)
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor"}, owner: true)
             Check.That(
                 Check.Text(test.State()["state"]?["approval"]?["base_branch"]) == "release",
                 "Configured target was not used for approval"
@@ -953,8 +953,8 @@ internal class EligibilityChecks {
             let claim = Claim(test)
             let run = test.Prepare()
             let commit = test.Candidate(claim)
-            test.Flow.Call([]string{"external", "--run", run, "--commit", commit})
-            test.Flow.Call([]string{"submit", "--run", run}, 8)
+            test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+            test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
             let publication = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             test.Coordinate(test.Event(publication))
             test.Flow.Reload()

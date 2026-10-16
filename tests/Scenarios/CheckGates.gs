@@ -21,7 +21,7 @@ internal class CheckGates {
             flow.State.AsObject().Remove("exec_count")
             flow.Save()
             flow.ResetTraffic()
-            let args = saved ? List[string]{"checks", "--run", test.Run}:
+            let args = saved ? List[string]{"checks", "--yes", "--run", test.Run}:
             List[string]{"checks", "owner/project#10"}
             if !human {
                 args.Add("--json")

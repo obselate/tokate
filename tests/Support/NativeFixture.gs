@@ -167,9 +167,9 @@ internal open class NativeFixture : IDisposable {
         if Git("-C", Upstream, "for-each-ref", "--format=%(refname)", "refs/heads/tokate/access") != "" {
             return
         }
-        Call([]string{"access", "init", "owner/project"}, owner: true)
+        Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)
         for donor in[]string{"donor", "owner"} {
-            Call([]string{"access", "trust", donor, "owner/project"}, owner: true)
+            Call([]string{"access", "--yes", "trust", donor, "owner/project"}, owner: true)
         }
     }
 
@@ -235,9 +235,9 @@ internal open class NativeFixture : IDisposable {
     }
 
     internal func Publish(run string) {
-        Call([]string{"submit", "--run", run}, 8)
+        Call([]string{"submit", "--yes", "--run", run}, 8)
         CoordinatePosted()
-        Call([]string{"submit", "--run", run})
+        Call([]string{"submit", "--yes", "--run", run})
     }
 
     internal func CoordinatePosted(issue int32 = 1) {
@@ -346,7 +346,7 @@ internal open class NativeFixture : IDisposable {
         fork string = "",
         json bool = false
     )[]string {
-        let args = List[string]{"claim", "owner/project#1"}
+        let args = List[string]{"claim", "--yes", "owner/project#1"}
         if fork != "" {
             args.AddRange([]string{"--fork", fork})
         }
@@ -486,7 +486,7 @@ internal open class NativeFixture : IDisposable {
 
     internal func ApproveSelf() {
         OwnerAccess()
-        Call([]string{"approve", "owner/project#1"}, owner: true)
+        Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
     }
 
     internal func SameRepositoryClaim(code int32 = 0) Result -> Acquire(

@@ -324,7 +324,15 @@ internal class DonorSelectionChecks {
             Check.Envelope(invalid, "defaults", "error", "missing_tools")
             Check.That(File.ReadAllText(Settings(flow)) == defaults, "Invalid override changed saved defaults")
             let claimed = flow.Acquire(
-                []string{"claim", "owner/project#1", "--time", "30s", "--runs", Path.Combine(flow.Temp.Root, "runs")}
+                []string{
+                    "claim",
+                    "--yes",
+                    "owner/project#1",
+                    "--time",
+                    "30s",
+                    "--runs",
+                    Path.Combine(flow.Temp.Root, "runs")
+                }
             )
             let run = claimed.Output.Substring(claimed.Output.LastIndexOf("Run: ") + 5).Trim()
             let path = Path.Combine(run, "run.json")
@@ -431,6 +439,7 @@ internal class DonorSelectionChecks {
             Set(flow)
             let args = List[string]{
                 "claim",
+                "--yes",
                 "owner/project#1",
                 "--time",
                 "30s",
@@ -492,6 +501,7 @@ internal class DonorSelectionChecks {
             let unsupported = flow.Call(
                 []string{
                     "claim",
+                    "--yes",
                     "owner/project#1",
                     "--harness",
                     "codex",
@@ -648,7 +658,17 @@ internal class DonorSelectionChecks {
             Check.That(JsonNode.DeepEquals(calls, flow.State["api_calls"]), "Rejected profile reached GitHub")
             for args in[][]string{
                 []string{"work", "--run", "unused", "--profile", "cloud", "--json"},
-                []string{"claim", "owner/project#1", "--source", "external", "--tools", "unused", "cloud", "--json"}
+                []string{
+                    "claim",
+                    "--yes",
+                    "owner/project#1",
+                    "--source",
+                    "external",
+                    "--tools",
+                    "unused",
+                    "cloud",
+                    "--json"
+                }
             } {
                 Check.Envelope(flow.Call(args, 1), args[0], "error", "invalid_arguments")
             }

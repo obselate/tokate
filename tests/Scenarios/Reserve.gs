@@ -82,8 +82,8 @@ internal class ReserveChecks {
                 Check.Contains(File.ReadAllText(Path.Combine(run, "stderr.log")), "synthetic-partial-stderr-secret")
                 let pid = File.ReadAllText(Path.Combine(flow.Bin, "child.pid"))
                 TestProcess.Collected(pid, "Timeout descendant survived")
-                flow.Call([]string{"amend", "--run", run}, 1)
-                flow.Call([]string{"submit", "--run", run}, 1)
+                flow.Call([]string{"amend", "--yes", "--run", run}, 1)
+                flow.Call([]string{"submit", "--yes", "--run", run}, 1)
             } else {
                 Check.That(
                     Check.Text(saved["turn_completed"]) == "true" && Check.Text(
@@ -129,6 +129,7 @@ internal class ReserveChecks {
             )
             let args = []string{
                 "claim",
+                "--yes",
                 "owner/project#1",
                 "--model",
                 "gpt-6.1-sol",

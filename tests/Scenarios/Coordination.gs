@@ -60,7 +60,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 test.Flow.State["repo_permissions"] = Check.Json(permissions)
                 test.Flow.Save()
                 Check.Contains(
-                    test.Flow.Call([]string{"approve", "owner/project#1"}, 1, owner: true).Error,
+                    test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, 1, owner: true).Error,
                     "Repository write permission is required"
                 )
             }
@@ -273,7 +273,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.NoInference()
             File.WriteAllText(path, original)
             test.Flow.Call([]string{"work", "--run", run})
-            test.Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+            test.Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
             let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
             let requestedTool = request["metadata"]?["tools"]?[0] ?? throw Exception("Missing requested tool")
             requestedTool["effort"] = JsonValue.Create("absent")
@@ -334,7 +334,10 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     test.Flow.Commit("Owner changes task field " + field)
                 }
                 let refused = Check.Envelope(
-                    test.Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40), "--json"}, 1),
+                    test.Flow.Call(
+                        []string{"external", "--yes", "--run", run, "--commit", String('0', 40), "--json"},
+                        1
+                    ),
                     "external",
                     "error",
                     "stale_approval"
@@ -361,7 +364,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             baseline.Restore()
             test.Flow.SetModelPolicy("whitelist", "{\"gpt-6.1-sol\":[\"high\"]}")
             Check.Envelope(
-                test.Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40), "--json"}, 1),
+                test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", String('0', 40), "--json"}, 1),
                 "external",
                 "error",
                 "stale_approval"
@@ -372,7 +375,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             )
             test.Flow.Approve()
             Check.That(File.ReadAllText(path) == saved, "Fresh approval converted saved work")
-            test.Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
+            test.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", String('0', 40)}, 1)
             test.Flow.NoInference()
             test.Flow.NoPr()
         }
@@ -540,7 +543,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim, "entrypoint")
         Check.Contains(
-            Flow.Call([]string{"external", "--run", run, "--commit", commit}, 1).Error,
+            Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit}, 1).Error,
             "protected owner path"
         )
         Check.That(
@@ -554,7 +557,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "External failure lost its exact commit"
         )
         Check.Contains(Check.Text(saved["error"]), "protected owner path")
-        Flow.Call([]string{"submit", "--run", run}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
         Flow.NoPr()
         Flow.NoInference()
     }
@@ -572,7 +575,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Flow.Call([]string{"work", "--run", run}, 1).Error, "protected owner path")
         Check.That(File.Exists(Path.Combine(run, "checkout/scripts/verify.sh")), "Rejected verifier edit was discarded")
         Check.That(!File.Exists(Path.Combine(run, "verification.json")), "Protected verifier was executed")
-        Flow.Call([]string{"submit", "--run", run}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
         Flow.NoPr()
     }
 
@@ -683,7 +686,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 .ToJsonString()
         )
         let failure = Flow.Call(
-            []string{"external", "--run", run, "--commit", commit, "--summary", summary, "--json"},
+            []string{"external", "--yes", "--run", run, "--commit", commit, "--summary", summary, "--json"},
             1
         )
         Check.That(!(failure.Output + failure.Error).Contains("synthetic-external"), "Raw external output escaped")
@@ -701,8 +704,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Check.Text(saved["verification"]?[1]?["output"]), "synthetic-external-prefix")
         Check.Contains(Check.Text(saved["verification"]?[1]?["error"]), "synthetic-external-error")
         let evidence = File.ReadAllText(savedPath)
-        Flow.Call([]string{"submit", "--run", run}, 1)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit}, 1)
         Check.That(File.ReadAllText(savedPath) == evidence, "Interrupted external verification retried")
         Check.That(
             Flow.Git("-C", Path.Combine(run, "checkout"), "rev-parse", "HEAD") == commit,
@@ -728,7 +731,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             )
         )
         File.WriteAllText(Tools, tools.ToJsonString())
-        let retry = []string{"external", "--run", run, "--commit", second, "--time", "30s", "--tools", Tools}
+        let retry = []string{"external", "--yes", "--run", run, "--commit", second, "--time", "30s", "--tools", Tools}
         let verificationPath = Path.Combine(run, "verification.json")
         let recorded = File.ReadAllText(verificationPath)
         let history = Path.Combine(run, "external-history", commit)
@@ -826,14 +829,28 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.DonorGit(work, "commit", "-m", "Correct external result")
         let final = Flow.Git("-C", work, "rev-parse", "HEAD")
         Flow.Git("-C", work, "push", Path.Combine(Flow.Bin, "fork"), branch)
-        let finalArgs = []string{"external", "--run", run, "--commit", final, "--time", "30s", "--tools", Tools}
+        let finalArgs = []string{
+            "external",
+            "--yes",
+            "--run",
+            run,
+            "--commit",
+            final,
+            "--time",
+            "30s",
+            "--tools",
+            Tools
+        }
         let unchanged = File.ReadAllText(savedPath)
         Check.Contains(Flow.Call(finalArgs, 1).Error, "must append at least one tool declaration")
         Check.That(File.ReadAllText(savedPath) == unchanged, "Equal tool count replaced failed evidence")
         tools.Add(tools[2]?.DeepClone())
         File.WriteAllText(Tools, tools.ToJsonString())
         for head in[]string{commit, second} {
-            Flow.Call([]string{"external", "--run", run, "--commit", head, "--time", "30s", "--tools", Tools}, 1)
+            Flow.Call(
+                []string{"external", "--yes", "--run", run, "--commit", head, "--time", "30s", "--tools", Tools},
+                1
+            )
         }
         using let failedBaseline = FixtureSnapshot(Flow.Temp.Root)
         for missing in[]bool{false, true} {
@@ -845,7 +862,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             }
             let before = File.ReadAllText(savedPath)
             Flow.Call(finalArgs, 1)
-            Flow.Call([]string{"submit", "--run", run}, 1)
+            Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
             Check.That(File.ReadAllText(savedPath) == before, "Damaged history was silently repaired")
             Flow.NoPr()
         }
@@ -867,7 +884,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "Unknown original attribution changed"
         )
         Flow.NoPr()
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         Flow.Reload()
         let request = Check.PostedRequest(Flow.State)
         Check.That(Check.Text(request["metadata"]?["head"]) == final, "Submission reused failed head")
@@ -896,8 +913,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let run = Prepare()
         let commit = Candidate(claim)
         File.Delete(Path.Combine(Flow.Bin, "codex"))
-        Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit})
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", String('0', 40)}, 1)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
         let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
         Check.Contains(Check.Text(saved["verification_provenance"]), "tokate-observed")
         Check.Contains(Check.Text(saved["tool_provenance"]), "donor-reported")
@@ -911,20 +928,23 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.CommitIdentity(Path.Combine(run, "checkout"), commit, "Donor", "donor@example.test")
         Flow.Mode("pr_fail_after_create")
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 1)
         Flow.Mode("")
         Flow.Reload()
         let originalPulls = Flow.State["pulls"]?.DeepClone() ?? throw Exception("Missing interrupted PR")
         (Flow.State["pulls"] ?? throw Exception("Missing PRs")).AsArray().Add(originalPulls[0]?.DeepClone())
         Flow.Save()
-        Check.Contains(Flow.Call([]string{"submit", "--run", run, "--json"}, 1).Output, "ambiguous physical PRs")
+        Check.Contains(
+            Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 1).Output,
+            "ambiguous physical PRs"
+        )
         Flow.Reload()
         Flow.State["pulls"] = originalPulls
         let edited = Flow.State["pulls"]?[0] ?? throw Exception("Missing interrupted draft")
         edited["body"] = JsonValue.Create("Donor note before adoption\n" + Check.Text(edited["body"]))
         Flow.Save()
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         Flow.Reload()
         let publish = Check.PostedRequest(Flow.State)
         let path = Event(publish)
@@ -1018,7 +1038,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Call([]string{"checks", "owner/project#10"}, 8, owner: true)
         Expire()
         Flow.Receipt("owner/project#10", false, true)
-        Flow.Call([]string{"submit", "--run", run}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
         Flow.NoInference()
         let published = State().ToJsonString()
         Flow.Temp.Env["GH_TOKEN"] = "fixture-owner"
@@ -1072,7 +1092,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         File.WriteAllText(policyPath, policy.ToJsonString())
         Flow.Commit("Change policy after approval")
         let stale = Flow.Call(
-            []string{"claim", "owner/project#1", "--source", "external", "--tools", Tools, "--json"},
+            []string{"claim", "--yes", "owner/project#1", "--source", "external", "--tools", Tools, "--json"},
             1
         )
         Check.Contains(stale.Output + stale.Error, "stale_approval")
@@ -1115,7 +1135,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.State["replacement_with"] = JsonValue.Create(benign)
         Flow.Save()
         Flow.Mode("external_replacement")
-        let failure = Flow.Call([]string{"external", "--run", run, "--commit", malicious}, 1)
+        let failure = Flow.Call([]string{"external", "--yes", "--run", run, "--commit", malicious}, 1)
         Check.Contains(failure.Error, "protected owner configuration")
         Check.That(!File.Exists(Path.Combine(run, "verification.json")), "Hidden protected change was verified")
         Check.That(
@@ -1130,14 +1150,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let claim = Claim()
         let run = Prepare()
         let commit = Candidate(claim)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit})
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
         let checkout = Path.Combine(run, "checkout")
         let savedPath = Path.Combine(run, "run.json")
         let saved = File.ReadAllText(savedPath)
         using let baseline = FixtureSnapshot(Flow.Temp.Root)
         File.AppendAllText(Path.Combine(checkout, "result.txt"), "Dirty checkout\n")
         let rejected = Check.Envelope(
-            Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+            Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 1),
             "submit",
             "error",
             "invalid_state"
@@ -1161,7 +1181,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let changed = Check.Json(saved)
         changed["commit"] = JsonValue.Create(malicious)
         File.WriteAllText(savedPath, changed.ToJsonString())
-        Flow.Call([]string{"submit", "--run", run}, 1)
+        Flow.Call([]string{"submit", "--yes", "--run", run}, 1)
         Check.That(!File.Exists(Path.Combine(run, "request.json")), "Packed replacement obtained publication authority")
         Flow.NoPr()
         Flow.NoInference()
@@ -1170,7 +1190,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Flow.Git("-C", checkout, "update-index", flag, ".github/tokate-pr.md")
             File.AppendAllText(Path.Combine(checkout, ".github/tokate-pr.md"), "\nhidden work file\n")
             Check.That(Flow.Git("-C", checkout, "status", "--porcelain") == "", "Changed candidate must look clean")
-            Check.Contains(Flow.Call([]string{"submit", "--run", run}, 1).Error, "Candidate index")
+            Check.Contains(Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error, "Candidate index")
             Check.That(
                 !File.Exists(Path.Combine(run, "request.json")),
                 "Hidden work file obtained publication authority"
@@ -1182,13 +1202,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
         Directory.CreateDirectory(Path.Combine(checkout, ".git/info"))
         File.WriteAllText(Path.Combine(checkout, ".git/info/grafts"), commit + "\n")
-        Check.Contains(Flow.Call([]string{"submit", "--run", run}, 1).Error, "info/grafts")
+        Check.Contains(Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error, "info/grafts")
         Check.That(!File.Exists(Path.Combine(run, "request.json")), "Grafted candidate obtained publication authority")
         Check.That(File.ReadAllText(savedPath) == saved, "Graft rejection rewrote verification record")
         Flow.NoPr()
         Flow.NoInference()
         baseline.Restore()
-        let waiting = Check.Json(Flow.Call([]string{"submit", "--run", run, "--json"}, 8).Output)
+        let waiting = Check.Json(Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8).Output)
         Check.That(waiting["data"]?["coordinator"] == nil, "Absent workflow changed submit guidance")
         Flow.Reload()
         Flow.State["workflow_runs"] = JsonArray(
@@ -1216,7 +1236,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         Flow.Save()
         let observed = Check.Envelope(
-            Flow.Call([]string{"submit", "--run", run, "--json"}, 1),
+            Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 1),
             "submit",
             "error",
             "command_failed"
@@ -1229,12 +1249,15 @@ internal partial class CoordinationFlow : CoordinationFixture {
             !(observed["next_actions"]?.ToJsonString() ?? "").Contains("\"submit\""),
             "Failed workflow offered repeat submit"
         )
-        Check.Contains(Flow.Call([]string{"submit", "--run", run}, 1).Error, "GitHub mutation failed (HTTP 422).")
+        Check.Contains(
+            Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error,
+            "GitHub mutation failed (HTTP 422)."
+        )
         baseline.Restore()
         Flow.Reload()
         Flow.State["ref_poll_interval"] = JsonValue.Create("300")
         Flow.Save()
-        let submitted = Flow.Acquire([]string{"submit", "--run", run})
+        let submitted = Flow.Acquire([]string{"submit", "--yes", "--run", run})
         Check.Contains(submitted.Output, "Draft PR: https://github.com/owner/project/pull/10")
         Check.That(!submitted.Output.Contains("Exact request already posted"), "Submit reported its own request twice")
         let published = Check.Json(File.ReadAllText(savedPath))
@@ -1250,13 +1273,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let original = Claim()
         let run = Prepare()
         Expire()
-        Flow.Call([]string{"external", "--run", run, "--commit", String('0', 40)}, 1)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", String('0', 40)}, 1)
         let publication = PublishRequest(original, String('a', 40))
         Coordinate(Event(publication), 1)
         let late = ClaimRequest()
         Claim()
         Coordinate(Event(late), 1)
-        Flow.Call([]string{"revoke", "owner/project#1"}, owner: true)
+        Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
         Prepare(code: 1)
         Flow.NoInference()
         Check.That(State()["state"]?["contribution"] == nil, "Expired publication gained authority")
@@ -1366,8 +1389,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let claim = Claim()
         let run = Prepare()
         let commit = Candidate(claim)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         Flow.Mode("revoke_after_pr")
         Coordinate(Event(request), 1)
@@ -1382,8 +1405,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let claim = Claim()
         let run = Prepare()
         let commit = Candidate(claim)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         let state = State()["state"] ?? throw Exception("Missing state")
         let reservation = state["reservation"] ?? throw Exception("Missing reservation")
         reservation["expires"] = JsonValue.Create(DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 2)
@@ -1465,27 +1488,27 @@ internal partial class CoordinationFlow : CoordinationFixture {
         )
         let run = Prepare("tokate")
         Flow.Call([]string{"work", "--run", run})
-        Flow.Call([]string{"amend", "--run", run})
+        Flow.Call([]string{"amend", "--yes", "--run", run})
         let policyPath = Path.Combine(Flow.Upstream, ".github/tokate.json")
         let policy = Check.Json(File.ReadAllText(policyPath))
         policy["close_message"] = JsonValue.Create("Updated owner message")
         policy["eligibility"] = JsonValue.Create("open")
         File.WriteAllText(policyPath, policy.ToJsonString())
         Flow.Commit("Owner changes descriptive text and eligibility after evidence capture")
-        Flow.Call([]string{"access", "untrust", "donor", "owner/project"}, owner: true)
-        Flow.Call([]string{"amend", "--run", run})
+        Flow.Call([]string{"access", "--yes", "untrust", "donor", "owner/project"}, owner: true)
+        Flow.Call([]string{"amend", "--yes", "--run", run})
         let corrected = AmendmentFlow.Correct(Flow, run)
         AmendmentFlow.Rework(Flow, run, corrected, tools: Tools)
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         Coordinate(Event(Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))))
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--yes", "--run", run})
         let published = File.ReadAllText(Path.Combine(run, "run.json"))
         let saved = Check.Json(published)
         Check.That(
             Check.Text(saved["state"]) == "published" && Check.Text(saved["pr"]) == "10",
             "Submit did not adopt the coordinated publication"
         )
-        Flow.Call([]string{"submit", "--run", run})
+        Flow.Call([]string{"submit", "--yes", "--run", run})
         Check.That(
             File.ReadAllText(Path.Combine(run, "run.json")) == published,
             "Repeated submit rewrote published metadata"
@@ -1522,8 +1545,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let claim = Check.Map("uuid", reservation)
         let run = Prepare()
         let commit = Candidate(claim)
-        Flow.Call([]string{"external", "--run", run, "--commit", commit})
-        Flow.Call([]string{"submit", "--run", run, "--json"}, 8)
+        Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
+        Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8)
         let request = Check.Json(File.ReadAllText(Path.Combine(run, "request.json")))
         let metadata = request["metadata"] ?? throw Exception("Missing publication metadata")
         let declared = metadata["tools"]?.DeepClone() ?? throw Exception("Missing declared tools")
@@ -1573,7 +1596,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Commit("Owner changes tool models")
 
         Check.Contains(
-            Flow.Call([]string{"submit", "--run", run}, 1).Error,
+            Flow.Call([]string{"submit", "--yes", "--run", run}, 1).Error,
             "Repository policy or template changed. The owner must approve again."
         )
         Check.Contains(
@@ -1679,7 +1702,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":100,\"cached_input_tokens\":20,\"output_tokens\":10}}\n"
         )
         Flow.Save()
-        Flow.Call([]string{"approve", "owner/project#2"}, owner: true)
+        Flow.Call([]string{"approve", "--yes", "owner/project#2"}, owner: true)
         let args = []string{"work", "owner/project", "--time", "30s", "--yes", "--json"}
         let tokens = Check.Json("{\"input_tokens\":100,\"cached_input_tokens\":20,\"output_tokens\":10}")
         let env = Dictionary[string, string](Flow.Temp.Env)

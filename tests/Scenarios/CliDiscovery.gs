@@ -345,7 +345,7 @@ internal class CliDiscovery {
             second["title"] = JsonValue.Create("Second task")
             flow.State["issues"] = Check.Map("1", flow.State["issue"]?.DeepClone(), "2", second)
             flow.Save()
-            flow.Call([]string{"approve", "owner/project#2"}, owner: true)
+            flow.Call([]string{"approve", "owner/project#2", "--yes"}, owner: true)
             let descriptive = Check.Envelope(
                 flow.Call(
                     []string{
@@ -624,7 +624,12 @@ internal class CliDiscovery {
                 Check.Contains(Check.Text(rejected["error"]?["message"]), "--run conflicts with --" + name)
             }
             Check.Envelope(
-                Call(binary, []string{"checks", "--run", "saved", "--watch", "--timeout", "1s", "--json"}, temp, 1),
+                Call(
+                    binary,
+                    []string{"checks", "--run", "saved", "--watch", "--timeout", "1s", "--yes", "--json"},
+                    temp,
+                    1
+                ),
                 "checks",
                 "error",
                 "invalid_state"
@@ -1130,6 +1135,48 @@ internal class CliDiscovery {
 
         internal func Contract(binary string, shell string = "bash") {
             Check.That(shell == "bash" || shell == "zsh" || shell == "fish", "Choose bash, zsh or fish")
+            using let preview = NativeFixture(binary)
+            preview.Initialize(access: false)
+            let savedPreview = Path.Combine(preview.Temp.Root, "saved")
+            Directory.CreateDirectory(savedPreview)
+            let savedJson = "{\"version\":2,\"state\":\"claimed\",\"source\":\"external\",\"repo\":\"owner/project\",\"issue\":1}"
+            File.WriteAllText(Path.Combine(savedPreview, "run.json"), savedJson)
+            for argv in[][]string{
+                []string{"approve", "owner/project#1"},
+                []string{"revoke", "owner/project#1"},
+                []string{"access", "init", "owner/project"},
+                []string{"access", "trust", "donor", "owner/project"},
+                []string{"access", "untrust", "donor", "owner/project"},
+                []string{"access", "deny", "donor", "owner/project"},
+                []string{"access", "restore", "donor", "owner/project"},
+                []string{"access", "request", "owner/project#1"},
+                []string{"claim", "owner/project#1"},
+                []string{"claim", "--run", savedPreview},
+                []string{"work", "--run", savedPreview},
+                []string{"pause", "--run", savedPreview},
+                []string{"resume", "--run", savedPreview},
+                []string{"renew", "--run", savedPreview},
+                []string{"release", "--run", savedPreview},
+                []string{"submit", "--run", savedPreview},
+                []string{"amend", "--run", savedPreview},
+                []string{"external", "--run", savedPreview},
+                []string{"checks", "--run", savedPreview}
+            } {
+                let envelope = Check.Envelope(
+                    preview.Call(Plus(argv, "--json"), 1),
+                    argv[0],
+                    "error",
+                    "confirmation_required"
+                )
+                Check.That(Check.Text(envelope["data"]?["applied"]) == "false", "Preview claims a mutation")
+                Check.That(envelope["data"]?["changes"]?.AsArray().Count > 0, "Preview has no changes")
+                Check.That(
+                    File.ReadAllText(Path.Combine(savedPreview, "run.json")) == savedJson,
+                    "Consent preview changed saved donor state"
+                )
+                Unchanged(preview, "Consent preview mutated GitHub")
+            }
+
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let log = Path.Combine(temp.Root, "calls")

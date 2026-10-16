@@ -316,13 +316,13 @@ internal class CommandTrafficChecks {
             let claim = flow.Claim()
             let run = flow.Prepare()
             let commit = flow.Candidate(claim)
-            flow.Flow.Call([]string{"external", "--run", run, "--commit", commit})
+            flow.Flow.Call([]string{"external", "--yes", "--run", run, "--commit", commit})
             flow.Flow.Reload()
             flow.Flow.State["poll_interval"] = JsonValue.Create("30")
             flow.Flow.Save()
             flow.Flow.Mode("lost_request_response")
             flow.Flow.ResetTraffic()
-            let first = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
+            let first = flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8, traffic: true)
             Budgets(flow.Flow, first, 50, 2, 1)
             Check.Contains(first.Error, "Publication pending. Run: " + run)
             Check.Contains(first.Error, "Next: tokate submit --run " + run)
@@ -330,7 +330,7 @@ internal class CommandTrafficChecks {
             flow.Flow.Mode("")
             flow.Flow.ResetTraffic()
             let json = Check.Envelope(
-                flow.Flow.Call([]string{"submit", "--run", run, "--json"}, 8, traffic: true),
+                flow.Flow.Call([]string{"submit", "--yes", "--run", run, "--json"}, 8, traffic: true),
                 "submit",
                 "pending"
             )
@@ -338,7 +338,7 @@ internal class CommandTrafficChecks {
             Check.Contains(json["next_actions"]?.ToJsonString() ?? "", "\"submit\"")
             flow.Flow.Traffic(38, 0, 0)
             flow.Flow.ResetTraffic()
-            let duplicate = flow.Flow.Call([]string{"submit", "--run", run}, 8, traffic: true)
+            let duplicate = flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 8, traffic: true)
             Budgets(flow.Flow, duplicate, 40, 0, 0)
             Check.Contains(duplicate.Error, "Next: tokate submit --run " + run)
             flow.Flow.Reload()
@@ -351,16 +351,16 @@ internal class CommandTrafficChecks {
             )
             flow.Coordinate(flow.Event(request))
             flow.Flow.Faults("repos/owner/project/git/ref/heads/tokate/contributions/1", JsonArray(pending))
-            let observed = flow.Flow.Call([]string{"submit", "--run", run})
+            let observed = flow.Flow.Call([]string{"submit", "--yes", "--run", run})
             Check.Contains(observed.Output, "Draft PR: https://github.com/owner/project/pull/10")
             Check.That(!observed.Output.Contains("{\"pr\""), "Submit printed raw JSON")
             Check.That(observed.Error.Split("Next: ").Length == 2, "Submit printed more than one next action")
             flow.Flow.ResetTraffic()
-            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, traffic: true), 31, 0, 0)
+            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--yes", "--run", run}, traffic: true), 31, 0, 0)
             flow.Expire()
             flow.Flow.Receipt("owner/project#10", false)
             flow.Flow.ResetTraffic()
-            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--run", run}, 1, traffic: true), 4, 0, 0)
+            Budgets(flow.Flow, flow.Flow.Call([]string{"submit", "--yes", "--run", run}, 1, traffic: true), 4, 0, 0)
             flow.Flow.Reload()
             Check.That(
                 flow.Flow.State["pulls"]?.AsArray().Count == 1 && Check.Text(flow.Flow.State["request_count"]) == "1",
@@ -392,7 +392,7 @@ internal class CommandTrafficChecks {
         ) Result -> flow
             .Call(
             direct ? []string{"checks", "owner/project#10", "--watch", "--timeout", timeout + "s"}:
-            []string{"checks", "--run", run, "--watch", "--timeout", timeout + "s"},
+            []string{"checks", "--yes", "--run", run, "--watch", "--timeout", timeout + "s"},
             code,
             traffic: true
         )
@@ -499,11 +499,15 @@ internal class CommandTrafficChecks {
         private func WatchStructured(binary string) {
             using let flow = NativeFixture(binary)
             let run = Published(flow)
-            let pending = Check.Envelope(flow.Call([]string{"checks", "--run", run, "--json"}, 8), "checks", "pending")
+            let pending = Check.Envelope(
+                flow.Call([]string{"checks", "--yes", "--run", run, "--json"}, 8),
+                "checks",
+                "pending"
+            )
             Check.That(Check.Text(pending["data"]?["checks_status"]) == "pending", "Pending check projection missing")
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"pass\"}]")
             flow.Save()
-            let passed = Check.Envelope(flow.Call([]string{"checks", "--run", run, "--json"}), "checks", "ok")
+            let passed = Check.Envelope(flow.Call([]string{"checks", "--yes", "--run", run, "--json"}), "checks", "ok")
             Check.That(
                 Check.Text(passed["data"]?["checks_status"]) == "passed" && Check.Text(
                     passed["data"]?["check_count"]
@@ -541,7 +545,7 @@ internal class CommandTrafficChecks {
                     flow.Call(
                         kind == "open" || kind == "not_planned" ?
                         []string{"checks", "owner/project#10", "--json"}:
-                        []string{"checks", "--run", run, "--json"},
+                        []string{"checks", "--yes", "--run", run, "--json"},
                         kind == "completed" ? 0: 1
                     ),
                     "checks",
@@ -553,7 +557,7 @@ internal class CommandTrafficChecks {
             flow.State["checks"] = Check.Json("[{\"name\":\"verify\",\"bucket\":\"fail\"}]")
             flow.Save()
             flow.ResetTraffic()
-            let failed = flow.Call([]string{"checks", "--run", run, "--json"}, 1, traffic: true)
+            let failed = flow.Call([]string{"checks", "--yes", "--run", run, "--json"}, 1, traffic: true)
             Check.Envelope(failed, "checks", "error", "verification_failed")
             Budgets(flow, failed, 44, 0, 0)
         }
@@ -562,7 +566,7 @@ internal class CommandTrafficChecks {
             using let flow = NativeFixture(binary)
             let run = Published(flow)
             flow.ResetTraffic()
-            let pending = flow.Call([]string{"checks", "--run", run}, 8, traffic: true)
+            let pending = flow.Call([]string{"checks", "--yes", "--run", run}, 8, traffic: true)
             Budgets(flow, pending, 45, 0, 0)
             flow.ResetTraffic()
             let direct = flow.Call([]string{"checks", "owner/project#10"}, 8, traffic: true)
@@ -635,7 +639,7 @@ internal class CommandTrafficChecks {
                 Check.Json("[{\"passthrough\":true},{\"passthrough\":true},{\"status\":200,\"pause_ms\":6000}]")
             )
             let pending = Check.Envelope(
-                flow.Call([]string{"checks", "--run", run, "--watch", "--timeout", "5s", "--json"}, 8),
+                flow.Call([]string{"checks", "--yes", "--run", run, "--watch", "--timeout", "5s", "--json"}, 8),
                 "checks",
                 "pending"
             )
@@ -669,7 +673,7 @@ internal class CommandTrafficChecks {
                     }
                     flow.Save()
                     flow.ResetTraffic()
-                    let result = flow.Call([]string{"checks", "--run", run}, revoked ? 1: 0, traffic: true)
+                    let result = flow.Call([]string{"checks", "--yes", "--run", run}, revoked ? 1: 0, traffic: true)
                     if revoked {
                         Check.Contains(result.Error, "Approval revoked or task changed")
                     }
@@ -707,7 +711,7 @@ internal class CommandTrafficChecks {
             flow.State["etag_force_304"] = JsonValue.Create(true)
             flow.Save()
             flow.ResetTraffic()
-            let unmatched = flow.Call([]string{"checks", "--run", run}, 1, traffic: true)
+            let unmatched = flow.Call([]string{"checks", "--yes", "--run", run}, 1, traffic: true)
             Check.Contains(unmatched.Error, "Donor access authority")
             flow.Reload()
             let calls = flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic evidence")

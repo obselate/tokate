@@ -44,7 +44,7 @@ internal class TerminalOutput {
                         flow.Temp.Env["COLORFGBG"] = background == "light" ? "0;15": "15;0"
                         let result = TestTerminal.Pty(
                             binary,
-                            []string{"checks", "--run", run, "--verbose"},
+                            []string{"checks", "--yes", "--run", run, "--verbose"},
                             flow.Temp,
                             width
                         )
@@ -67,7 +67,7 @@ internal class TerminalOutput {
             }
             let plain = TestTerminal.Pty(
                 binary,
-                []string{"checks", "--run", run, "--plain", "--verbose"},
+                []string{"checks", "--yes", "--run", run, "--plain", "--verbose"},
                 flow.Temp,
                 40
             )
