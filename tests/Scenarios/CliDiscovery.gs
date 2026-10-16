@@ -1110,8 +1110,129 @@ internal class CliDiscovery {
                 Call(binary, []string{"status", "owner/project#1-9"}, temp, 1).Error,
                 "No saved run owner/project#1-9"
             )
+            CleanupSaved(binary)
             Console.WriteLine(
                 "PASS offline saved contribution names, invalid and linked metadata, ordering and private state preservation"
+            )
+        }
+
+        private func CleanupSaved(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize(access: false)
+            let root = Path.Combine(flow.Temp.Env["HOME"], ".local/state/tokate/runs")
+            let finished = Path.Combine(root, "owner-project-1-1")
+            let keptRun = Path.Combine(root, "owner-project-2-1")
+            let checkout = Path.Combine(keptRun, "checkout")
+            let cache = Path.Combine(checkout, "cache")
+            let outside = Path.Combine(flow.Temp.Root, "outside")
+            Directory.CreateDirectory(finished)
+            Directory.CreateDirectory(cache)
+            Directory.CreateDirectory(outside)
+            File.WriteAllText(Path.Combine(outside, "keep"), "outside evidence")
+            Directory.CreateSymbolicLink(Path.Combine(finished, "outside"), outside)
+            Directory.CreateSymbolicLink(Path.Combine(cache, "outside"), outside)
+            File.WriteAllText(Path.Combine(cache, "build"), "build output")
+            File.WriteAllText(Path.Combine(checkout, ".env"), "SYNTHETIC=keep")
+            File.WriteAllText(Path.Combine(checkout, ".gitignore"), ".env\ncache/\n")
+            flow.Git("init", "-b", "main", checkout)
+            flow.DonorGit(checkout, "add", ".gitignore")
+            flow.DonorGit(checkout, "commit", "-qm", "Ignore local output")
+            let head = flow.Git("-C", checkout, "rev-parse", "HEAD").Trim()
+            let record = Check.Map(
+                "version",
+                2,
+                "repo",
+                "owner/project",
+                "issue",
+                1,
+                "state",
+                "published",
+                "source",
+                "tokate",
+                "pr",
+                10,
+                "commit",
+                head
+            )
+            File.WriteAllText(Path.Combine(finished, "run.json"), record.ToJsonString())
+            File.WriteAllText(Path.Combine(finished, ".lock"), "")
+            File.SetUnixFileMode(finished, UnixFileMode.UserRead | UnixFileMode.UserExecute)
+            record["issue"] = JsonValue.Create(2)
+            File.WriteAllText(Path.Combine(keptRun, "run.json"), record.ToJsonString())
+            let metadata = Check.Hash(Path.Combine(keptRun, "run.json"))
+            flow.State["issues"] = Check.Map(
+                "1",
+                Check.Map("number", 1, "state", "closed"),
+                "2",
+                Check.Map("number", 2, "state", "open")
+            )
+            flow.State["pulls"] = JsonArray(
+                Check.Map("number", 10, "state", "closed", "merged", true, "head", Check.Map("sha", head))
+            )
+            flow.Save()
+
+            let preview = Check.Envelope(flow.Call([]string{"clean", "--json"}), "clean", "ok")
+            Check.That(
+                Check.Text(preview["data"]?["candidates"]?[0]?["path"]) == finished && Check.Text(
+                    preview["data"]?["ignored_directories"]?[0]?["path"]
+                ) == cache &&
+                    Int64.Parse(Check.Text(preview["data"]?["total_bytes"])) > 0,
+                "Cleanup preview omitted finished run or kept ignored directory"
+            )
+            Check.That(
+                Directory.Exists(finished) && File.Exists(Path.Combine(checkout, ".env")),
+                "Preview deleted saved files"
+            )
+            let consent = Check.Envelope(
+                flow.Call([]string{"clean", "owner/project#1-1", "--json"}, 1),
+                "clean",
+                "error",
+                "confirmation_required"
+            )
+            Check.That(
+                Check.Text(consent["data"]?["selected"]?[0]?["path"]) == finished && Check.Text(
+                    consent["data"]?["applied"]
+                ) == "false" &&
+                    Directory.Exists(finished),
+                "Cleanup skipped consent or lost the selected preview"
+            )
+            Check.Envelope(
+                flow.Call([]string{"clean", keptRun, "--yes", "--json"}, 1),
+                "clean",
+                "error",
+                "invalid_state"
+            )
+            flow.Call([]string{"clean", finished, "--yes"})
+            Check.That(
+                !Directory.Exists(finished) && Directory.Exists(keptRun) && File.Exists(
+                    Path.Combine(outside, "keep")
+                ) &&
+                    File.ReadAllText(Path.Combine(checkout, ".env")) == "SYNTHETIC=keep",
+                "Confirmed cleanup removed kept work or followed a symlink"
+            )
+            Check.Envelope(
+                flow.Call([]string{"clean", keptRun, "--ignored", "cache", "--json"}, 1),
+                "clean",
+                "error",
+                "confirmation_required"
+            )
+            Check.That(Directory.Exists(cache), "Ignored output was deleted without confirmation")
+            flow.Call([]string{"clean", keptRun, "--ignored", "cache", "--yes"})
+            Check.That(
+                !Directory.Exists(cache) && File.Exists(Path.Combine(outside, "keep")) && File.ReadAllText(
+                    Path.Combine(checkout, ".env")
+                ) == "SYNTHETIC=keep" &&
+                    Check.Hash(Path.Combine(keptRun, "run.json")) == metadata && flow.Git(
+                    "-C",
+                    checkout,
+                    "rev-parse",
+                    "HEAD"
+                )
+                    .Trim() == head,
+                "Selected ignored cleanup changed kept records, commits or configuration"
+            )
+            Console.WriteLine(
+                "PASS previewed saved-run cleanup, consent, open-issue preservation and isolated ignored-directory removal"
             )
         }
 

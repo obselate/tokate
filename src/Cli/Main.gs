@@ -168,6 +168,10 @@ func Dispatch(options Args) int32 {
         return 0
     }
 
+    if options.Command == "clean" {
+        return CleanCommand.Run(options)
+    }
+
     if options.Command == "update" || options.Command == "uninstall" {
         return Installation.Run(options)
     }

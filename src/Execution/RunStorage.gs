@@ -174,7 +174,7 @@ internal class RunStorage {
             return roots.ToArray()
         }
 
-        private func Size(path string) int64 {
+        internal func Size(path string) int64 {
             let info = FileInfo(path)
 
             if info.LinkTarget != nil {
