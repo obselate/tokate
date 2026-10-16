@@ -72,13 +72,14 @@ Use `--verification JSON`, `--required-checks JSON` and `--allowed-tools JSON` t
 Init lists only required Actions setting changes and a setup PR with two files.
 It never writes branch protection or creates access state. In a terminal without
 `--yes`, init asks once. Non-terminal preview returns `applied=false`.
-The coordinator follows `v0` releases. Use `init --pin` for an exact release commit.
+The coordinator uses `obselate/tokate/.github/workflows/tokate-shared.yml@v0`. Use `init --pin` for an exact release commit.
 Existing setup repositories run init once and merge the setup PR. Policies require version 3.
 A tool without models allows any model. Create issues with `gh issue create` or the GUI.
 Approve existing issues with `tokate approve N [LOGIN] [--base-branch BRANCH]`.
 Use `--yes` to replace active reservation or published PR authority.
 In `trusted` eligibility, trust the donor or name the donor in the approval with
 `tokate approve N LOGIN`. In `open`, anyone not denied may claim. Deny always wins.
+Maintainer edits default to true. Set `"maintainer_edits": false` in the policy to opt out.
 Access requests are plain comments and grant no access.
 An absent `tokate/access` ref is an empty record. The first access write creates it.
 

@@ -211,9 +211,9 @@ Execution keeps saved failure stages, interruption evidence and verification res
 
 ### Claim and work
 
-Claim, work, submit and status warn when the default branch coordinator member
+Claim, work, submit and status warn when an exact-pin coordinator
 version is older than the CLI. The warning does not block donor commands. The
-owner must run the named `tokate init OWNER/REPO` command and merge the setup PR.
+owner must run `tokate init OWNER/REPO --pin` and merge the setup PR.
 If the version check is unavailable, commands continue with a warning.
 
 | Symptom (message text) | Do (exact command) |
