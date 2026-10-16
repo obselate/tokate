@@ -204,6 +204,10 @@ Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are no
    tokate checks 10 --watch
    ```
 
+   If GitHub reports a pushed PR head before Git can fetch it, checks returns pending
+   with exit 8. Run checks again after the head is available. Direct code commits
+   after the receipt need owner review and a verified amendment.
+
 4. Review scope, acceptance criteria, limitations and conflicts.
 5. Mark the accepted draft ready.
 

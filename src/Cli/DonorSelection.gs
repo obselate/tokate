@@ -202,17 +202,25 @@ internal class DonorSelection {
                     try {
                         policy.Validate("codex", provider, model, effort, 1)
                         rejection = !capabilities.TryGetValue(model, out supported) || !supported.Contains(effort) ?
-                        "Model/effort capability is not advertised by the offline native Codex catalog; availability is unknown.":
+                        model +
+                            " / " +
+                            effort +
+                            " is not in the offline native Codex catalog. Availability is unknown.":
                         "Model is donor-reported unavailable."
                     } catch (error Exception) {
                         rejection = error.Message
                     }
                 }
 
-                let guidance = " Explicit donor choice required: --model MODEL --effort EFFORT. Eligible pairs: " +
+                let guidance = (
+                    explicitPair &&
+                        model != "" &&
+                        effort != "" ? " Choose an eligible pair.": " Explicit donor choice required: --model MODEL --effort EFFORT."
+                ) +
+                    " Eligible pairs: " +
                     String.Join(", ", choices) + ". No inference started."
                 if (explicitPair || args.Get("profile") != "") && model != "" && effort != "" {
-                    throw Exception(rejection + guidance)
+                    throw CliFailure("command_failed", rejection + guidance)
                 }
 
                 if saved.ValueKind != JsonValueKind.Undefined {
