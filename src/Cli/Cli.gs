@@ -153,6 +153,7 @@ internal class Cli {
             "runs DIR: Run storage; default: tokate/runs under XDG_STATE_HOME, or ~/.local/state/tokate/runs",
             "run DIR: Exact saved run directory",
             "all: Also list finished saved runs",
+            "ignored DIR: Select only this ignored directory inside the saved checkout",
             "from-pr N: Seed a donation from another donor's last coordinated PR commit",
             "continue-from DIR: Import stopped unpublished same-donor managed work into a fresh active attempt",
             "path DIR: Repository directory; default: current directory",
@@ -178,6 +179,7 @@ internal class Cli {
 
         internal let Positions map[string, string] = map[string, string]{
             "ISSUE": "Issue 42 of the local GitHub remote, OWNER/REPO#42 or an issue URL",
+            "RUN...": "One or more saved run names or full run directory paths; omit to preview cleanup",
             "PR": "PR 10 of the local GitHub remote, OWNER/REPO#10 or a PR URL",
             "PR...": "2 to 16 unique PR numbers; outside a checkout qualify each as OWNER/REPO#N",
             "RUN": "Saved run: 42, REPO#42 or OWNER/REPO#42; add -3 when the issue has two active attempts",
@@ -230,6 +232,13 @@ internal class Cli {
                 "run,all",
                 "Show your saved work, repository issues and who acts next, or one issue or saved run; no writes or inference. Bare status lists your saved work, only for this repository inside a checkout. Repository status is bounded and may report truncation. Blocked work and failed CI still exit 0 after a successful read.",
                 "status 42"
+            ),
+            CliCommand(
+                "clean donate local_read,local_write,github_read",
+                "[RUN...] [--ignored DIR] [--yes]",
+                "ignored,yes,non-interactive",
+                "Preview safe finished runs and the largest ignored directories in kept checkouts. Select whole runs, or one run and --ignored DIR. Shows full paths and bytes before one confirmation. Open issues, active reservations, unpublished verified work and unknown remote state keep whole runs. Never follows symlinks or automatically cleans ignored files. Removing a whole run ends its amendment and recovery.",
+                "clean owner/project#42-1"
             ),
             CliCommand(
                 "checks donate local_read,local_write,github_read repo,pr",
@@ -757,6 +766,10 @@ internal class Cli {
 
         internal func Validate(args Args) {
             let command = Find(args.Command)
+
+            if args.Command == "clean" {
+                CleanCommand.Validate(args)
+            }
 
             ValidateWork(args)
             ValidateDoctor(args)

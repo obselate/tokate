@@ -141,6 +141,10 @@ internal class Positionals {
         }
 
         internal func Bind(args Args) {
+            if args.Command == "clean" {
+                return
+            }
+
             let words = args.Words
             let forms = Cli.Find(args.Command).Forms
             let pairs = forms

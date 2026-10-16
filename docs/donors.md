@@ -114,6 +114,14 @@ Wall time includes claim, preparation, coding, verification and publication. The
 Repositories without `.github/tokate.json` use gratis mode. See [gratis donation](gratis.md)
 for commands, checks, an AI agent template and fixes for common problems.
 
+## Reclaim saved-run space
+
+`tokate clean` previews safe finished runs and the five largest ignored directories per kept checkout, with full paths, regular-file bytes and a total. It changes nothing.
+
+Use `tokate clean RUN...` to select whole runs, or `tokate clean RUN --ignored DIR` to select one ignored directory relative to its checkout (or by full path). Tokate shows the exact selection and asks once. Use `--yes` to confirm without a terminal. With `--json`, `--non-interactive` or no terminal and no `--yes`, it returns `confirmation_required` without deletion.
+
+Whole runs stay when their issue is open, a reservation is active, verified work is unpublished, or required issue, PR or reservation state cannot be checked. A closed or merged PR alone is not enough. Whole-run deletion ends amendment and recovery. Ignored files such as `.env` stay unless their containing directory is explicitly selected. Cleanup does not follow symlinks or change tracked files, commits or records in kept runs.
+
 ## Use a script
 
 1. Replace `N` with the issue number, `M` with an allowed model and `E` with its allowed effort.
