@@ -78,6 +78,37 @@ internal class CommandInputInterrupted : IOException {
 @DllImport("libc", EntryPoint: "kill")
 func KillGroup(pid int32, signal int32) int32;
 
+internal class CommandExecution {
+    internal var Exe string
+    internal var Process Process
+    internal var Limit int32
+    internal var Allowance TimeSpan
+    internal var Budget RuntimeBudget?
+    internal var Clock Stopwatch
+    internal var Exited Chan[Exception?]
+    internal var Stdin Chan[Exception?]
+    internal var Stdout Chan[CommandOutput]
+    internal var Stderr Chan[CommandOutput]
+    internal var Cancelled Chan[bool]
+    internal var Failed Chan[Exception]
+    internal var Deadline AfterTimer
+    internal var OutputReader StreamReader?
+    internal var Callback CommandCancellation?
+    internal var OnCancel ConsoleCancelEventHandler?
+    internal var InputStarted bool
+    internal var OutputStarted bool
+    internal var ErrorStarted bool
+    internal var Ready bool
+    internal var InputDone bool
+    internal var OutputDone bool
+    internal var ErrorDone bool
+    internal var ExitDone bool
+    internal var InputFailed bool
+    internal var Output CommandOutput
+    internal var ErrorOutput CommandOutput
+    internal var Terminal Exception?
+}
+
 internal class CommandCancellation {
     private let Process Process
     private let Signal Chan[bool]?
@@ -393,24 +424,14 @@ internal class Commands {
             completed <- failure
         }
 
-        internal func Run(
+        private func StartInfo(
             exe string,
             args[]string,
-            cwd string = "",
-            input string? = nil,
-            seconds int32 = 60,
-            harness bool = false,
-            github bool = false,
-            isolated bool = false,
-            milliseconds int32 = 0,
-            cancellation Chan[bool]? = nil,
-            strictOutput bool = false,
-            outputPath string = "",
-            errorPath string = "",
-            budget RuntimeBudget? = nil,
-            outputLine Action[string]? = nil,
-            errorLine Action[string]? = nil
-        ) CommandResult {
+            cwd string,
+            harness bool,
+            github bool,
+            isolated bool
+        ) ProcessStartInfo {
             let info = ProcessStartInfo(isolated ? LocalPaths.NeedSystemTool("setsid", cwd): "setsid")
             info.ArgumentList.Add("--wait")
 
@@ -507,6 +528,243 @@ internal class Commands {
             info.Environment["GIT_GRAFT_FILE"] = "/dev/null"
             info.Environment["LC_ALL"] = "C"
 
+            return info
+        }
+
+        private func CheckNamespaceResult(result CommandResult) {
+            if result.Code != 0 {
+                for prefix in[]string{
+                    "setsid: failed to execute ",
+                    "setpriv: failed to execute ",
+                    "unshare: failed to execute "
+                } {
+                    if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
+                        throw CliFailure(
+                            "missing_tools",
+                            "A PID namespace command helper could not execute. Repair the helper, then run tokate doctor."
+                        )
+                    }
+                }
+
+                for prefix in[]string{
+                    "unshare: unshare failed:",
+                    "unshare: mount /proc failed:",
+                    "unshare: mount proc on /proc failed:",
+                    "unshare: write failed /proc/self/",
+                    "unshare: failed to write /proc/self/",
+                    "unshare: failed to open /proc/self/",
+                    "unshare: setgroups failed:"
+                } {
+                    if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
+                        throw LinuxSandbox.NamespaceFailure(result.Error)
+                    }
+                }
+            }
+        }
+
+        private func ExecuteProcess(
+            execution CommandExecution,
+            result CommandResult,
+            input string?,
+            cancellation Chan[bool]?,
+            strictOutput bool,
+            outputCapture FileStream?,
+            errorCapture FileStream?,
+            outputLine Action[string]?,
+            errorLine Action[string]?
+        ) {
+            let process = execution.Process
+
+            try {
+                let reader = strictOutput ? StreamReader(
+                    process.StandardOutput.BaseStream,
+                    UTF8Encoding(false, true),
+                    false
+                ): process.StandardOutput
+                execution.OutputReader = reader
+                let active = CommandCancellation(process, cancellation)
+                execution.Callback = active
+                let handler = ConsoleCancelEventHandler(active.OnCancel)
+                Console.CancelKeyPress += handler
+                execution.OnCancel = handler
+
+                go Commands.Write(process.StandardInput, input, execution.Stdin)
+                execution.InputStarted = true
+                go Commands.Read(reader, execution.Stdout, execution.Failed, outputCapture, outputLine)
+                execution.OutputStarted = true
+                go Commands.Read(process.StandardError, execution.Stderr, execution.Failed, errorCapture, errorLine)
+                execution.ErrorStarted = true
+                execution.Ready = true
+
+                WaitForStreams(execution)
+                result.Code = process.ExitCode
+            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
+                error is IOException ||
+                error is UnauthorizedAccessException ||
+                error is DecoderFallbackException ||
+                error is InvalidOperationException ||
+                error is ArgumentOutOfRangeException limitError &&
+                limitError.ParamName == "value" {
+                execution.Terminal = error
+            } finally {
+                CleanupProcess(execution)
+            }
+        }
+
+        private func WaitForStreams(execution CommandExecution) {
+            while !execution.InputDone || !execution.OutputDone || !execution.ErrorDone || !execution.ExitDone {
+                if (execution.Limit > 0 && execution.Clock.Elapsed >= execution.Allowance) ||
+                    (execution.Budget?.Expired() ?? false) {
+                    throw Exception("Runtime limit reached for " + execution.Exe)
+                }
+
+                var failure Exception? = nil
+
+                select {
+                    case let error = <- execution.Stdin {
+                        execution.InputDone = true
+                        failure = error
+                        execution.InputFailed = error != nil
+                    }
+                    case let captured = <- execution.Stdout {
+                        execution.OutputDone = true
+                        execution.Output = captured
+                        failure = captured.Failure
+                    }
+                    case let captured = <- execution.Stderr {
+                        execution.ErrorDone = true
+                        execution.ErrorOutput = captured
+                        failure = captured.Failure
+                    }
+                    case let error = <- execution.Exited {
+                        execution.ExitDone = true
+                        KillGroup(-execution.Process.Id, 9)
+                        failure = error
+                    }
+                    case let error = <- execution.Failed {
+                        throw error
+                    }
+                    case <- execution.Cancelled {
+                        throw Exception("Command cancelled: " + execution.Exe)
+                    }
+                    case <- execution.Deadline {
+                        throw Exception("Runtime limit reached for " + execution.Exe)
+                    }
+                }
+
+                select {
+                    case <- execution.Cancelled {
+                        throw Exception("Command cancelled: " + execution.Exe)
+                    }
+                    default { }
+                }
+
+                if (execution.Limit > 0 && execution.Clock.Elapsed >= execution.Allowance) ||
+                    (execution.Budget?.Expired() ?? false) {
+                    throw Exception("Runtime limit reached for " + execution.Exe)
+                }
+
+                if let error = failure {
+                    throw error
+                }
+            }
+        }
+
+        private func CleanupProcess(execution CommandExecution) {
+            if let handler = execution.OnCancel {
+                Console.CancelKeyPress -= handler
+            }
+
+            if let active = execution.Callback {
+                active.Stop()
+            }
+
+            let process = execution.Process
+            KillGroup(-process.Id, 9)
+
+            if !process.HasExited {
+                try {
+                    process.Kill(true)
+                } catch (error InvalidOperationException) { }
+            }
+
+            process.WaitForExit()
+
+            if !execution.ExitDone {
+                <-execution.Exited
+            }
+
+            if execution.InputStarted && !execution.InputDone {
+                <-execution.Stdin
+            }
+
+            if execution.OutputStarted && !execution.OutputDone {
+                execution.Output = <-execution.Stdout
+            }
+
+            if execution.ErrorStarted && !execution.ErrorDone {
+                execution.ErrorOutput = <-execution.Stderr
+            }
+
+            execution.OutputReader?.Dispose()
+        }
+
+        private func CompleteProcess(execution CommandExecution, result CommandResult) {
+            Collect(result, execution.Output, execution.ErrorOutput)
+
+            if execution.Terminal == nil {
+                select {
+                    case <- execution.Cancelled {
+                        execution.Terminal = Exception("Command cancelled: " + execution.Exe)
+                    }
+                    default { }
+                }
+
+                if (execution.Limit > 0 && execution.Clock.Elapsed >= execution.Allowance) ||
+                    (execution.Budget?.Expired() ?? false) {
+                    execution.Terminal = Exception("Runtime limit reached for " + execution.Exe)
+                }
+            }
+
+            execution.Terminal = execution.Terminal ?? execution.Output.Failure ?? execution.ErrorOutput.Failure
+
+            if let error = execution.Terminal {
+                result.Code = nil
+
+                if !execution.Ready {
+                    throw error
+                }
+
+                if error is IOException io && execution.InputFailed {
+                    throw CommandInputInterrupted(io, result)
+                }
+
+                throw CommandInterrupted(error, result)
+            }
+
+            CheckNamespaceResult(result)
+        }
+
+        internal func Run(
+            exe string,
+            args[]string,
+            cwd string = "",
+            input string? = nil,
+            seconds int32 = 60,
+            harness bool = false,
+            github bool = false,
+            isolated bool = false,
+            milliseconds int32 = 0,
+            cancellation Chan[bool]? = nil,
+            strictOutput bool = false,
+            outputPath string = "",
+            errorPath string = "",
+            budget RuntimeBudget? = nil,
+            outputLine Action[string]? = nil,
+            errorLine Action[string]? = nil
+        ) CommandResult {
+            let info = StartInfo(exe, args, cwd, harness, github, isolated)
+
             if let signal = cancellation {
                 select {
                     case <- signal {
@@ -541,204 +799,36 @@ internal class Commands {
             }
 
             using let process = launched
-            var outputReader StreamReader? = nil
-            var callback CommandCancellation? = nil
-            var onCancel ConsoleCancelEventHandler? = nil
-            var inputStarted bool
-            var outputStarted bool
-            var errorStarted bool
-            var ready bool
-            var inputDone bool
-            var outputDone bool
-            var errorDone bool
-            var exitDone bool
-            var inputFailed bool
-            var output = CommandOutput()
-            var stderrOutput = CommandOutput()
-            var terminal Exception? = nil
-
-            try {
-                let reader = strictOutput ? StreamReader(
-                    process.StandardOutput.BaseStream,
-                    UTF8Encoding(false, true),
-                    false
-                ): process.StandardOutput
-                outputReader = reader
-                let active = CommandCancellation(process, cancellation)
-                callback = active
-                let handler = ConsoleCancelEventHandler(active.OnCancel)
-                Console.CancelKeyPress += handler
-                onCancel = handler
-
-                go Commands.Write(process.StandardInput, input, stdin)
-                inputStarted = true
-                go Commands.Read(reader, stdout, failed, outputCapture, outputLine)
-                outputStarted = true
-                go Commands.Read(process.StandardError, stderr, failed, errorCapture, errorLine)
-                errorStarted = true
-                ready = true
-
-                while !inputDone || !outputDone || !errorDone || !exitDone {
-                    if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw Exception("Runtime limit reached for " + exe)
-                    }
-
-                    var failure Exception? = nil
-
-                    select {
-                        case let error = <- stdin {
-                            inputDone = true
-                            failure = error
-                            inputFailed = error != nil
-                        }
-                        case let captured = <- stdout {
-                            outputDone = true
-                            output = captured
-                            failure = captured.Failure
-                        }
-                        case let captured = <- stderr {
-                            errorDone = true
-                            stderrOutput = captured
-                            failure = captured.Failure
-                        }
-                        case let error = <- exited {
-                            exitDone = true
-                            KillGroup(-process.Id, 9)
-                            failure = error
-                        }
-                        case let error = <- failed {
-                            throw error
-                        }
-                        case <- cancelled {
-                            throw Exception("Command cancelled: " + exe)
-                        }
-                        case <- deadline {
-                            throw Exception("Runtime limit reached for " + exe)
-                        }
-                    }
-
-                    select {
-                        case <- cancelled {
-                            throw Exception("Command cancelled: " + exe)
-                        }
-                        default { }
-                    }
-
-                    if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                        throw Exception("Runtime limit reached for " + exe)
-                    }
-
-                    if let error = failure {
-                        throw error
-                    }
-                }
-
-                result.Code = process.ExitCode
-            } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) ||
-                error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is DecoderFallbackException ||
-                error is InvalidOperationException ||
-                error is ArgumentOutOfRangeException limitError &&
-                limitError.ParamName == "value" {
-                terminal = error
-            } finally {
-                if let handler = onCancel {
-                    Console.CancelKeyPress -= handler
-                }
-
-                if let active = callback {
-                    active.Stop()
-                }
-
-                KillGroup(-process.Id, 9)
-
-                if !process.HasExited {
-                    try {
-                        process.Kill(true)
-                    } catch (error InvalidOperationException) { }
-                }
-
-                process.WaitForExit()
-
-                if !exitDone {
-                    <-exited
-                }
-
-                if inputStarted && !inputDone {
-                    <-stdin
-                }
-
-                if outputStarted && !outputDone {
-                    output = <-stdout
-                }
-
-                if errorStarted && !errorDone {
-                    stderrOutput = <-stderr
-                }
-
-                outputReader?.Dispose()
+            let execution = CommandExecution{
+                Exe: exe,
+                Process: process,
+                Limit: limit,
+                Allowance: allowance,
+                Budget: budget,
+                Clock: clock,
+                Exited: exited,
+                Stdin: stdin,
+                Stdout: stdout,
+                Stderr: stderr,
+                Cancelled: cancelled,
+                Failed: failed,
+                Deadline: deadline,
+                Output: CommandOutput(),
+                ErrorOutput: CommandOutput()
             }
 
-            Collect(result, output, stderrOutput)
-
-            if terminal == nil {
-                select {
-                    case <- cancelled {
-                        terminal = Exception("Command cancelled: " + exe)
-                    }
-                    default { }
-                }
-
-                if (limit > 0 && clock.Elapsed >= allowance) || (budget?.Expired() ?? false) {
-                    terminal = Exception("Runtime limit reached for " + exe)
-                }
-            }
-
-            terminal = terminal ?? output.Failure ?? stderrOutput.Failure
-
-            if let error = terminal {
-                result.Code = nil
-
-                if !ready {
-                    throw error
-                }
-
-                if error is IOException io && inputFailed {
-                    throw CommandInputInterrupted(io, result)
-                }
-
-                throw CommandInterrupted(error, result)
-            }
-
-            if result.Code != 0 {
-                for prefix in[]string{
-                    "setsid: failed to execute ",
-                    "setpriv: failed to execute ",
-                    "unshare: failed to execute "
-                } {
-                    if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
-                        throw CliFailure(
-                            "missing_tools",
-                            "A PID namespace command helper could not execute. Repair the helper, then run tokate doctor."
-                        )
-                    }
-                }
-
-                for prefix in[]string{
-                    "unshare: unshare failed:",
-                    "unshare: mount /proc failed:",
-                    "unshare: mount proc on /proc failed:",
-                    "unshare: write failed /proc/self/",
-                    "unshare: failed to write /proc/self/",
-                    "unshare: failed to open /proc/self/",
-                    "unshare: setgroups failed:"
-                } {
-                    if result.Error.StartsWith(prefix, StringComparison.Ordinal) {
-                        throw LinuxSandbox.NamespaceFailure(result.Error)
-                    }
-                }
-            }
+            ExecuteProcess(
+                execution,
+                result,
+                input,
+                cancellation,
+                strictOutput,
+                outputCapture,
+                errorCapture,
+                outputLine,
+                errorLine
+            )
+            CompleteProcess(execution, result)
 
             return result
         }
