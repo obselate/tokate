@@ -48,18 +48,6 @@ internal open class OutputSink {
 
     public open func Step(text string);
 
-    public open func Line(value string, color string, error bool);
-
-    public open func Table(rows List[[]string], error bool = false, fit int32 = -1);
-
-    public open func Heading(title string, error bool = false);
-
-    public open func Row(label string, value string, color string = "default", error bool = false);
-
-    public open func Json(value JsonElement, title string, raw bool = true);
-
-    public open func Checks(rows JsonElement);
-
     public open func Command(command JsonElement, flatten bool = true) string;
 
     public open func Command(command[]string, flatten bool = true) string;

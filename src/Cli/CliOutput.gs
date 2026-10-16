@@ -41,27 +41,6 @@ internal class CliOutput : OutputSink {
 
     public override func Step(text string) -> Terminal.Step(text)
 
-    public override func Line(value string, color string, error bool) -> Terminal.Line(value, color, error)
-
-    public override func Table(rows List[[]string], error bool = false, fit int32 = -1) -> Terminal.Table(
-        rows,
-        error,
-        fit
-    )
-
-    public override func Heading(title string, error bool = false) -> Terminal.Heading(title, error)
-
-    public override func Row(label string, value string, color string = "default", error bool = false) -> Terminal.Row(
-        label,
-        value,
-        color,
-        error
-    )
-
-    public override func Json(value JsonElement, title string, raw bool = true) -> Terminal.Json(value, title, raw)
-
-    public override func Checks(rows JsonElement) -> Terminal.Checks(rows)
-
     public override func Command(command JsonElement, flatten bool = true) string -> Terminal.Command(command, flatten)
 
     public override func Command(command[]string, flatten bool = true) string -> Terminal.Command(command, flatten)

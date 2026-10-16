@@ -5,7 +5,7 @@ import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
-func Main(args[]string) int32 {
+private func Initialize(args[]string) {
     Output.Sink = CliOutput()
     Args.Parse = Cli.Parse
     Terminal.Initialize()
@@ -15,6 +15,10 @@ func Main(args[]string) int32 {
         Terminal.Plain = Terminal.Plain || argument == "--plain" || argument.StartsWith("--plain=")
         Terminal.Ascii = Terminal.Ascii || argument == "--ascii"
     }
+}
+
+func Main(args[]string) int32 {
+    Initialize(args)
 
     PublicOutput.Command = Cli.Name(args)
 
@@ -364,13 +368,7 @@ private func RunCommand(options Args) int32 {
         case "overlaps" {
             Overlaps.Run(options)
 
-            if !PublicOutput.Enabled {
-                let result = PublicOutput.ResultData as Dictionary[string, Object?] ??
-                    throw Exception("Invalid overlaps result")
-                result["truncated"] = PublicOutput.Truncated
-                Terminal.Message(result["advisory"]?.ToString() ?? "", "cyan")
-                Terminal.Json(J.Parse(J.Write(result)), "Selected contributions")
-            }
+            RenderOverlaps()
         }
 
         case "checks" {
@@ -593,4 +591,14 @@ private func RenderCheckDetails(facts Dictionary[string, Object?]) {
     evidence.Remove("owner_inspection_required")
 
     Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
+}
+
+private func RenderOverlaps() {
+    if !PublicOutput.Enabled {
+        let result = PublicOutput.ResultData as Dictionary[string, Object?] ??
+            throw Exception("Invalid overlaps result")
+        result["truncated"] = PublicOutput.Truncated
+        Terminal.Message(result["advisory"]?.ToString() ?? "", "cyan")
+        Terminal.Json(J.Parse(J.Write(result)), "Selected contributions")
+    }
 }
