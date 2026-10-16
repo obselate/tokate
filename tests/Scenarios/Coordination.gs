@@ -1725,6 +1725,13 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.Contains(Check.Text(task["pr_url"]), "/pull/10")
         let last = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
         Check.That(JsonNode.DeepEquals(summary, last), "Stopped session report changed")
+        let missingRun = Path.Combine(Check.Text(task["run_directory"]), "run.json")
+        let runRecord = File.ReadAllText(missingRun)
+        File.Delete(missingRun)
+        let fallback = Check.Envelope(Flow.Call(stop), "work", "ok")["data"]
+        Check.That(Check.Text(fallback?["submitted"]) == "1", "Missing run lost the saved task result")
+        Check.That(JsonNode.DeepEquals(fallback?["tasks"], summary["tasks"]), "Missing run changed saved tasks")
+        File.WriteAllText(missingRun, runRecord)
         Check.That(!File.Exists(marker), "Stop marker was not removed")
         let current = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
         Check.That(current == reserved, "Reservation changed")

@@ -1812,19 +1812,22 @@ internal class AmendmentFlow {
                 rejected.Initialize()
                 let saved = ManagedRun(rejected, "")
                 rejected.Flow.Call([]string{"submit", "--run", saved}, 8)
-                let previous = Read(saved, "request.json")
-                rejected.Lifecycle("renew")
-                rejected.Coordinate(rejected.Event(previous), 1)
+                var previous = Read(saved, "request.json")
                 rejected.Flow.Call([]string{"amend", "--run", saved})
-                let head = Correct(rejected.Flow, saved)
-                Rework(rejected.Flow, saved, head)
-                rejected.Flow.Reload()
-                let request = Check.PostedRequest(rejected.Flow.State)
-                Check.That(
-                    Check.Text(request["uuid"]) != Check.Text(previous["uuid"]),
-                    "Correction reused rejected intent"
-                )
-                rejected.Coordinate(rejected.Event(request))
+                for text in[]string{"First corrected intent\n", "Second corrected intent\n"} {
+                    rejected.Lifecycle("renew")
+                    rejected.Coordinate(rejected.Event(previous), 1)
+                    let head = Correct(rejected.Flow, saved, text)
+                    Rework(rejected.Flow, saved, head)
+                    rejected.Flow.Reload()
+                    let request = Check.PostedRequest(rejected.Flow.State)
+                    Check.That(
+                        Check.Text(request["uuid"]) != Check.Text(previous["uuid"]),
+                        "Correction reused rejected intent"
+                    )
+                    previous = request
+                }
+                rejected.Coordinate(rejected.Event(previous))
                 rejected.Flow.Call([]string{"submit", "--run", saved})
                 Once(rejected.Flow, 1)
                 rejected.Flow.Receipt("owner/project#10", owner: true)
@@ -2234,7 +2237,7 @@ internal class AmendmentFlow {
             test.Flow.Mode("staged_whitespace")
             test.Flow.Call([]string{"work", "--run", run}, 1)
             let archive = Prepared(test.Flow, run)
-            let original = File.ReadAllText(Path.Combine(run, "run.json"))
+            let original = Read(run)
             let decree = Path.Combine(run, "checkout/DECREE.md")
             File.WriteAllText(decree, "Corrected instruction edit\n")
             var commit = Correct(test.Flow, run)
@@ -2245,10 +2248,8 @@ internal class AmendmentFlow {
                 Check.Text(refused["failure_stage"]) == "candidate_validation",
                 "Protected correction passed candidate validation"
             )
-            Check.That(
-                File.ReadAllText(Path.Combine(run, "run.json")) == original,
-                "Refused correction rewrote original run"
-            )
+            original["amendment"] = JsonValue.Create(commit)
+            Check.That(JsonNode.DeepEquals(Read(run), original), "Refused correction rewrote original run")
             test.Flow.NoPr()
             File.WriteAllText(decree, "Approved owner instructions\n")
             commit = Correct(test.Flow, run)

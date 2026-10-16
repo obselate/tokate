@@ -319,7 +319,7 @@ internal class Amendment {
                     PublishSaved(directory, run, existing)
                     return
                 }
-                let record = J.Get(Authority(run, existing, directory: directory), "record")
+                let record = J.Get(Authority(run, continuing ? existing: nil, directory: directory), "record")
                 if J.Get(existing?.Element() ?? default(JsonElement), "publication").ValueKind != JsonValueKind.Object {
                     Publication.Find(
                         run,
@@ -380,12 +380,7 @@ internal class Amendment {
                 }
             }
             let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
-            let current = Path.Combine(
-                directory,
-                "amendments",
-                correcting && savedCorrection ? run.Text("amendment"): commit,
-                "run.json"
-            )
+            let current = Path.Combine(directory, "amendments", commit, "run.json")
             var change = File.Exists(current) ? Data.Read(current): Data()
             if !correcting && change.Text("uuid") != "" {
                 change = Data()
