@@ -280,11 +280,11 @@ After owner recovery, repeat a pending publication with the same saved intent. D
 | `Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub.` | Owner: `gh pr view PR --web` |
 | `Merge the target branch into the saved checkout. Resolve conflicts, then run tokate amend with an explicit verification budget.` | Donor: merge the target, then run `tokate amend 42-1 --time 5m` |
 | `No published PR` with saved-publication guidance | `tokate status 42-1 --json` |
-| `Legacy correction file found.` | Use Tokate 0.7.0 for this saved run. Start new work with the current version. |
+| `Cannot migrate the legacy correction.` or `Cannot map legacy correction artifacts safely.` | Inspect the named record and artifact directories. Restore the original data, then retry the command. |
 
 Approve a fork workflow only after diff review. For a stale PR, refresh `tokate checks PR` and use the target update steps above if required.
 
-New corrections use `amendments/COMMIT/run.json`. The saved run selects the current correction with `amendment`. Old runs with `correction.json` are not migrated.
+Corrections use `amendments/COMMIT/run.json`. The saved run selects the current correction with `amendment`. Loading an old run moves its correction record and artifacts to this location and removes `correction.json`. Invalid legacy corrections affect only that run. Status lists the other runs.
 
 ### Access
 

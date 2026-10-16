@@ -6,6 +6,7 @@ import System.IO
 import System.Security.Cryptography
 import System.Text
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class Data(fields Dictionary[string, Object?]? = nil) {
     internal let Fields Dictionary[string, Object?] = fields ?? Dictionary[string, Object?]()
@@ -77,13 +78,59 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
     shared {
         internal func Load(directory string) Data {
             RunStorage.ControlPaths(directory)
-            if Directory.GetFiles(directory, "correction.*").Length > 0 {
-                throw CliFailure(
-                    "invalid_state",
-                    "Legacy correction file found. Use Tokate 0.7.0 for this saved run. Start new work with the current version."
-                )
+            let run = Read(Path.Combine(directory, "run.json"))
+            let legacy = Path.Combine(directory, "correction.json")
+            if File.Exists(legacy) {
+                RunStorage.ControlFile(directory, "correction.json")
+                let change = Read(legacy)
+                let commit = change.Text("commit")
+                let state = change.Text("state")
+                let id = change.Text("uuid")
+                var uuid Guid
+                if change.Number("version") != 1 || !Guid.TryParse(id, out uuid) || change.Text("id") != id ||
+                    !Regex.IsMatch(commit, "^[0-9a-f]{40}\\z") ||
+                    (state != "validating" && state != "verifying" && state != "verified" && state != "failed") {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Cannot migrate the legacy correction. Inspect " +
+                            legacy +
+                            " and restore its original record and artifacts before retrying."
+                    )
+                }
+                let source = Path.Combine(directory, "correction-" + id)
+                let target = Path.Combine(directory, "amendments", commit)
+                if Directory.Exists(source) && !Directory.Exists(target) {
+                    LocalPaths.DirectoryPath(source)
+                    Directory.CreateDirectory(Path.Combine(directory, "amendments"))
+                    LocalPaths.DirectoryPath(Path.Combine(directory, "amendments"))
+                    Directory.Move(source, target)
+                }
+                if Directory.Exists(target) {
+                    RunStorage.ControlPaths(target)
+                }
+                if Directory.Exists(source) || !Directory.Exists(target) ||
+                    (
+                    File.Exists(Path.Combine(target, "run.json")) && !RequestData.Same(
+                        Read(Path.Combine(target, "run.json")).Element(),
+                        change.Element()
+                    )
+                ) {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Cannot map legacy correction artifacts safely. Inspect " +
+                            source +
+                            " and " +
+                            target +
+                            " before retrying."
+                    )
+                }
+                change.Save(target)
+                run.Fields["amendment"] = commit
+                run.Save(directory)
+                File.Delete(Path.Combine(target, "record.json"))
+                File.Delete(legacy)
             }
-            return Read(Path.Combine(directory, "run.json"))
+            return run
         }
 
         internal func Read(path string) Data {
