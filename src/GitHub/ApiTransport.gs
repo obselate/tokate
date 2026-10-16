@@ -359,6 +359,60 @@ internal class ApiTransport {
             )
         }
 
+        private func RequestAllowance(timer Stopwatch, read bool, expires int64) double {
+            CheckDeadline()
+
+            if Clock.Elapsed.TotalSeconds < NextRead {
+                let delay = NextRead - Clock.Elapsed.TotalSeconds
+                if delay >= Deadline - Clock.Elapsed.TotalSeconds {
+                    Wait(Deadline - Clock.Elapsed.TotalSeconds)
+                }
+
+                if delay >= 60.0 - timer.Elapsed.TotalSeconds {
+                    throw Failure(429, read, delay)
+                }
+
+                Wait(delay)
+            }
+
+            if !read {
+                while Clock.Elapsed.TotalSeconds < NextMutation {
+                    Wait(NextMutation - Clock.Elapsed.TotalSeconds)
+                }
+            }
+
+            var remaining = Math.Min(60.0 - timer.Elapsed.TotalSeconds, Deadline - Clock.Elapsed.TotalSeconds)
+            if !read && expires > 0 {
+                remaining = Math.Min(remaining, expires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0)
+                if remaining <= 0 {
+                    throw Exception("Reservation expired before coordination mutation")
+                }
+            }
+
+            if remaining <= 0 {
+                CheckDeadline()
+                throw Failure(0, read, 0.0)
+            }
+
+            return remaining
+        }
+
+        private func ObserveResponse(path string, response ApiResponse, read bool, limited bool) {
+            if read {
+                var poll double
+                if Double.TryParse(response.PollInterval, NumberStyles.None, CultureInfo.InvariantCulture, out poll) &&
+                    Double.IsFinite(poll) && poll >= 0 {
+                    Polls[path] = Clock.Elapsed.TotalSeconds + poll
+                }
+
+                NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + response.Delay(limited))
+            }
+
+            if limited || response.Remaining == "0" || response.RetryAfter != "" {
+                NextRead = Math.Max(NextRead, Clock.Elapsed.TotalSeconds + response.Delay(limited))
+            }
+        }
+
         internal suspend func Request(
             path string,
             body Object?,
@@ -373,39 +427,7 @@ internal class ApiTransport {
             let key = path + "\n" + input
 
             for attempt in 0 ... (read ? 3: 1) {
-                CheckDeadline()
-
-                if Clock.Elapsed.TotalSeconds < NextRead {
-                    let delay = NextRead - Clock.Elapsed.TotalSeconds
-                    if delay >= Deadline - Clock.Elapsed.TotalSeconds {
-                        Wait(Deadline - Clock.Elapsed.TotalSeconds)
-                    }
-
-                    if delay >= 60.0 - timer.Elapsed.TotalSeconds {
-                        throw Failure(429, read, delay)
-                    }
-
-                    Wait(delay)
-                }
-
-                if !read {
-                    while Clock.Elapsed.TotalSeconds < NextMutation {
-                        Wait(NextMutation - Clock.Elapsed.TotalSeconds)
-                    }
-                }
-
-                var remaining = Math.Min(60.0 - timer.Elapsed.TotalSeconds, Deadline - Clock.Elapsed.TotalSeconds)
-                if !read && expires > 0 {
-                    remaining = Math.Min(remaining, expires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0)
-                    if remaining <= 0 {
-                        throw Exception("Reservation expired before coordination mutation")
-                    }
-                }
-
-                if remaining <= 0 {
-                    CheckDeadline()
-                    throw Failure(0, read, 0.0)
-                }
+                let remaining = RequestAllowance(timer, read, expires)
 
                 let args = List[string]{"api", "--include", "--hostname", "github.com", "--method", verb, path}
                 var cached ApiCache
@@ -448,24 +470,7 @@ internal class ApiTransport {
                 let response = ApiResponse(result.Output)
                 let limited = response.RateLimited()
 
-                if read {
-                    var poll double
-                    if Double.TryParse(
-                        response.PollInterval,
-                        NumberStyles.None,
-                        CultureInfo.InvariantCulture,
-                        out poll
-                    ) &&
-                        Double.IsFinite(poll) && poll >= 0 {
-                        Polls[path] = Clock.Elapsed.TotalSeconds + poll
-                    }
-
-                    NextPoll = Math.Max(NextPoll, Clock.Elapsed.TotalSeconds + response.Delay(limited))
-                }
-
-                if limited || response.Remaining == "0" || response.RetryAfter != "" {
-                    NextRead = Math.Max(NextRead, Clock.Elapsed.TotalSeconds + response.Delay(limited))
-                }
+                ObserveResponse(path, response, read, limited)
 
                 if timer.Elapsed.TotalSeconds >= 60.0 {
                     throw Failure(response.Status, read, response.Delay(limited), response.FailureReason())
