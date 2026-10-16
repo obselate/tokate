@@ -108,5 +108,11 @@ internal class CliOutput : OutputSink {
         facts Dictionary[string, Object?]
     ) -> PublicOutput.Checks(run, rows, status, facts)
 
+    public override func RequestOutcome(value JsonElement) -> Terminal.Json(
+        value,
+        "Recorded request outcome; no comment posted",
+        raw: false
+    )
+
     public override suspend func Next(options Args?, code string) -> PublicOutput.Next(options, code)
 }

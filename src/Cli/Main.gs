@@ -374,7 +374,7 @@ private func RunCommand(options Args) int32 {
         }
 
         case "checks" {
-            return Checks.Run(options)
+            return Checks.Run(options, RenderCheckDetails)
         }
 
         case "status" when options.Get("run") == "" {
@@ -443,8 +443,55 @@ private func RenderAccess(options Args) {
     }
 }
 
+private func SubmitSaved(args Args) {
+    try {
+        let directory = Path.GetFullPath(args.Need("run"))
+        using let lease = RunStorage.Lease(directory)
+        let run = Data.Load(directory)
+
+        if run.Flag("gratis") {
+            Publication.PublishGratis(
+                directory,
+                run,
+                (preview, consent) -> Gratis.ConfirmPublish(directory, args, preview, consent)
+            )
+            return
+        }
+
+        if args.Get("yes") != "true" {
+            let change = Cli.Find("submit").Brief
+            PublicOutput.ResultData = map[string, Object?]{
+                "operation": "submit",
+                "subject": args.Subject,
+                "repo": args.Get("repo"),
+                "issue": args.Get("issue"),
+                "donor": args.Get("donor"),
+                "base_branch": args.Get("base-branch"),
+                "changes": []string{change},
+                "run_directory": directory,
+                "applied": false
+            }
+            Terminal.Message(change + ". Target: " + directory + ".", error: true)
+
+            if !OwnerSetup.Confirm(args) {
+                throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
+            }
+
+            args.Values["--yes"] = "true"
+        }
+
+        Submission.Submit(args, directory, run)
+    } catch (error Exception) when error is IOException ||
+        error is UnauthorizedAccessException ||
+        error is CommandInterrupted ||
+        error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
+        let code = (error is IOException || error is UnauthorizedAccessException) ? "invalid_state": "command_failed"
+        throw CliFailure(code, error.Message, summary: CliFailure.Message(code))
+    }
+}
+
 private func SubmitCommand(options Args) int32? {
-    Submission.Submit(options)
+    SubmitSaved(options)
 
     let directory = Path.GetFullPath(options.Need("run"))
     var run = Data.Load(directory)
@@ -486,7 +533,7 @@ private func SubmitCommand(options Args) int32? {
                     ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
                     Submission.ResetWorkflow()
                 } else {
-                    Submission.Submit(options)
+                    SubmitSaved(options)
                     run = Data.Load(directory)
                 }
             }
@@ -537,4 +584,13 @@ private func WorkCommand(options Args) int32? {
     }
 
     return nil
+}
+
+private func RenderCheckDetails(facts Dictionary[string, Object?]) {
+    Terminal.Checks(J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks"))
+
+    let evidence = Dictionary[string, Object?](facts)
+    evidence.Remove("owner_inspection_required")
+
+    Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
 }

@@ -30,20 +30,32 @@ internal class Gratis {
             }
         }
 
-        private func Query(repo string, query string, variables Dictionary[string, Object?]? = nil) JsonElement {
-            let input = variables ?? map[string, Object?]{}
-            input["owner"] = repo.Split('/')[0]
-            input["name"] = repo.Split('/')[1]
-            let result = GitHub.Api("graphql", map[string, Object?]{"query": query, "variables": input})
-            Require(J.Count(J.Get(result, "errors")) == 0, "Gratis GraphQL query failed")
-            return J.Get(result, "data")
+        internal func ConfirmPublish(
+            directory string,
+            args Args,
+            preview Dictionary[string, Object?],
+            consent string
+        ) bool {
+            PublicOutput.ResultData = preview
+            Terminal.Message(Tokate.Output.Clean(consent), error: true)
+
+            if OwnerSetup.Confirm(args, "Publish this contribution?") {
+                return true
+            }
+
+            if OwnerSetup.Unattended(args) {
+                PublicOutput.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
+                return false
+            }
+
+            throw CliFailure("confirmation_required", "Gratis submission requires --yes. Nothing changed.")
         }
 
         internal func Snapshot(repo string) List[Object] {
             let pulls = List[Object]()
             var cursor string? = nil
             while true {
-                let result = Query(
+                let result = Publication.Query(
                     repo,
                     "query($$owner:String!,$$name:String!,$$cursor:String){repository(owner:$$owner,name:$$name){pullRequests(states:OPEN,first:50,after:$$cursor,orderBy:{field:CREATED_AT,direction:ASC}){nodes{number title body closingIssuesReferences(first:20){nodes{number repository{nameWithOwner}}} files(first:100){nodes{path}}} pageInfo{hasNextPage endCursor}}}}",
                     map[string, Object?]{"cursor": cursor}
@@ -105,145 +117,6 @@ internal class Gratis {
             Require(Encoding.UTF8.GetByteCount(J.Write(record)) <= 65536, "Guidance and PR snapshot exceed 64 KiB")
             record["pulls"] = original
             return J.Parse(J.Write(record))
-        }
-
-        internal func Publish(directory string, run Data, args Args) {
-            ContributionAuthority.Recheck(run)
-            if run.Text("state") == "refused" {
-                return
-            }
-            Require(run.Text("state") == "generated" || run.Text("state") == "skipped", "Task is not ready")
-            let repoName = run.Text("repo")
-            let donor = run.Text("donor")
-            let id = run.Text("id")
-            let head = run.Text("commit")
-            let context = J.Get(run.Element(), "gratis_context")
-            let tool = J.Select(run.Element(), "harness,provider,model,effort")
-            tool["coding_seconds"] = run.Number("execution_seconds")
-            tool["usage"] = J.Get(run.Element(), "usage")
-            let receipt = ContributionReceipt.Coordinated(repoName, run.Number("issue"), "", "", id, donor, head)
-            receipt["mode"] = "gratis"
-            receipt["owner_approved"] = false
-            receipt["tools"] = []Object{tool}
-            receipt["verification"] = []Object{}
-            receipt["prompt_sha256"] = J.Text(context, "prompt_sha256")
-            let summary = head == "" ? J.Get(run.Element(), "public_summary"): PublicSummary.ForHead(run, head)
-            PublicSummary.Attach(receipt, summary)
-            let attribution = "Donated with [Tokate](https://github.com/obselate/tokate) by @" +
-                donor +
-                ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
-                PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
-            let receiptText = J.Write(receipt)
-            let marker = "<!-- tokate-receipt:" + receiptText + " -->"
-            let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
-            let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
-                report +
-                "\n\n" +
-                attribution +
-                "\n\n<!-- tokate-v2:" +
-                id +
-                " -->\n" +
-                marker
-            let pullRequest = Publication.PullRequest(
-                run,
-                run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"): run.Text("gratis_title"),
-                body,
-                !run.Flag("ready"),
-                true
-            )
-            let findings = run.Text("findings")
-            let discussionTitle = "Tokate donation findings"
-            let discussionBody = findings == "" ? "": findings + "\n\n" + attribution + "\n\n" + marker
-            let preview = map[string, Object?]{"repo": repoName, "applied": false}
-            var consent = "Repository: " + repoName
-            if run.Text("state") == "generated" {
-                preview["pull_request"] = pullRequest
-                consent += "\nBase: " + run.Text("base_branch") + "\nFork branch: " + donor + ":" + run.Text("branch") +
-                    "\nTitle: " +
-                    pullRequest["title"]?.ToString() + "\nBody:\n" + body
-            }
-            if findings != "" {
-                preview["discussion"] = map[string, Object?]{"title": discussionTitle, "body": discussionBody}
-                consent += "\nDiscussion title: " + discussionTitle + "\nDiscussion body:\n" + discussionBody
-            }
-            PublicOutput.ResultData = preview
-            Terminal.Message(Tokate.Output.Clean(consent), error: true)
-            if !OwnerSetup.Confirm(args, "Publish this contribution?") {
-                if OwnerSetup.Unattended(args) {
-                    PublicOutput.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
-                    return
-                }
-                throw CliFailure("confirmation_required", "Gratis submission requires --yes. Nothing changed.")
-            }
-            if run.Text("state") == "generated" {
-                let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
-                Require(Commands.Git(checkout, "rev-parse", "HEAD") == run.Text("commit"), "Verified head changed")
-                Require(Commands.Git(checkout, "status", "--porcelain") == "", "Verified checkout changed")
-                File.WriteAllText(Path.Combine(directory, "publication.json"), J.Write(receipt))
-                Require(!run.Flag("publication_attempted"), "PR publication was already attempted")
-                Publication.Push(checkout, run, run.Text("commit"))
-                ContributionAuthority.Recheck(run)
-                run.Fields["publication_attempted"] = true
-                run.Save(directory)
-                let pull = GitHub.Api("repos/" + repoName + "/pulls", pullRequest)
-                Publication.SavePr(directory, run, pull)
-                preview["applied"] = true
-            }
-            if findings == "" {
-                return
-            }
-
-            PublishDiscussion(directory, run, repoName, discussionTitle, discussionBody, preview)
-        }
-
-        private func PublishDiscussion(
-            directory string,
-            run Data,
-            repoName string,
-            discussionTitle string,
-            discussionBody string,
-            preview Dictionary[string, Object?]
-        ) {
-            try {
-                Require(!run.Flag("discussion_attempted"), "Discussion publication was already attempted")
-                let result = Query(
-                    repoName,
-                    "query($$owner:String!,$$name:String!){repository(owner:$$owner,name:$$name){id discussionCategories(first:100){nodes{id name} pageInfo{hasNextPage}}}}"
-                )
-                let repo = J.Get(result, "repository")
-                var category string = ""
-                for entry in J.Items(J.Get(J.Get(repo, "discussionCategories"), "nodes")) {
-                    if J.Text(entry, "name") == "General" {
-                        category = J.Text(entry, "id")
-                    }
-                }
-                Require(category != "", "General Discussion category is unavailable")
-                run.Fields["discussion_attempted"] = true
-                run.Save(directory)
-                let input = map[string, Object?]{
-                    "repo": J.Text(repo, "id"),
-                    "category": category,
-                    "title": discussionTitle,
-                    "body": discussionBody
-                }
-                let posted = Query(
-                    repoName,
-                    "mutation($$repo:ID!,$$category:ID!,$$title:String!,$$body:String!){createDiscussion(input:{repositoryId:$$repo,categoryId:$$category,title:$$title,body:$$body}){discussion{url}}}",
-                    input
-                )
-                let url = J.Text(J.Get(J.Get(posted, "createDiscussion"), "discussion"), "url")
-                Require(url != "", "Discussion publication failed")
-                preview["applied"] = true
-                run.Fields["discussion_url"] = url
-                run.Transition("published")
-            } catch (error Exception) when !(error is CommandInterrupted) {
-                run.Fields["discussion_error"] = error.Message
-                if run.Number("pr") == 0 {
-                    throw error
-                }
-            } finally {
-                run.Save(directory)
-            }
         }
     }
 }
