@@ -437,20 +437,18 @@ internal class OwnerSetup {
             }
         }
 
-        private func CreatePull(repo string, main string) string {
-            return J.Text(
-                GitHub.Api(
-                    "repos/" + repo + "/pulls",
-                    map[string, Object?]{
-                        "title": "Set up Tokate",
-                        "head": repo.Split('/')[0] + ":tokate-setup",
-                        "base": main,
-                        "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
-                    }
-                ),
-                "html_url"
-            )
-        }
+        private func CreatePull(repo string, main string) string -> J.Text(
+            GitHub.Api(
+                "repos/" + repo + "/pulls",
+                map[string, Object?]{
+                    "title": "Set up Tokate",
+                    "head": repo.Split('/')[0] + ":tokate-setup",
+                    "base": main,
+                    "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
+                }
+            ),
+            "html_url"
+        )
 
         private func Prepared(repo string, setup string, head string, files List[Object]) bool {
             if setup == "" {

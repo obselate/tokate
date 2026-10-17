@@ -91,7 +91,7 @@ internal class GratisGuidance {
                 .OrderBy(path -> Rank(path))
                 .ThenBy(path -> path, StringComparer.Ordinal)
                 .ToList()
-            let guidance = Dictionary[string, Object?]()
+            let guidance = map[string, Object?]{}
             let linkedDocuments = List[string]()
             for path in ordered {
                 let text = Text(repo, revision, path, tree)

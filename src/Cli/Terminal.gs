@@ -352,28 +352,27 @@ internal class Terminal {
 
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
-                var stage = "Run"
-                if code == "inference_failed" {
-                    stage = "Inference"
-                } else if code == "verification_failed" {
-                    stage = "Verification"
-                } else if (run.State == "generated" || run.State == "incomplete_generated") && exitCode != 0 {
-                    stage = "Publication"
+                let stage = switch code {
+                    case "inference_failed": "Inference"
+                    case "verification_failed": "Verification"
+                    default: (run.State == "generated" || run.State == "incomplete_generated") && exitCode != 0 ?
+                    "Publication": "Run"
                 }
 
-                var outcome = " failed (" + code + ")"
-                var color = "red"
-                if exitCode == 0 {
-                    outcome = " completed"
-                    color = "green"
-                } else if exitCode == 8 {
-                    outcome = " pending"
-                    color = "yellow"
+                let outcome = switch exitCode {
+                    case 0: " completed"
+                    case 8: " pending"
+                    default: " failed (" + code + ")"
+                }
+                let color = switch exitCode {
+                    case 0: "green"
+                    case 8: "yellow"
+                    default: "red"
                 }
 
                 Message(stage + outcome + ". Run: " + PublicOutput.RunDirectory, color, true)
 
-                let summary = RunSummaryArtifacts(PublicOutput.RunDirectory)
+                let summary = String.Join(", ", PublicOutput.Artifacts(PublicOutput.RunDirectory).Keys)
 
                 Message("Saved artifacts: " + summary, "default", true)
 
@@ -388,11 +387,6 @@ internal class Terminal {
                 }
             } catch (error Exception) { }
         }
-
-        private func RunSummaryArtifacts(directory string) string -> String.Join(
-            ", ",
-            PublicOutput.Artifacts(directory).Keys
-        )
 
         internal func Heading(title string, error bool = false) {
             if Rich(error) {

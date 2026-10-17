@@ -427,30 +427,22 @@ internal class Cli {
 
         private func Distance(a string, b string) int32 {
             let row = [b.Length + 1]int32
-            var j int32 = 0
 
-            while j <= b.Length {
+            for j in 0 ... row.Length {
                 row[j] = j
-                j++
             }
 
-            var i int32 = 1
-
-            while i <= a.Length {
+            for i in 1 ... a.Length + 1 {
                 var previous = row[0]
 
                 row[0] = i
-                j = 1
 
-                while j <= b.Length {
+                for j in 1 ... b.Length + 1 {
                     let current = row[j]
 
                     row[j] = Math.Min(Math.Min(row[j], row[j - 1]) + 1, previous + (a[i - 1] == b[j - 1]? 0: 1))
                     previous = current
-                    j++
                 }
-
-                i++
             }
 
             return row[b.Length]
