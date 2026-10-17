@@ -97,15 +97,14 @@ internal class OriginalEvidence {
         private func VerificationReferences(directory string, checks JsonElement) {
             let root = LocalPaths.DirectoryPath(directory)
 
-            for check in J.Items(checks) {
-                for field in[]string{"output_file", "error_file"} {
-                    let value = J.Get(check, field)
+            for item in J.Items(checks) {
+                let check = Verification.Result.Parse(item)
 
-                    if value.ValueKind == JsonValueKind.Undefined {
+                for relative in[]string? {check.OutputFile, check.ErrorFile} {
+                    if relative == nil {
                         continue
                     }
 
-                    let relative = J.Text(check, field)
                     let path = Path.GetFullPath(Path.Combine(root, relative))
                     let failure = "Original recorded verification artifact is missing or outside its archive"
 

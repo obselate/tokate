@@ -8,6 +8,115 @@ import System.IO
 import System.Text.Json
 
 internal class Verification {
+    internal class Result(command JsonElement) {
+        internal let Command JsonElement = command
+        internal var State string? = nil
+        internal var OutputFile string? = nil
+        internal var ErrorFile string? = nil
+        internal var ExitCode int32? = nil
+        internal var Failure string? = nil
+        internal var Output string? = nil
+        internal var Error string? = nil
+        internal var OutputTruncated bool? = nil
+        internal var ErrorTruncated bool? = nil
+
+        internal func Element() JsonElement {
+            using let bytes = MemoryStream()
+            using let writer = Utf8JsonWriter(bytes)
+            Write(writer)
+            writer.Flush()
+            bytes.Position = 0
+            return J.Parse(bytes)
+        }
+
+        internal func Write(writer Utf8JsonWriter) {
+            writer.WriteStartObject()
+            writer.WritePropertyName("command")
+            Command.WriteTo(writer)
+
+            if let state = State {
+                writer.WriteString("state", state)
+            }
+
+            if let path = OutputFile {
+                writer.WriteString("output_file", path)
+            }
+
+            if let path = ErrorFile {
+                writer.WriteString("error_file", path)
+            }
+
+            if let code = ExitCode {
+                writer.WriteNumber("exit_code", code)
+            }
+
+            if State == "interrupted" {
+                if let failure = Failure {
+                    writer.WriteString("failure", failure)
+                }
+            }
+
+            if let output = Output {
+                writer.WriteString("output", output)
+            }
+
+            if let error = Error {
+                writer.WriteString("error", error)
+            }
+
+            if let truncated = OutputTruncated {
+                writer.WriteBoolean("output_truncated", truncated)
+            }
+
+            if let truncated = ErrorTruncated {
+                writer.WriteBoolean("error_truncated", truncated)
+            }
+
+            if State != "interrupted" {
+                if let failure = Failure {
+                    writer.WriteString("failure", failure)
+                }
+            }
+
+            writer.WriteEndObject()
+        }
+
+        shared {
+            internal func Parse(value JsonElement) Result {
+                const format string = "Verification result"
+                let result = Result(JsonFields.Array(value, format, "command"))
+
+                for word in result.Command.EnumerateArray() {
+                    if word.ValueKind != JsonValueKind.String {
+                        throw CliFailure("invalid_state", format + ": field \"command\" must contain strings")
+                    }
+                }
+
+                result.State = J.Get(value, "state").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "state")
+                result.OutputFile = J.Get(value, "output_file").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "output_file")
+                result.ErrorFile = J.Get(value, "error_file").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "error_file")
+                result.ExitCode = result.State != "completed" && J.Get(value, "exit_code")
+                    .ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.Int32(value, format, "exit_code")
+                result.Failure = J.Get(value, "failure").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "failure")
+                result.Output = J.Get(value, "output").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "output")
+                result.Error = J.Get(value, "error").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.String(value, format, "error")
+                result.OutputTruncated = J.Get(value, "output_truncated").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.Bool(value, format, "output_truncated")
+                result.ErrorTruncated = J.Get(value, "error_truncated").ValueKind == JsonValueKind.Undefined ? nil:
+                JsonFields.Bool(value, format, "error_truncated")
+
+                return result
+            }
+        }
+    }
+
     shared {
         internal func Verify(
             storage string,
@@ -77,18 +186,13 @@ internal class Verification {
             }
 
             for i in 0 ... checks.Count {
-                var code int32
-                let check = checks[i]
-                let exitCode = J.Get(check, "exit_code")
-                let state = J.Text(check, "state")
+                let check = Result.Parse(checks[i])
 
-                if (state != "" && state != "completed") ||
-                    exitCode.ValueKind != JsonValueKind.Number ||
-                    !exitCode.TryGetInt32(out code) || code != 0 {
+                if (check.State != nil && check.State != "" && check.State != "completed") || check.ExitCode != 0 {
                     throw ExecutionFailure.Create("verification_failed", "Owner verification did not pass")
                 }
 
-                if J.Write(J.Get(check, "command")) != J.Write(commands[i]) {
+                if J.Write(check.Command) != J.Write(commands[i]) {
                     throw ExecutionFailure.Create("verification_failed", "Owner verification did not pass")
                 }
             }
@@ -193,14 +297,12 @@ internal class Verification {
 
             let outputPath = Path.Combine(attempt, "stdout.log")
             let errorPath = Path.Combine(attempt, "stderr.log")
-            let check = map[string, Object?]{
-                "command": command,
-                "state": "running",
-                "output_file": Path.GetRelativePath(root, outputPath),
-                "error_file": Path.GetRelativePath(root, errorPath)
-            }
+            let check = Result(command)
+            check.State = "running"
+            check.OutputFile = Path.GetRelativePath(root, outputPath)
+            check.ErrorFile = Path.GetRelativePath(root, errorPath)
 
-            results.Add(check)
+            results.Add(check.Element())
 
             let record = Path.Combine(root, "verification.json")
 
@@ -219,9 +321,10 @@ internal class Verification {
 
                 let result = Run(checkout, words.ToArray(), seconds, outputPath, errorPath, budget)
 
-                check["state"] = "completed"
-                check["exit_code"] = result.Code
+                check.State = "completed"
+                check.ExitCode = result.Code
                 Evidence(check, result)
+                results[results.Count - 1] = check.Element()
 
                 File.WriteAllText(record, J.Write(results))
 
@@ -232,14 +335,16 @@ internal class Verification {
                 error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                check.Remove("exit_code")
-                check["state"] = "failed"
-                check["failure"] = error.Message
+                check.ExitCode = nil
+                check.State = "failed"
+                check.Failure = error.Message
 
                 if let result = Commands.InterruptedResult(error) {
-                    check["state"] = "interrupted"
+                    check.State = "interrupted"
                     Evidence(check, result)
                 }
+
+                results[results.Count - 1] = check.Element()
 
                 File.WriteAllText(record, J.Write(results))
 
@@ -247,11 +352,11 @@ internal class Verification {
             }
         }
 
-        private func Evidence(check Dictionary[string, Object?], result CommandResult) {
-            check["output"] = result.Output
-            check["error"] = result.Error
-            check["output_truncated"] = result.OutputTruncated
-            check["error_truncated"] = result.ErrorTruncated
+        private func Evidence(check Result, result CommandResult) {
+            check.Output = result.Output
+            check.Error = result.Error
+            check.OutputTruncated = result.OutputTruncated
+            check.ErrorTruncated = result.ErrorTruncated
         }
 
         internal func Run(

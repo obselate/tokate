@@ -60,24 +60,28 @@ internal class PublicOutput {
 
             for i in 0 ... Math.Min(64, count) {
                 let item = value[i]
-                let row = J.Select(item, keys)
+                let row = arguments ? map[string, Object?]{}: J.Select(item, keys)
 
                 if arguments {
-                    let command = J.Get(item, "command")
+                    let check = Verification.Result.Parse(item)
 
-                    if command.ValueKind == JsonValueKind.Array {
-                        var valid = true
-
-                        for word in command.EnumerateArray() {
-                            if word.ValueKind != JsonValueKind.String {
-                                valid = false
-                            }
-                        }
-
-                        if valid {
-                            row["command"] = command
-                        }
+                    if let state = check.State {
+                        row["state"] = state
                     }
+
+                    if let code = check.ExitCode {
+                        row["exit_code"] = code
+                    }
+
+                    if let truncated = check.OutputTruncated {
+                        row["output_truncated"] = truncated
+                    }
+
+                    if let truncated = check.ErrorTruncated {
+                        row["error_truncated"] = truncated
+                    }
+
+                    row["command"] = check.Command
                 }
 
                 rows.Add(row)
