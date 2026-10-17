@@ -8,6 +8,14 @@ import System.Text.Json
 
 internal class Submission {
     shared {
+        private const PartialSnapshotSeconds int32 = 60
+
+        private const WorkflowPageSizeParameter string = "per_page=10"
+
+        private const AnnotationCharacterLimit int32 = 1024
+
+        private const PostingJournalByteLimit int32 = 16384
+
         internal func Commit(directory string) {
             try {
                 using let lease = RunStorage.Lease(directory)
@@ -129,7 +137,7 @@ internal class Submission {
                 )
             }
 
-            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(60, run.Seconds))
+            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(PartialSnapshotSeconds, run.Seconds))
             let patch = Contribution.Snapshot(checkout, run, budget)
 
             ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base, budget: budget)
@@ -158,7 +166,7 @@ internal class Submission {
             var count int32
             var found JsonElement
 
-            for page in 1 ... 21 {
+            for page in 1 ... Publication.HistoryPageCountLimit + 1 {
                 let response = GitHub.Api(
                     "repos/" + repo + "/issues/" + issue.ToString() +
                         "/comments?" +
@@ -276,7 +284,7 @@ internal class Submission {
                     run.Repo,
                     "event=issue_comment&actor=" + Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
                         "&created=" +
-                        Uri.EscapeDataString(">=" + created) + "&per_page=10"
+                        Uri.EscapeDataString(">=" + created) + "&" + WorkflowPageSizeParameter
                 )
                 var earliest JsonElement
                 var first = ""
@@ -309,7 +317,7 @@ internal class Submission {
                         for annotation in J.Items(annotations) {
                             if J.Text(annotation, "annotation_level") == "failure" {
                                 let text = J.Text(annotation, "message")
-                                message += " " + text.Substring(0, Math.Min(text.Length, 1024))
+                                message += " " + text.Substring(0, Math.Min(text.Length, AnnotationCharacterLimit))
                                 break
                             }
                         }
@@ -393,7 +401,7 @@ internal class Submission {
             }
 
             if File.Exists(journal) {
-                let saved = RequestData.FileData(journal, 16384)
+                let saved = RequestData.FileData(journal, PostingJournalByteLimit)
                 let failure = "Saved request UUID binding changed; use a new file and UUID for new work"
 
                 if !RepositoryIdentity.SameRepo(J.Text(saved, "repo"), repo) || J.Number(saved, "issue") != issue {

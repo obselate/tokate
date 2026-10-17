@@ -6,6 +6,10 @@ import System.Text.RegularExpressions
 
 internal class GratisOutcome {
     shared {
+        private const ArtifactByteLimit int64 = 4096
+
+        private const TitlePattern string = "^[\\x20-\\x7E]{1,100}\\z"
+
         private func Artifact(checkout string, name string) string {
             let path = Path.Combine(checkout, name)
 
@@ -16,7 +20,7 @@ internal class GratisOutcome {
             let tracked = Commands.Git(checkout, "ls-files", "--", name)
             let file = FileInfo(path)
             Publication.Require(
-                file.LinkTarget == nil && file.Length <= 4096 && tracked == "",
+                file.LinkTarget == nil && file.Length <= ArtifactByteLimit && tracked == "",
                 "Invalid gratis artifact"
             )
 
@@ -40,7 +44,7 @@ internal class GratisOutcome {
 
                 if title != "" {
                     Publication.Require(
-                        Regex.IsMatch(title, "^[\\x20-\\x7E]{1,100}\\z") && !Regex.IsMatch(
+                        Regex.IsMatch(title, TitlePattern) && !Regex.IsMatch(
                             title,
                             PublicSummary.RestrictedTextPattern
                         ) &&

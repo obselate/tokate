@@ -7,6 +7,10 @@ import System.Text.Json
 
 internal class Publication {
     shared {
+        internal const HistoryPageCountLimit int32 = 20
+
+        private const DiscussionCategoriesQuery string = "query($$owner:String!,$$name:String!){repository(owner:$$owner,name:$$name){id discussionCategories(first:100){nodes{id name} pageInfo{hasNextPage}}}}"
+
         internal func Query(repo string, query string, variables Dictionary[string, Object?]? = nil) JsonElement {
             let input = variables ?? map[string, Object?]{}
             input["owner"] = repo.Split('/')[0]
@@ -40,7 +44,7 @@ internal class Publication {
         internal func Pulls(run Data) List[JsonElement] {
             let pulls = List[JsonElement]()
 
-            for page in 1 ... 21 {
+            for page in 1 ... HistoryPageCountLimit + 1 {
                 let response = GitHub.Api(
                     "repos/" + RepositoryIdentity.Repo(run.Repo) + "/pulls?state=all&head=" + Uri.EscapeDataString(
                         run.Donor + ":" + run.Branch
@@ -240,7 +244,7 @@ internal class Publication {
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
             let receiptText = J.Write(receipt)
-            let marker = "<!-- tokate-receipt:" + receiptText + " -->"
+            let marker = PrBody.ReceiptPrefix + receiptText + " -->"
             let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
             let body = (run.Issue > 0 ? "Fixes #" + run.Issue.ToString() + "\n\n": "") +
                 report +
@@ -320,10 +324,7 @@ internal class Publication {
             try {
                 Require(!run.DiscussionAttempted, "Discussion publication was already attempted")
 
-                let result = Query(
-                    repoName,
-                    "query($$owner:String!,$$name:String!){repository(owner:$$owner,name:$$name){id discussionCategories(first:100){nodes{id name} pageInfo{hasNextPage}}}}"
-                )
+                let result = Query(repoName, DiscussionCategoriesQuery)
                 let repo = J.Get(result, "repository")
                 var category string = ""
 

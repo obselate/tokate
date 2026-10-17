@@ -22,14 +22,21 @@ internal class ChecksObservation {
 
 internal class Checks {
     shared {
-        private let BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
+        private const BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
+
+        private const DefaultTimeoutSeconds string = "1200"
+
         private func Review(
             passed bool
         ) string -> "Review implementation scope, acceptance criteria, semantic compatibility and limitations; decide final acceptance" +
             (passed ? " and merge": "") +
             ". Machine checks do not accept or complete the issue or remove draft status."
-        private let ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
-        private let ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
+
+        private const ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
+
+        private const ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
+
+        private const UnknownApprovalAction string = "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection."
 
         private func Identity(pull JsonElement) string {
             let result = J.Select(pull, "state,draft,merged,merged_at,closed_at")
@@ -149,7 +156,7 @@ internal class Checks {
         }
 
         internal func Run(args Args, render Action[Dictionary[string, Object?]]) int32 {
-            ApiTransport.BeginDeadline(args.Number("timeout", "1200"))
+            ApiTransport.BeginDeadline(args.Number("timeout", DefaultTimeoutSeconds))
 
             try {
                 return ChecksWithinDeadline(args, render)
@@ -600,7 +607,7 @@ internal class Checks {
 
             if inspection || approval {
                 facts["required_owner_actions"] = []string{
-                    approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
+                    approval ? ApprovalAction: UnknownApprovalAction,
                     Review(status == "passed")
                 }
             }
@@ -747,11 +754,7 @@ internal class Checks {
                 for row in observed {
                     if J.Text(J.Parse(J.Write(row)), "state") == "ACTION_REQUIRED" {
                         facts["owner_inspection_required"] = true
-                        facts["required_owner_actions"] = []string{
-                            "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
-                            action,
-                            Review(false)
-                        }
+                        facts["required_owner_actions"] = []string{UnknownApprovalAction, action, Review(false)}
 
                         break
                     }
