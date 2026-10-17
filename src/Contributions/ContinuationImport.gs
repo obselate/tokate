@@ -62,6 +62,8 @@ internal class ContinuationImport {
 
         private const ExecutableFileMode uint32 = 493
 
+        private const DirectoryMode uint32 = 493
+
         private const RegularFileMode uint32 = 420
 
         internal func SourceLease(directory string) FileStream {
@@ -295,7 +297,7 @@ internal class ContinuationImport {
                     var descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, DirectoryOpenFlags)
 
                     if descriptor < 0 && Marshal.GetLastWin32Error() == MissingPathError {
-                        if ContinuationMkdirAt(current.DangerousGetHandle().ToInt32(), part, ExecutableFileMode) != 0 &&
+                        if ContinuationMkdirAt(current.DangerousGetHandle().ToInt32(), part, DirectoryMode) != 0 &&
                             Marshal.GetLastWin32Error() != ExistingPathError {
                             throw CliFailure("invalid_state", "Cannot create contained import directory: " + path)
                         }

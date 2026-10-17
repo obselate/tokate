@@ -43,7 +43,7 @@ internal class GitHub {
 
         internal const PageSize int32 = 100
 
-        internal const PageSizeParameter string = "per_page=100"
+        internal let PageSizeParameter string = "per_page=" + PageSize.ToString()
 
         internal const PageCountLimit int32 = 10
 

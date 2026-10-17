@@ -37,6 +37,10 @@ internal class ApiResponse {
 
         internal const ServerErrorStatusMaximum int32 = 599
 
+        private const ValidStatusMinimum int32 = 100
+
+        private const ValidStatusMaximum int32 = 599
+
         private const FailureReasonCharacterLimit int32 = 1024
 
         private const MaximumUnixTimestampSeconds int64 = 253402300799
@@ -56,8 +60,8 @@ internal class ApiResponse {
         let status = lines[0].Split(' ', StringSplitOptions.RemoveEmptyEntries)
 
         if status.Length < 2 || !status[0].StartsWith("HTTP/") || !Int32.TryParse(status[1], out Status) ||
-            Status < 100 ||
-            Status > ServerErrorStatusMaximum {
+            Status < ValidStatusMinimum ||
+            Status > ValidStatusMaximum {
             Status = 0
             return
         }

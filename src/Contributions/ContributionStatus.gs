@@ -1164,17 +1164,17 @@ internal class ContributionStatus {
     shared {
         private const DraftCountLimit int32 = 5
 
-        private const DraftPageParameter string = "per_page=5"
+        private let DraftPageParameter string = "per_page=" + DraftCountLimit.ToString()
 
         private const CheckCountLimit int32 = 16
 
         private const ReviewCountLimit int32 = 30
 
-        private const ReviewPageParameter string = "per_page=30"
+        private let ReviewPageParameter string = "per_page=" + ReviewCountLimit.ToString()
 
         private const DiscoveryCountLimit int32 = 20
 
-        private const DiscoveryPageParameter string = "per_page=20"
+        private let DiscoveryPageParameter string = "per_page=" + DiscoveryCountLimit.ToString()
 
         private const PresentationByteLimit int32 = 56000
 

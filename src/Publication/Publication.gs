@@ -244,7 +244,7 @@ internal class Publication {
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
             let receiptText = J.Write(receipt)
-            let marker = PrBody.ReceiptPrefix + receiptText + " -->"
+            let marker = PrBody.ReceiptPrefix + receiptText + PrBody.ReceiptSuffix
             let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
             let body = (run.Issue > 0 ? "Fixes #" + run.Issue.ToString() + "\n\n": "") +
                 report +

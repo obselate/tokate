@@ -52,7 +52,7 @@ internal class OwnerHealth {
         Read(
             "coordinator",
             async () -> {
-                let yaml = GitHub.FileAt(repo, OwnerSetup.CoordinatorWorkflowPath, revision, missing: true)
+                let yaml = GitHub.FileAt(repo, CoordinatorSetup.WorkflowPath, revision, missing: true)
                 pin = CoordinatorSetup.Pin(yaml)
                 let pinnedVersion = pin == "" || pin == "v0" ? "": PinnedVersion(pin)
                 let configured = pin != ""
@@ -84,7 +84,7 @@ internal class OwnerHealth {
             Read(
                 "event_policy",
                 async () -> {
-                    CoordinatorSetup.EventPolicy(repo, OwnerSetup.CoordinatorWorkflowPath)
+                    CoordinatorSetup.EventPolicy(repo, CoordinatorSetup.WorkflowPath)
                     Add("event_policy", "ok", "No blocking Actions event policy found.")
                 }
             )
@@ -345,7 +345,7 @@ internal class OwnerHealth {
                     args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Repo:
                     args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
                 )
-                let yaml = GitHub.FileAt(repo, OwnerSetup.CoordinatorWorkflowPath, missing: true)
+                let yaml = GitHub.FileAt(repo, CoordinatorSetup.WorkflowPath, missing: true)
                 let pin = CoordinatorSetup.Pin(yaml)
                 if pin == "" || pin == "v0" {
                     return

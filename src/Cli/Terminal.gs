@@ -20,8 +20,6 @@ internal class TerminalProgress : IDisposable {
     private let Live bool
 
     shared {
-        private const MinimumInteractiveWidth int32 = 80
-
         private const LiveUpdateIntervalSeconds int32 = 1
 
         private const MessageUpdateIntervalSeconds int32 = 5
@@ -32,7 +30,7 @@ internal class TerminalProgress : IDisposable {
         Budget = budget
         Total = total
         Live = DonationView.Start()
-        Interactive = !Live && Terminal.Rich(true) && Terminal.Width(true) >= MinimumInteractiveWidth
+        Interactive = !Live && Terminal.Rich(true) && Terminal.Width(true) >= Terminal.MinimumInteractiveWidth
         Draw()
         go Update()
     }
@@ -88,6 +86,8 @@ internal class Terminal {
         internal var Plain bool
         internal var Ascii bool
         internal const DefaultWidth int32 = 80
+
+        internal const MinimumInteractiveWidth int32 = 80
 
         private const MinimumWidth int32 = 20
 

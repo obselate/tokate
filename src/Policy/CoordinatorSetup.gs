@@ -16,6 +16,10 @@ internal class ActionsAllowlist {
 
 internal class CoordinatorSetup {
     shared {
+        internal const WorkflowFile string = "tokate-coordinator.yml"
+
+        internal const WorkflowPath string = ".github/workflows/" + WorkflowFile
+
         private const AllWorkflowPaths string = "~ALL"
 
         private const ChecksumSidecarByteLimit int64 = 256

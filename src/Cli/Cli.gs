@@ -760,7 +760,7 @@ internal class Cli {
                             continue
                         }
 
-                        if width < Terminal.DefaultWidth {
+                        if width < Terminal.MinimumInteractiveWidth {
                             OptionHelp(text, command.Name, command.Brief, width)
                         } else {
                             text.AppendLine("  " + command.Name.PadRight(CommandColumnWidth) + command.Brief)

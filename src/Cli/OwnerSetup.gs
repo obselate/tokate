@@ -10,8 +10,6 @@ internal class OwnerSetup {
     shared {
         private const DefaultBudgetSeconds int32 = 3600
 
-        internal const CoordinatorWorkflowPath string = ".github/workflows/tokate-coordinator.yml"
-
         private const SetupBranchName string = "tokate-setup"
 
         internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
@@ -136,7 +134,7 @@ internal class OwnerSetup {
                 policy.Value
             ) ? upstream: Pretty(policy.Value)
 
-            let path = CoordinatorWorkflowPath
+            let path = CoordinatorSetup.WorkflowPath
             let current = GitHub.FileAt(repo, path, head, missing: true)
             let generated = CoordinatorSetup.Resolve(args.Get("pin") == "true")
             let pin = CoordinatorSetup.Pin(generated)

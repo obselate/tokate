@@ -12,7 +12,7 @@ internal class PrBody {
 
         internal const ReceiptPrefix string = "<!-- tokate-receipt:"
 
-        private const ReceiptSuffix string = " -->"
+        internal const ReceiptSuffix string = " -->"
 
         private const ReportPrefix string = "<!-- tokate-report:start -->"
 

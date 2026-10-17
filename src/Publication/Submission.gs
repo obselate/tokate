@@ -253,7 +253,7 @@ internal class Submission {
         internal const StartupFailure string = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
 
         internal func WorkflowRuns(repo string, query string, missing bool = false) JsonElement -> GitHub.Api(
-            "repos/" + repo + "/actions/workflows/tokate-coordinator.yml/runs?" + query,
+            "repos/" + repo + "/actions/workflows/" + CoordinatorSetup.WorkflowFile + "/runs?" + query,
             missing: missing
         )
 
