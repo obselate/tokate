@@ -492,8 +492,11 @@ func WorkspaceFlow() {
         )
         Choose(host, window, adapter, "Verify and publish amendment")
         Choose(host, window, adapter, "Confirm")
+        let expectedSummary = "{\"head\":\"" + commits[1] +
+            "\",\"changes\":[\"Fix the table header.\"],\"verification\":[\"Table tests passed.\"],\"limitations\":[]}"
         let published = System.Diagnostics.Stopwatch.StartNew()
-        while !File.Exists(Path.Combine(fixture, "amend-summary")) && published.Elapsed.TotalSeconds < 10 {
+        while (!File.Exists(Path.Combine(fixture, "amend-summary")) ||
+            File.ReadAllText(Path.Combine(fixture, "amend-summary")) != expectedSummary) && published.Elapsed.TotalSeconds < 10 {
             Settle(host)
         }
         Require(
