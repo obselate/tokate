@@ -560,7 +560,12 @@ internal class Coordinator {
                 AccessState.Check(repo, number, J.Get(record, "approval"), actor, J.Get(record, "policy"))
                 let changes = map[string, Object?]{"body": updated}
                 let title = J.Text(J.Get(record, "issue"), "title")
-                if RequestMetadata.Incomplete(old) && J.Text(fresh, "title") == "Incomplete: " + title {
+                let originalMetadata = PublicationRequestMetadata.Parse(old)
+                if RequestMetadata.Incomplete(originalMetadata.HasIncomplete, originalMetadata.Incomplete) && J.Text(
+                    fresh,
+                    "title"
+                ) == "Incomplete: " +
+                    title {
                     changes["title"] = title
                 }
 

@@ -160,11 +160,15 @@ internal class RequestMetadata {
 
         internal func Incomplete(metadata JsonElement) bool {
             let value = J.Get(metadata, "incomplete")
-            if value.ValueKind != JsonValueKind.Undefined && value.ValueKind != JsonValueKind.True {
+            return Incomplete(value.ValueKind != JsonValueKind.Undefined, value.ValueKind == JsonValueKind.True)
+        }
+
+        internal func Incomplete(declared bool, incomplete bool) bool {
+            if declared && !incomplete {
                 throw CliFailure("invalid_state", "Incomplete work must be declared explicitly")
             }
 
-            return value.ValueKind == JsonValueKind.True
+            return incomplete
         }
 
         internal func Recorded(state JsonElement, actor JsonElement, request JsonElement) JsonElement {
@@ -229,7 +233,9 @@ internal class RequestMetadata {
 
             if !Regex.IsMatch(parsed.Branch, "^tokate/v2-[0-9a-f-]{36}$") ||
                 (parsed.SourceKind != "external" && parsed.SourceKind != "tokate") ||
-                parsed.Verification != (Incomplete(metadata) ? "not-passed": "donor-reported-pass") {
+                parsed.Verification != (
+                Incomplete(parsed.HasIncomplete, parsed.Incomplete) ? "not-passed": "donor-reported-pass"
+            ) {
                 throw CliFailure("invalid_state", "Invalid contribution declaration")
             }
 

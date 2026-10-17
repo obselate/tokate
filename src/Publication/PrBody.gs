@@ -81,7 +81,8 @@ internal class PrBody {
             let verification = gratis ? "Tokate ran no repository checks. Checks below are donor-reported.":
             amendment ? "Donor-reported: all original owner checks passed locally; coordinator did not observe execution.":
             RequestMetadata.Incomplete(
-                metadata
+                declaration.HasIncomplete,
+                declaration.Incomplete
             ) ? "Incomplete draft: independent owner verification has not passed. This work is not ready for acceptance.":
             "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
             var report = PublicSummary.Report(summary, verification)
@@ -246,6 +247,8 @@ internal class ContributionReportData(value JsonElement, seconds int32) {
     JsonFields.String(value, "Contribution report", "previous"): ""
     internal let Seconds int32 = seconds
     internal let Tools JsonElement = J.Get(value, "tools")
+    internal let HasIncomplete bool = J.Get(value, "incomplete").ValueKind != JsonValueKind.Undefined
+    internal let Incomplete bool = J.Get(value, "incomplete").ValueKind == JsonValueKind.True
 
     shared {
         internal func Parse(value JsonElement) ContributionReportData {

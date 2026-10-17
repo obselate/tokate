@@ -73,7 +73,10 @@ internal class ReceiptVerification {
             ContributionHandoff.Authority(state, handoff)
 
             let current = CoordinationState.Current(value)
-            let incomplete = current.GetRawText() == contribution.GetRawText() && RequestMetadata.Incomplete(metadata)
+            let incomplete = current.GetRawText() == contribution.GetRawText() && RequestMetadata.Incomplete(
+                publication.HasIncomplete,
+                publication.Incomplete
+            )
 
             if J.Get(receipt, "incomplete").ValueKind != (incomplete ? JsonValueKind.True: JsonValueKind.Undefined) {
                 throw CliFailure("stale_approval", "Receipt completion state differs from the current contribution")
