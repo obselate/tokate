@@ -163,6 +163,27 @@ internal class JsonFields {
             return item
         }
 
+        internal func String(value JsonElement, format string, field string) string {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.String {
+                throw Invalid(format, field, "a string")
+            }
+
+            return item.GetString() ?? ""
+        }
+
+        internal func Int32(value JsonElement, format string, field string) int32 {
+            let item = J.Get(value, field)
+            var result int32
+
+            if item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out result) {
+                throw Invalid(format, field, "an int32")
+            }
+
+            return result
+        }
+
         private func Invalid(format string, field string, expected string) CliFailure -> CliFailure(
             "invalid_state",
             format + ": field \"" + field + "\" is missing or not " + expected
