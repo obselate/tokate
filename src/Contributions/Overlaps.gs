@@ -323,22 +323,20 @@ internal class Overlaps {
                 )
 
                 try {
-                    let base = binding.Text("verified_target_revision") == "" ? binding.Text("base"): binding.Text(
-                        "verified_target_revision"
-                    )
+                    let base = binding.VerifiedTargetRevision == "" ? binding.Base: binding.VerifiedTargetRevision
 
                     let files = GitHubPathEvidence.Diff(
                         repo,
                         base,
                         J.Text(J.Get(head, "repo"), "full_name"),
-                        binding.Text("commit")
+                        binding.Commit
                     )
 
                     item.Files = files
                     facts["diff_status"] = "complete"
                     facts["file_count"] = files.Count
                     facts["diff_base"] = base
-                    facts["diff_head"] = binding.Text("commit")
+                    facts["diff_head"] = binding.Commit
 
                     try {
                         Upstream(repo, item, base, targets[branch], changes)
@@ -356,7 +354,7 @@ internal class Overlaps {
                 }
 
                 try {
-                    let checks = CommitChecks.Read(repo, binding.Text("commit"))
+                    let checks = CommitChecks.Read(repo, binding.Commit)
                     let rows = List[Object]()
 
                     for check in J.Items(checks) {
@@ -367,9 +365,9 @@ internal class Overlaps {
                     facts["check_count"] = checks.GetArrayLength()
                     facts["checks_status"] = "complete"
                     facts["checks_output_complete"] = rows.Count == checks.GetArrayLength()
-                    facts["checks_head"] = binding.Text("commit")
+                    facts["checks_head"] = binding.Commit
 
-                    let names = J.Items(Policy.Parse(J.Get(binding.Element(), "policy")).RequiredChecks)
+                    let names = J.Items(Policy.Parse(binding.Policy).RequiredChecks)
                     let required = List[Object]()
 
                     for name in names {
@@ -385,7 +383,7 @@ internal class Overlaps {
                     Failure(facts, "checks", error)
                 }
 
-                Dependencies(repo, binding.Number("issue"), facts)
+                Dependencies(repo, binding.Issue, facts)
             } catch (error Exception) when error is CliFailure ||
                 error is JsonException ||
                 error is ApiDeadlineException ||

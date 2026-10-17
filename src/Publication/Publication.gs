@@ -32,8 +32,8 @@ internal class Publication {
                 "-c",
                 "credential.helper=!gh auth git-credential",
                 "push",
-                "https://github.com/" + run.Text("head_repo") + ".git",
-                commit + ":refs/heads/" + run.Text("branch")
+                "https://github.com/" + run.HeadRepo + ".git",
+                commit + ":refs/heads/" + run.Branch
             )
         }
 
@@ -42,9 +42,9 @@ internal class Publication {
 
             for page in 1 ... 21 {
                 let response = GitHub.Api(
-                    "repos/" + RepositoryIdentity.Repo(run.Text("repo")) +
-                        "/pulls?state=all&head=" +
-                        Uri.EscapeDataString(run.Text("donor") + ":" + run.Text("branch")) +
+                    "repos/" + RepositoryIdentity.Repo(run.Repo) + "/pulls?state=all&head=" + Uri.EscapeDataString(
+                        run.Donor + ":" + run.Branch
+                    ) +
                         "&per_page=100&page=" +
                         page.ToString()
                 )
@@ -75,27 +75,23 @@ internal class Publication {
             let head = J.Get(pull, "head")
             let base = J.Get(pull, "base")
             let mergedAt = J.Get(pull, "merged_at").ValueKind
-            if J.Text(head, "ref") != run.Text("branch") || !RepositoryIdentity.SameRepo(
+            if J.Text(head, "ref") != run.Branch || !RepositoryIdentity.SameRepo(
                 J.Text(J.Get(head, "repo"), "full_name"),
-                run.Text("head_repo")
+                run.HeadRepo
             ) ||
-                J.Text(base, "ref") != run.Text("base_branch") || !RepositoryIdentity.SameRepo(
+                J.Text(base, "ref") != run.BaseBranch || !RepositoryIdentity.SameRepo(
                 J.Text(J.Get(base, "repo"), "full_name"),
-                run.Text("repo")
+                run.Repo
             ) ||
                 J.Text(pull, "state") != "open" || !J.Bool(pull, "draft") || J.Bool(pull, "merged") ||
                 (mergedAt != JsonValueKind.Undefined && mergedAt != JsonValueKind.Null) ||
-                J.Number(pull, "number") < 1 || J.Get(J.Get(pull, "user"), "id").ToString() != J.Get(
-                run.Element(),
-                "donor_id"
-            )
-                .ToString() {
+                J.Number(pull, "number") < 1 || J.Get(J.Get(pull, "user"), "id").ToString() != run.DonorId.ToString() {
                 throw CliFailure("invalid_state", failure)
             }
             if newIntent {
                 return
             }
-            let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
+            let marker = "<!-- tokate-v2:" + run.Id + " -->"
             let body = J.Text(pull, "body")
             let receipt = ContributionReceipt.Record.Parse(
                 RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
@@ -138,11 +134,11 @@ internal class Publication {
             let fields = map[string, Object?]{
                 "title": title,
                 "body": body,
-                "head": run.Text("head_repo").Split('/')[0] + ":" + run.Text("branch"),
-                "base": run.Text("base_branch"),
+                "head": run.HeadRepo.Split('/')[0] + ":" + run.Branch,
+                "base": run.BaseBranch,
                 "draft": draft
             }
-            if !RepositoryIdentity.SameRepo(run.Text("head_repo"), run.Text("repo")) {
+            if !RepositoryIdentity.SameRepo(run.HeadRepo, run.Repo) {
                 fields["maintainer_can_modify"] = maintainerEdits
             }
             return fields
@@ -151,32 +147,20 @@ internal class Publication {
         internal func Prepare(run Data, record JsonElement, request JsonElement, newIntent bool = false) JsonElement {
             let declaration = CoordinatorRequest.Parse(request)
             let publication = PublicationRequestMetadata.Parse(declaration.Metadata)
-            let receipt = ContributionReceipt.Publication(
-                run.Text("repo"),
-                run.Number("issue"),
-                request,
-                run.Text("id"),
-                run.Text("donor")
-            )
+            let receipt = ContributionReceipt.Publication(run.Repo, run.Issue, request, run.Id, run.Donor)
             let body = PrBody.Coordinated(
                 record,
                 declaration.Metadata,
-                run.Text("donor"),
+                run.Donor,
                 receipt,
-                "<!-- tokate-v2:" + run.Text("id") + " -->"
+                "<!-- tokate-v2:" + run.Id + " -->"
             )
-            RepositoryAccess.ValidateFork(
-                run.Text("repo"),
-                publication.Fork,
-                publication.Branch,
-                publication.Head,
-                J.Get(run.Element(), "donor_id")
-            )
+            RepositoryAccess.ValidateFork(run.Repo, publication.Fork, publication.Branch, publication.Head, run.DonorId)
             let expected = receipt.ToJson()
             var pull = Find(run, expected, newIntent)
             if pull.ValueKind == JsonValueKind.Undefined {
                 pull = GitHub.Api(
-                    "repos/" + run.Text("repo") + "/pulls",
+                    "repos/" + run.Repo + "/pulls",
                     PullRequest(
                         run,
                         (publication.Incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title"),
@@ -189,7 +173,7 @@ internal class Publication {
             }
             if newIntent && J.Text(pull, "body") != body {
                 pull = GitHub.Api(
-                    "repos/" + run.Text("repo") + "/pulls/" + J.Number(pull, "number").ToString(),
+                    "repos/" + run.Repo + "/pulls/" + J.Number(pull, "number").ToString(),
                     map[string, Object?]{"body": body},
                     "PATCH"
                 )
@@ -207,13 +191,13 @@ internal class Publication {
         }
 
         internal func SavePr(directory string, run Data, pull JsonElement) {
-            run.Fields["pr"] = J.Number(pull, "number")
-            run.Fields["pr_url"] = J.Text(pull, "html_url")
+            run.Pr = J.Number(pull, "number")
+            run.PrUrl = J.Text(pull, "html_url")
             run.Transition("published")
 
             run.Save(directory)
 
-            Output.Sink.Message((run.Flag("gratis") && run.Flag("ready") ? "PR: ": "Draft PR: ") + run.Text("pr_url"))
+            Output.Sink.Message((run.Gratis && run.Ready ? "PR: ": "Draft PR: ") + run.PrUrl)
         }
 
         internal func PublishGratis(
@@ -223,28 +207,28 @@ internal class Publication {
         ) {
             ContributionAuthority.Recheck(run)
 
-            if run.Text("state") == "refused" {
+            if run.State == "refused" {
                 return
             }
 
-            Require(run.Text("state") == "generated" || run.Text("state") == "skipped", "Task is not ready")
+            Require(run.State == "generated" || run.State == "skipped", "Task is not ready")
 
-            let repoName = run.Text("repo")
-            let donor = run.Text("donor")
-            let id = run.Text("id")
-            let head = run.Text("commit")
-            let context = J.Get(run.Element(), "gratis_context")
+            let repoName = run.Repo
+            let donor = run.Donor
+            let id = run.Id
+            let head = run.Commit
+            let context = run.GratisContext
             let tool = J.Select(run.Element(), "harness,provider,model,effort")
-            tool["coding_seconds"] = run.Number("execution_seconds")
-            tool["usage"] = J.Get(run.Element(), "usage")
+            tool["coding_seconds"] = run.ExecutionSeconds
+            tool["usage"] = run.Usage
 
-            let receipt = ContributionReceipt.Coordinated(repoName, run.Number("issue"), "", "", id, donor, head)
+            let receipt = ContributionReceipt.Coordinated(repoName, run.Issue, "", "", id, donor, head)
             receipt["mode"] = "gratis"
             receipt["owner_approved"] = false
             receipt["tools"] = []Object{tool}
             receipt["verification"] = []Object{}
             receipt["prompt_sha256"] = J.Text(context, "prompt_sha256")
-            let summary = head == "" ? J.Get(run.Element(), "public_summary"): PublicSummary.ForHead(run, head)
+            let summary = head == "" ? run.PublicSummary: PublicSummary.ForHead(run, head)
             PublicSummary.Attach(receipt, summary)
 
             let attribution = "Donated with [Tokate](https://github.com/obselate/tokate) by @" +
@@ -254,7 +238,7 @@ internal class Publication {
             let receiptText = J.Write(receipt)
             let marker = "<!-- tokate-receipt:" + receiptText + " -->"
             let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
-            let body = (run.Number("issue") > 0 ? "Fixes #" + run.Number("issue").ToString() + "\n\n": "") +
+            let body = (run.Issue > 0 ? "Fixes #" + run.Issue.ToString() + "\n\n": "") +
                 report +
                 "\n\n" +
                 attribution +
@@ -265,20 +249,25 @@ internal class Publication {
 
             let pullRequest = Publication.PullRequest(
                 run,
-                run.Text("gratis_title") == "" ? J.Text(J.Get(context, "issue"), "title"): run.Text("gratis_title"),
+                run.GratisTitle == "" ? J.Text(J.Get(context, "issue"), "title"): run.GratisTitle,
                 body,
-                !run.Flag("ready"),
+                !run.Ready,
                 true
             )
-            let findings = run.Text("findings")
+            let findings = run.Findings
             let discussionTitle = "Tokate donation findings"
             let discussionBody = findings == "" ? "": findings + "\n\n" + attribution + "\n\n" + marker
             let preview = map[string, Object?]{"repo": repoName, "applied": false}
             var consent = "Repository: " + repoName
 
-            if run.Text("state") == "generated" {
+            if run.State == "generated" {
                 preview["pull_request"] = pullRequest
-                consent += "\nBase: " + run.Text("base_branch") + "\nFork branch: " + donor + ":" + run.Text("branch") +
+                consent += "\nBase: " +
+                    run.BaseBranch +
+                    "\nFork branch: " +
+                    donor +
+                    ":" +
+                    run.Branch +
                     "\nTitle: " +
                     pullRequest["title"]?.ToString() + "\nBody:\n" + body
             }
@@ -292,16 +281,16 @@ internal class Publication {
                 return
             }
 
-            if run.Text("state") == "generated" {
+            if run.State == "generated" {
                 let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
-                Require(Commands.Git(checkout, "rev-parse", "HEAD") == run.Text("commit"), "Verified head changed")
+                Require(Commands.Git(checkout, "rev-parse", "HEAD") == run.Commit, "Verified head changed")
                 Require(Commands.Git(checkout, "status", "--porcelain") == "", "Verified checkout changed")
 
                 File.WriteAllText(Path.Combine(directory, "publication.json"), J.Write(receipt))
-                Require(!run.Flag("publication_attempted"), "PR publication was already attempted")
-                Publication.Push(checkout, run, run.Text("commit"))
+                Require(!run.PublicationAttempted, "PR publication was already attempted")
+                Publication.Push(checkout, run, run.Commit)
                 ContributionAuthority.Recheck(run)
-                run.Fields["publication_attempted"] = true
+                run.PublicationAttempted = true
                 run.Save(directory)
                 let pull = GitHub.Api("repos/" + repoName + "/pulls", pullRequest)
                 Publication.SavePr(directory, run, pull)
@@ -324,7 +313,7 @@ internal class Publication {
             preview Dictionary[string, Object?]
         ) {
             try {
-                Require(!run.Flag("discussion_attempted"), "Discussion publication was already attempted")
+                Require(!run.DiscussionAttempted, "Discussion publication was already attempted")
 
                 let result = Query(
                     repoName,
@@ -341,7 +330,7 @@ internal class Publication {
 
                 Require(category != "", "General Discussion category is unavailable")
 
-                run.Fields["discussion_attempted"] = true
+                run.DiscussionAttempted = true
                 run.Save(directory)
 
                 let input = map[string, Object?]{
@@ -361,12 +350,12 @@ internal class Publication {
                 Require(url != "", "Discussion publication failed")
 
                 preview["applied"] = true
-                run.Fields["discussion_url"] = url
+                run.DiscussionUrl = url
                 run.Transition("published")
             } catch (error Exception) when !(error is CommandInterrupted) {
-                run.Fields["discussion_error"] = error.Message
+                run.DiscussionError = error.Message
 
-                if run.Number("pr") == 0 {
+                if run.Pr == 0 {
                     throw error
                 }
             } finally {

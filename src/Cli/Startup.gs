@@ -182,8 +182,8 @@ internal class Startup {
                 let run = Data.Load(Path.GetFullPath(options.Need("run")))
 
                 if command == "work" || command == "claim" {
-                    catalog = run.Text("source") != "external"
-                    harness = run.Text("harness")
+                    catalog = run.Source != "external"
+                    harness = run.Harness
                 }
             }
 
@@ -328,7 +328,7 @@ internal class Startup {
 
         internal func Inspect(options Args) List[ToolCheck] {
             let harnessPath = options.Get("run") != "" && options.Command == "work" ?
-            Data.Load(Path.GetFullPath(options.Need("run"))).Text("harness_path"): options.Get("harness-path")
+            Data.Load(Path.GetFullPath(options.Need("run"))).HarnessPath: options.Get("harness-path")
             let tools = Scan(Requirements(options), harnessPath)
             ExecuteChecks(tools)
             return tools

@@ -11,30 +11,30 @@ internal class WorkspacePreparation {
         private func Identity(run Data) string -> J.Hash(
             J.Write(
                 map[string, Object?]{
-                    "version": run.Number("version"),
-                    "id": run.Text("id"),
-                    "repo": run.Text("repo").ToLowerInvariant(),
-                    "issue": run.Number("issue"),
-                    "donor_id": J.Get(run.Element(), "donor_id"),
-                    "approval": run.Text("approval"),
-                    "state_sha": run.Text("state_sha"),
-                    "base": run.Text("base"),
-                    "base_branch": run.Text("base_branch"),
-                    "branch": run.Text("branch"),
-                    "source": run.Text("source"),
-                    "fork": run.Text("requested_fork").ToLowerInvariant(),
-                    "head_repo": run.Text("head_repo").ToLowerInvariant()
+                    "version": run.Version,
+                    "id": run.Id,
+                    "repo": run.Repo.ToLowerInvariant(),
+                    "issue": run.Issue,
+                    "donor_id": run.DonorId,
+                    "approval": run.Approval,
+                    "state_sha": run.StateSha,
+                    "base": run.Base,
+                    "base_branch": run.BaseBranch,
+                    "branch": run.Branch,
+                    "source": run.Source,
+                    "fork": run.RequestedFork.ToLowerInvariant(),
+                    "head_repo": run.HeadRepo.ToLowerInvariant()
                 }
             )
         )
 
         private func Identified(run Data) bool {
-            let identity = run.Text("preparation_identity")
+            let identity = run.PreparationIdentity
             return identity == BoundIdentity(run)
         }
 
         internal func CheckIdentity(run Data) {
-            if run.Number("preparation_version") != 1 || !Identified(run) {
+            if run.PreparationVersion != 1 || !Identified(run) {
                 throw CliFailure(
                     "invalid_state",
                     "Saved preparation identity changed; import provenance cannot be removed or rebound"
@@ -45,30 +45,28 @@ internal class WorkspacePreparation {
         private func BoundIdentity(run Data) string {
             var identity = Identity(run)
 
-            if run.Text("harness_path") != "" {
-                identity = J.Hash(identity + ":" + run.Text("harness_path"))
+            if run.HarnessPath != "" {
+                identity = J.Hash(identity + ":" + run.HarnessPath)
             }
 
-            if Harness.Owns(run.Text("harness"), "claude-profile") {
-                identity = J.Hash(identity + ":" + run.Text("claude_profile"))
+            if Harness.Owns(run.Harness, "claude-profile") {
+                identity = J.Hash(identity + ":" + run.ClaudeProfile)
             }
 
-            identity = J.Hash(identity + ":" + run.Text("attempt"))
+            identity = J.Hash(identity + ":" + run.Attempt)
 
             if ContributionHandoff.Has(run) {
-                identity = J.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "handoff")))
+                identity = J.Hash(identity + ":" + RequestData.Canonical(run.Handoff))
             }
 
-            if run.Flag("gratis") {
-                identity = J.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "gratis_context")))
+            if run.Gratis {
+                identity = J.Hash(identity + ":" + RequestData.Canonical(run.GratisContext))
             }
 
             return AttemptContinuation.Has(run) ? J.Hash(
-                identity + ":" + run.Text("continuation_source") + ":" + RequestData.Canonical(
-                    J.Get(run.Element(), "continuation")
-                ) +
+                identity + ":" + run.ContinuationSource + ":" + RequestData.Canonical(run.Continuation) +
                     ":" +
-                    run.Text("continuation_source_metadata_sha256")
+                    run.ContinuationSourceMetadataSha256
             ): identity
         }
 
@@ -79,9 +77,9 @@ internal class WorkspacePreparation {
                 }
             }
 
-            run.Fields["requested_fork"] = fork
-            run.Fields["preparation_version"] = 1
-            run.Fields["preparation_identity"] = BoundIdentity(run)
+            run.RequestedFork = fork
+            run.PreparationVersion = 1
+            run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
             WriteNew(directory, run)
@@ -109,21 +107,19 @@ internal class WorkspacePreparation {
             )
             using let writer = StreamWriter(file)
 
-            writer.Write(J.Write(run.Fields) + "\n")
+            writer.Write(run.ToJson() + "\n")
             writer.Flush()
             file.Flush(true)
         }
 
         internal func Promote(directory string, run Data, approvedBase string) {
             let pending = Data.Load(directory)
-            if pending.Number("version") != 2 || pending.Text("state") != "claim_pending" || pending.Fields.ContainsKey(
-                "id"
-            ) ||
-                pending
-                .Fields
-                .ContainsKey("attempt") || pending.Fields.ContainsKey("preparation_identity") || pending.Text(
-                "base"
-            ) != approvedBase {
+            if pending.Version != 2 ||
+                pending.State != "claim_pending" ||
+                pending.HasId ||
+                pending.HasAttempt ||
+                pending.HasPreparationIdentity ||
+                pending.Base != approvedBase {
                 Reject(directory)
             }
 
@@ -140,8 +136,8 @@ internal class WorkspacePreparation {
                 }
             }
 
-            run.Fields["preparation_version"] = 1
-            run.Fields["preparation_identity"] = BoundIdentity(run)
+            run.PreparationVersion = 1
+            run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
             run.Save(directory)
@@ -159,11 +155,10 @@ internal class WorkspacePreparation {
         internal func Complete(directory string, run Data) {
             AttemptContinuation.Location(directory, run)
 
-            let savedState = run.Text("state")
-            let fields = run.Fields
+            let savedState = run.State
             let failure = "work --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
 
-            if run.Number("preparation_version") != 1 || !Identified(run) {
+            if run.PreparationVersion != 1 || !Identified(run) {
                 throw CliFailure("invalid_state", failure)
             }
 
@@ -171,9 +166,9 @@ internal class WorkspacePreparation {
                 throw CliFailure("invalid_state", failure)
             }
 
-            var started = fields.ContainsKey("commit")
+            var started = run.HasCommit
             for name in Harness.Table.Keys {
-                started = started || fields.ContainsKey(name + "_version")
+                started = started || run.HasHarnessVersion(name)
             }
             if started {
                 throw CliFailure("invalid_state", failure)
@@ -188,21 +183,17 @@ internal class WorkspacePreparation {
 
             let record = ContributionAuthority.Recheck(run)
 
-            if AttemptContinuation.Has(run) && run.Text("continuation_phase") == "" {
+            if AttemptContinuation.Has(run) && run.ContinuationPhase == "" {
                 ContinuationImport.Capture(directory, run, record)
             }
 
-            let upstream = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.Text("repo")))
+            let upstream = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.Repo))
 
-            if run.Fields.ContainsKey("preparation_repo_id") && J.Get(upstream, "id").ToString() != J.Get(
-                run.Element(),
-                "preparation_repo_id"
-            )
-                .ToString() {
+            if run.HasPreparationRepoId && J.Get(upstream, "id").ToString() != run.PreparationRepoId.ToString() {
                 throw CliFailure("stale_approval", "Selected upstream repository identity changed")
             }
 
-            run.Fields["preparation_repo_id"] = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
+            run.PreparationRepoId = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
 
             run.Save(directory)
 
@@ -222,24 +213,24 @@ internal class WorkspacePreparation {
                 Clean(checkout, run)
             }
 
-            run.Fields["preparation_complete"] = true
+            run.PreparationComplete = true
             run.Transition("claimed")
 
             run.Save(directory)
 
             Output.Sink.Step(
-                (run.Flag("gratis") ? "Selected source ": "Approved source ") + run.Text("base") +
-                    " for target " +
-                    run.Text("base_branch")
+                (run.Gratis ? "Selected source ": "Approved source ") + run.Base + " for target " + run.BaseBranch
             )
-            if run.Text("source") == "external" {
+            if run.Source == "external" {
                 Output.Sink.Step(
                     "External coding checkout: " + checkout + "; independent verification uses DIR/checkout"
                 )
                 Output.Sink.Step(
                     "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
                         "' push https://github.com/" +
-                        run.Text("head_repo") + ".git HEAD:refs/heads/" + run.Text("branch")
+                        run.HeadRepo +
+                        ".git HEAD:refs/heads/" +
+                        run.Branch
                 )
             }
         }
@@ -247,24 +238,24 @@ internal class WorkspacePreparation {
         internal func Ready(directory string, run Data) {
             AttemptContinuation.Location(directory, run)
 
-            if !run.Flag("preparation_complete") || !Identified(run) {
+            if !run.PreparationComplete || !Identified(run) {
                 throw CliFailure("invalid_state", "Preparation is incomplete; use work --run " + directory)
             }
 
-            let upstream = GitHub.Api("repos/" + run.Text("repo"))
+            let upstream = GitHub.Api("repos/" + run.Repo)
 
-            if J.Get(upstream, "id").ToString() != J.Get(run.Element(), "preparation_repo_id").ToString() {
+            if J.Get(upstream, "id").ToString() != run.PreparationRepoId.ToString() {
                 throw CliFailure("stale_approval", "Selected upstream repository identity changed")
             }
 
             CheckFork(run, upstream)
             CheckBranch(run)
 
-            let checkout = Path.Combine(directory, run.Text("source") == "external" ? "coding": "checkout")
+            let checkout = Path.Combine(directory, run.Source == "external" ? "coding": "checkout")
 
             if AttemptContinuation.Has(run) {
                 Source(checkout, run)
-                if run.Text("continuation_phase") != "imported" {
+                if run.ContinuationPhase != "imported" {
                     throw CliFailure("invalid_state", "Continuation import is incomplete; use work --run " + directory)
                 }
 
@@ -275,13 +266,13 @@ internal class WorkspacePreparation {
         }
 
         internal func Select(run Data, requested string) {
-            let upstream = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.Text("repo")))
+            let upstream = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.Repo))
             var head = requested
 
             if head == "" && RepositoryIdentity.PositiveId(
                 J.Get(J.Get(upstream, "owner"), "id")
-            ) == RepositoryIdentity.PositiveId(J.Get(run.Element(), "donor_id")) {
-                head = run.Text("repo")
+            ) == RepositoryIdentity.PositiveId(run.DonorId) {
+                head = run.Repo
             }
 
             if head == "" {
@@ -308,7 +299,7 @@ internal class WorkspacePreparation {
                             if !J.Bool(item, "fork") || RepositoryIdentity.PositiveId(
                                 J.Get(J.Get(item, "owner"), "id")
                             ) !=
-                            RepositoryIdentity.PositiveId(J.Get(run.Element(), "donor_id")) {
+                            RepositoryIdentity.PositiveId(run.DonorId) {
                                 continue
                             }
 
@@ -317,13 +308,13 @@ internal class WorkspacePreparation {
 
                             if String.Equals(
                                 J.Text(J.Get(info, "parent"), "full_name"),
-                                run.Text("repo"),
+                                run.Repo,
                                 StringComparison.OrdinalIgnoreCase
                             ) {
                                 RepositoryAccess.ValidateRepository(
-                                    run.Text("repo"),
+                                    run.Repo,
                                     candidate,
-                                    J.Get(run.Element(), "donor_id"),
+                                    run.DonorId,
                                     info,
                                     upstream: upstream
                                 )
@@ -347,8 +338,7 @@ internal class WorkspacePreparation {
                         )
                     }
 
-                    head = candidates.Count == 1 ? candidates[0]: run.Text("donor") + "/" + run.Text("repo")
-                        .Split('/')[1]
+                    head = candidates.Count == 1 ? candidates[0]: run.Donor + "/" + run.Repo.Split('/')[1]
                 } catch (error ApiDeadlineException) {
                     throw CliFailure(
                         "invalid_state",
@@ -359,23 +349,23 @@ internal class WorkspacePreparation {
                 }
             }
 
-            run.Fields["preparation_head"] = RepositoryIdentity.Repo(head)
-            run.Fields["head_repo"] = head
-            run.Fields["preparation_repo_id"] = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
+            run.PreparationHead = RepositoryIdentity.Repo(head)
+            run.HeadRepo = head
+            run.PreparationRepoId = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
         }
 
         private func Fork(directory string, run Data, upstream JsonElement) {
-            let head = RepositoryIdentity.Repo(run.Text("preparation_head"))
+            let head = RepositoryIdentity.Repo(run.PreparationHead)
 
-            if !RepositoryIdentity.SameRepo(run.Text("head_repo"), head) {
+            if !RepositoryIdentity.SameRepo(run.HeadRepo, head) {
                 throw CliFailure("invalid_state", "Saved head repository differs from preparation identity")
             }
 
             var info = GitHub.Api("repos/" + head, missing: true)
 
-            if info.ValueKind == JsonValueKind.Undefined && !run.Flag("fork_creation_attempted") {
-                let donor = run.Text("donor")
-                let repo = run.Text("repo")
+            if info.ValueKind == JsonValueKind.Undefined && !run.ForkCreationAttempted {
+                let donor = run.Donor
+                let repo = run.Repo
 
                 if !String.Equals(head.Split('/')[0], donor, StringComparison.OrdinalIgnoreCase) || String.Equals(
                     head,
@@ -385,27 +375,21 @@ internal class WorkspacePreparation {
                     throw CliFailure("invalid_state", "A missing fork must belong to the authenticated donor")
                 }
 
-                run.Fields["fork_creation_attempted"] = true
+                run.ForkCreationAttempted = true
                 run.Save(directory)
 
                 try {
                     let created = GitHub.Api(
-                        "repos/" + run.Text("repo") + "/forks",
+                        "repos/" + run.Repo + "/forks",
                         map[string, Object?]{"name": head.Split('/')[1]}
                     )
-                    RepositoryAccess.ValidateRepository(
-                        run.Text("repo"),
-                        head,
-                        J.Get(run.Element(), "donor_id"),
-                        created,
-                        upstream: upstream
-                    )
+                    RepositoryAccess.ValidateRepository(run.Repo, head, run.DonorId, created, upstream: upstream)
 
-                    run.Fields["preparation_head_id"] = RepositoryIdentity.PositiveId(J.Get(created, "id"))
+                    run.PreparationHeadId = RepositoryIdentity.PositiveId(J.Get(created, "id"))
 
                     run.Save(directory)
                 } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
-                    run.Fields["fork_creation_error"] = error.Message
+                    run.ForkCreationError = error.Message
                     run.Save(directory)
                 }
             }
@@ -419,27 +403,17 @@ internal class WorkspacePreparation {
                 }
 
                 if info.ValueKind != JsonValueKind.Undefined {
-                    RepositoryAccess.ValidateRepository(
-                        run.Text("repo"),
-                        head,
-                        J.Get(run.Element(), "donor_id"),
-                        info,
-                        upstream: upstream
-                    )
+                    RepositoryAccess.ValidateRepository(run.Repo, head, run.DonorId, info, upstream: upstream)
 
-                    if run.Fields.ContainsKey("preparation_head_id") && J.Get(info, "id").ToString() != J.Get(
-                        run.Element(),
-                        "preparation_head_id"
-                    )
-                        .ToString() {
+                    if run.HasPreparationHeadId && J.Get(info, "id").ToString() != run.PreparationHeadId.ToString() {
                         throw CliFailure("stale_approval", "Saved fork identity changed; inspect the original fork")
                     }
 
-                    run.Fields["preparation_head_id"] = RepositoryIdentity.PositiveId(J.Get(info, "id"))
+                    run.PreparationHeadId = RepositoryIdentity.PositiveId(J.Get(info, "id"))
 
                     run.Save(directory)
 
-                    if run.Flag("fork_creation_attempted") {
+                    if run.ForkCreationAttempted {
                         let branch = RepositoryIdentity.Branch(J.Text(info, "default_branch"))
                         let ready = GitHub.Api(
                             "repos/" + head + "/git/ref/heads/" + Uri.EscapeDataString(branch),
@@ -466,24 +440,18 @@ internal class WorkspacePreparation {
         }
 
         private func CheckFork(run Data, upstream JsonElement) {
-            let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.Text("head_repo")))
+            let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(run.HeadRepo))
 
-            RepositoryAccess.ValidateRepository(
-                run.Text("repo"),
-                run.Text("head_repo"),
-                J.Get(run.Element(), "donor_id"),
-                info,
-                upstream: upstream
-            )
+            RepositoryAccess.ValidateRepository(run.Repo, run.HeadRepo, run.DonorId, info, upstream: upstream)
 
-            if J.Get(info, "id").ToString() != J.Get(run.Element(), "preparation_head_id").ToString() {
+            if J.Get(info, "id").ToString() != run.PreparationHeadId.ToString() {
                 throw CliFailure("stale_approval", "Saved fork repository identity changed")
             }
         }
 
         private func Reference(run Data) JsonElement -> GitHub.Api(
-            "repos/" + RepositoryIdentity.Repo(run.Text("head_repo")) + "/git/ref/heads/" + Uri.EscapeDataString(
-                RepositoryIdentity.Branch(run.Text("branch"))
+            "repos/" + RepositoryIdentity.Repo(run.HeadRepo) + "/git/ref/heads/" + Uri.EscapeDataString(
+                RepositoryIdentity.Branch(run.Branch)
             ),
             missing: true
         )
@@ -498,7 +466,7 @@ internal class WorkspacePreparation {
                 )
             }
 
-            if J.Text(J.Get(reference, "object"), "sha") != run.Text("base") {
+            if J.Text(J.Get(reference, "object"), "sha") != run.Base {
                 throw CliFailure(
                     "invalid_state",
                     "Existing branch work is preserved; continuation remains unsupported until #14"
@@ -509,15 +477,15 @@ internal class WorkspacePreparation {
         private func Branch(directory string, run Data) {
             let reference = Reference(run)
 
-            if !run.Flag("branch_creation_attempted") {
+            if !run.BranchCreationAttempted {
                 if reference.ValueKind != JsonValueKind.Undefined {
                     ContributionAuthority.Recheck(run)
                     CheckBranch(run)
 
                     let pulls = J.Items(
                         GitHub.Api(
-                            "repos/" + run.Text("repo") + "/pulls?state=all&head=" + Uri.EscapeDataString(
-                                run.Text("donor") + ":" + run.Text("branch")
+                            "repos/" + run.Repo + "/pulls?state=all&head=" + Uri.EscapeDataString(
+                                run.Donor + ":" + run.Branch
                             )
                         )
                     )
@@ -529,22 +497,22 @@ internal class WorkspacePreparation {
                         )
                     }
 
-                    run.Fields["branch_creation_attempted"] = true
-                    run.Fields["branch_prepared"] = true
+                    run.BranchCreationAttempted = true
+                    run.BranchPrepared = true
                     run.Save(directory)
                     return
                 }
 
-                run.Fields["branch_creation_attempted"] = true
+                run.BranchCreationAttempted = true
                 run.Save(directory)
 
                 try {
                     GitHub.Api(
-                        "repos/" + run.Text("head_repo") + "/git/refs",
-                        map[string, Object?]{"ref": "refs/heads/" + run.Text("branch"), "sha": run.Text("base")}
+                        "repos/" + run.HeadRepo + "/git/refs",
+                        map[string, Object?]{"ref": "refs/heads/" + run.Branch, "sha": run.Base}
                     )
                 } catch (error CliFailure) {
-                    run.Fields["branch_creation_error"] = error.Message
+                    run.BranchCreationError = error.Message
                     run.Save(directory)
                 }
 
@@ -559,17 +527,17 @@ internal class WorkspacePreparation {
 
             CheckBranch(run)
 
-            run.Fields["branch_prepared"] = true
+            run.BranchPrepared = true
 
             run.Save(directory)
         }
 
         private func Marker(run Data) string -> J.Write(
             map[string, Object?]{
-                "identity": run.Text("preparation_identity"),
-                "head_repo": run.Text("preparation_head"),
-                "head_id": J.Get(run.Element(), "preparation_head_id"),
-                "repo_id": J.Get(run.Element(), "preparation_repo_id")
+                "identity": run.PreparationIdentity,
+                "head_repo": run.PreparationHead,
+                "head_id": run.PreparationHeadId,
+                "repo_id": run.PreparationRepoId
             }
         )
 
@@ -607,7 +575,7 @@ internal class WorkspacePreparation {
         }
 
         internal func Source(checkout string, run Data) {
-            if run.Number("preparation_version") != 1 || !Identified(run) {
+            if run.PreparationVersion != 1 || !Identified(run) {
                 throw CliFailure("invalid_state", "Unsupported preparation identity; source is preserved")
             }
 
@@ -618,21 +586,18 @@ internal class WorkspacePreparation {
             let head = Commands.Git(checkout, "rev-parse", "HEAD")
             let expected = ContributionHandoff.StartHead(run)
 
-            if head != expected &&
-                !(ContributionHandoff.Has(run) && run.Text("state") == "preparing" && head == run.Text("base")) {
+            if head != expected && !(ContributionHandoff.Has(run) && run.State == "preparing" && head == run.Base) {
                 Reject(checkout)
             }
 
             let branch = Commands.GitResult(checkout, []string{"symbolic-ref", "--quiet", "--short", "HEAD"})
 
-            if run.Text("source") == "external" ? (
-                branch.Code != 0 || branch.Output.Trim() != run.Text("branch")
-            ): branch.Code != 1 {
+            if run.Source == "external" ? (branch.Code != 0 || branch.Output.Trim() != run.Branch): branch.Code != 1 {
                 Reject(checkout)
             }
 
-            let adapter = Harness.Find(run.Text("harness"))
-            if run.Text("source") != "external" && adapter != nil && adapter.Config != "" {
+            let adapter = Harness.Find(run.Harness)
+            if run.Source != "external" && adapter != nil && adapter.Config != "" {
                 for file in Commands.Git(checkout, "ls-files").Split('\n') {
                     if file.StartsWith(adapter.Config + "/") || file.Contains("/" + adapter.Config + "/") {
                         throw CliFailure(
@@ -653,13 +618,13 @@ internal class WorkspacePreparation {
 
         private func CheckExisting(directory string, checkout string, staging string, run Data) {
             if AttemptContinuation.Has(run) &&
-                (run.Text("continuation_phase") == "importing" || run.Text("continuation_phase") == "imported") {
+                (run.ContinuationPhase == "importing" || run.ContinuationPhase == "imported") {
                 Source(checkout, run)
                 ContinuationImport.Check(
                     directory,
                     run,
                     ContributionAuthority.Recheck(run),
-                    run.Text("continuation_phase") == "importing"
+                    run.ContinuationPhase == "importing"
                 )
             } else {
                 Clean(checkout, run)
@@ -675,7 +640,7 @@ internal class WorkspacePreparation {
         }
 
         private func Checkout(directory string, run Data) string {
-            let name = run.Text("source") == "external" ? "coding": "checkout"
+            let name = run.Source == "external" ? "coding": "checkout"
             let checkout = Path.Combine(directory, name)
             let staging = Path.Combine(directory, name + ".staging")
 
@@ -690,7 +655,7 @@ internal class WorkspacePreparation {
             }
 
             if !Directory.Exists(staging) {
-                run.Fields["checkout_staging"] = name + ".staging"
+                run.CheckoutStaging = name + ".staging"
                 run.Save(directory)
                 Directory.CreateDirectory(Path.Combine(staging, ".git"))
                 File.WriteAllText(Path.Combine(staging, ".git/tokate-preparation.json"), Marker(run))
@@ -746,21 +711,14 @@ internal class WorkspacePreparation {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Text("repo") + ".git",
-                    RepositoryIdentity.CommitSha(run.Text("base"))
+                    "https://github.com/" + run.Repo + ".git",
+                    RepositoryIdentity.CommitSha(run.Base)
                 )
 
-                if run.Text("source") == "external" {
-                    Commands.Git(
-                        staging,
-                        "checkout",
-                        "--quiet",
-                        "-b",
-                        RepositoryIdentity.Branch(run.Text("branch")),
-                        run.Text("base")
-                    )
+                if run.Source == "external" {
+                    Commands.Git(staging, "checkout", "--quiet", "-b", RepositoryIdentity.Branch(run.Branch), run.Base)
                 } else {
-                    Commands.Git(staging, "checkout", "--quiet", "--detach", run.Text("base"))
+                    Commands.Git(staging, "checkout", "--quiet", "--detach", run.Base)
                 }
 
                 Clean(staging, run)
@@ -772,7 +730,7 @@ internal class WorkspacePreparation {
 
             Clean(checkout, run)
 
-            run.Fields["checkout_prepared"] = name
+            run.CheckoutPrepared = name
 
             run.Save(directory)
 

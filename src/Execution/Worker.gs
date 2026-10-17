@@ -199,7 +199,7 @@ internal class Worker {
         }
 
         internal func Authenticate(run Data) {
-            let harnessPath = run.Text("harness_path")
+            let harnessPath = run.HarnessPath
             let login = Commands.Run(CodexPath(harnessPath), []string{"login", "status"}, harness: true)
             if login.Code != 0 || !(login.Output + login.Error).Contains("Logged in using ChatGPT") {
                 throw CliFailure(
@@ -213,7 +213,7 @@ internal class Worker {
             if !version.StartsWith("codex-cli ") {
                 throw ExecutionFailure.Create("missing_tools", "A supported Codex CLI is required")
             }
-            run.Fields["codex_version"] = version
+            run.CodexVersion = version
         }
 
         internal func Prepare(
@@ -222,30 +222,21 @@ internal class Worker {
             record JsonElement,
             coding RuntimeBudget,
             models Func[string, string, string, List[string]?]
-        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
-            let harnessPath = run.Text("harness_path")
-            let selected = J.Get(run.Element(), "selection")
+        ) ValueTuple[[]string, Action[Data]?] {
+            let harnessPath = run.HarnessPath
+            let selected = run.Selection
             let checkout = Path.Combine(directory, "checkout")
             Probe(directory, checkout, harnessPath)
 
-            let args = List[string]{
-                "exec",
-                "--json",
-                "--color",
-                "never",
-                "--cd",
-                checkout,
-                "--model",
-                run.Text("model")
-            }
-            Config(args, "model_reasoning_effort", J.Write(run.Text("effort")))
+            let args = List[string]{"exec", "--json", "--color", "never", "--cd", checkout, "--model", run.Model}
+            Config(args, "model_reasoning_effort", J.Write(run.Effort))
             Config(args, "model_provider", J.Write(J.Text(selected, "provider")))
             Config(args, "approval_policy", "\"never\"")
             Config(args, "default_permissions", "\"tokate\"")
             Config(args, "permissions.tokate.filesystem", Filesystem(checkout, harnessPath: harnessPath))
             Config(args, "permissions.tokate.network.enabled", "true")
             args.Add("-")
-            return ValueTuple[[]string, Dictionary[string, Object?]?](Command(args.ToArray(), harnessPath), nil)
+            return ValueTuple[[]string, Action[Data]?](Command(args.ToArray(), harnessPath), nil)
         }
 
         internal func Read(
@@ -258,7 +249,7 @@ internal class Worker {
             if result.Code != 0 {
                 throw CliFailure("inference_failed", "Codex failed. Inspect the private stderr.log artifact.")
             }
-            run.Fields["failure_reason"] = "incomplete_turn"
+            run.FailureReason = "incomplete_turn"
 
             if result.Truncated {
                 throw ExecutionFailure.Create(

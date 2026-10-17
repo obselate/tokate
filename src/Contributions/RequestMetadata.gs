@@ -140,7 +140,7 @@ internal class RequestMetadata {
             }
         }
 
-        internal func Binding(actor JsonElement, request JsonElement) string {
+        internal func Binding(actor int64, request JsonElement) string {
             RepositoryIdentity.PositiveId(actor)
             let parsed = CoordinatorRequest.Parse(request)
 
@@ -169,7 +169,7 @@ internal class RequestMetadata {
 
         internal func Recorded(
             state CoordinationState,
-            actor JsonElement,
+            actor int64,
             request JsonElement
         ) CoordinationState.ResultRecord? {
             let binding = Binding(actor, request)

@@ -6,53 +6,48 @@ import System.Text.Json
 internal class ContributionAuthority {
     shared {
         internal func Recheck(run Data) JsonElement {
-            if run.Number("version") != 2 {
+            if run.Version != 2 {
                 throw CliFailure("invalid_state", "Unsupported run protocol; start a current contribution")
             }
 
             WorkspacePreparation.CheckIdentity(run)
 
             let viewer = GitHub.Api("user")
-            let repo = RepositoryIdentity.Repo(run.Text("repo"))
-            let saved = run.Element()
+            let repo = RepositoryIdentity.Repo(run.Repo)
             var record JsonElement
-            if run.Flag("gratis") {
-                if RepositoryIdentity.SameRepo(repo, run.Text("head_repo")) || !RepositoryIdentity.SameDonor(
-                    viewer,
-                    run
-                ) ||
+            if run.Gratis {
+                if RepositoryIdentity.SameRepo(repo, run.HeadRepo) || !RepositoryIdentity.SameDonor(viewer, run) ||
                     GitHub
                     .Api(
-                    "repos/" + repo + "/contents/.github/tokate.json?ref=" + Uri.EscapeDataString(
-                        run.Text("base_branch")
-                    ),
+                    "repos/" + repo + "/contents/.github/tokate.json?ref=" + Uri.EscapeDataString(run.BaseBranch),
                     missing: true
                 )
                     .ValueKind != JsonValueKind.Undefined {
                     throw CliFailure("stale_approval", "Gratis repository or donor authority changed")
                 }
-                record = J.Get(saved, "gratis_context")
+                record = run.GratisContext
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
-                if run.Text("base") != approval.Base || run.Text("base_branch") != approval.BaseBranch || run.Text(
-                    "branch"
-                ) != "tokate/gratis-" +
-                    run.Text("id") {
+                if run.Base != approval.Base ||
+                    run.BaseBranch != approval.BaseBranch ||
+                    run.Branch != "tokate/gratis-" +
+                    run.Id {
                     throw CliFailure("invalid_state", "Saved gratis task changed")
                 }
             } else {
-                let state = CoordinationState.Load(repo, run.Number("issue"))
+                let state = CoordinationState.Load(repo, run.Issue)
                 let reservation = state.Lease
 
-                if !RepositoryIdentity.SameDonor(viewer, run) || state.ApprovalId != run.Text("approval") ||
-                    (reservation?.Reservation ?? "") != run.Text("id") {
+                if !RepositoryIdentity.SameDonor(viewer, run) ||
+                    state.ApprovalId != run.Approval ||
+                    (reservation?.Reservation ?? "") != run.Id {
                     throw CliFailure("stale_approval", "Saved run has stale coordination authority")
                 }
 
-                RepositoryIdentity.PositiveId(J.Get(saved, "donor_id"))
+                RepositoryIdentity.PositiveId(run.DonorId)
                 state.Reservation(J.Get(viewer, "id"))
 
-                if run.Text("attempt") != (reservation?.Attempt ?? "") || RepositoryIdentity.PositiveId(
-                    J.Get(saved, "donor_id")
+                if run.Attempt != (reservation?.Attempt ?? "") || RepositoryIdentity.PositiveId(
+                    run.DonorId
                 ) != RepositoryIdentity
                     .PositiveId(state.Identity?.ActorValue() ?? default(JsonElement)) {
                     throw CliFailure(
@@ -62,15 +57,16 @@ internal class ContributionAuthority {
                     )
                 }
 
-                record = state.Check(repo, run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
-                ContributionHandoff.Authority(state, ContributionHandoff.Declaration(J.Get(run.Element(), "handoff")))
+                record = state.Check(repo, run.Issue, run.Donor, J.Get(viewer, "id"))
+                ContributionHandoff.Authority(state, ContributionHandoff.Declaration(run.Handoff))
 
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 
-                if run.Text("base") != (reservation?.Base ?? "") || run.Text("policy_hash") != approval.PolicyHash ||
-                    run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
-                    "base_branch"
-                ) != approval.BaseBranch {
+                if run.Base != (reservation?.Base ?? "") ||
+                    run.PolicyHash != approval.PolicyHash ||
+                    run.Branch != "tokate/v2-" +
+                    run.Id ||
+                    run.BaseBranch != approval.BaseBranch {
                     throw CliFailure("stale_approval", "Saved run differs from reservation and approval")
                 }
 
@@ -78,33 +74,33 @@ internal class ContributionAuthority {
             }
 
             let policy = Policy(J.Write(J.Get(record, "policy")))
-            let declaredTools = J.Get(saved, "tools")
+            let declaredTools = run.Tools
 
             RequestMetadata.Tools(declaredTools)
-            policy.ValidateTools(declaredTools, run.Text("source"))
+            policy.ValidateTools(declaredTools, run.Source)
 
-            if run.Fields.ContainsKey("requested_model") && run.Text("requested_model") != run.Text("model") {
+            if run.HasRequestedModel && run.RequestedModel != run.Model {
                 throw CliFailure("stale_approval", "Saved requested model differs from execution")
             }
 
             let tools = J.Items(declaredTools)
 
-            if run.Text("source") == "tokate" &&
-                (run.Text("model") != J.Text(tools[0], "model") || run.Text("effort") != J.Text(tools[0], "effort")) {
+            if run.Source == "tokate" &&
+                (run.Model != J.Text(tools[0], "model") || run.Effort != J.Text(tools[0], "effort")) {
                 throw CliFailure(
                     "stale_approval",
                     "Saved execution differs from the declared tool; no model substitution is allowed"
                 )
             }
 
-            RepositoryIdentity.Repo(run.Text("head_repo"))
+            RepositoryIdentity.Repo(run.HeadRepo)
 
-            if run.Text("state") != "preparing" {
+            if run.State != "preparing" {
                 RepositoryAccess.ValidateRun(run)
             }
 
             RuntimeBudget.Validate(run)
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Seconds, run.Unlimited)
             return record
         }
     }

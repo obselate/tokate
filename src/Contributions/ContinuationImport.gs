@@ -347,7 +347,7 @@ internal class ContinuationImport {
             }
 
             Present(target, name)
-            run.Fields["continuation_pending"] = path
+            run.ContinuationPending = path
             run.Save(directory)
 
             using let root = Root(directory)
@@ -362,7 +362,7 @@ internal class ContinuationImport {
                 throw CliFailure("invalid_state", "Cannot replace contained import target: " + path)
             }
 
-            run.Fields.Remove("continuation_pending")
+            run.ClearContinuationPending()
             run.Save(directory)
         }
 
@@ -424,7 +424,7 @@ internal class ContinuationImport {
         private func Scan(checkout string, run Data, record JsonElement, exclude bool) JsonElement {
             Verification.Candidate(checkout)
 
-            let baseline = ProtectedPaths.LocalTree(checkout, run.Text("base"))
+            let baseline = ProtectedPaths.LocalTree(checkout, run.Base)
 
             for entry in baseline {
                 PathName(entry.Key)
@@ -497,7 +497,7 @@ internal class ContinuationImport {
                         "--no-renames",
                         "--name-only",
                         "-z",
-                        run.Text("base"),
+                        run.Base,
                         "--"
                     }
                 )
@@ -614,15 +614,15 @@ internal class ContinuationImport {
         }
 
         internal func Capture(directory string, run Data, record JsonElement) {
-            let sourceDirectory = run.Text("continuation_source")
+            let sourceDirectory = run.ContinuationSource
             using let sourceLease = SourceLease(sourceDirectory)
             let source = AttemptContinuation.Source(sourceDirectory, run, record)
 
             let sourceText = Metadata(sourceDirectory)
 
-            if J.Hash(sourceText) != run.Text("continuation_source_metadata_sha256") || !RequestData.Same(
+            if J.Hash(sourceText) != run.ContinuationSourceMetadataSha256 || !RequestData.Same(
                 AttemptContinuation.Provenance(source),
-                J.Get(run.Element(), "continuation")
+                run.Continuation
             ) {
                 throw CliFailure(
                     "invalid_state",
@@ -674,9 +674,9 @@ internal class ContinuationImport {
                 }
             }
 
-            run.Fields["continuation"] = AttemptContinuation.Provenance(source)
-            run.Fields["continuation_manifest_sha256"] = J.Hash(manifest)
-            run.Fields["continuation_phase"] = "captured"
+            run.Continuation = AttemptContinuation.Provenance(source)
+            run.ContinuationManifestSha256 = J.Hash(manifest)
+            run.ContinuationPhase = "captured"
 
             run.Save(directory)
         }
@@ -684,7 +684,7 @@ internal class ContinuationImport {
         private func Manifest(directory string, run Data) JsonElement {
             let text = Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024))
 
-            if J.Hash(text) != run.Text("continuation_manifest_sha256") {
+            if J.Hash(text) != run.ContinuationManifestSha256 {
                 throw CliFailure(
                     "invalid_state",
                     "Captured continuation manifest changed; inspect the original preparation"
@@ -700,7 +700,7 @@ internal class ContinuationImport {
 
             if J.Number(manifest, "version") != 1 || !RequestData.Same(
                 J.Get(manifest, "predecessor"),
-                J.Get(run.Element(), "continuation")
+                run.Continuation
             ) {
                 throw CliFailure("invalid_state", "Continuation predecessor evidence changed")
             }
@@ -740,7 +740,7 @@ internal class ContinuationImport {
             CheckSource(run, record, manifest)
 
             let checkout = Path.Combine(directory, "checkout")
-            let staged = Commands.GitResult(checkout, []string{"diff", "--cached", "--quiet", run.Text("base"), "--"})
+            let staged = Commands.GitResult(checkout, []string{"diff", "--cached", "--quiet", run.Base, "--"})
 
             if staged.Code != 0 || staged.Truncated || staged.ReadFailed {
                 throw CliFailure("invalid_state", "Import target index differs from the approved base")
@@ -776,21 +776,21 @@ internal class ContinuationImport {
         }
 
         internal func Import(directory string, run Data, record JsonElement) {
-            if run.Text("continuation_phase") == "" {
+            if run.ContinuationPhase == "" {
                 Capture(directory, run, record)
             }
 
             let manifest = Manifest(directory, run)
 
-            Check(directory, run, record, run.Text("continuation_phase") != "imported")
+            Check(directory, run, record, run.ContinuationPhase != "imported")
 
-            if run.Text("continuation_phase") == "imported" {
+            if run.ContinuationPhase == "imported" {
                 return
             }
 
             using let root = Root(directory)
             let control = root.DangerousGetHandle().ToInt32()
-            let pending = run.Text("continuation_pending")
+            let pending = run.ContinuationPending
 
             if pending != "" {
                 var known bool
@@ -806,12 +806,12 @@ internal class ContinuationImport {
                 }
 
                 Remove(control, "continuation-write.tmp")
-                run.Fields.Remove("continuation_pending")
+                run.ClearContinuationPending()
             } else if Present(control, "continuation-write.tmp") {
                 throw CliFailure("invalid_state", "Unidentified import temporary file; inspect this saved preparation")
             }
 
-            run.Fields["continuation_phase"] = "importing"
+            run.ContinuationPhase = "importing"
             run.Save(directory)
 
             for entry in J.Items(J.Get(manifest, "entries")) {
@@ -820,18 +820,18 @@ internal class ContinuationImport {
 
             Check(directory, run, record)
 
-            run.Fields["continuation_phase"] = "imported"
+            run.ContinuationPhase = "imported"
             run.Save(directory)
         }
 
         private func CheckSource(run Data, record JsonElement, manifest JsonElement) {
-            let directory = run.Text("continuation_source")
+            let directory = run.ContinuationSource
             using let lease = SourceLease(directory)
             let source = AttemptContinuation.Source(directory, run, record)
 
-            if Metadata(directory) != J.Text(manifest, "source_metadata") || J.Hash(Metadata(directory)) != run.Text(
-                "continuation_source_metadata_sha256"
-            ) ||
+            if Metadata(directory) != J.Text(manifest, "source_metadata") || J.Hash(
+                Metadata(directory)
+            ) != run.ContinuationSourceMetadataSha256 ||
                 !RequestData.Same(AttemptContinuation.Provenance(source), J.Get(manifest, "predecessor")) ||
                 !RequestData.Same(Evidence(directory), J.Get(manifest, "evidence")) || !RequestData.Same(
                 Scan(Path.Combine(directory, "checkout"), source, record, true),

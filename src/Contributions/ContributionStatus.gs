@@ -81,12 +81,12 @@ internal class ContributionStatus {
 
         let runs = Saved.For(Repo, issue)
         let run = runs.Count == 0 ? nil: runs[runs.Count - 1]
-        if GratisRepo || (run != nil && J.Bool(run.Value, "gratis")) {
+        if GratisRepo || (run != nil && run.Run.Gratis) {
             row["approval_status"] = "not_required"
             row["eligibility_status"] = "not_required"
             row["coordination_status"] = "not_required"
             row["drafts_status"] = "not_observed"
-            row["state"] = run != nil && J.Bool(run.Value, "gratis") ? run.State: J.Text(task, "state")
+            row["state"] = run != nil && run.Run.Gratis ? run.State: J.Text(task, "state")
             row["next"] = run == nil ?
             Next(
                 "donor",
@@ -497,14 +497,7 @@ internal class ContributionStatus {
 
         let live = GitHub.Api("repos/" + repository)
 
-        RepositoryAccess.ValidateRepository(
-            Repo,
-            repository,
-            J.Parse(actor.ToString()),
-            live,
-            push: false,
-            upstream: Info
-        )
+        RepositoryAccess.ValidateRepository(Repo, repository, actor, live, push: false, upstream: Info)
 
         return J.Text(J.Get(pull, "base"), "ref") == OwnerApproval.Record.Parse(approval).BaseBranch && J.Text(
             head,
@@ -917,8 +910,13 @@ internal class ContributionStatus {
         let holder = row["reservation"] is Dictionary[string, Object?]reservation ? Text(reservation, "actor"): ""
         let run = SavedRuns.Pick(SavedRuns.Recent(Saved.For(Repo, Int32.Parse(Text(row, "issue")))))
 
-        if run == nil || viewer == "" || J.Get(run.Value, "donor_id").ToString() != viewer ||
-            (stage == "claim_accepted" ? holder != viewer: run.Text("state") != "claim_pending") {
+        if run == nil ||
+            viewer == "" ||
+            run
+            .Run
+            .DonorId
+            .ToString() != viewer ||
+            (stage == "claim_accepted" ? holder != viewer: run.Run.State != "claim_pending") {
             return
         }
 
@@ -926,7 +924,7 @@ internal class ContributionStatus {
 
         if run.Busy() {
             row["next"] = Next("donor", "Your tokate work for this issue is running on this machine.")
-        } else if run.Text("state") == "claim_pending" {
+        } else if run.Run.State == "claim_pending" {
             row["next"] = Submission.PendingWorkflow(run.Location, Data.Load(run.Location)) ??
                 Next(
                 "donor",
@@ -1204,7 +1202,7 @@ internal class ContributionStatus {
                 let attempts = SavedRuns.Recent(status.Saved.For(args.Get("repo"), args.Number("issue")))
 
                 for attempt in attempts {
-                    let pr = J.Number(attempt.Value, "pr").ToString()
+                    let pr = attempt.Run.Pr.ToString()
 
                     if outcomes.ContainsKey(pr) {
                         attempt.Outcome = outcomes[pr]
@@ -1230,7 +1228,8 @@ internal class ContributionStatus {
         internal func Attempt(options Args) {
             let directory = Output.Sink.RunDirectory
             let summary = Output.Sink.RunSummary(directory)
-            let run = SavedRun(directory, Data.Load(directory).Element(), true)
+            let saved = Data.Load(directory)
+            let run = SavedRun(directory, saved.Element(), true, saved)
             SavedRuns.Outcomes(List[SavedRun]{run})
 
             if run.Outcome != "" {

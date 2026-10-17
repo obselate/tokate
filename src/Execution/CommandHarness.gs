@@ -87,12 +87,12 @@ internal class CommandHarness {
 
         private func Prepare(command JsonElement, output string, directory string, run Data) ValueTuple[
             []string,
-            Dictionary[string, Object?]?
+            Action[Data]?
         ] {
             let values = map[string, string]{
                 "prompt_file": Path.Combine(directory, "prompt.md"),
-                "model": run.Text("model"),
-                "effort": run.Text("effort"),
+                "model": run.Model,
+                "effort": run.Effort,
                 "checkout": Path.Combine(directory, "checkout")
             }
             let args = J
@@ -107,15 +107,15 @@ internal class CommandHarness {
                 .ToArray()
             let invocation = map[string, Object?]{
                 "harness": "command",
-                "provider": run.Text("provider"),
-                "model": run.Text("model"),
-                "effort": run.Text("effort"),
+                "provider": run.Provider,
+                "model": run.Model,
+                "effort": run.Effort,
                 "output": output,
                 "arguments": args
             }
-            return ValueTuple[[]string, Dictionary[string, Object?]?](
+            return ValueTuple[[]string, Action[Data]?](
                 args,
-                map[string, Object?]{"observed_invocation": invocation}
+                saved -> saved.ObservedInvocation = J.Parse(J.Write(invocation))
             )
         }
     }

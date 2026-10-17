@@ -196,7 +196,7 @@ internal class PublicOutput {
         internal func RunSummary(directory string) Dictionary[string, Object?] {
             let run = Data.Load(directory)
 
-            if run.Number("version") != 2 {
+            if run.Version != 2 {
                 throw CliFailure("invalid_state", "Unsupported saved run protocol")
             }
 
@@ -206,16 +206,14 @@ internal class PublicOutput {
                 "version,id,repo,issue,donor,donor_id,head_repo,approval,base,base_branch,policy_hash,model,requested_model,reported_model,effort,seconds,verification_reserve,unlimited,branch,state,state_sha,publication_uuid,source,commit,pr,pr_url,elapsed_seconds,codex_version,pi_version,claude_version,omp_version,output_truncated,error_truncated,preparation_version,preparation_complete,checkout_prepared,attempt,incomplete,partial_source_state,publication_attempt"
             )
 
-            if run.Text("source") == "tokate" {
-                result["coding_seconds"] = run.Flag("unlimited") ? nil: run.Number("seconds") - run.Number(
-                    "verification_reserve"
-                )
-                result["verification_reserve"] = run.Number("verification_reserve")
+            if run.Source == "tokate" {
+                result["coding_seconds"] = run.Unlimited ? nil: run.Seconds - run.VerificationReserve
+                result["verification_reserve"] = run.VerificationReserve
             }
 
             result["run"] = directory
 
-            if run.Text("state") == "claim_pending" {
+            if run.State == "claim_pending" {
                 result["next"] = map[string, Object?]{
                     "role": "donor",
                     "action": "Your claim is pending. Check the coordinator outcome with tokate work. If the Tokate workflow failed: " +
@@ -225,25 +223,25 @@ internal class PublicOutput {
             }
 
             if ContributionHandoff.Has(run) {
-                result["handoff"] = J.Get(value, "handoff")
+                result["handoff"] = run.Handoff
             }
 
             result["storage"] = RunStorage.Summary(directory, run)
 
-            let verification = J.Get(value, "verification")
+            let verification = run.Verification
 
             result["verification"] = Rows(verification, "state,exit_code,output_truncated,error_truncated", true)
             result["verification_count"] = J.Count(verification)
 
             if AttemptContinuation.Has(run) {
-                result["predecessor"] = J.Get(value, "continuation")
-                result["continuation_phase"] = run.Text("continuation_phase")
+                result["predecessor"] = run.Continuation
+                result["continuation_phase"] = run.ContinuationPhase
             }
 
             let usage = map[string, Object?]{}
 
             for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                let item = J.Get(J.Get(value, "usage"), key)
+                let item = J.Get(run.Usage, key)
                 var count int64
 
                 if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
@@ -255,14 +253,14 @@ internal class PublicOutput {
                 result["usage"] = usage
             }
 
-            let tools = J.Get(value, "tools")
+            let tools = run.Tools
 
             if tools.ValueKind == JsonValueKind.Array {
                 result["tools"] = Rows(tools, "harness,provider,model,effort,version")
                 result["tool_count"] = J.Count(tools)
             }
 
-            SummarizeChangesAndFailure(directory, run, value, result)
+            SummarizeChangesAndFailure(directory, run, result)
 
             result["artifacts"] = Artifacts(directory)
 
@@ -278,13 +276,8 @@ internal class PublicOutput {
             return result
         }
 
-        private func SummarizeChangesAndFailure(
-            directory string,
-            run Data,
-            value JsonElement,
-            result Dictionary[string, Object?]
-        ) {
-            let amendments = J.Get(value, "amendments")
+        private func SummarizeChangesAndFailure(directory string, run Data, result Dictionary[string, Object?]) {
+            let amendments = run.Amendments
 
             if amendments.ValueKind == JsonValueKind.Array {
                 result["amendments"] = Rows(amendments, "id,previous,head")
@@ -301,7 +294,7 @@ internal class PublicOutput {
 
                     let amendment = Data.Load(location, amendment: true)
 
-                    if amendment.Text("state") != "requested" || amendment.Text("previous") != run.Text("commit") {
+                    if amendment.State != "requested" || amendment.Previous != run.Commit {
                         continue
                     }
 
@@ -313,28 +306,26 @@ internal class PublicOutput {
                 }
             }
 
-            if run.Text("amendment") != "" {
-                let location = Path.Combine(directory, "amendments", run.Text("amendment"))
+            if run.Amendment != "" {
+                let location = Path.Combine(directory, "amendments", run.Amendment)
                 let correction = Data.Load(location, amendment: true)
                 result["correction"] = ChangeSummary(correction, location)
-                if correction.Text("state") == "verified" && J.Get(correction.Element(), "publication")
+                if correction.State == "verified" &&
+                    correction
+                    .Publication
                     .ValueKind == JsonValueKind.Object &&
-                    run.Number("pr") == 0 {
+                    run.Pr == 0 {
                     result["next"] = ChangeNext(directory, correction)
                 }
             }
 
-            if run.Text("state") == "failed" {
+            if run.State == "failed" {
                 let reason = (
-                    run.Text("failure_reason") == "incomplete_turn" || run.Text(
-                        "failure_reason"
-                    ) == "inference_interrupted"
-                ) ? "inference_failed": run.Text("failure_reason")
+                    run.FailureReason == "incomplete_turn" || run.FailureReason == "inference_interrupted"
+                ) ? "inference_failed": run.FailureReason
 
                 let code = KnownReason(reason) ? reason: "command_failed"
-                result["failure_reason"] = run.Text(
-                    "failure_reason"
-                ) == "inference_interrupted" ? "inference_interrupted": code
+                result["failure_reason"] = run.FailureReason == "inference_interrupted" ? "inference_interrupted": code
                 result["error"] = map[string, Object?]{
                     "code": code,
                     "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": CliFailure.Message(
@@ -342,8 +333,7 @@ internal class PublicOutput {
                     )
                 }
 
-                if run.Text("source") == "tokate" && run.Number("pr") == 0 &&
-                    (code == "stale_approval" || code == "inference_failed") {
+                if run.Source == "tokate" && run.Pr == 0 && (code == "stale_approval" || code == "inference_failed") {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
                         "action": "Inspect saved work, then use tokate work for a fresh attempt under current authority with an explicit new time budget.",
@@ -352,14 +342,17 @@ internal class PublicOutput {
                     if AttemptContinuation.Stopped(run) {
                         result["error"] = map[string, Object?]{
                             "code": code,
-                            "message": run.Text("failure_reason") == "inference_interrupted" ?
+                            "message": run.FailureReason == "inference_interrupted" ?
                             "Inference was interrupted. Preserve partial work and prepare a fresh attempt under current authority with a new time budget.":
                             "Runtime limit reached. Preserve partial work and prepare a fresh attempt under unchanged approval with a new time budget."
                         }
                         result["next"] = AttemptContinuation.Next(directory, run)
                     }
-                } else if run.Text("source") == "tokate" && run.Number("pr") == 0 && run.Text("commit") == "" &&
-                    run.Flag("turn_completed") && run.Text("failure_reason") == "public_summary_invalid" {
+                } else if run.Source == "tokate" &&
+                    run.Pr == 0 &&
+                    run.Commit == "" &&
+                    run.TurnCompleted &&
+                    run.FailureReason == "public_summary_invalid" {
                     result["next"] = map[string, Object?]{
                         "role": "donor",
                         "action": "Correct tokate-public-summary.json in the saved checkout, then run tokate submit. No new inference is needed.",
@@ -417,19 +410,19 @@ internal class PublicOutput {
                 "id,uuid,previous,commit,tree,patch_sha256,seconds,state,pr,elapsed_seconds,verification_seconds"
             )
 
-            let tools = J.Get(value, "tools")
+            let tools = change.Tools
 
             result["tools"] = Rows(tools, "harness,provider,model,effort,version")
             result["tool_count"] = J.Count(tools)
 
-            let checks = J.Get(value, "verification")
+            let checks = change.Verification
 
             result["verification"] = Rows(checks, "state,exit_code,output_truncated,error_truncated", true)
             result["verification_count"] = J.Count(checks)
 
-            let reason = change.Text("failure_reason")
-            let failed = change.Text("state") == "failed" || reason != ""
-            if failed || change.Fields.ContainsKey("error") || change.Fields.ContainsKey("publication_error") {
+            let reason = change.FailureReason
+            let failed = change.State == "failed" || reason != ""
+            if failed || change.HasError || change.HasPublicationError {
                 let code = KnownReason(reason) ? reason: (
                     reason == "publication_interrupted" ? "command_failed": "invalid_state"
                 )
@@ -481,13 +474,13 @@ internal class PublicOutput {
                 "--run",
                 directory,
                 "--commit",
-                amendment.Text("commit"),
+                amendment.Commit,
                 "--time",
-                amendment.Number("seconds").ToString() + "s"
+                amendment.Seconds.ToString() + "s"
             }
 
             for key in[]string{"tools", "summary"} {
-                let argument = amendment.Text(key + "_argument")
+                let argument = key == "tools" ? amendment.ToolsArgument: amendment.SummaryArgument
 
                 if argument != "" {
                     command.AddRange([]string{"--" + key, argument})
@@ -542,12 +535,11 @@ internal class PublicOutput {
 
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
 
-                    if run.Text("state") == "preparing" && run.Number("preparation_version") == 1 &&
-                        code != "stale_approval" {
+                    if run.State == "preparing" && run.PreparationVersion == 1 && code != "stale_approval" {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
 
-                    if code == "" && run.Text("state") == "claimed" && (run.Text("source") == "tokate") {
+                    if code == "" && run.State == "claimed" && (run.Source == "tokate") {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
 
@@ -562,10 +554,10 @@ internal class PublicOutput {
                     if Flag("busy") {
                         Actions.RemoveAll(action -> action[1] != "status")
                     } else if code != "stale_approval" && code != "invalid_state" && !Flag("finished") {
-                        if run.Number("pr") > 0 {
+                        if run.Pr > 0 {
                             Actions.Add([]string{"tokate", "checks", "--run", RunDirectory, "--json"})
                         } else if (next as Dictionary[string, Object?])?["role"]?.ToString() != "owner" &&
-                            (run.Text("state") == "generated" || run.Text("state") == "incomplete_generated") {
+                            (run.State == "generated" || run.State == "incomplete_generated") {
                             Actions.Add([]string{"tokate", "submit", "--run", RunDirectory, "--json"})
                         }
                     }

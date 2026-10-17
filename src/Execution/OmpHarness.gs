@@ -73,13 +73,13 @@ internal class OmpHarness {
         }
 
         internal func ValidateSaved(run Data) {
-            if !Path.IsPathFullyQualified(run.Text("harness_path")) {
+            if !Path.IsPathFullyQualified(run.HarnessPath) {
                 throw ExecutionFailure.Create("invalid_state", "Saved OMP run requires its original executable")
             }
 
-            let args = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
+            let args = Args([]string{"work", "--harness", "omp", "--harness-path", run.HarnessPath})
             OmpRuntime.Runtime(args)
-            if args.Need("harness-path") != run.Text("harness_path") {
+            if args.Need("harness-path") != run.HarnessPath {
                 throw ExecutionFailure.Create("invalid_state", "Saved OMP runtime changed; no substitution")
             }
         }
@@ -90,17 +90,17 @@ internal class OmpHarness {
             record JsonElement,
             coding RuntimeBudget,
             models Func[string, string, string, List[string]?]
-        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
-            let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.Text("harness_path")})
+        ) ValueTuple[[]string, Action[Data]?] {
+            let options = Args([]string{"work", "--harness", "omp", "--harness-path", run.HarnessPath})
             let runtime = OmpRuntime.Runtime(options, coding)
-            if options.Need("harness-path") != run.Text("harness_path") {
+            if options.Need("harness-path") != run.HarnessPath {
                 throw ExecutionFailure.Create("invalid_state", "Saved OMP runtime changed; no substitution")
             }
 
-            let limits = OmpRuntime.Model(run.Text("harness_path"), run.Text("provider"), run.Text("model"), coding)
-            OmpRuntime.CheckEffort(limits, run.Text("effort"))
+            let limits = OmpRuntime.Model(run.HarnessPath, run.Provider, run.Model, coding)
+            OmpRuntime.CheckEffort(limits, run.Effort)
 
-            let selector = run.Text("provider") + "/" + run.Text("model")
+            let selector = run.Provider + "/" + run.Model
 
             let invocation = List[string]{"--mode", "json", "--no-session", "--no-title", "--approval-mode", "yolo"}
             for flag in[]string{"--model", "--smol", "--slow", "--plan"} {
@@ -108,21 +108,25 @@ internal class OmpHarness {
                 invocation.Add(selector)
             }
             invocation.Add("--thinking")
-            invocation.Add(run.Text("effort") == "absent" ? "off": run.Text("effort"))
-            let args = OmpRuntime.Command(run.Text("harness_path"))
+            invocation.Add(run.Effort == "absent" ? "off": run.Effort)
+            let args = OmpRuntime.Command(run.HarnessPath)
             args.AddRange(invocation)
-            run.Fields["omp_version"] = J.Text(runtime, "version")
-            run.Fields["observed_invocation"] = map[string, Object?]{
-                "harness": "omp",
-                "version": J.Text(runtime, "version"),
-                "provider": run.Text("provider"),
-                "model": run.Text("model"),
-                "effort": run.Text("effort"),
-                "context_window": J.Number(limits, "contextWindow"),
-                "max_tokens": J.Number(limits, "maxTokens"),
-                "arguments": invocation.ToArray()
-            }
-            return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
+            run.OmpVersion = J.Text(runtime, "version")
+            run.ObservedInvocation = J.Parse(
+                J.Write(
+                    map[string, Object?]{
+                        "harness": "omp",
+                        "version": J.Text(runtime, "version"),
+                        "provider": run.Provider,
+                        "model": run.Model,
+                        "effort": run.Effort,
+                        "context_window": J.Number(limits, "contextWindow"),
+                        "max_tokens": J.Number(limits, "maxTokens"),
+                        "arguments": invocation.ToArray()
+                    }
+                )
+            )
+            return ValueTuple[[]string, Action[Data]?](args.ToArray(), nil)
         }
 
         internal func Read(
@@ -140,10 +144,8 @@ internal class OmpHarness {
                         "; inspect private captured evidence. No new run was started"
                 )
             }
-            let evidence = SessionEvidence.Completed(result.Output, run.Text("model"), run.Text("provider"), omp: true)
-            run.Fields[
-                "usage_provenance"
-            ] = "harness-reported for the main session; provider identity, credits and billing are not independently proven"
+            let evidence = SessionEvidence.Completed(result.Output, run.Model, run.Provider, omp: true)
+            run.UsageProvenance = "harness-reported for the main session; provider identity, credits and billing are not independently proven"
             return evidence
         }
     }
