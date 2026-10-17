@@ -5,13 +5,7 @@ import System.Text.Json
 
 internal class RepositoryAccess {
     shared {
-        internal func ValidateFork(
-            repo string,
-            forkRepo string,
-            branch string,
-            head string,
-            actor JsonElement
-        ) JsonElement {
+        internal func ValidateFork(repo string, forkRepo string, branch string, head string, actor int64) JsonElement {
             let fork = RepositoryIdentity.Repo(forkRepo)
             let info = GitHub.Api("repos/" + fork)
 
@@ -40,20 +34,22 @@ internal class RepositoryAccess {
         }
 
         internal func ValidateRun(run Data) {
-            let repo = RepositoryIdentity.Repo(run.Text("repo"))
-            let head = RepositoryIdentity.Repo(run.Text("head_repo"))
+            let repo = RepositoryIdentity.Repo(run.Repo)
+            let head = RepositoryIdentity.Repo(run.HeadRepo)
             let upstream = GitHub.Api("repos/" + repo)
             let info = RepositoryIdentity.SameRepo(repo, head) ? upstream: GitHub.Api("repos/" + head)
-            let saved = run.Element()
 
-            ValidateRepository(repo, head, J.Get(saved, "donor_id"), info, upstream: upstream)
+            ValidateRepository(repo, head, run.DonorId, info, upstream: upstream)
 
-            for binding in[]string{"preparation_repo_id", "preparation_head_id"} {
-                let expected = J.Get(saved, binding)
-                if expected.ValueKind != JsonValueKind.Undefined && RepositoryIdentity.PositiveId(expected) !=
-                RepositoryIdentity.PositiveId(J.Get(binding == "preparation_repo_id" ? upstream: info, "id")) {
-                    throw Exception("Saved contribution repository identity changed")
-                }
+            if (
+                run.HasPreparationRepoId && RepositoryIdentity.PositiveId(run.PreparationRepoId) !=
+                RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
+            ) ||
+                (
+                run.HasPreparationHeadId && RepositoryIdentity.PositiveId(run.PreparationHeadId) !=
+                RepositoryIdentity.PositiveId(J.Get(info, "id"))
+            ) {
+                throw Exception("Saved contribution repository identity changed")
             }
         }
 
@@ -70,7 +66,7 @@ internal class RepositoryAccess {
         internal func ValidateRepository(
             repo string,
             head string,
-            actor JsonElement,
+            actor int64,
             info JsonElement,
             push bool = true,
             upstream JsonElement = default(JsonElement)
