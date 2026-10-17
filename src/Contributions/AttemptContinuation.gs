@@ -47,7 +47,7 @@ internal class AttemptContinuation {
                     return next
                 }
 
-                let seconds = Math.Min(run.Number("seconds") * 2, J.Number(J.Get(record, "policy"), "max_seconds"))
+                let seconds = Math.Min(run.Number("seconds") * 2, Policy.Parse(J.Get(record, "policy")).MaxSeconds)
                 let reserve = run.Number("verification_reserve") > 0 ? run.Number("verification_reserve"): Math.Max(
                     1,
                     seconds / 3

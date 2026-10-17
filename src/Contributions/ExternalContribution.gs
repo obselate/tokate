@@ -58,7 +58,7 @@ internal class ExternalContribution {
             using let reader = StreamReader(file)
             let recorded = J.Get(run.Element(), "verification")
             let checks = J.Items(recorded)
-            let commands = J.Items(J.Get(policy, "verification"))
+            let commands = J.Items(Policy.Parse(policy).Verification)
 
             if run.Text("failure_stage") != "owner_verification" || run.Text(
                 "failure_reason"
@@ -360,7 +360,7 @@ internal class ExternalContribution {
                 {
                     using let workspace = VerificationWorkspace.Create(checkout, budget)
 
-                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                    for command in J.Items(Policy.Parse(J.Get(record, "policy")).Verification) {
                         let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
                         if remaining < 1 {
                             throw ExecutionFailure.Create("verification_failed", "Verification budget exhausted")

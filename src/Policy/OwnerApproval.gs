@@ -65,7 +65,7 @@ internal class OwnerApproval {
             let authority = J.Text(info, "default_branch")
             let authorityBase = GitHub.Branch(repo, authority)
             let policy = Policy.Load(repo, authorityBase)
-            let configuredTarget = J.Text(policy.Value, "target_branch")
+            let configuredTarget = policy.TargetBranch
             let branch = ApprovalBase.Select(args, configuredTarget == "" ? authority: configuredTarget)
             var revision string
             try {

@@ -619,7 +619,7 @@ internal class Submission {
             }
 
             if !RequestMetadata.Incomplete(run.Element()) {
-                Verification.Results(run, record)
+                Verification.Results(run, Policy.Parse(J.Get(record, "policy")).Verification)
             }
 
             let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))

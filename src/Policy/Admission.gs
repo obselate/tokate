@@ -92,7 +92,7 @@ internal class Admission {
                 return
             }
 
-            let message = Policy.CloseMessage(policy.Value)
+            let message = policy.CloseMessage
             if !commented && message != "" {
                 GitHub.Api(
                     "repos/" + repo + "/issues/" + number.ToString() + "/comments",

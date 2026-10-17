@@ -586,7 +586,7 @@ internal class ContributionStatus {
             }
         }
 
-        for name in J.Items(J.Get(policy, "required_checks")) {
+        for name in J.Items(Policy.Parse(policy).RequiredChecks) {
             var status = "missing"
             for check in checks {
                 let bucket = Bucket(check)

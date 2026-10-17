@@ -624,8 +624,7 @@ internal class Coordinator {
             let failure = "Amendment differs from current published contribution authority"
             let originalActor = J.Get(original, "actor").ToString()
 
-            if J.Number(metadata, "seconds") > J.Number(policy.Value, "max_seconds") ||
-                originalActor != actor.ToString() {
+            if J.Number(metadata, "seconds") > policy.MaxSeconds || originalActor != actor.ToString() {
                 throw Exception(failure)
             }
 

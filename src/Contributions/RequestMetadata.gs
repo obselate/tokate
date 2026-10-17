@@ -140,7 +140,7 @@ internal class RequestMetadata {
             }
 
             if policy.ValueKind != JsonValueKind.Undefined {
-                if J.Number(value, "seconds") > J.Number(policy, "max_seconds") {
+                if J.Number(value, "seconds") > Policy.Parse(policy).MaxSeconds {
                     throw CliFailure("invalid_state", "Correction budget exceeds original owner policy")
                 }
                 CorrectionTools(tools, policy)

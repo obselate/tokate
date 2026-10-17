@@ -369,7 +369,7 @@ internal class Overlaps {
                     facts["checks_output_complete"] = rows.Count == checks.GetArrayLength()
                     facts["checks_head"] = binding.Text("commit")
 
-                    let names = J.Items(J.Get(J.Get(binding.Element(), "policy"), "required_checks"))
+                    let names = J.Items(Policy.Parse(J.Get(binding.Element(), "policy")).RequiredChecks)
                     let required = List[Object]()
 
                     for name in names {

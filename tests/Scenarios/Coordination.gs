@@ -130,6 +130,22 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 }
 
                 test.Flow.Approve()
+                let task = JsonObject()
+                for key in[]string{"verification", "required_checks", "protected_paths"} {
+                    task[key] = policy[key]?.DeepClone() ?? JsonArray()
+                }
+                task["allowed_tools"] = policy["allowed_tools"]?.DeepClone()
+                task["max_seconds"] = policy["max_seconds"]?.DeepClone()
+                task["allow_unlimited"] = policy["allow_unlimited"]?.DeepClone() ?? JsonValue.Create(false)
+                task["reservation_seconds"] = policy["reservation_seconds"]?.DeepClone() ?? JsonValue.Create(86400)
+                if policy["maintainer_edits"] != nil {
+                    task["maintainer_edits"] = policy["maintainer_edits"]?.DeepClone()
+                }
+                Check.That(
+                    Check.Text(test.State()["state"]?["approval"]?["policy_hash"]) == Check.FixtureDigest(task),
+                    "Owner approval policy hash changed"
+                )
+
                 let budget = Check.Envelope(
                     test.Flow.Call(
                         []string{
@@ -259,6 +275,17 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.SetModelPolicy("whitelist", "{\"gpt-6-sol\":[\"high\",\"unknown\",\"absent\"]}")
             let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
+            let malformed = policy.DeepClone()
+            malformed["max_seconds"] = JsonValue.Create("3600")
+            File.WriteAllText(policyPath, malformed.ToJsonString())
+            test.Flow.Commit("Owner policy has a mistyped budget")
+            test.Flow.Reject(
+                []string{"defaults", "check", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
+                "Policy: field \"max_seconds\" is missing or not an int32"
+            )
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            test.Flow.Commit("Owner repairs policy budget")
+
             let models = policy["allowed_tools"]?[0]?["models"]?.DeepClone()
             policy["version"] = JsonValue.Create(3)
             policy.AsObject().Remove("models")

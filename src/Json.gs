@@ -167,5 +167,44 @@ internal class JsonFields {
             "invalid_state",
             format + ": field \"" + field + "\" is missing or not " + expected
         )
+
+        internal func String(value JsonElement, format string, field string) string {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.String {
+                throw Invalid(format, field, "a string")
+            }
+
+            return item.GetString() ?? ""
+        }
+
+        internal func Int32(value JsonElement, format string, field string) int32 {
+            let item = J.Get(value, field)
+            var result int32
+
+            if item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out result) {
+                throw Invalid(format, field, "an int32")
+            }
+
+            return result
+        }
+
+        internal func OptionalString(value JsonElement, format string, field string, fallback string) string {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
+            fallback: String(value, format, field)
+        }
+
+        internal func OptionalInt64(value JsonElement, format string, field string, fallback int64) int64 {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
+            fallback: Int64(value, format, field)
+        }
+
+        internal func OptionalBool(value JsonElement, format string, field string, fallback bool) bool {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
+            fallback: Bool(value, format, field)
+        }
     }
 }

@@ -11,14 +11,12 @@ internal class CommandHarness {
     shared {
         private let Placeholders string = "\\{(prompt_file|model|effort|checkout)\\}"
 
-        internal func Validate(tool JsonElement) {
-            let words = J.Items(J.Get(tool, "command"))
-            let output = J.Text(tool, "output")
-            let models = J.Get(tool, "models").ValueKind
+        internal func Validate(command JsonElement, output string, models bool) {
+            let words = J.Items(command)
             let first = words.Count == 0 ? "": words[0].ToString()
             let named = words.Exists(word -> word.ToString().Contains("{model}"))
             if !named || first.Contains('{') || first.StartsWith('-') || first.Contains('=') ||
-                models != JsonValueKind.Object ||
+                !models ||
                 (output != "codex" && output != "claude" && output != "session") {
                 throw Exception(
                     "A command tool needs a fixed executable, a {model} word, models and output codex, claude or session"
@@ -51,8 +49,7 @@ internal class CommandHarness {
             J.Items(J.Get(selection, "command")).Select(word -> word.ToString())
         )
 
-        internal func Adapter(tool JsonElement) Harness {
-            let output = J.Text(tool, "output")
+        internal func Adapter(command JsonElement, output string) Harness {
             var activity Action[string] = OmpHarness.Activity
             if output == "codex" {
                 activity = Worker.Activity
@@ -71,7 +68,7 @@ internal class CommandHarness {
                     record JsonElement,
                     coding RuntimeBudget,
                     models Func[string, string, string, List[string]?]
-                ) -> Prepare(tool, directory, run),
+                ) -> Prepare(command, output, directory, run),
                 (
                     directory string,
                     run Data,
@@ -82,17 +79,13 @@ internal class CommandHarness {
                 output == "claude" ? ClaudeHarness.Read(directory, run, record, result, allowsModel):
                 OmpHarness.Read(directory, run, record, result, allowsModel),
                 activity,
-                (args Args, selection Func[Dictionary[string, Object?]]) -> Select(
-                    args,
-                    selection(),
-                    J.Get(tool, "command")
-                ),
+                (args Args, selection Func[Dictionary[string, Object?]]) -> Select(args, selection(), command),
                 catalog: true,
                 continues: false
             )
         }
 
-        private func Prepare(tool JsonElement, directory string, run Data) ValueTuple[
+        private func Prepare(command JsonElement, output string, directory string, run Data) ValueTuple[
             []string,
             Dictionary[string, Object?]?
         ] {
@@ -103,7 +96,7 @@ internal class CommandHarness {
                 "checkout": Path.Combine(directory, "checkout")
             }
             let args = J
-                .Items(J.Get(tool, "command"))
+                .Items(command)
                 .Select(
                 word -> Regex.Replace(
                     word.GetString() ?? "",
@@ -117,7 +110,7 @@ internal class CommandHarness {
                 "provider": run.Text("provider"),
                 "model": run.Text("model"),
                 "effort": run.Text("effort"),
-                "output": J.Text(tool, "output"),
+                "output": output,
                 "arguments": args
             }
             return ValueTuple[[]string, Dictionary[string, Object?]?](

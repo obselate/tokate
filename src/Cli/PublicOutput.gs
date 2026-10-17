@@ -104,14 +104,29 @@ internal class PublicOutput {
         ) >= 0
 
         internal func Policy(value JsonElement) Object {
-            let result = J.Select(
-                value,
-                "version,max_seconds,allow_unlimited,reservation_seconds,approval_scope,eligibility,target_branch,pr_text,close_message"
-            )
-            result["close_message"] = Policy.CloseMessage(value)
+            let policy = Tokate.Policy.Parse(value)
+            let result = map[string, Object?]{
+                "version": policy.Version,
+                "max_seconds": policy.MaxSeconds,
+                "allow_unlimited": policy.AllowUnlimited,
+                "reservation_seconds": policy.ReservationSeconds,
+                "approval_scope": policy.ApprovalScope,
+                "eligibility": policy.Eligibility,
+                "target_branch": policy.TargetBranch,
+                "pr_text": policy.PrText,
+                "close_message": policy.CloseMessage
+            }
+            for key in[]string{"allow_unlimited", "reservation_seconds", "target_branch", "pr_text"} {
+                var field JsonElement
+                if !value.TryGetProperty(key, out field) || field.ValueKind == JsonValueKind.Null {
+                    result.Remove(key)
+                }
+            }
 
             for key in[]string{"verification", "required_checks", "protected_paths"} {
-                let items = J.Items(J.Get(value, key))
+                let source = key == "verification" ? policy.Verification:
+                key == "required_checks" ? policy.RequiredChecks: policy.ProtectedPaths
+                let items = J.Items(source)
                 let rows = List[Object]()
 
                 for i in 0 ... Math.Min(64, items.Count) {
@@ -123,51 +138,46 @@ internal class PublicOutput {
                 Truncated = Truncated || items.Count > 64
             }
 
-            let tools = J.Get(value, "allowed_tools")
+            let entries = policy.AllowedTools
 
-            if tools.ValueKind == JsonValueKind.Array {
-                let retained = List[Object]()
-                let entries = J.Items(tools)
-                for i in 0 ... Math.Min(64, entries.Count) {
-                    let tool = J.Select(entries[i], "harness,provider")
-                    if J.Get(entries[i], "models").ValueKind == JsonValueKind.Object {
-                        for field in PolicyModels(J.Get(entries[i], "models")) {
-                            tool[field.Key] = field.Value
-                        }
+            let retained = List[Object]()
+            for i in 0 ... Math.Min(64, entries.Count) {
+                let tool = map[string, Object?]{"harness": entries[i].Harness, "provider": entries[i].Provider}
+                if let models = entries[i].Models {
+                    for field in PolicyModels(models) {
+                        tool[field.Key] = field.Value
                     }
-
-                    retained.Add(tool)
                 }
 
-                result["allowed_tools"] = retained
-                result["allowed_tools_count"] = entries.Count
-                Truncated = Truncated || entries.Count > 64
+                retained.Add(tool)
             }
+
+            result["allowed_tools"] = retained
+            result["allowed_tools_count"] = entries.Count
+            Truncated = Truncated || entries.Count > 64
 
             return result
         }
 
-        private func PolicyModels(source JsonElement) Dictionary[string, Object?] {
+        private func PolicyModels(source Dictionary[string, List[string]]) Dictionary[string, Object?] {
             let models = map[string, Object?]{}
             let effortCounts = map[string, Object?]{}
             var count int32
 
-            if source.ValueKind == JsonValueKind.Object {
-                for model in source.EnumerateObject() {
-                    count++
+            for model in source {
+                count++
 
-                    if count <= 64 {
-                        let efforts = J.Items(model.Value)
-                        let retained = List[Object]()
+                if count <= 64 {
+                    let efforts = model.Value
+                    let retained = List[Object]()
 
-                        for i in 0 ... Math.Min(64, efforts.Count) {
-                            retained.Add(efforts[i])
-                        }
-
-                        models[model.Name] = retained
-                        effortCounts[model.Name] = efforts.Count
-                        Truncated = Truncated || efforts.Count > 64
+                    for i in 0 ... Math.Min(64, efforts.Count) {
+                        retained.Add(efforts[i])
                     }
+
+                    models[model.Key] = retained
+                    effortCounts[model.Key] = efforts.Count
+                    Truncated = Truncated || efforts.Count > 64
                 }
             }
 

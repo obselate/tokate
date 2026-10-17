@@ -89,13 +89,9 @@ internal class LeaseLifecycle {
             let action = J.Text(request, "action")
             let uuid = J.Text(request, "uuid")
             let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
-            let duration = J.Get(policy, "reservation_seconds").ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
-                policy,
-                "reservation_seconds"
-            )
 
             if action == "claim" {
-                return Claim(state, value, actor, donor, uuid, now, duration)
+                return Claim(state, value, actor, donor, uuid, now, Policy.Parse(policy).ReservationSeconds)
             }
 
             if !Supported(value) {
@@ -127,6 +123,7 @@ internal class LeaseLifecycle {
                 fields["attempt"] = ""
                 fields["expires"] = now
             } else {
+                let duration = Policy.Parse(policy).ReservationSeconds
                 fields["expires"] = Math.Max(CoordinationState.Unix(reservation, "expires"), now + duration)
                 if action == "pause" {
                     fields["expires"] = now + duration

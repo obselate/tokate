@@ -20,10 +20,7 @@ internal class Amendment {
             var id Guid
             let seconds = J.Number(value, "seconds")
 
-            if !Guid.TryParseExact(J.Text(value, "id"), "D", out id) || seconds < 1 || seconds > J.Number(
-                policy.Value,
-                "max_seconds"
-            ) {
+            if !Guid.TryParseExact(J.Text(value, "id"), "D", out id) || seconds < 1 || seconds > policy.MaxSeconds {
                 throw CliFailure("invalid_state", "Invalid amendment receipt or verification budget")
             }
 
@@ -492,7 +489,7 @@ internal class Amendment {
             let policy = Policy(J.Write(J.Get(record, "policy")))
             Tools(policy, tools)
 
-            if seconds > J.Number(policy.Value, "max_seconds") {
+            if seconds > policy.MaxSeconds {
                 throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
             }
 
@@ -729,7 +726,7 @@ internal class Amendment {
             let budget = RuntimeBudget(timer, seconds)
             {
                 using let workspace = VerificationWorkspace.Create(checkout, budget)
-                for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                for command in J.Items(Policy.Parse(J.Get(record, "policy")).Verification) {
                     let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
                     if remaining < 1 {
                         throw CliFailure("verification_failed", "Amendment verification budget exhausted")
@@ -764,7 +761,7 @@ internal class Amendment {
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
             Output.Sink.FailureCode = "verification_failed"
-            Verification.Results(change, record)
+            Verification.Results(change, Policy.Parse(J.Get(record, "policy")).Verification)
             change.Transition("verified")
             change.Fields.Remove("failure_stage")
             change.Fields.Remove("failure_reason")
@@ -806,10 +803,10 @@ internal class Amendment {
                 } else {
                     Tools(policy, J.Get(change.Element(), "tools"))
                 }
-                if change.Number("seconds") < 1 || change.Number("seconds") > J.Number(policy.Value, "max_seconds") {
+                if change.Number("seconds") < 1 || change.Number("seconds") > policy.MaxSeconds {
                     throw CliFailure("stale_approval", "Amendment budget exceeds current owner policy")
                 }
-                Verification.Results(change, record)
+                Verification.Results(change, policy.Verification)
                 let snapshot = Exact(directory, run, change, record)
                 if change.Text("uuid") != "" {
                     PublishCorrection(directory, run, change, record)

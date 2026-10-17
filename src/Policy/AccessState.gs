@@ -152,11 +152,11 @@ internal class AccessState {
 
         private const ByteLimit int32 = 65536
 
-        internal func Mode(policy JsonElement) string -> J.Text(policy, "eligibility")
+        internal func Mode(policy JsonElement) string -> Policy.Parse(policy).Eligibility
 
         internal func Task(approval JsonElement) bool {
             RequestData.Parse(J.Write(approval), 1024 * 1024)
-            let eligibility = Mode(approval)
+            let eligibility = J.Text(approval, "eligibility")
             let donor = J.Get(approval, "donor")
 
             if J.Number(approval, "version") != 2 || J.Text(approval, "approval_scope") != "task" ||
