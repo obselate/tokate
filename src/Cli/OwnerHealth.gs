@@ -338,7 +338,7 @@ internal class OwnerHealth {
         internal func WarnCoordinator(args Args) {
             try {
                 let repo = RepositoryIdentity.Repo(
-                    args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Text("repo"):
+                    args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Repo:
                     args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
                 )
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)

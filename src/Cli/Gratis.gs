@@ -11,17 +11,22 @@ internal class Gratis {
     shared {
         internal func PolicyFor(args Args) Policy {
             DonorDefaults.NormalizePair(args)
-            let policy = Data.From(J.Parse(ApplicationInfo.Resource("tokate.json")))
-            policy.Fields["max_seconds"] = 86400
-            policy.Fields["verification"] = []Object{}
-            policy.Fields["required_checks"] = []Object{}
-            policy.Fields["allowed_tools"] = []Object{
+            let policy = map[string, Object?]{}
+
+            for field in J.Parse(ApplicationInfo.Resource("tokate.json")).EnumerateObject() {
+                policy[field.Name] = field.Value.Clone()
+            }
+
+            policy["max_seconds"] = 86400
+            policy["verification"] = []Object{}
+            policy["required_checks"] = []Object{}
+            policy["allowed_tools"] = []Object{
                 map[string, Object?]{
                     "harness": args.Get("harness", "codex"),
                     "provider": args.Get("provider", "openai")
                 }
             }
-            return Policy(J.Write(policy.Fields))
+            return Policy(J.Write(policy))
         }
 
         internal func ConfirmPublish(
