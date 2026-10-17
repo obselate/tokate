@@ -16,6 +16,28 @@ func RuntimeMetadataOpen(path string, flags int32) int32;
 
 internal class CodexRuntime {
     shared {
+        private const ProbeTimeoutSeconds int32 = 10
+
+        private const ModelCatalogByteLimit int32 = 4 * 1024 * 1024
+
+        private const PackageMetadataByteLimit int32 = 65536
+
+        private const ElfHeaderByteSize int32 = 20
+
+        private const ElfMagic0 byte = 127
+
+        private const ElfMagic1 byte = 69
+
+        private const ElfMagic2 byte = 76
+
+        private const ElfMagic3 byte = 70
+
+        private const Elf64Class byte = 2
+
+        private const ElfLittleEndian byte = 1
+
+        private const ElfX64Machine byte = 62
+
         internal func Capabilities(path string = "") Dictionary[string, HashSet[string]] {
             try {
                 let executable = CodexRuntime.Resolve(path)
@@ -41,7 +63,7 @@ internal class CodexRuntime {
                         LocalPaths.NeedSystemTool("env"),
                         help.ToArray(),
                         home,
-                        seconds: 10,
+                        seconds: ProbeTimeoutSeconds,
                         isolated: true
                     )
 
@@ -60,7 +82,7 @@ internal class CodexRuntime {
                         LocalPaths.NeedSystemTool("env"),
                         catalog.ToArray(),
                         home,
-                        seconds: 10,
+                        seconds: ProbeTimeoutSeconds,
                         isolated: true
                     )
                     if result.Code != 0 {
@@ -71,7 +93,7 @@ internal class CodexRuntime {
                     }
 
                     let models = Dictionary[string, HashSet[string]](StringComparer.Ordinal)
-                    let value = RequestData.Parse(result.Output, 4 * 1024 * 1024)
+                    let value = RequestData.Parse(result.Output, ModelCatalogByteLimit)
 
                     for model in J.Items(J.Get(value, "models")) {
                         let efforts = HashSet[string](StringComparer.Ordinal)
@@ -95,11 +117,17 @@ internal class CodexRuntime {
         }
 
         private func FileKind(path string, kind int32) {
-            let status = [256]byte
+            let status = [LocalPaths.MetadataByteSize]byte
 
-            if RuntimeMetadataStat(LocalPaths.CurrentWorkingDirectory, path, 256, 1, status) != 0 ||
-                (BitConverter.ToUInt32(status, 0) & 1) == 0 ||
-                (BitConverter.ToUInt16(status, 28) & LocalPaths.FileTypeMask) != kind {
+            if RuntimeMetadataStat(
+                LocalPaths.CurrentWorkingDirectory,
+                path,
+                LocalPaths.MetadataNoFollow,
+                LocalPaths.MetadataTypeMask,
+                status
+            ) != 0 ||
+                (BitConverter.ToUInt32(status, 0) & LocalPaths.MetadataTypeMask) == 0 ||
+                (BitConverter.ToUInt16(status, LocalPaths.MetadataModeOffset) & LocalPaths.FileTypeMask) != kind {
                 throw ExecutionFailure.Create(
                     "verification_failed",
                     "Managed runtime requires regular files and unlinked metadata directories"
@@ -114,7 +142,7 @@ internal class CodexRuntime {
             while current != "" {
                 FileKind(current, kind)
                 current = Path.GetDirectoryName(current) ?? ""
-                kind = 16384
+                kind = LocalPaths.DirectoryFileType
             }
 
             let descriptor = RuntimeMetadataOpen(
@@ -132,27 +160,27 @@ internal class CodexRuntime {
             }
 
             using let reader = BinaryReader(file)
-            let bytes = reader.ReadBytes(65537)
-            if bytes.Length > 65536 {
+            let bytes = reader.ReadBytes(PackageMetadataByteLimit + 1)
+            if bytes.Length > PackageMetadataByteLimit {
                 throw ExecutionFailure.Create("verification_failed", "Package metadata exceeds its byte limit")
             }
 
-            return RequestData.Parse(Encoding.UTF8.GetString(bytes), 65536)
+            return RequestData.Parse(Encoding.UTF8.GetString(bytes), PackageMetadataByteLimit)
         }
 
         internal func Native(path string) bool {
             FileKind(path, LocalPaths.RegularFileType)
             using let file = File.OpenRead(path)
-            let header = [20]byte
+            let header = [ElfHeaderByteSize]byte
 
             return file.Read(header, 0, header.Length) == header.Length &&
-                header[0] == 127 &&
-                header[1] == 69 &&
-                header[2] == 76 &&
-                header[3] == 70 &&
-                header[4] == 2 &&
-                header[5] == 1 &&
-                header[18] == 62 &&
+                header[0] == ElfMagic0 &&
+                header[1] == ElfMagic1 &&
+                header[2] == ElfMagic2 &&
+                header[3] == ElfMagic3 &&
+                header[4] == Elf64Class &&
+                header[5] == ElfLittleEndian &&
+                header[18] == ElfX64Machine &&
                 header[19] == 0 &&
                 (
                 File.GetUnixFileMode(path) & (

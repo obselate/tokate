@@ -12,6 +12,12 @@ internal class RunStorage {
     shared {
         internal const RunFileByteLimit int32 = 1024 * 1024
 
+        private const LockTimeoutMilliseconds int32 = 500
+
+        private const LockRetryMilliseconds int32 = 20
+
+        private const MetadataRequiredMask uint32 = 5
+
         internal func Root() string -> Path.Combine(LocalPaths.StateDirectory(), "runs")
 
         internal func ControlPaths(directory string) {
@@ -36,10 +42,18 @@ internal class RunStorage {
             }
 
             if File.Exists(path) || Directory.Exists(path) {
-                let status = [256]byte
-                if RuntimeMetadataStat(LocalPaths.CurrentWorkingDirectory, path, 256, 5, status) != 0 ||
-                    (BitConverter.ToUInt32(status, 0) & 5) != 5 ||
-                    (BitConverter.ToUInt16(status, 28) & LocalPaths.FileTypeMask) != LocalPaths.RegularFileType ||
+                let status = [LocalPaths.MetadataByteSize]byte
+                if RuntimeMetadataStat(
+                    LocalPaths.CurrentWorkingDirectory,
+                    path,
+                    LocalPaths.MetadataNoFollow,
+                    MetadataRequiredMask,
+                    status
+                ) != 0 ||
+                    (BitConverter.ToUInt32(status, 0) & MetadataRequiredMask) != MetadataRequiredMask ||
+                    (
+                    BitConverter.ToUInt16(status, LocalPaths.MetadataModeOffset) & LocalPaths.FileTypeMask
+                ) != LocalPaths.RegularFileType ||
                     BitConverter.ToUInt32(status, 16) != 1 {
                     Reject(directory)
                 }
@@ -55,8 +69,8 @@ internal class RunStorage {
                 try {
                     lease = Lock(directory)
                     break
-                } catch (error IOException) when timer.ElapsedMilliseconds < 500 {
-                    Thread.Sleep(20)
+                } catch (error IOException) when timer.ElapsedMilliseconds < LockTimeoutMilliseconds {
+                    Thread.Sleep(LockRetryMilliseconds)
                 }
             }
             try {

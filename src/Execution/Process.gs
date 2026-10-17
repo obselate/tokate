@@ -31,6 +31,10 @@ internal class CommandLines {
     private let Observe Action[string]
     private var Oversize bool
 
+    shared {
+        private const LineCharacterLimit int32 = 65536
+    }
+
     internal init(observe Action[string]) {
         Observe = observe
     }
@@ -50,7 +54,7 @@ internal class CommandLines {
         for i in 0 ... count {
             if buffer[i] == '\n' {
                 Flush()
-            } else if Line.Length < 65536 {
+            } else if Line.Length < LineCharacterLimit {
                 Line.Append(buffer[i])
             } else {
                 Oversize = true
@@ -135,7 +139,7 @@ internal class CommandCancellation {
                 }
             }
 
-            KillGroup(-Process.Id, 9)
+            KillGroup(-Process.Id, Commands.KillSignal)
         } finally {
             Lifetime <- active
         }
@@ -271,6 +275,16 @@ internal class Commands {
     shared {
         internal const VersionTimeoutSeconds int32 = 30
 
+        private const StreamBufferSize int32 = 8192
+
+        private const OutputCharacterLimit int32 = 32 * 1024 * 1024
+
+        private const GitPathByteLimit int32 = 32 * 1024 * 1024
+
+        internal const KillSignal int32 = 9
+
+        private const FailureChannelCapacity int32 = 4
+
         internal func InterruptedResult(error Exception) CommandResult? -> switch error {
             case interrupted is CommandInterrupted: interrupted.Result
             case interrupted is CommandInputInterrupted: interrupted.Result
@@ -316,7 +330,7 @@ internal class Commands {
                 using let writer StreamWriter? = capture == nil ? nil: StreamWriter(
                     capture,
                     UTF8Encoding(false),
-                    8192,
+                    StreamBufferSize,
                     true
                 )
 
@@ -324,13 +338,13 @@ internal class Commands {
                     writer.AutoFlush = true
                 }
 
-                let buffer = [8192]char
+                let buffer = [StreamBufferSize]char
                 var count int32
 
                 while (count = reader.Read(buffer, 0, buffer.Length)) > 0 {
-                    var retained = result.Truncated ? 0: Math.Min(count, 32 * 1024 * 1024 - text.Length)
+                    var retained = result.Truncated ? 0: Math.Min(count, OutputCharacterLimit - text.Length)
 
-                    if retained > 0 && text.Length + retained == 32 * 1024 * 1024 && Char.IsHighSurrogate(
+                    if retained > 0 && text.Length + retained == OutputCharacterLimit && Char.IsHighSurrogate(
                         buffer[retained - 1]
                     ) {
                         retained -= 1
@@ -641,7 +655,7 @@ internal class Commands {
                     }
                     case let error = <- execution.Exited {
                         execution.ExitDone = true
-                        KillGroup(-execution.Process.Id, 9)
+                        KillGroup(-execution.Process.Id, KillSignal)
                         failure = error
                     }
                     case let error = <- execution.Failed {
@@ -683,7 +697,7 @@ internal class Commands {
             }
 
             let process = execution.Process
-            KillGroup(-process.Id, 9)
+            KillGroup(-process.Id, KillSignal)
 
             if !process.HasExited {
                 try {
@@ -790,7 +804,7 @@ internal class Commands {
             let stderr = Chan[CommandOutput](1)
             let cancelled = cancellation ?? Chan[bool](1)
             let result = CommandResult()
-            let failed = Chan[Exception](4)
+            let failed = Chan[Exception](FailureChannelCapacity)
             let clock = Stopwatch.StartNew()
             using let deadline = after(allowance)
 
@@ -897,7 +911,7 @@ internal class Commands {
                 let result = GitResult(cwd, args, true, budget)
                 if result.Code != 0 || result.Truncated || result.ReadFailed || Encoding.UTF8.GetByteCount(
                     result.Output
-                ) > 32 * 1024 * 1024 {
+                ) > GitPathByteLimit {
                     throw Exception("Cannot read complete Git path evidence: " + result.Error)
                 }
 

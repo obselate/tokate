@@ -7,6 +7,8 @@ import System.Text.RegularExpressions
 
 internal class OmpEvidence {
     shared {
+        private const FailureCharacterLimit int32 = 240
+
         internal func Failure(output string) string {
             var reason = ""
 
@@ -16,7 +18,7 @@ internal class OmpEvidence {
                 }
 
                 try {
-                    let message = J.Get(RequestData.Parse(line, 32 * 1024 * 1024), "message")
+                    let message = J.Get(RequestData.Parse(line, SessionEvidence.OmpEventByteLimit), "message")
                     if J.Text(message, "role") == "assistant" && J.Text(message, "errorMessage") != "" {
                         reason = J.Text(message, "errorMessage")
                     }
@@ -28,7 +30,7 @@ internal class OmpEvidence {
             let text = StringBuilder()
 
             for character in reason {
-                if text.Length == 240 {
+                if text.Length == FailureCharacterLimit {
                     break
                 }
 

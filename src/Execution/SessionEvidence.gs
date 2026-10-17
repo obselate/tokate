@@ -6,6 +6,10 @@ import System.Text.Json
 
 internal class SessionEvidence {
     shared {
+        internal const OmpEventByteLimit int32 = 32 * 1024 * 1024
+
+        private const PiEventByteLimit int32 = 4 * 1024 * 1024
+
         private func Invalid(message string) CliFailure -> ExecutionFailure.Create("inference_failed", message)
 
         internal func Activity(value JsonElement) bool {
@@ -42,7 +46,7 @@ internal class SessionEvidence {
                         continue
                     }
 
-                    let item = RequestData.Parse(line, (omp ? 32: 4) * 1024 * 1024)
+                    let item = RequestData.Parse(line, omp ? OmpEventByteLimit: PiEventByteLimit)
                     let kind = J.Text(item, "type")
                     let message = J.Get(item, "message")
                     let role = J.Text(message, "role")
@@ -130,17 +134,19 @@ internal class SessionEvidence {
 
 internal class HarnessUsage {
     shared {
+        private const SafeJsonIntegerLimit int64 = 9007199254740991
+
         internal func Count(value JsonElement, key string, total int64, harness string) int64 {
             let number = J.Get(value, key)
             var count int64
 
             if number.ValueKind != JsonValueKind.Number || !number.TryGetInt64(out count) ||
                 count < 0 ||
-                count > 9007199254740991 {
+                count > SafeJsonIntegerLimit {
                 throw ExecutionFailure.Create("inference_failed", "Invalid harness-reported " + harness + " usage")
             }
 
-            if total > 9007199254740991 - count {
+            if total > SafeJsonIntegerLimit - count {
                 throw ExecutionFailure.Create("inference_failed", harness + " usage exceeds its safe integer range")
             }
             return total + count

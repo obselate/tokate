@@ -8,6 +8,12 @@ import System.Text.RegularExpressions
 
 internal class PiCatalog {
     shared {
+        private const CatalogTimeoutSeconds int32 = 10
+
+        private const CatalogByteLimit int32 = 1024 * 1024
+
+        private const ModelCountLimit int32 = 4096
+
         internal func Read(node string, model string, endpoint string, budget RuntimeBudget? = nil) JsonElement {
             let storage = Directory.CreateDirectory(
                 Path.Combine("/tmp", "tokate-pi-catalog-" + Guid.NewGuid().ToString("N")),
@@ -24,7 +30,7 @@ internal class PiCatalog {
                     []string{script},
                     storage.FullName,
                     input: PiBoundary.Endpoint(endpoint),
-                    seconds: 10,
+                    seconds: CatalogTimeoutSeconds,
                     isolated: true,
                     budget: budget
                 )
@@ -32,7 +38,7 @@ internal class PiCatalog {
                     throw ExecutionFailure.Create("endpoint_unavailable", "Endpoint metadata unavailable")
                 }
 
-                return Identity(RequestData.Parse(result.Output, 1024 * 1024), model)
+                return Identity(RequestData.Parse(result.Output, CatalogByteLimit), model)
             } catch (error Exception) when error is CliFailure ||
                 error is CommandInterrupted ||
                 error is IOException ||
@@ -48,7 +54,7 @@ internal class PiCatalog {
             let list = J.Get(catalog, "data")
             if catalog.ValueKind != JsonValueKind.Object ||
                 list.ValueKind != JsonValueKind.Array ||
-                list.GetArrayLength() > 4096 {
+                list.GetArrayLength() > ModelCountLimit {
                 throw ExecutionFailure.Create("endpoint_unavailable", "Invalid model list")
             }
 
