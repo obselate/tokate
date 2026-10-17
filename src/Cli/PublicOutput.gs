@@ -442,13 +442,19 @@ internal class PublicOutput {
             return result
         }
 
-        internal func Coordination(value JsonElement, sha string) Object {
-            let result = J.Select(value, "version,repo,issue,approval_id,revoked")
+        internal func Coordination(value CoordinationState, sha string) Object {
+            let result = map[string, Object?]{
+                "version": value.Version,
+                "repo": value.Repo,
+                "issue": value.Issue,
+                "approval_id": value.ApprovalId,
+                "revoked": value.Revoked
+            }
 
-            result["identity"] = J.Get(value, "identity")
+            result["identity"] = value.Identity?.Value()
             result["sha"] = sha
 
-            let approval = J.Get(value, "approval")
+            let approval = value.Approval?.Value() ?? default(JsonElement)
             let summary = J.Select(
                 approval,
                 "repo,repo_id,issue,donor,approval_scope,eligibility,base,base_branch,authority_branch,policy_hash,template_hash"
@@ -461,15 +467,9 @@ internal class PublicOutput {
             }
 
             result["approval"] = summary
-            result["reservation"] = J.Select(
-                J.Get(value, "reservation"),
-                "reservation,lease,donor,actor,created,expires,status,attempt"
-            )
-            result["contribution"] = J.Select(
-                J.Get(CoordinationState.Current(value), "outcome"),
-                "pr,url,head,reservation"
-            )
-            result["outcome_count"] = J.Count(J.Get(value, "outcomes"))
+            result["reservation"] = value.Lease?.Display() ?? map[string, Object?]{}
+            result["contribution"] = value.Current()?.Outcome.Display() ?? map[string, Object?]{}
+            result["outcome_count"] = value.Outcomes.Count
 
             return result
         }

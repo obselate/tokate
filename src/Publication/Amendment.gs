@@ -77,74 +77,68 @@ internal class Amendment {
 
             RepositoryAccess.ValidateRun(run)
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-            let value = state.Value()
-            let reservation = J.Get(value, "reservation")
+            let reservation = state.Lease
 
             state.Reservation(J.Get(viewer, "id"))
             let record = state.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
 
-            let original = J.Get(value, "contribution")
+            let original = state.Contribution
             let correcting = (amendment?.Text("uuid") ?? "") != "" ||
-                (
-                amendment == nil && run.Number("pr") == 0 && run.Text("state") != "published" &&
-                    original.ValueKind != JsonValueKind.Object
-            )
+                (amendment == nil && run.Number("pr") == 0 && run.Text("state") != "published" && original == nil)
 
             if correcting {
-                return CorrectionAuthority(run, amendment, directory, record, state, value, viewer, original)
+                return CorrectionAuthority(run, amendment, directory, record, state, viewer, original)
             }
 
-            let metadata = J.Get(original, "metadata")
+            let metadata = original?.Metadata ?? default(JsonElement)
             let publication = PublicationRequestMetadata.Parse(metadata)
             let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
             let actor = J.Get(viewer, "id").ToString()
-            let originalActor = J.Get(original, "actor").ToString()
-            let reservationId = J.Text(reservation, "reservation")
+            let originalActor = (original?.ActorValue() ?? default(JsonElement)).ToString()
+            let reservationId = reservation?.Reservation ?? ""
             let declaredAttempt = amendment?.Text("attempt") ?? ""
             let attempt = declaredAttempt != "" ? declaredAttempt:
             (run.Text("publication_attempt") == "" ? run.Text("attempt"): run.Text("publication_attempt"))
 
-            if !(resume && amendment == nil) && attempt != J.Text(reservation, "attempt") {
+            if !(resume && amendment == nil) && attempt != (reservation?.Attempt ?? "") {
                 throw CliFailure("stale_approval", "Saved amendment attempt fence changed")
             }
 
             let failure = "Published contribution authority changed"
-            if J.Text(value, "approval_id") != run.Text("approval") || reservationId != run.Text("id") ||
+            if state.ApprovalId != run.Text("approval") || reservationId != run.Text("id") ||
                 originalActor != actor ||
                 !RepositoryIdentity.SameRepo(publication.Fork, run.Text("head_repo")) || publication.Branch != run.Text(
                 "branch"
             ) ||
-                run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text("base") != J.Text(
-                reservation,
-                "base"
-            ) ||
+                run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text("base") != (reservation?.Base ?? "") ||
                 run.Text("base_branch") != approval.BaseBranch || run.Text("policy_hash") != approval.PolicyHash {
                 throw CliFailure("stale_approval", failure)
             }
 
             if amendment != nil && state.Sha != amendment.Text("expected") {
-                let current = CoordinationState.Current(value)
-                let outcome = J.Get(current, "outcome")
+                let current = state.Current()
+                let outcome = current?.Outcome
                 let saved = amendment.Element()
                 let stale = "Amendment has stale coordination revision"
-                if J.Text(current, "request") != amendment.Text("id") || J.Text(current, "expected") != amendment.Text(
+                if (current?.Request ?? "") != amendment.Text("id") || (current?.Expected ?? "") != amendment.Text(
                     "expected"
                 ) ||
-                    J.Text(outcome, "head") != amendment.Text("commit") || J.Number(outcome, "pr") != amendment.Number(
-                    "pr"
-                ) ||
-                    J
-                    .Get(current, "actor").ToString() != actor {
+                    (outcome?.Head ?? "") != amendment.Text("commit") || (outcome?.Pr ?? 0) != amendment.Number("pr") ||
+                    (current?.ActorValue() ?? default(JsonElement)).ToString() != actor {
                     throw CliFailure("stale_approval", stale)
                 }
-                for key in[]string{"previous", "seconds", "tools", "base"} {
-                    if !RequestData.Same(J.Get(current, key), J.Get(saved, key)) {
-                        throw CliFailure("stale_approval", stale)
-                    }
+                if (current?.Previous ?? "") != J.Text(saved, "previous") || (current?.Seconds ?? 0) != J.Number(
+                    saved,
+                    "seconds"
+                ) ||
+                    !RequestData.Same(current?.Tools ?? default(JsonElement), J.Get(saved, "tools")) ||
+                    (current?.Base ?? "") != J.Text(saved, "base") ||
+                    (current?.HasBase ?? false) != (J.Get(saved, "base").ValueKind != JsonValueKind.Undefined) {
+                    throw CliFailure("stale_approval", stale)
                 }
 
                 Transition(run.Text("repo"), state, amendment.Text("expected"))
-            } else if CoordinationState.Head(value) != (amendment?.Text("previous") ?? run.Text("commit")) {
+            } else if state.Head() != (amendment?.Text("previous") ?? run.Text("commit")) {
                 throw CliFailure("stale_approval", "Current published head differs from saved contribution")
             }
 
@@ -162,7 +156,7 @@ internal class Amendment {
                 J.Get(viewer, "id")
             )
 
-            return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
+            return J.Parse(J.Write(map[string, Object?]{"record": record, "state": state.Value(), "sha": state.Sha}))
         }
 
         private func CorrectionAuthority(
@@ -171,9 +165,8 @@ internal class Amendment {
             directory string,
             record JsonElement,
             state CoordinationState,
-            value JsonElement,
             viewer JsonElement,
-            original JsonElement
+            original CoordinationState.PublicationRecord?
         ) JsonElement {
             if directory != "" {
                 OriginalEvidence.Pinned(directory, run, record)
@@ -184,23 +177,24 @@ internal class Amendment {
 
             if intent.ValueKind == JsonValueKind.Object && state.Sha != amendment?.Text("expected") {
                 let request = J.Get(intent, "request")
-                let outcome = RequestMetadata.Recorded(value, J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(state, J.Get(viewer, "id"), request)
                 Transition(run.Text("repo"), state, amendment?.Text("expected") ?? "")
-                if J.Text(original, "request") != amendment?.Text("publication_uuid") || J.Text(
-                    original,
-                    "expected"
-                ) != amendment?.Text("expected") || J.Get(original, "actor").ToString() != J.Get(viewer, "id")
-                    .ToString() || !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) ||
-                    !RequestData.Same(J.Get(original, "metadata"), CoordinatorRequest.Parse(request).Metadata) ||
-                    outcome.ValueKind != JsonValueKind.Object ||
+                if (original?.Request ?? "") != amendment?.Text("publication_uuid") ||
+                    (original?.Expected ?? "") != amendment?.Text("expected") ||
+                    (original?.ActorValue() ?? default(JsonElement)).ToString() != J.Get(viewer, "id").ToString() ||
+                    !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) || !RequestData.Same(
+                    original?.Metadata ?? default(JsonElement),
+                    CoordinatorRequest.Parse(request).Metadata
+                ) ||
+                    outcome == nil ||
                     !RequestData
-                    .Same(outcome, J.Get(original, "outcome")) {
+                    .Same(outcome.Value(), original?.Outcome.Value() ?? default(JsonElement)) {
                     throw CliFailure(
                         "stale_approval",
                         "Stale coordination revision; only the exact saved publication transition can resume"
                     )
                 }
-            } else if original.ValueKind == JsonValueKind.Object {
+            } else if original != nil {
                 throw CliFailure("invalid_state", "Contribution already published")
             }
 
@@ -209,11 +203,11 @@ internal class Amendment {
                 amendment,
                 intent.ValueKind == JsonValueKind.Undefined || J.Text(intent, "stage") == "prepared"
             )
-            return J.Parse(J.Write(map[string, Object?]{"record": record, "state": value, "sha": state.Sha}))
+            return J.Parse(J.Write(map[string, Object?]{"record": record, "state": state.Value(), "sha": state.Sha}))
         }
 
         private func Transition(repo string, state CoordinationState, expected string) {
-            let revision = J.Text(state.Value(), "publication_revision")
+            let revision = state.PublicationRevision
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + (revision == "" ? state.Sha: revision))
             let parents = J.Items(J.Get(commit, "parents"))
             if parents.Count != 1 || J.Text(parents[0], "sha") != expected {
@@ -310,12 +304,11 @@ internal class Amendment {
         private func AmendSaved(args Args, directory string, run Data) {
             let live = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
             live.Reservation(J.Get(run.Element(), "donor_id"))
-            let state = live.Value()
             let savedCorrection = run.Text("amendment") != ""
             let correcting = run.Number("pr") == 0 && run.Text("state") != "published" &&
-                (savedCorrection || J.Get(state, "contribution").ValueKind != JsonValueKind.Object)
+                (savedCorrection || live.Contribution == nil)
             let continuing = args.Get("commit") == "" && args.Get("seconds") == ""
-            if correcting && PrepareCorrection(args, directory, run, savedCorrection, continuing, state) {
+            if correcting && PrepareCorrection(args, directory, run, savedCorrection, continuing, live) {
                 return
             }
             let coding = run.Text("source") == "external"
@@ -375,7 +368,7 @@ internal class Amendment {
             run Data,
             savedCorrection bool,
             continuing bool,
-            state JsonElement
+            state CoordinationState
         ) bool {
             Completed(directory, run)
 
@@ -397,11 +390,7 @@ internal class Amendment {
             let record = J.Get(Authority(run, continuing ? existing: nil, directory: directory), "record")
 
             if J.Get(existing?.Element() ?? default(JsonElement), "publication").ValueKind != JsonValueKind.Object {
-                Publication.Find(
-                    run,
-                    default(JsonElement),
-                    newIntent: J.Get(state, "contribution").ValueKind != JsonValueKind.Object
-                )
+                Publication.Find(run, default(JsonElement), newIntent: state.Contribution == nil)
             }
 
             if !continuing || existing != nil {
@@ -488,10 +477,8 @@ internal class Amendment {
                 throw CliFailure("stale_approval", "Amendment verification budget exceeds owner policy")
             }
 
-            let number = correcting ? 0: J.Number(
-                J.Get(CoordinationState.Current(J.Get(authority, "state")), "outcome"),
-                "pr"
-            )
+            let coordination = CoordinationState.Parse(J.Get(authority, "state"))
+            let number = correcting ? 0: coordination.Current()?.Outcome.Pr ?? 0
             let pull = correcting ? default(JsonElement): Pull(run, number, published, "")
 
             if !correcting {
@@ -543,7 +530,7 @@ internal class Amendment {
                     "previous_remote": correcting ? run.Text("commit"): "",
                     "pr": number,
                     "expected": J.Text(authority, "sha"),
-                    "attempt": J.Text(J.Get(J.Get(authority, "state"), "reservation"), "attempt"),
+                    "attempt": coordination.Lease?.Attempt ?? "",
                     "original_evidence_sha256": archive,
                     "failure_stage": "candidate_validation",
                     "failure_reason": "candidate_invalid"
@@ -966,7 +953,7 @@ internal class Amendment {
                 amendment.Text("expected")
             )
 
-            let original = J.Get(J.Get(authority, "state"), "contribution")
+            let original = CoordinationState.Parse(J.Get(authority, "state")).Contribution
 
             let metadata = PublicSummary.Attach(
                 map[string, Object?]{
@@ -985,7 +972,7 @@ internal class Amendment {
 
             amendment.Fields["body"] = PrBody.ReplaceBody(
                 J.Text(pull, "body"),
-                PrBody.PublicReport(J.Parse(J.Write(metadata)), J.Get(original, "metadata")),
+                PrBody.PublicReport(J.Parse(J.Write(metadata)), original?.Metadata ?? default(JsonElement)),
                 updatedReceipt
             )
 
@@ -1160,13 +1147,12 @@ internal class Amendment {
                 run.Text("donor")
             )
             Preview(Path.Combine(directory, "publication.json"), receipt.ToText() + "\n")
-            let unrecorded = J.Get(J.Get(authority, "state"), "contribution").ValueKind != JsonValueKind.Object
+            let coordination = CoordinationState.Parse(J.Get(authority, "state"))
+            let unrecorded = coordination.Contribution == nil
             let existing = Publication.Find(run, receipt.ToJson(), newIntent: unrecorded)
             if J.Text(authority, "sha") != change.Text("expected") {
-                if existing.ValueKind == JsonValueKind.Undefined || remote != change.Text("commit") || J.Number(
-                    J.Get(J.Get(J.Get(authority, "state"), "contribution"), "outcome"),
-                    "pr"
-                ) != J
+                if existing.ValueKind == JsonValueKind.Undefined || remote != change.Text("commit") ||
+                    (coordination.Contribution?.Outcome.Pr ?? 0) != J
                     .Number(existing, "number") {
                     throw CliFailure("stale_approval", "Saved coordination outcome lacks exact physical PR and branch")
                 }
@@ -1223,7 +1209,7 @@ internal class Amendment {
                 run.Number("issue"),
                 J.Get(run.Element(), "donor_id"),
                 request,
-                CoordinationState.Unix(J.Get(J.Get(latest, "state"), "reservation"), "expires")
+                CoordinationState.Parse(J.Get(latest, "state")).Lease?.Expires ?? 0
             )
             SetStage(directory, change, "requested")
             Output.Sink.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")

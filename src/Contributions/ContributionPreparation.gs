@@ -114,9 +114,7 @@ internal class ContributionPreparation {
                 }
             }
 
-            if state != nil && J.Get(state.Value(), "contribution").ValueKind == JsonValueKind.Object && args.Get(
-                "from-pr"
-            ) == "" {
+            if state != nil && state.Contribution != nil && args.Get("from-pr") == "" {
                 throw CliFailure(
                     "invalid_state",
                     "Published work is preserved; saved-checkout continuation remains unsupported until #14"
@@ -131,7 +129,7 @@ internal class ContributionPreparation {
                     "donor": donor,
                     "donor_id": J.Get(viewer, "id"),
                     "head_repo": RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
-                    "approval": J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
+                    "approval": state?.ApprovalId ?? "",
                     "base": approved.Base,
                     "base_branch": approved.BaseBranch,
                     "policy_hash": approved.PolicyHash,
@@ -218,11 +216,11 @@ internal class ContributionPreparation {
         )
 
         private func Bind(run Data, state CoordinationState) {
-            let reservation = J.Get(state.Value(), "reservation")
-            run.Fields["base"] = RepositoryIdentity.CommitSha(J.Text(reservation, "base"))
-            run.Fields["id"] = J.Text(reservation, "reservation")
+            let reservation = state.Lease
+            run.Fields["base"] = RepositoryIdentity.CommitSha(reservation?.Base ?? "")
+            run.Fields["id"] = reservation?.Reservation ?? ""
             run.Fields["state_sha"] = state.Sha
-            run.Fields["attempt"] = J.Text(reservation, "attempt")
+            run.Fields["attempt"] = reservation?.Attempt ?? ""
             run.Fields["branch"] = "tokate/v2-" + run.Text("id")
         }
 
@@ -262,14 +260,15 @@ internal class ContributionPreparation {
             let state = CoordinationState.Load(repo, issue)
             let record = state.Check(repo, issue, donor, J.Get(viewer, "id"))
 
-            let reservation = J.Get(state.Value(), "reservation")
+            let reservation = state.Lease
 
-            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-                if !Output.Sink.Donating && RepositoryIdentity.PositiveId(
-                    J.Get(reservation, "actor")
-                ) == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && J.Get(state.Value(), "contribution")
-                    .ValueKind != JsonValueKind.Object {
+            if reservation != nil &&
+                reservation.Status != "released" &&
+                reservation.Expires > DateTimeOffset
+                .UtcNow
+                .ToUnixTimeSeconds() {
+                if !Output.Sink.Donating && RepositoryIdentity.PositiveId(reservation.ActorValue())
+                == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && state.Contribution == nil {
                     return Prepare(args, repo, issue, viewer, state, record)
                 }
 
@@ -283,7 +282,7 @@ internal class ContributionPreparation {
                 )
             }
 
-            if reservation.ValueKind == JsonValueKind.Object && !LeaseLifecycle.Supported(state.Value()) {
+            if reservation != nil && !LeaseLifecycle.Supported(state) {
                 throw CliFailure("stale_approval", "Legacy lease reacquisition requires fresh owner approval")
             }
 
@@ -352,9 +351,7 @@ internal class ContributionPreparation {
                 throw CliFailure("invalid_state", "Invalid saved pending claim; no authority was acquired")
             }
 
-            if declaration.Approval != run.Text("approval") || J.Text(state.Value(), "approval_id") != run.Text(
-                "approval"
-            ) {
+            if declaration.Approval != run.Text("approval") || state.ApprovalId != run.Text("approval") {
                 throw CliFailure("stale_approval", "Pending claim approval changed; original work is preserved")
             }
 
@@ -400,24 +397,25 @@ internal class ContributionPreparation {
             Overlaps.RequireDependencies(run.Text("repo"), run.Number("issue"))
         }
 
-        private func Accepted(run Data, viewer JsonElement, state CoordinationState, outcome JsonElement) {
+        private func Accepted(
+            run Data,
+            viewer JsonElement,
+            state CoordinationState,
+            outcome CoordinationState.ResultRecord?
+        ) {
             let request = J.Get(run.Element(), "claim_request")
             let uuid = CoordinatorRequest.Parse(request).Uuid
-            let value = state.Value()
-            let reservation = J.Get(value, "reservation")
+            let reservation = state.Lease
 
-            if !LeaseLifecycle.Supported(value) || J.Text(outcome, "lease") != uuid || J.Text(
-                outcome,
-                "attempt"
-            ) != uuid ||
-                RepositoryIdentity.PositiveId(J.Get(outcome, "actor")) != RepositoryIdentity.PositiveId(
-                J.Get(viewer, "id")
-            ) ||
-                J.Text(outcome, "reservation") != J.Text(reservation, "reservation") || J.Text(
-                reservation,
-                "lease"
-            ) != uuid ||
-                J.Text(reservation, "attempt") != uuid {
+            if !LeaseLifecycle.Supported(state) ||
+                (outcome?.Lease?.Lease ?? "") != uuid ||
+                (outcome?.Lease?.Attempt ?? "") != uuid ||
+                RepositoryIdentity.PositiveId(
+                outcome?.Lease?.ActorValue() ?? default(JsonElement)
+            ) != RepositoryIdentity.PositiveId(J.Get(viewer, "id")) ||
+                (outcome?.Reservation ?? "") != (reservation?.Reservation ?? "") ||
+                (reservation?.Lease ?? "") != uuid ||
+                (reservation?.Attempt ?? "") != uuid {
                 throw CliFailure("stale_approval", "Exact claim outcome no longer owns the active lease or attempt")
             }
 
@@ -426,7 +424,7 @@ internal class ContributionPreparation {
             CheckPending(run, viewer, state)
             ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))
 
-            if J.Get(value, "contribution").ValueKind == JsonValueKind.Object {
+            if state.Contribution != nil {
                 throw CliFailure("invalid_state", "Published work is preserved; this claim cannot prepare new coding")
             }
         }
@@ -474,15 +472,15 @@ internal class ContributionPreparation {
                     }
                     let state = CoordinationState.Load(repo, issue)
 
-                    if J.Text(state.Value(), "approval_id") != run.Text("approval") {
+                    if state.ApprovalId != run.Text("approval") {
                         throw CliFailure(
                             "stale_approval",
                             "Pending claim approval changed; original request is preserved"
                         )
                     }
 
-                    let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
-                    if outcome.ValueKind != JsonValueKind.Undefined {
+                    let outcome = RequestMetadata.Recorded(state, J.Get(viewer, "id"), request)
+                    if outcome != nil {
                         accepted = state
                         break
                     }
@@ -501,17 +499,13 @@ internal class ContributionPreparation {
             }
 
             if let state = accepted {
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(state, J.Get(viewer, "id"), request)
                 Accepted(run, viewer, state, outcome)
 
                 Bind(run, state)
 
                 WorkspacePreparation.Select(run, run.Text("requested_fork"))
-                WorkspacePreparation.Promote(
-                    directory,
-                    run,
-                    OwnerApproval.Record.Parse(J.Get(state.Value(), "approval")).Base
-                )
+                WorkspacePreparation.Promote(directory, run, state.Approval?.Base ?? "")
                 Complete(directory, run)
             } else {
                 Output.Sink.ResultData = Output.Sink.RunSummary(directory)

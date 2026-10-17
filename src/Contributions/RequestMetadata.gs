@@ -171,23 +171,27 @@ internal class RequestMetadata {
             return incomplete
         }
 
-        internal func Recorded(state JsonElement, actor JsonElement, request JsonElement) JsonElement {
+        internal func Recorded(
+            state CoordinationState,
+            actor JsonElement,
+            request JsonElement
+        ) CoordinationState.ResultRecord? {
             let binding = Binding(actor, request)
             let parsed = CoordinatorRequest.Parse(request)
-            var result JsonElement
+            var result CoordinationState.ResultRecord? = nil
 
-            for old in J.Items(J.Get(state, "outcomes")) {
-                if J.Text(old, "uuid") == parsed.Uuid {
-                    if J.Text(old, "binding") != binding {
+            for old in state.Outcomes {
+                if old.Uuid == parsed.Uuid {
+                    if old.Binding != binding {
                         throw CliFailure("invalid_state", "UUID replay changed actor or request contents")
                     }
 
-                    if result.ValueKind != JsonValueKind.Undefined {
+                    if result != nil {
                         throw CliFailure("invalid_state", "Ambiguous recorded request outcomes")
                     }
 
-                    result = J.Get(old, "outcome")
-                    if result.ValueKind != JsonValueKind.Object {
+                    result = old.Outcome
+                    if result.Value().ValueKind != JsonValueKind.Object {
                         throw CliFailure("invalid_state", "Invalid recorded request outcome")
                     }
                 }

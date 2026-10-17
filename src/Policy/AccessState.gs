@@ -517,8 +517,8 @@ internal class AccessState {
                         let number = J.Number(request, "issue")
                         var approval JsonElement
                         if !approvals.TryGetValue(number, out approval) {
-                            let state = CoordinationState.Load(repo, number, true).Value()
-                            approval = J.Bool(state, "revoked") ? JsonElement{}: J.Get(state, "approval")
+                            let state = CoordinationState.Load(repo, number, true)
+                            approval = state.Revoked ? JsonElement{}: state.Approval?.Value() ?? default(JsonElement)
                             if approval.ValueKind == JsonValueKind.Object {
                                 Task(approval)
                             }

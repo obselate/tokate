@@ -74,10 +74,9 @@ internal class Coordinator {
             }
 
             let args = Args([]string{"approve", repo + "#" + number.ToString(), "--non-interactive"})
-            let state = CoordinationState.Load(repo, number, true).Value()
-            let previous = J.Get(state, "approval")
-            let active = previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") ?
-            OwnerApproval.Record.Parse(previous): nil
+            let state = CoordinationState.Load(repo, number, true)
+            let previous = state.Approval
+            let active = previous != nil && !state.Revoked ? previous: nil
             if active != nil {
                 args.Values["--base-branch"] = active.BaseBranch
             }
@@ -116,19 +115,19 @@ internal class Coordinator {
             request JsonElement,
             actor JsonElement,
             donor string,
-            outcome JsonElement
+            outcome CoordinationState.ResultRecord
         ) ValueTuple[JsonElement, string] {
             let action = CoordinatorRequest.Parse(request).Action
             if action != "release" {
                 state.Check(repo, number, donor, actor)
             }
             if action == "amend" {
-                ReceiptVerification.Verify(repo, J.Number(outcome, "pr"))
+                ReceiptVerification.Verify(repo, outcome.Pr)
             }
             if action == "publish" {
                 ContributionHandoff.Supersede(state, request)
             }
-            return ValueTuple[JsonElement, string](outcome, "Recorded request outcome")
+            return ValueTuple[JsonElement, string](outcome.Value(), "Recorded request outcome")
         }
 
         private func Process(repo string, event JsonElement, eventName string) ValueTuple[JsonElement, string] {
@@ -191,28 +190,26 @@ internal class Coordinator {
 
             let state = CoordinationState.Load(repo, number)
             let binding = RequestMetadata.Binding(actor, request)
-            let initial = state.Value()
-            let outcomes = J.Items(J.Get(initial, "outcomes"))
+            let outcomes = state.Outcomes
 
             for old in outcomes {
-                if J.Text(old, "uuid") == declaration.Uuid {
-                    if J.Text(old, "binding") != binding {
+                if old.Uuid == declaration.Uuid {
+                    if old.Binding != binding {
                         throw Exception("UUID replay changed actor or request contents")
                     }
 
-                    return Replay(repo, number, state, request, actor, donor, J.Get(old, "outcome"))
+                    return Replay(repo, number, state, request, actor, donor, old.Outcome)
                 }
             }
 
-            if state.Sha != declaration.Expected || J.Text(initial, "approval_id") != declaration.Approval {
+            if state.Sha != declaration.Expected || state.ApprovalId != declaration.Approval {
                 throw CliFailure("stale_approval", "Stale state or approval; evicted requests cannot repeat effects")
             }
 
             let action = declaration.Action
             let record = action == "release" ? JsonElement{}: state.Check(repo, number, donor, actor)
-            var outcome Object = map[string, Object?]{}
-            let originalExpiry = J.Get(initial, "reservation")
-                .ValueKind == JsonValueKind.Object ? CoordinationState.Unix(J.Get(initial, "reservation"), "expires"): 0
+            var outcome CoordinationState.ResultRecord
+            let originalExpiry = state.Lease?.Expires ?? 0
 
             if action == "claim" || LeaseLifecycle.Transition(action) {
                 outcome = LeaseLifecycle.Apply(state, request, actor, donor, J.Get(record, "policy"))
@@ -223,17 +220,19 @@ internal class Coordinator {
             }
 
             if action == "publish" || action == "amend" {
-                state.Fields["publication_revision"] = nil
+                state.PublicationRevision = ""
+                state.Include("publication_revision")
             }
 
-            let retained = List[Object]()
+            let retained = List[CoordinationState.ReplayRecord]()
 
             for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
                 retained.Add(outcomes[i])
             }
 
-            retained.Add(map[string, Object?]{"uuid": declaration.Uuid, "binding": binding, "outcome": outcome})
-            state.Fields["outcomes"] = retained
+            retained.Add(CoordinationState.ReplayRecord{Uuid: declaration.Uuid, Binding: binding, Outcome: outcome})
+            state.Outcomes = retained
+            state.Include("outcomes")
 
             return CommitRequest(repo, number, state, record, request, actor, donor, outcome, originalExpiry)
         }
@@ -246,15 +245,15 @@ internal class Coordinator {
             request JsonElement,
             actor JsonElement,
             donor string
-        ) Object {
+        ) CoordinationState
+            .ResultRecord {
             state.Reservation(actor)
             let declaration = CoordinatorRequest.Parse(request)
             let metadata = declaration.Metadata
             let publication = PublicationRequestMetadata.Parse(metadata)
             LeaseLifecycle.Fence(state, publication.Attempt)
-            let value = state.Value()
 
-            if J.Get(value, "contribution").ValueKind == JsonValueKind.Object {
+            if state.Contribution != nil {
                 throw Exception("Contribution already published; use the recorded outcome or fresh owner approval")
             }
 
@@ -276,7 +275,7 @@ internal class Coordinator {
             RepositoryAccess.ValidateFork(repo, publication.Fork, publication.Branch, publication.Head, actor)
             ValidateDiff(repo, record, metadata)
 
-            let reservation = J.Text(J.Get(value, "reservation"), "reservation")
+            let reservation = state.Lease?.Reservation ?? ""
             if publication.Branch != "tokate/v2-" + reservation {
                 throw Exception("Publication must use this reservation's branch")
             }
@@ -295,29 +294,33 @@ internal class Coordinator {
                     "repos/" + repo + "/pulls/" + publication.Pr.ToString(),
                     map[string, Object?]{"body": body, "title": title},
                     "PATCH",
-                    expires: CoordinationState.Unix(J.Get(value, "reservation"), "expires")
+                    expires: state.Lease?.Expires ?? 0
                 )
             }
 
             Revalidate(repo, number, state, actor, donor)
             RepositoryAccess.ValidateFork(repo, publication.Fork, publication.Branch, publication.Head, actor)
 
-            let outcome = map[string, Object?]{
-                "pr": J.Number(pull, "number"),
-                "url": J.Text(pull, "html_url"),
-                "head": publication.Head,
-                "reservation": reservation
+            let outcome = CoordinationState
+                .ResultRecord{
+                Pr: J.Number(pull, "number"),
+                PrJson: J.Get(pull, "number"),
+                Url: J.Text(pull, "html_url"),
+                Head: publication.Head,
+                Reservation: reservation
             }
 
-            state.Fields["contribution"] = map[string, Object?]{
-                "request": declaration.Uuid,
-                "expected": declaration.Expected,
-                "metadata": metadata,
-                "actor": actor,
-                "donor": donor,
-                "outcome": outcome,
-                "verification_provenance": "donor-reported; exact-commit owner CI required"
+            state.Contribution = CoordinationState
+                .PublicationRecord{
+                Request: declaration.Uuid,
+                Expected: declaration.Expected,
+                Metadata: metadata,
+                Actor: actor.GetInt64(),
+                ActorJson: actor,
+                Donor: donor,
+                Outcome: outcome
             }
+            state.Include("contribution")
 
             return outcome
         }
@@ -378,12 +381,12 @@ internal class Coordinator {
             request JsonElement,
             actor JsonElement,
             donor string,
-            outcome Object,
+            outcome CoordinationState.ResultRecord,
             originalExpiry int64
         ) ValueTuple[JsonElement, string] {
             let declaration = CoordinatorRequest.Parse(request)
             let action = declaration.Action
-            let updated = state.Value()
+            let updated = action == "release" ? state.Lease?.Value() ?? default(JsonElement): default(JsonElement)
 
             if action == "amend" {
                 Revalidate(repo, number, state, actor, donor)
@@ -392,8 +395,8 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(live.Value(), actor, request)
-                if recorded.ValueKind != JsonValueKind.Undefined {
+                let recorded = RequestMetadata.Recorded(live, actor, request)
+                if recorded != nil {
                     return Replay(repo, number, live, request, actor, donor, recorded)
                 }
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
@@ -407,7 +410,13 @@ internal class Coordinator {
             if (action == "claim" || LeaseLifecycle.Transition(action)) && action != "release" {
                 live.Check(repo, number, donor, actor)
             } else if action != "release" {
-                AccessState.Check(repo, number, J.Get(live.Value(), "approval"), actor, J.Get(record, "policy"))
+                AccessState.Check(
+                    repo,
+                    number,
+                    live.Approval?.Value() ?? default(JsonElement),
+                    actor,
+                    J.Get(record, "policy")
+                )
             }
 
             try {
@@ -415,15 +424,12 @@ internal class Coordinator {
                     repo,
                     number,
                     declaration.Expected,
-                    LeaseLifecycle.Transition(action) ? originalExpiry: CoordinationState.Unix(
-                        J.Get(updated, "reservation"),
-                        "expires"
-                    )
+                    LeaseLifecycle.Transition(action) ? originalExpiry: state.Lease?.Expires ?? 0
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
-                let recorded = RequestMetadata.Recorded(inspected.Value(), actor, request)
-                if recorded.ValueKind != JsonValueKind.Undefined {
+                let recorded = RequestMetadata.Recorded(inspected, actor, request)
+                if recorded != nil {
                     return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
 
@@ -445,8 +451,8 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(acquired.Value(), actor, request)
-                if recorded.ValueKind != JsonValueKind.Undefined {
+                let recorded = RequestMetadata.Recorded(acquired, actor, request)
+                if recorded != nil {
                     return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
                 throw CliFailure(
@@ -456,10 +462,8 @@ internal class Coordinator {
             }
 
             if action == "release" {
-                if !RequestData.Same(J.Get(acquired.Value(), "reservation"), J.Get(updated, "reservation")) || J.Text(
-                    J.Get(acquired.Value(), "reservation"),
-                    "status"
-                ) != "released" {
+                if !RequestData.Same(acquired.Lease?.Value() ?? default(JsonElement), updated) ||
+                    (acquired.Lease?.Status ?? "") != "released" {
                     throw Exception("Release outcome differs from recorded ownership evidence")
                 }
             } else {
@@ -468,14 +472,14 @@ internal class Coordinator {
             }
 
             if action == "amend" {
-                ReceiptVerification.Verify(repo, J.Number(J.Parse(J.Write(outcome)), "pr"))
+                ReceiptVerification.Verify(repo, outcome.Pr)
             }
 
             if action == "publish" {
                 ContributionHandoff.Supersede(acquired, request)
             }
 
-            return ValueTuple[JsonElement, string](J.Parse(J.Write(outcome)), "Request outcome")
+            return ValueTuple[JsonElement, string](outcome.Value(), "Request outcome")
         }
 
         private func Amend(
@@ -486,20 +490,21 @@ internal class Coordinator {
             request JsonElement,
             actor JsonElement,
             donor string
-        ) Object {
-            let value = ValidateAmendment(repo, state, record, request, actor)
-            let current = CoordinationState.Current(value)
+        ) CoordinationState
+            .ResultRecord {
+            ValidateAmendment(repo, state, record, request, actor)
+            let current = state.Current()
             let declaration = CoordinatorRequest.Parse(request)
             let metadata = declaration.Metadata
             let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
-            let old = J.Get(J.Get(value, "contribution"), "metadata")
-            let reservation = J.Get(value, "reservation")
+            let old = state.Contribution?.Metadata ?? default(JsonElement)
+            let reservation = state.Lease
             let prepared = PrepareAmendment(repo, record, reservation, declaration, amendmentMetadata)
             let run = prepared.Item1
             let amendment = prepared.Item2
 
             let receipt = Amendment.Receipt(
-                ContributionReceipt.FromState(value),
+                ContributionReceipt.FromState(state),
                 amendment,
                 amendmentMetadata.Head,
                 declaration.Expected
@@ -509,13 +514,10 @@ internal class Coordinator {
             let oldReceipt = PrBody.Receipt(body)
             let report = PrBody.PublicReport(metadata, old)
 
-            let retainedHistory = List[Object]()
-            let amendments = J.Get(value, "amendments")
+            let retainedHistory = List[CoordinationState.PublicationRecord]()
 
-            if amendments.ValueKind == JsonValueKind.Array {
-                for prior in amendments.EnumerateArray() {
-                    retainedHistory.Add(prior)
-                }
+            for prior in state.Amendments {
+                retainedHistory.Add(prior)
             }
 
             let oldCanonical = RequestData.Canonical(oldReceipt.ToJson())
@@ -529,12 +531,12 @@ internal class Coordinator {
             }
 
             if oldCanonical != candidateCanonical {
-                if oldCanonical != RequestData.Canonical(ContributionReceipt.FromState(value)) {
+                if oldCanonical != RequestData.Canonical(ContributionReceipt.FromState(state)) {
                     throw Exception("PR receipt differs from saved previous or candidate state")
                 }
 
                 let previousReport = retainedHistory.Count == 0 ? PrBody.PublicReport(old):
-                PrBody.PublicReport(current, old)
+                PrBody.PublicReport(current ?? throw Exception("Missing coordination amendment"), old)
                 let observedReport = PrBody.ReportText(body)
 
                 if observedReport != previousReport {
@@ -573,7 +575,7 @@ internal class Coordinator {
                     "repos/" + repo + "/pulls/" + amendmentMetadata.Pr.ToString(),
                     changes,
                     "PATCH",
-                    expires: CoordinationState.Unix(reservation, "expires")
+                    expires: reservation?.Expires ?? 0
                 )
             }
 
@@ -593,13 +595,13 @@ internal class Coordinator {
                 throw Exception("Physical PR receipt changed; amendment has no coordination authority")
             }
 
-            return RecordAmendment(state, request, actor, donor, value, run, latest, retainedHistory)
+            return RecordAmendment(state, request, actor, donor, run, latest, retainedHistory)
         }
 
         private func PrepareAmendment(
             repo string,
             record JsonElement,
-            reservation JsonElement,
+            reservation CoordinationState.LeaseRecord?,
             declaration CoordinatorRequest,
             amendmentMetadata AmendmentRequestMetadata
         ) ValueTuple[Data, Data] {
@@ -608,7 +610,7 @@ internal class Coordinator {
             let run = Data()
             run.Fields["version"] = 2
             run.Fields["repo"] = repo
-            run.Fields["id"] = J.Text(reservation, "reservation")
+            run.Fields["id"] = reservation?.Reservation ?? ""
             run.Fields["head_repo"] = amendmentMetadata.Fork
             run.Fields["branch"] = branch
             run.Fields["base_branch"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).BaseBranch
@@ -636,30 +638,28 @@ internal class Coordinator {
             record JsonElement,
             request JsonElement,
             actor JsonElement
-        ) JsonElement {
+        ) {
             state.Reservation(actor)
             let declaration = CoordinatorRequest.Parse(request)
             let metadata = declaration.Metadata
             let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
             LeaseLifecycle.Fence(state, amendmentMetadata.Attempt)
-            let value = state.Value()
-            let original = J.Get(value, "contribution")
-            let current = CoordinationState.Current(value)
-            let old = J.Get(original, "metadata")
+            let original = state.Contribution
+            let current = state.Current()
+            let old = original?.Metadata ?? default(JsonElement)
             let policy = Policy(J.Write(J.Get(record, "policy")))
             Amendment.Tools(policy, amendmentMetadata.Tools)
-            let reservation = J.Get(value, "reservation")
+            let reservation = state.Lease
             let branch = amendmentMetadata.Branch
             let failure = "Amendment differs from current published contribution authority"
-            let originalActor = J.Get(original, "actor").ToString()
+            let originalActor = (original?.ActorValue() ?? default(JsonElement)).ToString()
 
             if amendmentMetadata.Seconds > policy.MaxSeconds || originalActor != actor.ToString() {
                 throw Exception(failure)
             }
 
-            let currentOutcome = J.Get(current, "outcome")
-            let publishedPr = J.Number(currentOutcome, "pr")
-            let publishedHead = CoordinationState.Head(value)
+            let publishedPr = current?.Outcome.Pr ?? 0
+            let publishedHead = state.Head()
             if amendmentMetadata.Previous != publishedHead || amendmentMetadata.Pr != publishedPr {
                 throw Exception(failure)
             }
@@ -669,7 +669,7 @@ internal class Coordinator {
                 throw Exception(failure)
             }
 
-            let expectedBranch = "tokate/v2-" + J.Text(reservation, "reservation")
+            let expectedBranch = "tokate/v2-" + (reservation?.Reservation ?? "")
             if branch != originalMetadata.Branch || branch != expectedBranch {
                 throw Exception(failure)
             }
@@ -682,8 +682,6 @@ internal class Coordinator {
                 actor
             )
             GitHubPathEvidence.Amendment(repo, record, metadata)
-
-            return value
         }
 
         private func RecordAmendment(
@@ -691,45 +689,45 @@ internal class Coordinator {
             request JsonElement,
             actor JsonElement,
             donor string,
-            value JsonElement,
             run Data,
             latest JsonElement,
-            retainedHistory List[Object]
-        ) Object {
+            retainedHistory List[CoordinationState.PublicationRecord]
+        ) CoordinationState
+            .ResultRecord {
             let declaration = CoordinatorRequest.Parse(request)
             let metadata = declaration.Metadata
             let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
-            let outcome = map[string, Object?]{
-                "pr": amendmentMetadata.Pr,
-                "url": J.Text(latest, "html_url"),
-                "head": amendmentMetadata.Head,
-                "reservation": run.Text("id")
+            let outcome = CoordinationState
+                .ResultRecord{
+                Pr: amendmentMetadata.Pr,
+                PrJson: J.Get(metadata, "pr"),
+                Url: J.Text(latest, "html_url"),
+                Head: amendmentMetadata.Head,
+                Reservation: run.Text("id")
             }
 
-            let entry = map[string, Object?]{
-                "request": declaration.Uuid,
-                "expected": declaration.Expected,
-                "previous": amendmentMetadata.Previous,
-                "head": amendmentMetadata.Head,
-                "seconds": amendmentMetadata.Seconds,
-                "tools": amendmentMetadata.Tools,
-                "actor": actor,
-                "donor": donor,
-                "attempt": J.Text(J.Get(value, "reservation"), "attempt"),
-                "outcome": outcome,
-                "verification_provenance": "donor-reported; exact-commit owner CI required"
-            }
-
-            if amendmentMetadata.Summary.ValueKind != JsonValueKind.Undefined {
-                entry["summary"] = amendmentMetadata.Summary
-            }
-
-            if amendmentMetadata.Base != "" {
-                entry["base"] = amendmentMetadata.Base
+            let entry = CoordinationState
+                .PublicationRecord{
+                Request: declaration.Uuid,
+                Expected: declaration.Expected,
+                Previous: amendmentMetadata.Previous,
+                Head: amendmentMetadata.Head,
+                Seconds: amendmentMetadata.Seconds,
+                Tools: amendmentMetadata.Tools,
+                Actor: actor.GetInt64(),
+                ActorJson: actor,
+                Donor: donor,
+                Attempt: state.Lease?.Attempt ?? "",
+                Outcome: outcome,
+                IsAmendment: true,
+                Summary: amendmentMetadata.Summary,
+                Base: amendmentMetadata.Base,
+                HasBase: amendmentMetadata.Base != ""
             }
 
             retainedHistory.Add(entry)
-            state.Fields["amendments"] = retainedHistory
+            state.Amendments = retainedHistory
+            state.Include("amendments")
 
             return outcome
         }

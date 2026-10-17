@@ -1,12 +1,11 @@
 package Tokate
 
 import System
-import System.Collections.Generic
 import System.Text.Json
 
 internal class LeaseLifecycle {
     shared {
-        internal func Supported(value JsonElement) bool -> J.Get(value, "identity").ValueKind == JsonValueKind.Object
+        internal func Supported(state CoordinationState) bool -> state.Identity != nil
 
         internal func Transition(action string) bool -> action == "renew" ||
             action == "pause" ||
@@ -14,52 +13,47 @@ internal class LeaseLifecycle {
             action == "release"
 
         internal func Owner(state CoordinationState, actor JsonElement, active bool = false) {
-            let value = state.Value()
-            let reservation = J.Get(value, "reservation")
+            let reservation = state.Lease
 
-            if reservation.ValueKind != JsonValueKind.Object {
+            if reservation == nil {
                 throw CliFailure("stale_approval", "The reservation is gone. Return to the owner.")
             }
 
             RepositoryIdentity.PositiveId(actor)
 
-            if RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) != RepositoryIdentity.PositiveId(actor) ||
-                CoordinationState.Unix(reservation, "expires") <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() || J.Text(
-                reservation,
-                "status"
-            ) == "released" {
+            if RepositoryIdentity.PositiveId(reservation.ActorValue()) != RepositoryIdentity.PositiveId(actor) ||
+                reservation.Expires <= DateTimeOffset
+                .UtcNow
+                .ToUnixTimeSeconds() || reservation.Status == "released" {
                 throw CliFailure("stale_approval", "Lease expired, released or belongs to another numeric donor")
             }
 
-            let identity = J.Get(value, "identity")
+            let identity = state.Identity
             var id Guid
             var lease Guid
 
-            if !Guid.TryParseExact(J.Text(reservation, "lease"), "D", out lease) || lease.ToString("D") != J.Text(
-                reservation,
-                "lease"
-            ) ||
-                !Guid.TryParseExact(J.Text(identity, "id"), "D", out id) || id.ToString("D") != J.Text(identity, "id") {
+            if !Guid.TryParseExact(reservation.Lease, "D", out lease) || lease.ToString("D") != reservation.Lease ||
+                !Guid.TryParseExact(identity?.Id ?? "", "D", out id) || id.ToString("D") != (identity?.Id ?? "") {
                 throw CliFailure("invalid_state", "Incomplete lease or contribution identity")
             }
 
-            if J.Text(identity, "id") != J.Text(reservation, "reservation") || RepositoryIdentity.PositiveId(
-                J.Get(identity, "actor")
+            if (identity?.Id ?? "") != reservation.Reservation || RepositoryIdentity.PositiveId(
+                identity?.ActorValue() ?? default(JsonElement)
             ) != RepositoryIdentity.PositiveId(actor) {
                 throw CliFailure("invalid_state", "Lease differs from the contribution identity")
             }
 
-            let status = J.Text(reservation, "status")
+            let status = reservation.Status
 
             if status == "active" {
                 var attempt Guid
-                if !Guid.TryParseExact(J.Text(reservation, "attempt"), "D", out attempt) || attempt.ToString(
+                if !Guid.TryParseExact(reservation.Attempt, "D", out attempt) || attempt.ToString(
                     "D"
-                ) != J.Text(reservation, "attempt") {
+                ) != reservation.Attempt {
                     throw CliFailure("invalid_state", "Active lease needs a canonical attempt identity")
                 }
             } else if status == "paused" {
-                if J.Text(reservation, "attempt") != "" {
+                if reservation.Attempt != "" {
                     throw CliFailure("invalid_state", "Paused lease cannot retain an active attempt")
                 }
             } else {
@@ -72,7 +66,7 @@ internal class LeaseLifecycle {
         }
 
         internal func Fence(state CoordinationState, attempt string) {
-            if attempt != J.Text(J.Get(state.Value(), "reservation"), "attempt") {
+            if attempt != (state.Lease?.Attempt ?? "") {
                 throw CliFailure("stale_approval", "Publication attempt fence was invalidated or replaced")
             }
         }
@@ -83,19 +77,19 @@ internal class LeaseLifecycle {
             actor JsonElement,
             donor string,
             policy JsonElement
-        ) Object {
-            let value = state.Value()
-            let reservation = J.Get(value, "reservation")
+        ) CoordinationState
+            .ResultRecord {
+            let reservation = state.Lease
             let declaration = CoordinatorRequest.Parse(request)
             let action = declaration.Action
             let uuid = declaration.Uuid
             let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
 
             if action == "claim" {
-                return Claim(state, value, actor, donor, uuid, now, Policy.Parse(policy).ReservationSeconds)
+                return Claim(state, actor, donor, uuid, now, Policy.Parse(policy).ReservationSeconds)
             }
 
-            if !Supported(value) {
+            if !Supported(state) {
                 throw CliFailure(
                     "stale_approval",
                     "Legacy lease transitions are unsupported; fresh owner approval is required"
@@ -104,80 +98,67 @@ internal class LeaseLifecycle {
 
             Owner(state, actor)
 
-            let status = J.Text(reservation, "status")
+            let status = reservation?.Status ?? ""
             if (action == "pause" && status != "active") || (action == "resume" && status != "paused") {
                 throw CliFailure("invalid_state", "Lifecycle transition does not match the current lease state")
             }
 
             Pin(state)
 
-            let fields = map[string, Object?]{}
-
-            for field in reservation.EnumerateObject() {
-                fields[field.Name] = field.Value.Clone()
+            guard let lease = reservation else {
+                throw Exception("Missing validated reservation")
             }
-
-            fields["donor"] = donor
 
             if action == "release" {
-                fields["status"] = "released"
-                fields["attempt"] = ""
-                fields["expires"] = now
+                lease.Update(donor, now, "released", "", true)
             } else {
                 let duration = Policy.Parse(policy).ReservationSeconds
-                fields["expires"] = Math.Max(CoordinationState.Unix(reservation, "expires"), now + duration)
-                if action == "pause" {
-                    fields["expires"] = now + duration
-                    fields["status"] = "paused"
-                    fields["attempt"] = ""
-                } else if action == "resume" {
-                    fields["status"] = "active"
-                    fields["attempt"] = uuid
-                }
+                let expires = action == "pause" ? now + duration: Math.Max(lease.Expires, now + duration)
+                let nextStatus = action == "pause" ? "paused": action == "resume" ? "active": lease.Status
+                let attempt = action == "pause" ? "": action == "resume" ? uuid: lease.Attempt
+                lease.Update(donor, expires, nextStatus, attempt, action != "renew")
             }
 
-            state.Fields["reservation"] = fields
+            state.Include("reservation")
 
-            return fields
+            return CoordinationState.ResultRecord{Lease: lease, Reservation: lease.Reservation}
         }
 
         private func Claim(
             state CoordinationState,
-            value JsonElement,
             actor JsonElement,
             donor string,
             uuid string,
             now int64,
             duration int32
-        ) Object {
-            let reservation = J.Get(value, "reservation")
-            let identity = J.Get(value, "identity")
+        ) CoordinationState
+            .ResultRecord {
+            let reservation = state.Lease
+            let identity = state.Identity
 
-            if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                CoordinationState.Unix(reservation, "expires") > now {
+            if reservation != nil && reservation.Status != "released" && reservation.Expires > now {
                 throw CliFailure("invalid_state", "An unexpired reservation already owns this contribution")
             }
 
-            if reservation.ValueKind == JsonValueKind.Object && !Supported(value) {
+            if reservation != nil && !Supported(state) {
                 throw CliFailure(
                     "stale_approval",
                     "Legacy lease reacquisition is unsupported; fresh owner approval is required"
                 )
             }
 
-            let approval = J.Get(value, "approval")
-            let task = OwnerApproval.Record.Parse(approval)
-            let repo = J.Text(value, "repo")
-            let same = Supported(value) && RepositoryIdentity.PositiveId(
-                J.Get(identity, "actor")
+            let task = state.Approval
+            let repo = state.Repo
+            let same = Supported(state) && RepositoryIdentity.PositiveId(
+                identity?.ActorValue() ?? default(JsonElement)
             ) == RepositoryIdentity.PositiveId(actor)
-            let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
-            GitHub.Branch(repo, task.BaseBranch)
-            let approved = RepositoryIdentity.CommitSha(task.Base)
-            let authority = GitHub.Branch(repo, task.AuthorityBranch)
+            let base = same ? RepositoryIdentity.CommitSha(reservation?.Base ?? ""):
+            GitHub.Branch(repo, task?.BaseBranch ?? "")
+            let approved = RepositoryIdentity.CommitSha(task?.Base ?? "")
+            let authority = GitHub.Branch(repo, task?.AuthorityBranch ?? "")
 
-            if Policy.Load(repo, authority).Digest != task.PolicyHash {
-                throw CoordinationState.ApprovalFailure(repo, J.Number(value, "issue"), "Repository policy changed.")
+            if Policy.Load(repo, authority).Digest != (task?.PolicyHash ?? "") {
+                throw CoordinationState.ApprovalFailure(repo, state.Issue, "Repository policy changed.")
             }
 
             if base != approved {
@@ -190,58 +171,62 @@ internal class LeaseLifecycle {
                 ) != approved {
                     throw CoordinationState.ApprovalFailure(
                         repo,
-                        J.Number(value, "issue"),
+                        state.Issue,
                         "Target no longer descends from the approved base."
                     )
                 }
             }
 
-            let id = same ? J.Text(identity, "id"): uuid
+            let id = same ? identity?.Id ?? "": uuid
 
             if !same {
-                let next = map[string, Object?]{"id": id, "actor": actor}
+                let next = CoordinationState.IdentityRecord{Id: id, Actor: actor.GetInt64(), ActorJson: actor}
 
-                if Supported(value) {
-                    next["predecessor"] = map[string, Object?]{
-                        "revision": state.Sha,
-                        "id": J.Text(identity, "id"),
-                        "actor": J.Get(identity, "actor")
+                if Supported(state) {
+                    next.Predecessor = CoordinationState
+                        .IdentityRecord{
+                        Revision: state.Sha,
+                        Id: identity?.Id ?? "",
+                        Actor: identity?.Actor ?? 0,
+                        ActorJson: identity?.ActorValue() ?? default(JsonElement)
                     }
                 }
 
-                state.Fields["identity"] = next
-                state.Fields["contribution"] = nil
-                state.Fields["amendments"] = []Object{}
-                state.Fields["publication_revision"] = nil
+                state.Identity = next
+                state.Contribution = nil
+                state.Amendments.Clear()
+                state.PublicationRevision = ""
+                for name in[]string{"identity", "contribution", "amendments", "publication_revision"} {
+                    state.Include(name)
+                }
             } else {
                 Pin(state)
             }
 
-            let outcome = map[string, Object?]{
-                "reservation": id,
-                "base": base,
-                "lease": uuid,
-                "donor": donor,
-                "actor": actor,
-                "created": now,
-                "expires": now + duration,
-                "status": "active",
-                "attempt": uuid
+            let outcome = CoordinationState
+                .LeaseRecord{
+                Reservation: id,
+                Base: base,
+                Lease: uuid,
+                Donor: donor,
+                Actor: actor.GetInt64(),
+                ActorJson: actor,
+                Created: now,
+                Expires: now + duration,
+                Status: "active",
+                Attempt: uuid
             }
 
-            state.Fields["reservation"] = outcome
+            state.Lease = outcome
+            state.Include("reservation")
 
-            return outcome
+            return CoordinationState.ResultRecord{Lease: outcome, Reservation: id}
         }
 
         private func Pin(state CoordinationState) {
-            let value = state.Value()
-
-            if J.Get(value, "contribution").ValueKind == JsonValueKind.Object && J.Text(
-                value,
-                "publication_revision"
-            ) == "" {
-                state.Fields["publication_revision"] = state.Sha
+            if state.Contribution != nil && state.PublicationRevision == "" {
+                state.PublicationRevision = state.Sha
+                state.Include("publication_revision")
             }
         }
     }

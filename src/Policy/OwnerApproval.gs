@@ -249,7 +249,8 @@ internal class OwnerApproval {
 
             if state.Sha != "" {
                 let expected = state.Sha
-                state.Fields["revoked"] = true
+                state.Revoked = true
+                state.Include("revoked")
 
                 state.Write(repo, args.Number("issue"), expected)
             }

@@ -60,7 +60,7 @@ internal open class OutputSink {
 
     public open suspend func RunSummary(directory string) Dictionary[string, Object?];
 
-    public open func Coordination(value JsonElement, sha string) Object;
+    public open func Coordination(value CoordinationState, sha string) Object;
 
     public open func CheckResult(run Data, rows JsonElement, status string, facts Dictionary[string, Object?]);
 

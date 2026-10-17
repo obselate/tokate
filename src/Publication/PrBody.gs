@@ -8,6 +8,8 @@ import System.Text.RegularExpressions
 
 internal class PrBody {
     shared {
+        private const AmendmentVerification string = "Donor-reported: all original owner checks passed locally; coordinator did not observe execution."
+
         internal func Coordinated(
             record JsonElement,
             metadata JsonElement,
@@ -79,7 +81,7 @@ internal class PrBody {
             let gratis = declaration.Mode == "gratis"
             let amendment = declaration.Previous != ""
             let verification = gratis ? "Tokate ran no repository checks. Checks below are donor-reported.":
-            amendment ? "Donor-reported: all original owner checks passed locally; coordinator did not observe execution.":
+            amendment ? AmendmentVerification:
             RequestMetadata.Incomplete(
                 declaration.HasIncomplete,
                 declaration.Incomplete
@@ -87,21 +89,33 @@ internal class PrBody {
             "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
             var report = PublicSummary.Report(summary, verification)
             if amendment {
-                report += "\n\n- Review amendment: " +
-                    declaration.Previous +
-                    " → " +
-                    declaration.Head +
-                    "; separate " +
-                    J
-                    .Number(metadata, "seconds").ToString() +
-                    " second verification budget; no inference launched by amend.\n" +
-                    "- Original execution and usage cover original work only." +
-                    PublicSummary.Tools(declaration.Tools, "Amendment donor-reported tools")
+                report += AmendmentReport(
+                    declaration.Previous,
+                    declaration.Head,
+                    declaration.Seconds,
+                    declaration.Tools
+                )
             }
             let provenance = amendment ? original: metadata
             return report +
                 (gratis || provenance.ValueKind == JsonValueKind.Undefined ? "": OriginalProvenance(provenance))
         }
+
+        internal func PublicReport(amendment CoordinationState.PublicationRecord, original JsonElement) string {
+            if amendment.Summary.ValueKind != JsonValueKind.Undefined {
+                PublicSummary.Validate(amendment.Summary, amendment.Head)
+            }
+
+            return PublicSummary.Report(amendment.Summary, AmendmentVerification) +
+                AmendmentReport(amendment.Previous, amendment.Head, amendment.Seconds, amendment.Tools) +
+                (original.ValueKind == JsonValueKind.Undefined ? "": OriginalProvenance(original))
+        }
+
+        private func AmendmentReport(previous string, head string, seconds int32, tools JsonElement) string ->
+        "\n\n- Review amendment: " + previous + " → " + head + "; separate " + seconds.ToString() +
+            " second verification budget; no inference launched by amend.\n" +
+            "- Original execution and usage cover original work only." +
+            PublicSummary.Tools(tools, "Amendment donor-reported tools")
 
         internal func OriginalProvenance(metadata JsonElement) string {
             let publication = PublicationRequestMetadata.Parse(metadata)

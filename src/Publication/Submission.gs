@@ -427,10 +427,10 @@ internal class Submission {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestMetadata.Recorded(state.Value(), actor, value)
+            let outcome = RequestMetadata.Recorded(state, actor, value)
 
-            if outcome.ValueKind != JsonValueKind.Undefined {
-                Output.Sink.RequestOutcome(outcome)
+            if outcome != nil {
+                Output.Sink.RequestOutcome(outcome.Value())
                 return
             }
 
@@ -446,7 +446,7 @@ internal class Submission {
                 )
             }
 
-            if state.Sha != declaration.Expected || J.Text(state.Value(), "approval_id") != declaration.Approval {
+            if state.Sha != declaration.Expected || state.ApprovalId != declaration.Approval {
                 throw CliFailure("stale_approval", "Stale state or approval; no request posted")
             }
 
@@ -469,7 +469,7 @@ internal class Submission {
                     )
                 }
 
-                expires = CoordinationState.Unix(J.Get(state.Value(), "reservation"), "expires")
+                expires = state.Lease?.Expires ?? 0
             }
 
             WritePostingJournal(journal, repo, issue, actor, binding, value)
@@ -506,9 +506,7 @@ internal class Submission {
             } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
                 let latest = CoordinationState.Load(repo, issue)
 
-                if RequestMetadata.Recorded(latest.Value(), actor, request)
-                    .ValueKind == JsonValueKind.Undefined &&
-                    !Posted(repo, issue, actor, request) {
+                if RequestMetadata.Recorded(latest, actor, request) == nil && !Posted(repo, issue, actor, request) {
                     let code = error is CliFailure failure && failure.Code != "invalid_state" ? failure.Code:
                     "command_failed"
                     throw CliFailure(
@@ -775,13 +773,10 @@ internal class Submission {
                 }
 
                 let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), saved)
+                let outcome = RequestMetadata.Recorded(state, J.Get(viewer, "id"), saved)
 
-                if outcome.ValueKind != JsonValueKind.Undefined {
-                    if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(
-                        J.Get(state.Value(), "reservation"),
-                        "reservation"
-                    ) != run.Text("id") {
+                if outcome != nil {
+                    if state.ApprovalId != run.Text("approval") || (state.Lease?.Reservation ?? "") != run.Text("id") {
                         throw CliFailure("stale_approval", "Saved publication has stale coordination authority")
                     }
 
@@ -794,7 +789,7 @@ internal class Submission {
                     )
 
                     let repo = RepositoryIdentity.Repo(run.Text("repo"))
-                    let number = J.Number(outcome, "pr")
+                    let number = outcome.Pr
                     let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString())
                     let published = ReceiptVerification.Verify(repo, number, pull)
 

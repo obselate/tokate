@@ -40,10 +40,8 @@ internal class AttemptContinuation {
                 let record = state.CheckApproval(run.Text("repo"), run.Number("issue"), quiet: true)
                 LeaseLifecycle.Owner(state, J.Get(viewer, "id"))
 
-                if !RepositoryIdentity.SameDonor(viewer, run) || J.Text(state.Value(), "approval_id") != run.Text(
-                    "approval"
-                ) ||
-                    J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
+                if !RepositoryIdentity.SameDonor(viewer, run) || state.ApprovalId != run.Text("approval") ||
+                    (state.Identity?.Id ?? "") != run.Text("id") {
                     return next
                 }
 
@@ -87,11 +85,11 @@ internal class AttemptContinuation {
                 next[
                     "action"
                 ] = "Review the new time budget, then work on a fresh attempt with the stopped run's partial changes."
-                let reservation = J.Get(state.Value(), "reservation")
-                if J.Text(reservation, "attempt") == run.Text("attempt") || J.Text(reservation, "status") == "paused" {
+                let reservation = state.Lease
+                if (reservation?.Attempt ?? "") == run.Text("attempt") || (reservation?.Status ?? "") == "paused" {
                     next["action"] = "First " +
                         (
-                        J.Text(reservation, "status") == "paused" ? "":
+                        (reservation?.Status ?? "") == "paused" ? "":
                         Output.Sink.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
                     ) +
                         Output
@@ -207,59 +205,53 @@ internal class AttemptContinuation {
 
         internal func Authority(state CoordinationState, prior JsonElement) {
             let parsed = ContinuationPredecessor.Parse(prior)
-            let value = state.Value()
-            let approval = J.Get(value, "approval")
-            let reservation = J.Get(value, "reservation")
-            let identity = J.Get(value, "identity")
+            let approval = state.Approval?.Value() ?? default(JsonElement)
+            let reservation = state.Lease
+            let identity = state.Identity
             let actor = RepositoryIdentity.PositiveId(parsed.Donor)
             let repoId = RepositoryIdentity.PositiveId(parsed.Repository)
-
             let approved = OwnerApproval.Record.Parse(approval)
 
-            if RepositoryIdentity.PositiveId(J.Get(GitHub.Api("repos/" + J.Text(value, "repo")), "id")) != repoId ||
+            if RepositoryIdentity.PositiveId(J.Get(GitHub.Api("repos/" + state.Repo), "id")) != repoId ||
                 (approved.RepoId != 0 && approved.RepoId != repoId) {
                 throw CliFailure("stale_approval", "Continuation repository numeric identity changed")
             }
 
-            if !LeaseLifecycle.Supported(value) || J.Text(reservation, "status") != "active" || J.Text(
-                reservation,
-                "attempt"
-            ) == parsed.Attempt ||
-                J.Text(reservation, "reservation") != parsed.Id || J.Text(identity, "id") != parsed.Id ||
-                RepositoryIdentity.PositiveId(J.Get(identity, "actor")) != actor || RepositoryIdentity.PositiveId(
-                J.Get(reservation, "actor")
-            ) != actor ||
-                J.Text(value, "approval_id") != parsed.Approval || J.Text(reservation, "base") != parsed.Base {
+            if !LeaseLifecycle.Supported(state) ||
+                (reservation?.Status ?? "") != "active" ||
+                (reservation?.Attempt ?? "") == parsed.Attempt ||
+                (reservation?.Reservation ?? "") != parsed.Id ||
+                (identity?.Id ?? "") != parsed.Id ||
+                RepositoryIdentity.PositiveId(identity?.ActorValue() ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(reservation?.ActorValue() ?? default(JsonElement)) != actor ||
+                state.ApprovalId != parsed.Approval ||
+                (reservation?.Base ?? "") != parsed.Base {
                 throw CliFailure(
                     "stale_approval",
                     "Continuation needs unchanged authority and a fresh same-donor attempt"
                 )
             }
 
-            let original = CoordinationState.At(J.Text(value, "repo"), J.Number(value, "issue"), parsed.StateSha)
-            let evidence = original.Value()
+            let original = CoordinationState.At(state.Repo, state.Issue, parsed.StateSha)
 
-            GitHubPathEvidence.Ancestor(J.Text(value, "repo"), original.Sha, J.Text(value, "repo"), state.Sha)
+            GitHubPathEvidence.Ancestor(state.Repo, original.Sha, state.Repo, state.Sha)
 
-            let old = J.Get(evidence, "reservation")
-            let oldIdentity = J.Get(evidence, "identity")
+            let old = original.Lease
+            let oldIdentity = original.Identity
 
-            if !LeaseLifecycle.Supported(evidence) || J.Bool(evidence, "revoked") || J.Text(
-                evidence,
-                "approval_id"
-            ) != parsed.Approval ||
-                !RequestData.Same(J.Get(evidence, "approval"), approval) || J.Text(old, "status") != "active" || J.Text(
-                old,
-                "attempt"
-            ) != parsed.Attempt ||
-                J.Text(old, "reservation") != parsed.Id || J.Text(oldIdentity, "id") != parsed.Id ||
-                RepositoryIdentity.PositiveId(J.Get(old, "actor")) != actor || RepositoryIdentity.PositiveId(
-                J.Get(oldIdentity, "actor")
-            ) != actor ||
-                J
-                .Get(evidence, "contribution").ValueKind == JsonValueKind.Object || J.Items(
-                J.Get(evidence, "amendments")
-            )
+            if !LeaseLifecycle.Supported(original) ||
+                original.Revoked ||
+                original.ApprovalId != parsed.Approval ||
+                !RequestData.Same(original.Approval?.Value() ?? default(JsonElement), approval) ||
+                (old?.Status ?? "") != "active" ||
+                (old?.Attempt ?? "") != parsed.Attempt ||
+                (old?.Reservation ?? "") != parsed.Id ||
+                (oldIdentity?.Id ?? "") != parsed.Id ||
+                RepositoryIdentity.PositiveId(old?.ActorValue() ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(oldIdentity?.ActorValue() ?? default(JsonElement)) != actor ||
+                original.Contribution != nil ||
+                original
+                .Amendments
                 .Count != 0 {
                 throw CliFailure(
                     "stale_approval",
@@ -384,11 +376,7 @@ internal class AttemptContinuation {
 
             let checked = live.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
 
-            if !RequestData.Same(J.Get(checked, "approval"), J.Get(record, "approval")) || J.Get(
-                live.Value(),
-                "contribution"
-            )
-                .ValueKind == JsonValueKind.Object {
+            if !RequestData.Same(J.Get(checked, "approval"), J.Get(record, "approval")) || live.Contribution != nil {
                 throw CliFailure("stale_approval", "Published or changed authority cannot be continued")
             }
 
