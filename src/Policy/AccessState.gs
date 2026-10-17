@@ -52,8 +52,8 @@ internal class AccessState {
             return ""
         }
 
-        for allowed in J.Items(J.Get(approval, "allowed_actor_ids")) {
-            if RepositoryIdentity.PositiveId(allowed) == actor {
+        for allowed in OwnerApproval.Record.Parse(approval).AllowedActorIds {
+            if allowed == actor {
                 return ""
             }
         }
@@ -154,30 +154,33 @@ internal class AccessState {
 
         internal func Mode(policy JsonElement) string -> J.Text(policy, "eligibility")
 
-        internal func Task(approval JsonElement) bool {
+        internal func Task(approval JsonElement) OwnerApproval.Record {
             RequestData.Parse(J.Write(approval), 1024 * 1024)
-            let eligibility = Mode(approval)
-            let donor = J.Get(approval, "donor")
+            let approved = OwnerApproval.Record.Parse(approval)
+            let eligibility = approved.Eligibility
+            let donor = approved.Donor
 
-            if J.Number(approval, "version") != 2 || J.Text(approval, "approval_scope") != "task" ||
+            if approved.Version != 2 ||
+                approved.ApprovalScope != "task" ||
                 (eligibility != "open" && eligibility != "trusted") ||
                 donor.ValueKind != JsonValueKind.Undefined {
                 throw CliFailure("stale_approval", "Malformed or contradictory task eligibility approval")
             }
 
-            RepositoryIdentity.PositiveId(J.Get(approval, "repo_id"))
-            let allowed = J.Get(approval, "allowed_actor_ids")
-            if allowed.ValueKind != JsonValueKind.Undefined && allowed.ValueKind != JsonValueKind.Array {
-                throw CliFailure("stale_approval", "Malformed issue approval access")
+            if approved.RepoId < 1 {
+                throw Exception("Expected a positive numeric GitHub identity")
             }
             let actors = HashSet[int64]()
-            for actor in J.Items(allowed) {
-                if !actors.Add(RepositoryIdentity.PositiveId(actor)) {
+            for actor in approved.AllowedActorIds {
+                if actor < 1 {
+                    throw Exception("Expected a positive numeric GitHub identity")
+                }
+                if !actors.Add(actor) {
                     throw CliFailure("stale_approval", "Duplicate issue approval donor")
                 }
             }
 
-            return true
+            return approved
         }
 
         internal func Parse(value JsonElement) AccessState {
@@ -254,7 +257,7 @@ internal class AccessState {
         }
 
         internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement, policy JsonElement) {
-            Task(approval)
+            let approved = Task(approval)
 
             Output
                 .Sink
@@ -269,7 +272,7 @@ internal class AccessState {
                 let info = GitHub.Api("repos/" + repo)
                 let repoId = RepositoryIdentity.PositiveId(J.Get(info, "id"))
 
-                if repoId != RepositoryIdentity.PositiveId(J.Get(approval, "repo_id")) {
+                if repoId != approved.RepoId {
                     throw Exception("Task repository numeric identity changed")
                 }
 
@@ -505,8 +508,10 @@ internal class AccessState {
                             }
                             approvals.Add(number, approval)
                         }
-                        for allowed in J.Items(J.Get(approval, "allowed_actor_ids")) {
-                            resolved = resolved || RepositoryIdentity.PositiveId(allowed) == id
+                        if approval.ValueKind == JsonValueKind.Object {
+                            for allowed in OwnerApproval.Record.Parse(approval).AllowedActorIds {
+                                resolved = resolved || allowed == id
+                            }
                         }
                     }
 

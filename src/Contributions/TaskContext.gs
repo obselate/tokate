@@ -25,7 +25,7 @@ internal class TaskContext {
         internal func Build(checkout string, run Data, record JsonElement, coding RuntimeBudget) string {
             let gratis = run.Flag("gratis")
             let approval = J.Get(record, "approval")
-            let snapshot = gratis ? JsonElement{}: Decree.Validate(J.Get(approval, "decree"))
+            let snapshot = gratis ? JsonElement{}: Decree.Validate(OwnerApproval.Record.Parse(approval).Decree)
             let issue = J.Get(record, "issue")
             let imported = AttemptContinuation.Has(run) ? "This is a fresh v" + run.Number("version").ToString() +
                 " attempt seeded from unpublished interrupted work. " +

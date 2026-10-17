@@ -163,21 +163,38 @@ internal class ContributionStatus {
             return row
         }
 
-        row["approval"] = J.Select(
-            approval,
-            "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
-        )
-
         let valid = Observe(
             row,
             "approval",
             async () -> {
                 try {
-                    if !RepositoryIdentity.SameRepo(J.Text(approval, "repo"), Repo) || J.Number(
-                        approval,
-                        "issue"
-                    ) != issue ||
-                        J.Number(approval, "version") != 2 {
+                    let approved = OwnerApproval.Record.Parse(approval)
+                    let summary = map[string, Object?]{
+                        "version": approved.Version,
+                        "approval_scope": approved.ApprovalScope,
+                        "eligibility": approved.Eligibility
+                    }
+                    if approved
+                        .Donor
+                        .ValueKind == JsonValueKind.String ||
+                        approved
+                        .Donor
+                        .ValueKind == JsonValueKind.Number ||
+                        approved
+                        .Donor
+                        .ValueKind == JsonValueKind.True ||
+                        approved
+                        .Donor
+                        .ValueKind == JsonValueKind.False {
+                        summary["donor"] = approved.Donor
+                    }
+                    summary["base"] = approved.Base
+                    summary["base_branch"] = approved.BaseBranch
+                    summary["authority_branch"] = approved.AuthorityBranch
+                    row["approval"] = summary
+                    if !RepositoryIdentity.SameRepo(approved.Repo, Repo) ||
+                        approved.Issue != issue ||
+                        approved.Version != 2 {
                         throw CliFailure("invalid_state", "Malformed approval identity")
                     }
 
@@ -234,11 +251,9 @@ internal class ContributionStatus {
             row["eligibility_status"] = "unavailable"
         } else if valid && Text(row, "approval_status") == "current" {
             try {
-                AccessState.Task(approval)
+                let approved = AccessState.Task(approval)
 
-                if RepositoryIdentity.PositiveId(J.Get(approval, "repo_id")) != RepositoryIdentity.PositiveId(
-                    J.Get(Info, "id")
-                ) {
+                if approved.RepoId != RepositoryIdentity.PositiveId(J.Get(Info, "id")) {
                     throw CliFailure("stale_approval", "Task repository numeric identity changed")
                 }
 
@@ -302,7 +317,7 @@ internal class ContributionStatus {
             let pulls = GitHub.Api(
                 "repos/" + Repo + "/pulls?state=all&head=" + Uri.EscapeDataString(donor + ":" + branch) +
                     "&base=" +
-                    Uri.EscapeDataString(J.Text(approval, "base_branch")) + "&per_page=5&page=1"
+                    Uri.EscapeDataString(OwnerApproval.Record.Parse(approval).BaseBranch) + "&per_page=5&page=1"
             )
 
             if pulls.ValueKind != JsonValueKind.Array || pulls.GetArrayLength() > 5 {
@@ -515,7 +530,10 @@ internal class ContributionStatus {
             upstream: Info
         )
 
-        return J.Text(J.Get(pull, "base"), "ref") == J.Text(approval, "base_branch") && J.Text(head, "ref") == branch &&
+        return J.Text(J.Get(pull, "base"), "ref") == OwnerApproval.Record.Parse(approval).BaseBranch && J.Text(
+            head,
+            "ref"
+        ) == branch &&
             RepositoryIdentity.PositiveId(J.Get(live, "id")) == RepositoryIdentity.PositiveId(J.Get(fork, "id")) &&
             RepositoryIdentity.SameRepo(J.Text(fork, "full_name"), repository) && RepositoryIdentity.PositiveId(
             J.Get(owner, "id")

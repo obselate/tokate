@@ -58,6 +58,19 @@ internal class EligibilityChecks {
                 approval["donor"] == nil && Check.Text(approval["repo_id"]) == "1",
                 "Task approval assigned a donor or lacks numeric identity"
             )
+            let state = test.State()["state"] ?? throw Exception("Missing state")
+            Check.That(
+                Check.Text(state["approval_id"]) == Check.FixtureDigest(approval),
+                "Approval writer changed the approval identity"
+            )
+            var keys = ""
+            for field in approval.AsObject() {
+                keys += (keys == "" ? "": ",") + field.Key
+            }
+            Check.That(
+                keys == "version,repo,repo_id,issue,approval_scope,eligibility,allowed_actor_ids,issue_hash,policy_hash,template_hash,base,base_branch,decree,authority_branch,nonce",
+                "Approval writer changed stored field order"
+            )
             test.Flow.Reload()
             let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             issue["assignees"] = JsonArray()
@@ -671,6 +684,14 @@ internal class EligibilityChecks {
             Policy(test, "open")
             test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor", "other"}, 1, true)
             test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
+            using let approvalBaseline = FixtureSnapshot(test.Flow.Temp.Root)
+            let malformed = test.State()["state"] ?? throw Exception("Missing state")
+            let malformedApproval = malformed["approval"] ?? throw Exception("Missing approval")
+            malformedApproval.AsObject().Remove("base")
+            test.RewriteState(malformed)
+            let refused = Access(test, "check", issue: "1", code: 1, owner: false)
+            Check.Contains(refused.Error, "Approval record: field \"base\" is missing or not a string")
+            approvalBaseline.Restore()
             for text in[]string{
                 "{\"version\":1,\"repo_id\":99,\"members\":[]}",
                 "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false}]}",

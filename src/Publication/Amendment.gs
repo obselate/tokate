@@ -98,7 +98,7 @@ internal class Amendment {
             }
 
             let metadata = J.Get(original, "metadata")
-            let approval = J.Get(record, "approval")
+            let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
             let actor = J.Get(viewer, "id").ToString()
             let originalActor = J.Get(original, "actor").ToString()
             let reservationId = J.Text(reservation, "reservation")
@@ -118,9 +118,9 @@ internal class Amendment {
                 "branch"
             ) != run.Text("branch") || run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
                 "base"
-            ) != J.Text(reservation, "base") || run.Text("base_branch") != J.Text(approval, "base_branch") || run.Text(
+            ) != J.Text(reservation, "base") || run.Text("base_branch") != approval.BaseBranch || run.Text(
                 "policy_hash"
-            ) != J.Text(approval, "policy_hash") {
+            ) != approval.PolicyHash {
                 throw CliFailure("stale_approval", failure)
             }
 

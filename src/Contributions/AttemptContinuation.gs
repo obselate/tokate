@@ -218,11 +218,10 @@ internal class AttemptContinuation {
             let repoId = RepositoryIdentity.PositiveId(J.Get(prior, "repo_id"))
 
             if RepositoryIdentity.PositiveId(J.Get(GitHub.Api("repos/" + J.Text(value, "repo")), "id")) != repoId ||
-                (
-                J.Get(approval, "repo_id").ValueKind != JsonValueKind.Undefined && RepositoryIdentity.PositiveId(
-                    J.Get(approval, "repo_id")
-                ) != repoId
-            ) {
+                OwnerApproval
+                .Record
+                .Parse(approval)
+                .RepoId != repoId {
                 throw CliFailure("stale_approval", "Continuation repository numeric identity changed")
             }
 

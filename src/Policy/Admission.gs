@@ -246,7 +246,7 @@ internal class Admission {
             }
 
             Authority(approval, repo, issue)
-            if J.Text(J.Get(pull, "base"), "ref") != J.Text(approval, "base_branch") {
+            if J.Text(J.Get(pull, "base"), "ref") != OwnerApproval.Record.Parse(approval).BaseBranch {
                 return false
             }
 
@@ -310,7 +310,7 @@ internal class Admission {
             let branch = J.Text(head, "ref")
             let target = J.Text(J.Get(pull, "base"), "ref")
 
-            if target != J.Text(J.Get(value, "approval"), "base_branch") {
+            if target != OwnerApproval.Record.Parse(J.Get(value, "approval")).BaseBranch {
                 return JsonElement{}
             }
 
@@ -493,18 +493,17 @@ internal class Admission {
         }
 
         private func Authority(approval JsonElement, repo string, issue int32) {
-            if J.Number(approval, "version") != 2 || J.Number(approval, "issue") != issue ||
-                !RepositoryIdentity
-                .SameRepo(J.Text(approval, "repo"), repo) {
+            let approved = OwnerApproval.Record.Parse(approval)
+            if approved.Version != 2 || approved.Issue != issue || !RepositoryIdentity.SameRepo(approved.Repo, repo) {
                 throw Exception("Malformed trusted admission approval identity")
             }
 
-            RepositoryIdentity.CommitSha(J.Text(approval, "base"))
-            RepositoryIdentity.Branch(J.Text(approval, "base_branch"))
-            RepositoryIdentity.Branch(J.Text(approval, "authority_branch"))
+            RepositoryIdentity.CommitSha(approved.Base)
+            RepositoryIdentity.Branch(approved.BaseBranch)
+            RepositoryIdentity.Branch(approved.AuthorityBranch)
 
-            for key in[]string{"policy_hash", "template_hash", "issue_hash"} {
-                if !Regex.IsMatch(J.Text(approval, key), "^[0-9a-f]{64}$") {
+            for digest in[]string{approved.PolicyHash, approved.TemplateHash, approved.IssueHash} {
+                if !Regex.IsMatch(digest, "^[0-9a-f]{64}$") {
                     throw Exception("Malformed trusted admission approval digest")
                 }
             }

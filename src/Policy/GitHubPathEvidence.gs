@@ -27,8 +27,9 @@ internal class GitHubPathEvidence {
         }
 
         internal func Target(repo string, approval JsonElement, head string) {
-            Ancestor(repo, J.Text(approval, "base"), repo, head)
-            Ancestor(repo, head, repo, GitHub.Branch(repo, J.Text(approval, "base_branch")))
+            let approved = OwnerApproval.Record.Parse(approval)
+            Ancestor(repo, approved.Base, repo, head)
+            Ancestor(repo, head, repo, GitHub.Branch(repo, approved.BaseBranch))
             Decree.CheckCurrent(repo, head, approval)
         }
 

@@ -132,7 +132,7 @@ internal class CoordinationState {
         if approval.ValueKind == JsonValueKind.Undefined || approval.ValueKind == JsonValueKind.Null {
             throw ApprovalFailure(repo, issue, "Issue is not approved.")
         }
-        AccessState.Task(approval)
+        let approved = AccessState.Task(approval)
 
         if J.Bool(state, "revoked") || !GitHub.HasLabel(task) {
             throw ApprovalFailure(
@@ -142,7 +142,7 @@ internal class CoordinationState {
             )
         }
 
-        if J.Text(approval, "issue_hash") != GitHub.Fingerprint(task) {
+        if approved.IssueHash != GitHub.Fingerprint(task) {
             throw ApprovalFailure(repo, issue, "Approval revoked or task changed. Issue text changed since approval.")
         }
 
@@ -219,20 +219,20 @@ internal class CoordinationState {
             return result
         }
 
-        internal func Approve(repo string, issue int32, approval Object) {
+        internal func Approve(repo string, issue int32, approval OwnerApproval.Record) {
             let state = Load(repo, issue, true)
             let warning = state.ApprovalWarning(repo)
             if warning != "" {
                 Output.Sink.Message(warning, error: true)
             }
 
-            let approved = J.Parse(J.Write(approval))
-            let expected = state.Sha == "" ? J.Text(approved, "base"): state.Sha
+            let approved = approval.Value()
+            let expected = state.Sha == "" ? approval.Base: state.Sha
 
             state.Fields["version"] = 2
             state.Fields["repo"] = repo
             state.Fields["issue"] = issue
-            state.Fields["approval"] = approval
+            state.Fields["approval"] = approved
             state.Fields["approval_id"] = J.Hash(RequestData.Canonical(approved))
             state.Fields["revoked"] = false
             state.Fields["identity"] = nil
