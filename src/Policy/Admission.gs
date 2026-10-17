@@ -143,9 +143,14 @@ internal class Admission {
             let body = J.Text(pull, "body")
 
             try {
-                let receipt = PrBody.Receipt(body)
-                if RepositoryIdentity.SameRepo(receipt.Repo, repo) && receipt.Issue > 0 {
-                    issues.Add(receipt.Issue)
+                let receipt = RequestData.Parse(
+                    PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"),
+                    1024 * 1024
+                )
+                let nominatedRepo = JsonFields.String(receipt, "PR receipt nomination", "repo")
+                let issue = JsonFields.Int32(receipt, "PR receipt nomination", "issue")
+                if RepositoryIdentity.SameRepo(nominatedRepo, repo) && issue > 0 {
+                    issues.Add(issue)
                 }
             } catch { }
 

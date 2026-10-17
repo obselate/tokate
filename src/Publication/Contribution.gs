@@ -180,7 +180,7 @@ internal class Contribution {
                 ProtectedPaths.Local(
                     checkout,
                     J.Get(record, "policy"),
-                    run.Flag("gratis") ? JsonElement{}: J.Get(record, "approval"),
+                    J.Get(record, "approval"),
                     run.Text("base"),
                     head,
                     budget

@@ -692,6 +692,19 @@ internal class EligibilityChecks {
             let refused = Access(test, "check", issue: "1", code: 1, owner: false)
             Check.Contains(refused.Error, "Approval record: field \"base\" is missing or not a string")
             approvalBaseline.Restore()
+            let legacy = test.State()["state"] ?? throw Exception("Missing state")
+            let legacyApproval = legacy["approval"] ?? throw Exception("Missing approval")
+            legacyApproval["version"] = JsonValue.Create(1)
+            legacyApproval["donor"] = JsonValue.Create("donor")
+            for field in[]string{"repo_id", "nonce", "eligibility", "approval_scope"} {
+                legacyApproval.AsObject().Remove(field)
+            }
+            test.RewriteState(legacy)
+            let stale = Access(test, "check", issue: "1", code: 1, owner: false)
+            Check.Contains(stale.Error, "Malformed or contradictory task eligibility approval")
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
+            Access(test, "check", issue: "1", owner: false)
+            approvalBaseline.Restore()
             for text in[]string{
                 "{\"version\":1,\"repo_id\":99,\"members\":[]}",
                 "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false}]}",

@@ -43,12 +43,7 @@ internal class Submission {
             }
 
             Commands.Git(checkout, "diff", "--exit-code")
-            ProtectedPaths.Local(
-                checkout,
-                J.Get(record, "policy"),
-                run.Flag("gratis") ? JsonElement{}: J.Get(record, "approval"),
-                run.Text("base")
-            )
+            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Text("base"))
 
             let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")})
 
@@ -86,7 +81,7 @@ internal class Submission {
             ProtectedPaths.Local(
                 checkout,
                 J.Get(record, "policy"),
-                run.Flag("gratis") ? JsonElement{}: J.Get(record, "approval"),
+                J.Get(record, "approval"),
                 run.Text("base"),
                 run.Text("commit")
             )
@@ -151,7 +146,7 @@ internal class Submission {
             ProtectedPaths.Local(
                 checkout,
                 J.Get(record, "policy"),
-                run.Flag("gratis") ? JsonElement{}: J.Get(record, "approval"),
+                J.Get(record, "approval"),
                 run.Text("base"),
                 budget: budget
             )
@@ -643,7 +638,7 @@ internal class Submission {
             ProtectedPaths.Local(
                 checkout,
                 J.Get(record, "policy"),
-                run.Flag("gratis") ? JsonElement{}: J.Get(record, "approval"),
+                J.Get(record, "approval"),
                 run.Text("base"),
                 run.Text("commit")
             )

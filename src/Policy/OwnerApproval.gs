@@ -15,6 +15,7 @@ internal class OwnerApproval {
         internal var ApprovalScope string
         internal var Eligibility string
         internal var AllowedActorIds List[int64]
+        internal var AllowedActors JsonElement
         internal var IssueHash string
         internal var PolicyHash string
         internal var TemplateHash string
@@ -27,32 +28,30 @@ internal class OwnerApproval {
         private var Source JsonElement
 
         shared {
-            private const FormatName string = "Approval record"
-
             internal func Parse(value JsonElement) Record {
-                let version = JsonFields.Int64(value, FormatName, "version")
-                let repo = JsonFields.String(value, FormatName, "repo")
-                let repoId = JsonFields.Int64(value, FormatName, "repo_id")
-                let issue = JsonFields.Int32(value, FormatName, "issue")
-                let approvalScope = JsonFields.String(value, FormatName, "approval_scope")
-                let eligibility = JsonFields.String(value, FormatName, "eligibility")
-                let issueHash = JsonFields.String(value, FormatName, "issue_hash")
-                let policyHash = JsonFields.String(value, FormatName, "policy_hash")
-                let templateHash = JsonFields.String(value, FormatName, "template_hash")
-                let base = JsonFields.String(value, FormatName, "base")
-                let baseBranch = JsonFields.String(value, FormatName, "base_branch")
-                let authorityBranch = JsonFields.String(value, FormatName, "authority_branch")
-                let nonce = JsonFields.String(value, FormatName, "nonce")
+                let version = J.Number(value, "version")
+                let repo = J.Text(value, "repo")
+                let repoId = JsonFields.OptionalInt64(value, "Approval record", "repo_id", 0)
+                let issue = J.Number(value, "issue")
+                let approvalScope = J.Text(value, "approval_scope")
+                let eligibility = J.Text(value, "eligibility")
+                let issueHash = J.Text(value, "issue_hash")
+                let policyHash = J.Text(value, "policy_hash")
+                let templateHash = J.Text(value, "template_hash")
+                let base = JsonFields.String(value, "Approval record", "base")
+                let baseBranch = J.Text(value, "base_branch")
+                let authorityBranch = J.Text(value, "authority_branch")
+                let nonce = J.Text(value, "nonce")
 
                 let allowed = List[int64]()
-                var actors JsonElement
-                if value.TryGetProperty("allowed_actor_ids", out actors) {
-                    for actor in JsonFields.Array(value, FormatName, "allowed_actor_ids").EnumerateArray() {
+                let actors = J.Get(value, "allowed_actor_ids")
+                if actors.ValueKind == JsonValueKind.Array {
+                    for actor in actors.EnumerateArray() {
                         var id int64
                         if actor.ValueKind != JsonValueKind.Number || !actor.TryGetInt64(out id) {
                             throw CliFailure(
                                 "invalid_state",
-                                FormatName + ": field \"allowed_actor_ids\" must contain int64 values"
+                                "Approval record: field \"allowed_actor_ids\" must contain int64 values"
                             )
                         }
                         allowed.Add(id)
@@ -72,6 +71,7 @@ internal class OwnerApproval {
                     ApprovalScope: approvalScope,
                     Eligibility: eligibility,
                     AllowedActorIds: allowed,
+                    AllowedActors: actors,
                     IssueHash: issueHash,
                     PolicyHash: policyHash,
                     TemplateHash: templateHash,

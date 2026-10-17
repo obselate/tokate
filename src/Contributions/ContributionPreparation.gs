@@ -88,7 +88,7 @@ internal class ContributionPreparation {
             }
 
             let approval = J.Get(record, "approval")
-            let approved = state == nil ? nil: OwnerApproval.Record.Parse(approval)
+            let approved = OwnerApproval.Record.Parse(approval)
 
             if source == "tokate" {
                 if tools.ValueKind != JsonValueKind.Undefined {
@@ -106,7 +106,7 @@ internal class ContributionPreparation {
                     }
                 }
 
-                policy.Digest = approved?.PolicyHash ?? J.Text(approval, "policy_hash")
+                policy.Digest = approved.PolicyHash
                 selection = SelectionPolicy.Resolve(args, policy)
 
                 if tools.ValueKind == JsonValueKind.Undefined {
@@ -132,9 +132,9 @@ internal class ContributionPreparation {
                     "donor_id": J.Get(viewer, "id"),
                     "head_repo": RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
                     "approval": J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
-                    "base": approved?.Base ?? J.Text(approval, "base"),
-                    "base_branch": approved?.BaseBranch ?? J.Text(approval, "base_branch"),
-                    "policy_hash": approved?.PolicyHash ?? J.Text(approval, "policy_hash"),
+                    "base": approved.Base,
+                    "base_branch": approved.BaseBranch,
+                    "policy_hash": approved.PolicyHash,
                     "source": source,
                     "tools": tools
                 }

@@ -168,30 +168,11 @@ internal class ContributionStatus {
             "approval",
             async () -> {
                 try {
+                    row["approval"] = J.Select(
+                        approval,
+                        "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
+                    )
                     let approved = OwnerApproval.Record.Parse(approval)
-                    let summary = map[string, Object?]{
-                        "version": approved.Version,
-                        "approval_scope": approved.ApprovalScope,
-                        "eligibility": approved.Eligibility
-                    }
-                    if approved
-                        .Donor
-                        .ValueKind == JsonValueKind.String ||
-                        approved
-                        .Donor
-                        .ValueKind == JsonValueKind.Number ||
-                        approved
-                        .Donor
-                        .ValueKind == JsonValueKind.True ||
-                        approved
-                        .Donor
-                        .ValueKind == JsonValueKind.False {
-                        summary["donor"] = approved.Donor
-                    }
-                    summary["base"] = approved.Base
-                    summary["base_branch"] = approved.BaseBranch
-                    summary["authority_branch"] = approved.AuthorityBranch
-                    row["approval"] = summary
                     if !RepositoryIdentity.SameRepo(approved.Repo, Repo) ||
                         approved.Issue != issue ||
                         approved.Version != 2 {

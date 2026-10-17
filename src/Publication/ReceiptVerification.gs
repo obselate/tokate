@@ -14,15 +14,9 @@ internal class ReceiptVerification {
 
         internal func Verify(repo string, number int32, pull JsonElement, paths bool = true) Data {
             let body = J.Text(pull, "body")
-            let receipt = ContributionReceipt.Record.Parse(
-                RequestData.Parse(PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"), 1024 * 1024)
-            )
+            let value = RequestData.Parse(PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"), 1024 * 1024)
 
-            if receipt.Version != 2 {
-                throw CliFailure("invalid_state", "Unsupported receipt protocol")
-            }
-
-            return VerifyCurrent(repo, number, pull, receipt, paths)
+            return VerifyCurrent(repo, number, pull, ContributionReceipt.Record.Parse(value), paths)
         }
 
         internal func Binding(

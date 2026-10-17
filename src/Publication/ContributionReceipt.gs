@@ -41,7 +41,13 @@ internal class ContributionReceipt {
         }
 
         shared {
-            internal func Parse(value JsonElement) Record -> Record(value)
+            internal func Parse(value JsonElement) Record {
+                if J.Number(value, "version") != 2 {
+                    throw CliFailure("invalid_state", "Unsupported receipt protocol")
+                }
+
+                return Record(value)
+            }
         }
     }
 

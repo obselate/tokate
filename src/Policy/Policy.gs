@@ -410,7 +410,8 @@ internal class Policy {
                 value.TryGetProperty("models", out models)
                 var command JsonElement
                 value.TryGetProperty("command", out command)
-                let output = JsonFields.OptionalString(value, "Policy allowed tool", "output", "")
+                let output = J.Get(value, "output").ValueKind == JsonValueKind.Null ? "":
+                JsonFields.OptionalString(value, "Policy allowed tool", "output", "")
 
                 return AllowedTool(harness, provider, ParseModels(models), command, output)
             }

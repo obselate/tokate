@@ -449,36 +449,14 @@ internal class PublicOutput {
             result["sha"] = sha
 
             let approval = J.Get(value, "approval")
-            let summary = map[string, Object?]{}
+            let summary = J.Select(
+                approval,
+                "repo,repo_id,issue,donor,approval_scope,eligibility,base,base_branch,authority_branch,policy_hash,template_hash"
+            )
             if approval.ValueKind == JsonValueKind.Object {
-                let approved = OwnerApproval.Record.Parse(approval)
-                summary["repo"] = approved.Repo
-                summary["repo_id"] = approved.RepoId
-                summary["issue"] = approved.Issue
-                if approved
-                    .Donor
-                    .ValueKind == JsonValueKind.String ||
-                    approved
-                    .Donor
-                    .ValueKind == JsonValueKind.Number ||
-                    approved
-                    .Donor
-                    .ValueKind == JsonValueKind.True ||
-                    approved
-                    .Donor
-                    .ValueKind == JsonValueKind.False {
-                    summary["donor"] = approved.Donor
-                }
-                summary["approval_scope"] = approved.ApprovalScope
-                summary["eligibility"] = approved.Eligibility
-                summary["base"] = approved.Base
-                summary["base_branch"] = approved.BaseBranch
-                summary["authority_branch"] = approved.AuthorityBranch
-                summary["policy_hash"] = approved.PolicyHash
-                summary["template_hash"] = approved.TemplateHash
-
-                if approved.Decree.ValueKind != JsonValueKind.Undefined {
-                    summary["decree"] = J.Select(approved.Decree, "present,sha256")
+                let decree = J.Get(approval, "decree")
+                if decree.ValueKind != JsonValueKind.Undefined {
+                    summary["decree"] = J.Select(decree, "present,sha256")
                 }
             }
 

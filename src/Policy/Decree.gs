@@ -178,7 +178,7 @@ internal class Decree {
             }
         }
 
-        internal func Protected(path string, approval JsonElement) bool -> HasSnapshot(approval) &&
-            (path == "DECREE.md" || path.StartsWith("DECREE.md/"))
+        internal func Protected(path string, approval JsonElement) bool ->
+        (path == "DECREE.md" || path.StartsWith("DECREE.md/")) && HasSnapshot(approval)
     }
 }

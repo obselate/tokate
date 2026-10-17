@@ -191,20 +191,17 @@ internal class JsonFields {
 
         internal func OptionalString(value JsonElement, format string, field string, fallback string) string {
             let item = J.Get(value, field)
-            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
-            fallback: String(value, format, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: String(value, format, field)
         }
 
         internal func OptionalInt64(value JsonElement, format string, field string, fallback int64) int64 {
             let item = J.Get(value, field)
-            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
-            fallback: Int64(value, format, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: Int64(value, format, field)
         }
 
         internal func OptionalBool(value JsonElement, format string, field string, fallback bool) bool {
             let item = J.Get(value, field)
-            return item.ValueKind == JsonValueKind.Undefined || item.ValueKind == JsonValueKind.Null ?
-            fallback: Bool(value, format, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: Bool(value, format, field)
         }
     }
 }

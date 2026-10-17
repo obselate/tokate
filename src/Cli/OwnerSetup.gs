@@ -494,12 +494,10 @@ internal class OwnerSetup {
                     let number = J.Number(issue, "number")
                     let state = CoordinationState.Load(repo, number, true).Value()
                     let approval = J.Get(state, "approval")
-                    if !J.Bool(state, "revoked") &&
-                        approval.ValueKind == JsonValueKind.Object &&
-                        OwnerApproval
-                        .Record
-                        .Parse(approval)
-                        .PolicyHash != policy.Digest {
+                    if !J.Bool(state, "revoked") && approval.ValueKind == JsonValueKind.Object && J.Text(
+                        approval,
+                        "policy_hash"
+                    ) != policy.Digest {
                         affected.Add(number)
                     }
                 }

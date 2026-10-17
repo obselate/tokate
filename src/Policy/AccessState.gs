@@ -174,6 +174,15 @@ internal class AccessState {
             if approved.RepoId < 1 {
                 throw Exception("Expected a positive numeric GitHub identity")
             }
+            if approved
+                .AllowedActors
+                .ValueKind != JsonValueKind.Undefined &&
+                approved
+                .AllowedActors
+                .ValueKind != JsonValueKind.Array {
+                throw CliFailure("stale_approval", "Malformed issue approval access")
+            }
+
             let actors = HashSet[int64]()
             for actor in approved.AllowedActorIds {
                 if actor < 1 {
@@ -271,6 +280,7 @@ internal class AccessState {
                 "eligible": false,
                 "authority": "unknown"
             }
+            var loadingAccess = false
             try {
                 let id = RepositoryIdentity.PositiveId(actor)
                 let info = GitHub.Api("repos/" + repo)
@@ -281,7 +291,9 @@ internal class AccessState {
                 }
 
                 let mode = Mode(policy)
+                loadingAccess = true
                 let access = Load(repo, repoId)
+                loadingAccess = false
                 let allowed = access.Allows(id, mode, approval)
 
                 Output
@@ -314,7 +326,7 @@ internal class AccessState {
                         command
                     )
                 }
-            } catch (error CliFailure) {
+            } catch (error CliFailure) when !loadingAccess {
                 throw error
             } catch (error ApiDeadlineException) {
                 throw error

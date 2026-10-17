@@ -32,12 +32,11 @@ internal class ContributionAuthority {
                     throw CliFailure("stale_approval", "Gratis repository or donor authority changed")
                 }
                 record = J.Get(saved, "gratis_context")
-                let approval = J.Get(record, "approval")
-                if run.Text("base") != J.Text(approval, "base") || run.Text("base_branch") != J.Text(
-                    approval,
-                    "base_branch"
-                ) ||
-                    run.Text("branch") != "tokate/gratis-" + run.Text("id") {
+                let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
+                if run.Text("base") != approval.Base || run.Text("base_branch") != approval.BaseBranch || run.Text(
+                    "branch"
+                ) != "tokate/gratis-" +
+                    run.Text("id") {
                     throw CliFailure("invalid_state", "Saved gratis task changed")
                 }
             } else {
