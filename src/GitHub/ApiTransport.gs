@@ -18,6 +18,28 @@ internal class ApiResponse {
     internal var Date string = ""
     internal var PollInterval string = ""
 
+    shared {
+        internal const UnauthorizedStatus int32 = 401
+
+        internal const ForbiddenStatus int32 = 403
+
+        internal const NotFoundStatus int32 = 404
+
+        internal const NotModifiedStatus int32 = 304
+
+        internal const RateLimitedStatus int32 = 429
+
+        internal const SuccessStatusMinimum int32 = 200
+
+        internal const SuccessStatusExclusiveLimit int32 = 300
+
+        private const FailureReasonCharacterLimit int32 = 1024
+
+        private const MaximumUnixTimestampSeconds int64 = 253402300799
+
+        private const DefaultRateLimitDelaySeconds float64 = 60.0
+    }
+
     internal init(output string) {
         let normalized = output.Replace("\r\n", "\n")
         let end = normalized.IndexOf("\n\n", StringComparison.Ordinal)
@@ -72,11 +94,11 @@ internal class ApiResponse {
     }
 
     internal func RateLimited() bool {
-        if Status == 429 {
+        if Status == RateLimitedStatus {
             return true
         }
 
-        if Status != 403 {
+        if Status != ForbiddenStatus {
             return false
         }
 
@@ -112,15 +134,20 @@ internal class ApiResponse {
                 if text != "" {
                     reason += (reason == "" ? "": "; ") + text
                 }
-                if reason.Length > 1024 {
-                    return reason.Substring(0, Char.IsHighSurrogate(reason[1023]) ? 1023: 1024)
+                if reason.Length > FailureReasonCharacterLimit {
+                    return reason.Substring(
+                        0,
+                        Char.IsHighSurrogate(
+                            reason[FailureReasonCharacterLimit - 1]
+                        ) ? FailureReasonCharacterLimit - 1: FailureReasonCharacterLimit
+                    )
                 }
             }
         } catch { }
         return reason
     }
 
-    internal func Delay(rateLimited bool) double {
+    internal func Delay(rateLimited bool) float64 {
         let now = DateTimeOffset.UtcNow
         var date DateTimeOffset
         let server = DateTimeOffset.TryParse(
@@ -150,13 +177,13 @@ internal class ApiResponse {
         }
 
         var reset int64
-        if Remaining == "0" && Int64.TryParse(Reset, out reset) && reset >= 0 && reset <= 253402300799 {
+        if Remaining == "0" && Int64.TryParse(Reset, out reset) && reset >= 0 && reset <= MaximumUnixTimestampSeconds {
             delay = Math.Max(delay, Math.Max(0.0, (DateTimeOffset.FromUnixTimeSeconds(reset) - server).TotalSeconds))
             supplied = true
         }
 
         if rateLimited && !supplied {
-            delay = 60.0
+            delay = DefaultRateLimitDelaySeconds
         }
 
         return delay
@@ -179,11 +206,25 @@ internal class ApiTransport {
 
         internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator. After fixing the cause, the owner reruns the failed coordinator workflow run in Actions. Each event processes only its triggering comment. Recorded UUIDs replay their outcome."
 
-        private let Cache Dictionary[string, ApiCache] = Dictionary[string, ApiCache]()
+        private let Cache Dictionary[string, ApiCache] = map[string, ApiCache]{}
 
         private const CacheByteLimit int64 = 4 * 1024 * 1024
 
         private const CacheEntryLimit int32 = 64
+
+        private const CacheEntryOverheadBytes int32 = 256
+
+        private const ETagCharacterLimit int32 = 1024
+
+        private const WeakETagPrefix string = "W/"
+
+        private const RequestTimeoutSeconds float64 = 60.0
+
+        private const ReadAttemptLimit int32 = 3
+
+        private const MinimumPollSeconds float64 = 2.0
+
+        private const MutationIntervalSeconds float64 = 1.0
 
         private var CacheBytes int64
 
@@ -203,7 +244,7 @@ internal class ApiTransport {
 
         private var NextPoll double
 
-        private let Polls Dictionary[string, double] = Dictionary[string, double]()
+        private let Polls Dictionary[string, double] = map[string, double]{}
 
         private var NextRead double
 
@@ -221,7 +262,8 @@ internal class ApiTransport {
                 return
             }
 
-            let bytes = 2 * (Convert.ToInt64(response.Body.Length) + key.Length + response.ETag.Length) + 256
+            let bytes = 2 * (Convert.ToInt64(response.Body.Length) + key.Length + response.ETag.Length) +
+                CacheEntryOverheadBytes
 
             if bytes > CacheByteLimit {
                 return
@@ -261,11 +303,11 @@ internal class ApiTransport {
                 }
             }
 
-            Wait(Math.Max(2.0, next - Clock.Elapsed.TotalSeconds))
+            Wait(Math.Max(MinimumPollSeconds, next - Clock.Elapsed.TotalSeconds))
         }
 
         internal func Settle() {
-            Wait(1.0)
+            Wait(MutationIntervalSeconds)
         }
 
         internal func Report() Dictionary[string, Object?] -> map[string, Object?]{
@@ -275,7 +317,7 @@ internal class ApiTransport {
             "retry_attempts": Retries
         }
 
-        private func Wait(seconds double) {
+        private func Wait(seconds float64) {
             CheckDeadline()
 
             if seconds > 0 {
@@ -295,11 +337,11 @@ internal class ApiTransport {
         }
 
         private func ValidETag(value string) bool {
-            let start = value.StartsWith("W/", StringComparison.Ordinal) ? 2: 0
+            let start = value.StartsWith(WeakETagPrefix, StringComparison.Ordinal) ? WeakETagPrefix.Length: 0
 
             if value.Length < start +
                 2 ||
-                value.Length > 1024 ||
+                value.Length > ETagCharacterLimit ||
                 value[start] != '"' ||
                 value[value.Length - 1] != '"' {
                 return false
@@ -321,13 +363,15 @@ internal class ApiTransport {
             }
 
             return String.Equals(
-                left.StartsWith("W/", StringComparison.Ordinal) ? left.Substring(2): left,
-                right.StartsWith("W/", StringComparison.Ordinal) ? right.Substring(2): right,
+                left.StartsWith(WeakETagPrefix, StringComparison.Ordinal) ? left.Substring(WeakETagPrefix.Length): left,
+                right.StartsWith(WeakETagPrefix, StringComparison.Ordinal) ? right.Substring(
+                    WeakETagPrefix.Length
+                ): right,
                 StringComparison.Ordinal
             )
         }
 
-        private func Failure(status int32, read bool, delay double, body string = "") Exception {
+        private func Failure(status int32, read bool, delay float64, body string = "") Exception {
             let reason = status == 0 ? "transport failure or missing response status": "HTTP " + status.ToString()
             var message = "GitHub " + (read ? "read": "mutation") + " failed (" + reason + "). "
             if body != "" {
@@ -344,14 +388,14 @@ internal class ApiTransport {
             }
 
             return CliFailure(
-                status == 401 ? "authentication_required": "command_failed",
+                status == ApiResponse.UnauthorizedStatus ? "authentication_required": "command_failed",
                 message,
-                status == 401 ? []string{"gh", "auth", "login"}: []string{},
+                status == ApiResponse.UnauthorizedStatus ? []string{"gh", "auth", "login"}: []string{},
                 httpStatus: status
             )
         }
 
-        private func RequestAllowance(timer Stopwatch, read bool, expires int64) double {
+        private func RequestAllowance(timer Stopwatch, read bool, expires int64) float64 {
             CheckDeadline()
 
             if Clock.Elapsed.TotalSeconds < NextRead {
@@ -360,8 +404,8 @@ internal class ApiTransport {
                     Wait(Deadline - Clock.Elapsed.TotalSeconds)
                 }
 
-                if delay >= 60.0 - timer.Elapsed.TotalSeconds {
-                    throw Failure(429, read, delay)
+                if delay >= RequestTimeoutSeconds - timer.Elapsed.TotalSeconds {
+                    throw Failure(ApiResponse.RateLimitedStatus, read, delay)
                 }
 
                 Wait(delay)
@@ -373,7 +417,10 @@ internal class ApiTransport {
                 }
             }
 
-            var remaining = Math.Min(60.0 - timer.Elapsed.TotalSeconds, Deadline - Clock.Elapsed.TotalSeconds)
+            var remaining = Math.Min(
+                RequestTimeoutSeconds - timer.Elapsed.TotalSeconds,
+                Deadline - Clock.Elapsed.TotalSeconds
+            )
             if !read && expires > 0 {
                 remaining = Math.Min(remaining, expires - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0)
                 if remaining <= 0 {
@@ -418,7 +465,7 @@ internal class ApiTransport {
             let input string? = body == nil ? nil: J.Write(body)
             let key = path + "\n" + input
 
-            for attempt in 0 ... (read ? 3: 1) {
+            for attempt in 0 ... (read ? ReadAttemptLimit: 1) {
                 let remaining = RequestAllowance(timer, read, expires)
 
                 let args = List[string]{"api", "--include", "--hostname", "github.com", "--method", verb, path}
@@ -456,7 +503,7 @@ internal class ApiTransport {
 
                 CheckDeadline()
                 if !read {
-                    NextMutation = Clock.Elapsed.TotalSeconds + 1.0
+                    NextMutation = Clock.Elapsed.TotalSeconds + MutationIntervalSeconds
                 }
 
                 let response = ApiResponse(result.Output)
@@ -464,11 +511,11 @@ internal class ApiTransport {
 
                 ObserveResponse(path, response, read, limited)
 
-                if timer.Elapsed.TotalSeconds >= 60.0 {
+                if timer.Elapsed.TotalSeconds >= RequestTimeoutSeconds {
                     throw Failure(response.Status, read, response.Delay(limited), response.FailureReason())
                 }
 
-                if response.Status == 304 {
+                if response.Status == ApiResponse.NotModifiedStatus {
                     ConditionalResponses++
                     if !conditional || (response.ETag != "" && !WeakETagMatch(response.ETag, cached.ETag)) {
                         throw Exception(
@@ -479,12 +526,13 @@ internal class ApiTransport {
                     return J.Parse(cached.Body)
                 }
 
-                if response.Status == 404 && missing {
+                if response.Status == ApiResponse.NotFoundStatus && missing {
                     RemoveCached(key)
                     return JsonElement{}
                 }
 
-                let success = response.Status >= 200 && response.Status < 300
+                let success = response.Status >= ApiResponse.SuccessStatusMinimum &&
+                    response.Status < ApiResponse.SuccessStatusExclusiveLimit
                 if success && (result.Code == 0 || path == "graphql") && !result.Truncated && !result.ReadFailed {
                     var value JsonElement
                     try {
@@ -500,17 +548,19 @@ internal class ApiTransport {
                     return value
                 }
 
-                let retryable = response.Status == 0 ||
-                    (response.Status >= 200 && response.Status < 300) ||
-                    response.Status >= 500 ||
-                    limited
+                let retryable = response.Status == 0 || success || response.Status >= 500 || limited
                 let delay = Math.Max(response.Delay(limited), retryable ? Convert.ToDouble(attempt + 1): 0.0)
 
                 if read && retryable && delay >= Deadline - Clock.Elapsed.TotalSeconds {
                     Wait(Deadline - Clock.Elapsed.TotalSeconds)
                 }
 
-                if !read || !retryable || attempt == 2 || delay >= 60.0 - timer.Elapsed.TotalSeconds {
+                if !read ||
+                    !retryable ||
+                    attempt == ReadAttemptLimit - 1 ||
+                    delay >= RequestTimeoutSeconds - timer
+                    .Elapsed
+                    .TotalSeconds {
                     throw Failure(response.Status, read, delay, response.FailureReason())
                 }
 

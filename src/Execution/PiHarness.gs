@@ -9,6 +9,12 @@ import System.Text.RegularExpressions
 
 internal class PiHarness {
     shared {
+        private const InstallMarkerByteLimit int32 = 16384
+
+        private const SettingsByteLimit int32 = 16 * 1024 * 1024
+
+        private const VersionFileByteLimit int32 = 128
+
         private func CliExecutable(path string) bool -> LocalPaths.Executable(path) ||
             (File.Exists(path) && (path.EndsWith(".js") || path.EndsWith(".mjs") || path.EndsWith(".cjs")))
 
@@ -81,7 +87,7 @@ internal class PiHarness {
                 throw ExecutionFailure.Create("invalid_state", "Pi installation metadata must be regular files")
             }
 
-            let marker = RequestData.FileData(markerPath, 16384)
+            let marker = RequestData.FileData(markerPath, InstallMarkerByteLimit)
             let entrypoint = J.Get(marker, "entrypoint")
             let entryPath = J.Text(entrypoint, "path")
 
@@ -97,7 +103,7 @@ internal class PiHarness {
                 )
             }
 
-            if FileInfo(versionPath).Length < 1 || FileInfo(versionPath).Length > 128 {
+            if FileInfo(versionPath).Length < 1 || FileInfo(versionPath).Length > VersionFileByteLimit {
                 throw ExecutionFailure.Create("invalid_state", "Invalid managed Pi version file")
             }
 
@@ -174,7 +180,10 @@ internal class PiHarness {
 
                 let packagePath = Path.Combine(root, "@earendil-works/pi-coding-agent")
                 LocalPaths.DirectoryPath(packagePath)
-                let metadata = RequestData.FileData(Path.Combine(packagePath, "package.json"), 128 * 1024)
+                let metadata = RequestData.FileData(
+                    Path.Combine(packagePath, "package.json"),
+                    PiBoundary.PackageMetadataByteLimit
+                )
                 if J.Text(metadata, "name") != "@earendil-works/pi-coding-agent" || J.Text(metadata, "version") == "" ||
                     !File
                     .Exists(Path.Combine(packagePath, "dist/index.js")) {
@@ -261,7 +270,7 @@ internal class PiHarness {
 
         private func Optional(path string) JsonElement {
             try {
-                return RequestData.FileData(path, 16 * 1024 * 1024)
+                return RequestData.FileData(path, SettingsByteLimit)
             } catch (error CliFailure) {
                 return JsonElement{}
             }

@@ -40,14 +40,12 @@ internal class GitHub {
             tree string,
             parents IEnumerable[string],
             identity Object
-        ) Object {
-            return map[string, Object?]{
-                "message": message,
-                "tree": tree,
-                "parents": parents,
-                "author": identity,
-                "committer": identity
-            }
+        ) Object -> map[string, Object?]{
+            "message": message,
+            "tree": tree,
+            "parents": parents,
+            "author": identity,
+            "committer": identity
         }
 
         internal suspend func Api(

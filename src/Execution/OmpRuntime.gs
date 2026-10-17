@@ -9,6 +9,14 @@ import System.Text.RegularExpressions
 
 internal class OmpRuntime {
     shared {
+        private const ModelCatalogTimeoutSeconds int32 = 60
+
+        private const ModelCatalogByteLimit int32 = 16 * 1024 * 1024
+
+        private const DefaultRoleTimeoutSeconds int32 = 30
+
+        private const DefaultRoleByteLimit int32 = 1024 * 1024
+
         internal func Command(executable string) List[string] {
             let command = List[string]()
 
@@ -89,7 +97,7 @@ internal class OmpRuntime {
 
         internal func Models(executable string, budget RuntimeBudget? = nil) List[JsonElement] {
             try {
-                let result = Native(executable, []string{"models", "--json"}, 60, budget)
+                let result = Native(executable, []string{"models", "--json"}, ModelCatalogTimeoutSeconds, budget)
                 if result.Code != 0 || result.Truncated || result.ReadFailed {
                     throw ExecutionFailure.Create(
                         "invalid_state",
@@ -97,7 +105,7 @@ internal class OmpRuntime {
                     )
                 }
 
-                let listing = RequestData.Parse(result.Output.Trim(), 16 * 1024 * 1024)
+                let listing = RequestData.Parse(result.Output.Trim(), ModelCatalogByteLimit)
                 let models = J.Get(listing, "models")
                 if listing.ValueKind != JsonValueKind.Object || models.ValueKind != JsonValueKind.Array {
                     throw ExecutionFailure.Create(
@@ -115,13 +123,18 @@ internal class OmpRuntime {
         }
 
         internal func DefaultRole(executable string) string {
-            let result = Native(executable, []string{"config", "get", "modelRoles", "--json"}, 30, nil)
+            let result = Native(
+                executable,
+                []string{"config", "get", "modelRoles", "--json"},
+                DefaultRoleTimeoutSeconds,
+                nil
+            )
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 return ""
             }
 
             try {
-                return J.Text(J.Get(RequestData.Parse(result.Output.Trim(), 1024 * 1024), "value"), "default")
+                return J.Text(J.Get(RequestData.Parse(result.Output.Trim(), DefaultRoleByteLimit), "value"), "default")
             } catch (error CliFailure) {
                 return ""
             }

@@ -7,6 +7,10 @@ import System.Text.RegularExpressions
 
 internal class NixRuntime {
     shared {
+        private const ClosurePathCountLimit int32 = 2048
+
+        private const ClosureTimeoutSeconds int32 = 15
+
         internal func Root(path string) string -> Regex.Match(path, "^/nix/store/[0-9a-z]{32}-[^/\\r\\n]+").Value
 
         internal func Executable(path string) string {
@@ -81,7 +85,7 @@ internal class NixRuntime {
                 LocalPaths.NeedSystemTool("nix-store", directory),
                 args.ToArray(),
                 directory,
-                seconds: 15,
+                seconds: ClosureTimeoutSeconds,
                 isolated: true
             )
             if result.Code != 0 || result.Truncated || result.ReadFailed {
@@ -96,7 +100,7 @@ internal class NixRuntime {
                 let path = line.TrimEnd('\r')
                 if path != Root(path) || LocalPaths.CanonicalPath(path) != path ||
                     (!Directory.Exists(path) && !File.Exists(path)) ||
-                    paths.Count >= 2048 {
+                    paths.Count >= ClosurePathCountLimit {
                     throw CliFailure("verification_failed", "Nix returned an invalid or unavailable runtime closure.")
                 }
 

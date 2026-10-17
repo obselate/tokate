@@ -46,12 +46,16 @@ internal class VerificationWorkspace : IDisposable {
                     case CopyCancellation <- true { }
                     default { }
                 }
-                KillGroup(Environment.ProcessId, 2)
+                KillGroup(Environment.ProcessId, InterruptSignal)
             }
         )
     }
 
     shared {
+        private const CopyTimeoutSeconds int32 = 86400
+
+        private const InterruptSignal int32 = 2
+
         internal func Create(directory string, budget RuntimeBudget) VerificationWorkspace {
             let workspace = VerificationWorkspace(directory, budget)
 
@@ -68,7 +72,7 @@ internal class VerificationWorkspace : IDisposable {
                         workspace.Original + "/.",
                         workspace.Checkout
                     },
-                    seconds: 86400,
+                    seconds: CopyTimeoutSeconds,
                     isolated: true,
                     cancellation: workspace.CopyCancellation,
                     budget: budget
