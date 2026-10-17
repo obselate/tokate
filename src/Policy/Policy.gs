@@ -118,8 +118,8 @@ internal class Policy {
             }
         }
 
-        let reservation = JsonFields.OptionalInt64(Value, "Policy", "reservation_seconds", 86400)
-        if reservation < 300 || reservation > 604800 {
+        let reservation = JsonFields.OptionalInt64(Value, "Policy", "reservation_seconds", DefaultReservationSeconds)
+        if reservation < MinReservationSeconds || reservation > MaxReservationSeconds {
             throw Exception("reservation_seconds must be from 300 to 604800 (default 86400)")
         }
 
@@ -176,7 +176,7 @@ internal class Policy {
             var item JsonElement
             if Value.TryGetProperty(key, out item) {
                 let text = JsonFields.String(Value, "Policy", key)
-                if Encoding.UTF8.GetByteCount(text) > 4096 {
+                if Encoding.UTF8.GetByteCount(text) > TextFieldByteLimit {
                     throw Exception(key + " must be bounded plain text")
                 }
 
@@ -381,6 +381,14 @@ internal class Policy {
         internal const FileByteLimit int32 = 1024 * 1024
 
         internal const FilePath string = ".github/tokate.json"
+
+        private const DefaultReservationSeconds int64 = 86400
+
+        private const MinReservationSeconds int64 = 300
+
+        private const MaxReservationSeconds int64 = 604800
+
+        private const TextFieldByteLimit int32 = 4096
 
         private func ValidEffort(effort string) bool -> Array.IndexOf(
             "off minimal low medium high xhigh max ultra unknown absent".Split(' '),

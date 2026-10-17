@@ -7,6 +7,12 @@ import System.Text.RegularExpressions
 
 internal class Coordinator {
     shared {
+        internal const EventByteLimit int32 = 1024 * 1024
+
+        private const RetainedOutcomeCount int32 = 31
+
+        private const StateReadAttemptLimit int32 = 5
+
         private func ApproveLabel(repo string, event JsonElement) {
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
@@ -101,7 +107,7 @@ internal class Coordinator {
 
         internal func Run(args Args) ValueTuple[JsonElement, string] {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            let event = RequestData.FileData(args.Need("event"), EventByteLimit)
             if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
                 ApproveLabel(repo, event)
                 return ValueTuple[JsonElement, string](JsonElement{}, "")
@@ -228,7 +234,7 @@ internal class Coordinator {
 
             let retained = List[CoordinationState.ReplayRecord]()
 
-            for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
+            for i in Math.Max(0, outcomes.Count - RetainedOutcomeCount) ... outcomes.Count {
                 retained.Add(outcomes[i])
             }
 
@@ -468,7 +474,7 @@ internal class Coordinator {
             }
 
             var acquired = CoordinationState.Load(repo, number)
-            for attempt in 0 ... 5 {
+            for attempt in 0 ... StateReadAttemptLimit {
                 if acquired.Sha != previous {
                     break
                 }

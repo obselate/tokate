@@ -16,6 +16,18 @@ internal class ActionsAllowlist {
 
 internal class CoordinatorSetup {
     shared {
+        private const AllWorkflowPaths string = "~ALL"
+
+        private const ChecksumSidecarByteLimit int64 = 256
+
+        private const TagDepthLimit int32 = 8
+
+        private const ReleaseAssetByteLimit int64 = 128 * 1024 * 1024
+
+        private const DownloadTimeLimitSeconds string = "60"
+
+        private const DownloadByteLimit string = "134217728"
+
         internal func EventPolicy(repo string, workflow string) bool {
             let policies = GitHub.Api(
                 "repos/" + repo + "/actions/policies?has_parents=true&" + GitHub.PageSizeParameter
@@ -148,7 +160,7 @@ internal class CoordinatorSetup {
             }
 
             let value = pattern.GetString() ?? ""
-            if value == "~ALL" {
+            if value == AllWorkflowPaths {
                 return true
             }
 
@@ -242,7 +254,7 @@ internal class CoordinatorSetup {
                 Download(archiveUrl, archivePath)
                 Download(checksumUrl, checksumPath)
 
-                if FileInfo(checksumPath).Length > 256 {
+                if FileInfo(checksumPath).Length > ChecksumSidecarByteLimit {
                     throw Exception("Invalid release checksum sidecar")
                 }
 
@@ -280,7 +292,7 @@ internal class CoordinatorSetup {
                 var identity = J.Get(tag, "object")
                 var depth int32
 
-                while J.Text(identity, "type") == "tag" && depth < 8 {
+                while J.Text(identity, "type") == "tag" && depth < TagDepthLimit {
                     let annotated = GitHub.Api(
                         "repos/obselate/tokate/git/tags/" + RepositoryIdentity.CommitSha(J.Text(identity, "sha"))
                     )
@@ -328,7 +340,7 @@ internal class CoordinatorSetup {
                 asset,
                 "size"
             ) < 1 ||
-                J.Number(asset, "size") > 128 * 1024 * 1024 {
+                J.Number(asset, "size") > ReleaseAssetByteLimit {
                 throw Exception("Release is missing a bounded uploaded archive or checksum asset")
             }
 
@@ -344,9 +356,9 @@ internal class CoordinatorSetup {
                 "--proto-redir",
                 "=https",
                 "--max-time",
-                "60",
+                DownloadTimeLimitSeconds,
                 "--max-filesize",
-                "134217728",
+                DownloadByteLimit,
                 "-H",
                 "Accept: application/octet-stream",
                 "--output",
