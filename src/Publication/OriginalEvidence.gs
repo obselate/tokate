@@ -50,7 +50,7 @@ internal class OriginalEvidence {
         }
 
         private func Inventory(directory string) Dictionary[string, Object?] {
-            let files = Dictionary[string, Object?]()
+            let files = map[string, Object?]{}
 
             for path in Directory.EnumerateFileSystemEntries(directory) {
                 if FileInfo(path).LinkTarget != nil {

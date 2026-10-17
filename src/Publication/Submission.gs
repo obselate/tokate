@@ -155,9 +155,8 @@ internal class Submission {
             CommitPrepared(directory, run, true)
         }
 
-        internal func Posted(repo string, issue int32, actor JsonElement, request JsonElement) bool {
-            return Comment(repo, issue, actor, request).ValueKind != JsonValueKind.Undefined
-        }
+        internal func Posted(repo string, issue int32, actor JsonElement, request JsonElement) bool ->
+        Comment(repo, issue, actor, request).ValueKind != JsonValueKind.Undefined
 
         internal func Comment(repo string, issue int32, actor JsonElement, request JsonElement) JsonElement {
             RepositoryIdentity.PositiveId(actor)
@@ -246,10 +245,10 @@ internal class Submission {
             throw CliFailure("invalid_state", "Request comment inspection exceeded its bounded history; no write made")
         }
 
-        private let WorkflowGuidance Dictionary[string, Dictionary[string, Object?]?] = Dictionary[
+        private let WorkflowGuidance Dictionary[string, Dictionary[string, Object?]?] = map[
             string,
             Dictionary[string, Object?]?
-        ]()
+        ]{}
 
         internal const StartupFailure string = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
 
@@ -425,9 +424,7 @@ internal class Submission {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(actor), value)
-
-            if outcome != nil {
+            if let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(actor), value) {
                 Output.Sink.RequestOutcome(outcome.Value())
                 return
             }
@@ -572,8 +569,8 @@ internal class Submission {
                 AttemptContinuation.Keep(metadata, PublicationRequestMetadata.Parse(AttemptContinuation.Metadata(run)))
             }
 
-            if correction != nil {
-                metadata["correction"] = Amendment.Provenance(correction)
+            if let current = correction {
+                metadata["correction"] = Amendment.Provenance(current)
             }
 
             var summary = PublicSummary.ForHead(run, run.Commit)

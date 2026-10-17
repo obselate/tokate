@@ -106,7 +106,7 @@ internal class Publication {
             if !RepositoryIdentity.SameRepo(receipt.Repo, expected.Repo) {
                 throw CliFailure("invalid_state", failure)
             }
-            let comparable = Dictionary[string, Object?]()
+            let comparable = map[string, Object?]{}
             for field in receipt.ToJson().EnumerateObject() {
                 comparable[field.Name] = field.Name == "repo" ? expected.Repo: field.Value
             }

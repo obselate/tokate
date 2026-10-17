@@ -25,7 +25,7 @@ internal class PrBody {
             receipt ContributionReceipt.Record,
             marker string
         ) string {
-            let values = Dictionary[string, string]()
+            let values = map[string, string]{}
             values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
             values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
             values["donor"] = donor

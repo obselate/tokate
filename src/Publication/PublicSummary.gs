@@ -265,13 +265,11 @@ internal class PublicSummary {
         }
 
         internal func Report(summary JsonElement, observed string) string {
-            var result = ""
-
-            if summary.ValueKind == JsonValueKind.Undefined {
-                result = "- " + Unavailable + "\n"
+            var result = if summary.ValueKind == JsonValueKind.Undefined {
+                "- " + Unavailable + "\n"
             } else {
                 Validate(summary)
-                result = Changes(summary)
+                Changes(summary)
             }
 
             result += Section + "\n- " + observed + "\n"
@@ -304,8 +302,8 @@ internal class PublicSummary {
             }
             var result = ""
 
-            for i in 0 ... 4 {
-                if result != "" || parts[i] > 0 || i == 3 {
+            for i in 0 ... parts.Length {
+                if result != "" || parts[i] > 0 || i == parts.Length - 1 {
                     result += parts[i].ToString() + "dhms".Substring(i, 1) + " "
                 }
             }

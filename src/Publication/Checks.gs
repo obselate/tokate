@@ -171,7 +171,7 @@ internal class Checks {
 
         private func ChecksWithinDeadline(args Args, render Action[Dictionary[string, Object?]]) int32 {
             let directory = args.Get("run") == "" ? "": Path.GetFullPath(args.Need("run"))
-            var run = directory == "" ? Data(): Data.Load(directory)
+            let run = directory == "" ? Data(): Data.Load(directory)
 
             if directory == "" {
                 run.Repo = RepositoryIdentity.Repo(args.Need("repo"))
