@@ -228,7 +228,7 @@ internal class SelectionPolicy {
         }
 
         internal func Revalidate(run Data, policy Policy) {
-            let selected = J.Get(run.Element(), "selection")
+            let selected = run.Selection
 
             if selected.ValueKind != JsonValueKind.Object {
                 throw Exception("Managed runs require saved selection metadata; start a fresh claim")
@@ -237,17 +237,18 @@ internal class SelectionPolicy {
             let harness = J.Text(selected, "harness")
             let provider = J.Text(selected, "provider")
             let failure = "Saved selection differs from run or policy; no model substitution is allowed"
-            for key in[]string{"harness", "provider", "model", "effort"} {
-                if J.Text(selected, key) != run.Text(key) {
-                    throw Exception(failure)
-                }
-            }
-
-            if run.Number("version") != 2 || J.Text(selected, "policy_hash") != policy.Digest {
+            if harness != run.Harness || provider != run.Provider || J.Text(selected, "model") != run.Model || J.Text(
+                selected,
+                "effort"
+            ) != run.Effort {
                 throw Exception(failure)
             }
 
-            policy.Validate(harness, provider, run.Text("model"), run.Text("effort"), run.Number("seconds"))
+            if run.Version != 2 || J.Text(selected, "policy_hash") != policy.Digest {
+                throw Exception(failure)
+            }
+
+            policy.Validate(harness, provider, run.Model, run.Effort, run.Seconds)
             let adapter = policy.Adapter(harness, provider)
             if let validate = adapter?.ValidateSaved {
                 validate(run)
@@ -256,10 +257,10 @@ internal class SelectionPolicy {
                 return
             }
 
-            let capabilities = CodexRuntime.Capabilities(run.Text("harness_path"))
+            let capabilities = CodexRuntime.Capabilities(run.HarnessPath)
             var supported HashSet[string]
 
-            if !capabilities.TryGetValue(run.Text("model"), out supported) || !supported.Contains(run.Text("effort")) {
+            if !capabilities.TryGetValue(run.Model, out supported) || !supported.Contains(run.Effort) {
                 throw Exception("Saved model/effort is no longer compatible with native Codex. No retry or fallback.")
             }
 

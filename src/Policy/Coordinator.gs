@@ -190,7 +190,7 @@ internal class Coordinator {
             let declaration = RequestMetadata.Request(request)
 
             let state = CoordinationState.Load(repo, number)
-            let binding = RequestMetadata.Binding(actor, request)
+            let binding = RequestMetadata.Binding(RepositoryIdentity.PositiveId(actor), request)
             let initial = state.Value()
             let outcomes = J.Items(J.Get(initial, "outcomes"))
 
@@ -273,7 +273,13 @@ internal class Coordinator {
                 RequestMetadata.Correction(correction, publication.Head, J.Get(record, "policy"))
             }
 
-            RepositoryAccess.ValidateFork(repo, publication.Fork, publication.Branch, publication.Head, actor)
+            RepositoryAccess.ValidateFork(
+                repo,
+                publication.Fork,
+                publication.Branch,
+                publication.Head,
+                RepositoryIdentity.PositiveId(actor)
+            )
             ValidateDiff(repo, record, metadata)
 
             let reservation = J.Text(J.Get(value, "reservation"), "reservation")
@@ -284,7 +290,13 @@ internal class Coordinator {
             let receipt = ContributionReceipt.Publication(repo, number, request, reservation, donor)
             RepositoryIdentity.PositiveId(publication.PrValue)
             Revalidate(repo, number, state, actor, donor)
-            RepositoryAccess.ValidateFork(repo, publication.Fork, publication.Branch, publication.Head, actor)
+            RepositoryAccess.ValidateFork(
+                repo,
+                publication.Fork,
+                publication.Branch,
+                publication.Head,
+                RepositoryIdentity.PositiveId(actor)
+            )
             let pull = PublicationPull(repo, metadata, actor, record)
             let body = PrBody.Coordinated(record, metadata, donor, receipt, "<!-- tokate-v2:" + reservation + " -->")
             let title = (publication.Incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title")
@@ -300,7 +312,13 @@ internal class Coordinator {
             }
 
             Revalidate(repo, number, state, actor, donor)
-            RepositoryAccess.ValidateFork(repo, publication.Fork, publication.Branch, publication.Head, actor)
+            RepositoryAccess.ValidateFork(
+                repo,
+                publication.Fork,
+                publication.Branch,
+                publication.Head,
+                RepositoryIdentity.PositiveId(actor)
+            )
 
             let outcome = map[string, Object?]{
                 "pr": J.Number(pull, "number"),
@@ -392,7 +410,7 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(live.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(live.Value(), RepositoryIdentity.PositiveId(actor), request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, live, request, actor, donor, recorded)
                 }
@@ -422,7 +440,11 @@ internal class Coordinator {
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
-                let recorded = RequestMetadata.Recorded(inspected.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(
+                    inspected.Value(),
+                    RepositoryIdentity.PositiveId(actor),
+                    request
+                )
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
@@ -445,7 +467,7 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(acquired.Value(), actor, request)
+                let recorded = RequestMetadata.Recorded(acquired.Value(), RepositoryIdentity.PositiveId(actor), request)
                 if recorded.ValueKind != JsonValueKind.Undefined {
                     return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
@@ -549,7 +571,7 @@ internal class Coordinator {
                     amendmentMetadata.Fork,
                     amendmentMetadata.Branch,
                     amendmentMetadata.Head,
-                    actor
+                    RepositoryIdentity.PositiveId(actor)
                 )
 
                 let fresh = Amendment.Pull(run, amendmentMetadata.Pr, amendmentMetadata.Head, "")
@@ -584,7 +606,7 @@ internal class Coordinator {
                 amendmentMetadata.Fork,
                 amendmentMetadata.Branch,
                 amendmentMetadata.Head,
-                actor
+                RepositoryIdentity.PositiveId(actor)
             )
 
             let latest = Amendment.Pull(run, amendmentMetadata.Pr, amendmentMetadata.Head, "")
@@ -605,26 +627,28 @@ internal class Coordinator {
         ) ValueTuple[Data, Data] {
             let branch = amendmentMetadata.Branch
 
-            let run = Data()
-            run.Fields["version"] = 2
-            run.Fields["repo"] = repo
-            run.Fields["id"] = J.Text(reservation, "reservation")
-            run.Fields["head_repo"] = amendmentMetadata.Fork
-            run.Fields["branch"] = branch
-            run.Fields["base_branch"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).BaseBranch
+            let run = Data{
+                Version: 2,
+                Repo: repo,
+                Id: J.Text(reservation, "reservation"),
+                HeadRepo: amendmentMetadata.Fork,
+                Branch: branch,
+                BaseBranch: OwnerApproval.Record.Parse(J.Get(record, "approval")).BaseBranch
+            }
 
-            let amendment = Data()
-            amendment.Fields["id"] = declaration.Uuid
-            amendment.Fields["previous"] = amendmentMetadata.Previous
-            amendment.Fields["seconds"] = amendmentMetadata.Seconds
-            amendment.Fields["tools"] = amendmentMetadata.Tools
+            let amendment = Data{
+                Id: declaration.Uuid,
+                Previous: amendmentMetadata.Previous,
+                Seconds: amendmentMetadata.Seconds,
+                Tools: amendmentMetadata.Tools
+            }
 
             if amendmentMetadata.Summary.ValueKind != JsonValueKind.Undefined {
-                amendment.Fields["public_summary"] = amendmentMetadata.Summary
+                amendment.PublicSummary = amendmentMetadata.Summary
             }
 
             if amendmentMetadata.Base != "" {
-                amendment.Fields["base"] = amendmentMetadata.Base
+                amendment.Base = amendmentMetadata.Base
             }
 
             return (run, amendment)
@@ -679,7 +703,7 @@ internal class Coordinator {
                 amendmentMetadata.Fork,
                 amendmentMetadata.Branch,
                 amendmentMetadata.Head,
-                actor
+                RepositoryIdentity.PositiveId(actor)
             )
             GitHubPathEvidence.Amendment(repo, record, metadata)
 
@@ -703,7 +727,7 @@ internal class Coordinator {
                 "pr": amendmentMetadata.Pr,
                 "url": J.Text(latest, "html_url"),
                 "head": amendmentMetadata.Head,
-                "reservation": run.Text("id")
+                "reservation": run.Id
             }
 
             let entry = map[string, Object?]{
