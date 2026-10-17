@@ -8,6 +8,8 @@ import System.Text.Json
 
 internal class ContributionPreparation {
     shared {
+        internal const GratisBranchPrefix string = "tokate/gratis-"
+
         private func Prepare(
             args Args,
             repo string,
@@ -239,7 +241,7 @@ internal class ContributionPreparation {
                 let id = Guid.NewGuid().ToString("N")
                 run.Id = id
                 run.Attempt = id
-                run.Branch = "tokate/gratis-" + id
+                run.Branch = GratisBranchPrefix + id
                 let directory = Allocate(RunStorage.Store(args), run, id)
                 WorkspacePreparation.Select(run, args.Get("fork"))
                 Create(directory)

@@ -8,6 +8,14 @@ import System.Text.Json
 
 internal class WorkspacePreparation {
     shared {
+        private const ForkDiscoveryTimeoutSeconds int32 = 60
+
+        private const ForkDiscoveryPageCountLimit int32 = 3
+
+        private const RemoteReadAttemptLimit int32 = 5
+
+        private const RemoteReadDelaySeconds float64 = 1.0
+
         private func Identity(run Data) string -> J.Hash(
             J.Write(
                 map[string, Object?]{
@@ -28,10 +36,7 @@ internal class WorkspacePreparation {
             )
         )
 
-        private func Identified(run Data) bool {
-            let identity = run.PreparationIdentity
-            return identity == BoundIdentity(run)
-        }
+        private func Identified(run Data) bool -> run.PreparationIdentity == BoundIdentity(run)
 
         internal func CheckIdentity(run Data) {
             if run.PreparationVersion != 1 || !Identified(run) {
@@ -278,12 +283,12 @@ internal class WorkspacePreparation {
             }
 
             if head == "" {
-                ApiTransport.BeginDeadline(60)
+                ApiTransport.BeginDeadline(ForkDiscoveryTimeoutSeconds)
                 try {
                     let candidates = List[string]()
                     var complete bool
 
-                    for page in 1 ... 4 {
+                    for page in 1 ... ForkDiscoveryPageCountLimit + 1 {
                         let items = GitHub.Api(
                             "user/repos?visibility=public&affiliation=owner&" +
                                 GitHub.PageSizeParameter +
@@ -399,10 +404,10 @@ internal class WorkspacePreparation {
                 }
             }
 
-            for read in 0 ... 5 {
+            for read in 0 ... RemoteReadAttemptLimit {
                 if read > 0 {
                     select {
-                        case <- after(TimeSpan.FromSeconds(1.0)) { }
+                        case <- after(TimeSpan.FromSeconds(RemoteReadDelaySeconds)) { }
                     }
                     info = GitHub.Api("repos/" + head, missing: true)
                 }
@@ -521,7 +526,7 @@ internal class WorkspacePreparation {
                     run.Save(directory)
                 }
 
-                for attempt in 0 ... 5 {
+                for attempt in 0 ... RemoteReadAttemptLimit {
                     if Reference(run).ValueKind != JsonValueKind.Undefined {
                         break
                     }

@@ -9,6 +9,14 @@ import System.Text.RegularExpressions
 
 internal class RequestMetadata {
     shared {
+        private const CommentByteLimit int32 = 9216
+
+        private const ToolCountLimit int32 = 16
+
+        private const CodingTimeLimitSeconds int32 = RuntimeBudget.SecondsPerDay * 365
+
+        private const ContributionBranchPattern string = "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$"
+
         internal func Comment(request JsonElement) string {
             let parsed = Request(request)
 
@@ -28,14 +36,14 @@ internal class RequestMetadata {
         }
 
         internal func CommentData(body string) JsonElement {
-            if Encoding.UTF8.GetByteCount(body) > 9216 || !body.StartsWith(
+            if Encoding.UTF8.GetByteCount(body) > CommentByteLimit || !body.StartsWith(
                 RequestData.CommentPrefix,
                 StringComparison.Ordinal
             ) {
                 throw CliFailure("invalid_state", "Invalid or oversized coordination comment")
             }
 
-            let text = body.Substring(8)
+            let text = body.Substring(RequestData.CommentPrefix.Length)
             if text.TrimStart().StartsWith("{", StringComparison.Ordinal) {
                 return RequestData.Parse(text, RequestData.RequestByteLimit)
             }
@@ -61,7 +69,7 @@ internal class RequestMetadata {
         internal func Tools(value JsonElement) {
             let items = J.Items(value)
 
-            if value.ValueKind != JsonValueKind.Array || items.Count < 1 || items.Count > 16 {
+            if value.ValueKind != JsonValueKind.Array || items.Count < 1 || items.Count > ToolCountLimit {
                 throw CliFailure("invalid_state", "Declare 1 to 16 tools, including every tool used")
             }
 
@@ -91,7 +99,7 @@ internal class RequestMetadata {
 
                 let seconds = parsed.CodingSeconds ?? 0
 
-                if parsed.InvalidCodingTime || seconds < 0 || seconds > RuntimeBudget.SecondsPerDay * 365 {
+                if parsed.InvalidCodingTime || seconds < 0 || seconds > CodingTimeLimitSeconds {
                     throw CliFailure("invalid_state", "Invalid donor-reported coding time")
                 }
 
@@ -234,7 +242,7 @@ internal class RequestMetadata {
             RepositoryIdentity.Repo(parsed.Fork)
             RepositoryIdentity.CommitSha(parsed.Head)
 
-            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, ContributionBranchPattern) ||
                 (parsed.SourceKind != "external" && parsed.SourceKind != "tokate") ||
                 parsed.Verification != (
                 Incomplete(parsed.HasIncomplete, parsed.Incomplete) ? "not-passed": RequestData.ReportedVerification
@@ -292,7 +300,7 @@ internal class RequestMetadata {
                 RepositoryIdentity.CommitSha(parsed.Base)
             }
 
-            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, ContributionBranchPattern) ||
                 parsed.Pr < 1 ||
                 parsed.Seconds < 1 ||
                 parsed.Verification != RequestData.ReportedVerification {
@@ -497,10 +505,12 @@ internal class CorrectionRequestMetadata(value JsonElement) {
     internal let Verification string = JsonFields.String(value, "Correction request metadata", "verification")
 
     shared {
+        private const ByteLimit int32 = 6144
+
         internal func Parse(value JsonElement) CorrectionRequestMetadata {
             RequestData.Keys(value, "uuid,head,tree,patch_sha256,seconds,tools,verification")
 
-            if Encoding.UTF8.GetByteCount(RequestData.Canonical(value)) > 6144 {
+            if Encoding.UTF8.GetByteCount(RequestData.Canonical(value)) > ByteLimit {
                 throw CliFailure("invalid_state", "Correction provenance exceeds its byte limit")
             }
 
