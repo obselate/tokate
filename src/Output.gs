@@ -71,6 +71,10 @@ internal open class OutputSink {
 
 internal class Output {
     shared {
+        internal const PendingExitCode int32 = 8
+
+        internal const RowCountLimit int32 = 64
+
         private const ProseCharacterLimit int32 = 2048
 
         internal var Sink OutputSink

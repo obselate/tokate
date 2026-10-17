@@ -119,7 +119,8 @@ internal class Donate {
                 let issues = GitHub.Api(
                     "repos/" +
                         repo +
-                        "/issues?state=open&labels=tokate%3Aapproved" +
+                        "/issues?state=open&labels=" +
+                        GitHub.EncodedApprovedLabel +
                         "&sort=created&direction=asc&" +
                         GitHub.PageSizeParameter +
                         "&page=" +
@@ -172,7 +173,9 @@ internal class Donate {
                 if !unclaimed && gratis.ValueKind == JsonValueKind.Undefined {
                     ApiTransport.BeginDeadline(ApiTransport.DefaultDeadlineSeconds)
                     try {
-                        while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
+                        while ReservationRequest.Run(
+                            Args([]string{"release", "--run", directory})
+                        ) == Output.PendingExitCode {
                             ApiTransport.PollWait("repos/" + options.Need("repo") + "/actions/")
                         }
                     } catch (error Exception) when !(error is CommandInterrupted) {

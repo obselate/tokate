@@ -361,12 +361,12 @@ internal class Terminal {
 
                 let outcome = switch exitCode {
                     case 0: " completed"
-                    case 8: " pending"
+                    case Output.PendingExitCode: " pending"
                     default: " failed (" + code + ")"
                 }
                 let color = switch exitCode {
                     case 0: "green"
-                    case 8: "yellow"
+                    case Output.PendingExitCode: "yellow"
                     default: "red"
                 }
 
@@ -377,7 +377,7 @@ internal class Terminal {
                 Message("Saved artifacts: " + summary, "default", true)
 
                 let actions = RunReference.Short(PublicOutput.Actions, false)
-                let index = exitCode == 0 || exitCode == 8 ? Math.Max(
+                let index = exitCode == 0 || exitCode == Output.PendingExitCode ? Math.Max(
                     actions.FindIndex(next -> next.ElementAtOrDefault(1) != "status"),
                     0
                 ): 0

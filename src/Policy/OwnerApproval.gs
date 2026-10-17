@@ -130,6 +130,8 @@ internal class OwnerApproval {
     }
 
     shared {
+        internal const FormatVersion int64 = 2
+
         internal func Approve(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let number = args.Number("issue")
@@ -146,7 +148,7 @@ internal class OwnerApproval {
             )
                 .GetArrayLength() == 0
 
-            let label = GitHub.Api("repos/" + repo + "/labels/tokate%3Aapproved", missing: true)
+            let label = GitHub.Api("repos/" + repo + "/labels/" + GitHub.EncodedApprovedLabel, missing: true)
 
             if label.ValueKind == JsonValueKind.Undefined {
                 GitHub.Api(
@@ -222,7 +224,7 @@ internal class OwnerApproval {
             )
 
             return Record{
-                Version: 2,
+                Version: FormatVersion,
                 Repo: repo,
                 RepoId: RepositoryIdentity.PositiveId(J.Get(info, "id")),
                 Issue: J.Number(issue, "number"),
@@ -256,7 +258,9 @@ internal class OwnerApproval {
             }
 
             GitHub.Api(
-                "repos/" + repo + "/issues/" + args.Number("issue").ToString() + "/labels/tokate%3Aapproved",
+                "repos/" + repo + "/issues/" + args.Number("issue").ToString() +
+                    "/labels/" +
+                    GitHub.EncodedApprovedLabel,
                 method: "DELETE",
                 missing: true
             )

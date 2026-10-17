@@ -163,7 +163,7 @@ internal class Checks {
             } catch (error ApiDeadlineException) {
                 Output.Sink.Message(error.Message, "yellow")
 
-                return 8
+                return Output.PendingExitCode
             } finally {
                 ApiTransport.EndDeadline()
             }
@@ -242,7 +242,7 @@ internal class Checks {
                     )
                     if settling {
                         Output.Sink.Message(error.Message, "yellow")
-                        return 8
+                        return Output.PendingExitCode
                     }
 
                     if error is CliFailure || error is ApiDeadlineException {
@@ -370,7 +370,7 @@ internal class Checks {
             }
 
             if args.Get("watch") != "true" || observation.Approval {
-                return 8
+                return Output.PendingExitCode
             }
 
             return -1
@@ -383,7 +383,7 @@ internal class Checks {
         ) {
             if !observation.Failed && !observation.Pending {
                 observation.Stage = "dependencies"
-                let dependencies = Dictionary[string, Object?]()
+                let dependencies = map[string, Object?]{}
                 facts["dependency_evidence"] = dependencies
 
                 Overlaps.DependencyEvidence(observation.Run.Repo, observation.Run.Issue, dependencies)
@@ -526,7 +526,7 @@ internal class Checks {
 
                     observation.Approval = true
 
-                    if awaiting.Count < 64 {
+                    if awaiting.Count < Output.RowCountLimit {
                         awaiting.Add(J.Select(workflow, "id,name,head_sha,html_url,status,conclusion"))
                     } else {
                         Output.Sink.Truncated = true
@@ -583,7 +583,7 @@ internal class Checks {
                 observation.Pending = observation.Pending || !found || !passed
                 missing = missing || !found
 
-                if required.Count < 64 {
+                if required.Count < Output.RowCountLimit {
                     required.Add(
                         map[string, Object?]{
                             "name": name,

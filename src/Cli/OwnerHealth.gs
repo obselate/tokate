@@ -188,7 +188,9 @@ internal class OwnerHealth {
                     let issues = GitHub.Api(
                         "repos/" +
                             repo +
-                            "/issues?state=open&labels=tokate%3Aapproved&" +
+                            "/issues?state=open&labels=" +
+                            GitHub.EncodedApprovedLabel +
+                            "&" +
                             GitHub.PageSizeParameter +
                             "&page=" +
                             page.ToString()

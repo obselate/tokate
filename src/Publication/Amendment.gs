@@ -69,7 +69,7 @@ internal class Amendment {
                 throw CliFailure("authentication_required", "Use the same donor account and numeric identity")
             }
 
-            if run.Version != 2 {
+            if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Amend requires a current contribution")
             }
 
@@ -1005,7 +1005,7 @@ internal class Amendment {
 
         internal func Completed(directory string, run Data) Dictionary[string, Object?] {
             let state = run.State
-            if run.Version != 2 || run.Source != "tokate" || run.Pr != 0 || state == "published" {
+            if run.Version != Data.FormatVersion || run.Source != "tokate" || run.Pr != 0 || state == "published" {
                 throw CliFailure(
                     "invalid_state",
                     "Correction requires unpublished managed work; external work uses external --run"

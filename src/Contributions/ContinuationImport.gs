@@ -262,7 +262,7 @@ internal class ContinuationImport {
             }
 
             using let output = MemoryStream()
-            let buffer = [8192]byte
+            let buffer = [RequestData.CopyBufferByteSize]byte
             var count int32
 
             while (
@@ -389,7 +389,7 @@ internal class ContinuationImport {
 
             using let root = Root(directory)
             let control = root.DangerousGetHandle().ToInt32()
-            let mode uint32 = J.Text(entry, "mode") == "100755" ? ExecutableFileMode: RegularFileMode
+            let mode uint32 = J.Text(entry, "mode") == GitHub.ExecutableFileMode ? ExecutableFileMode: RegularFileMode
 
             WriteFile(control, "continuation-write.tmp", Content(J.Text(entry, "content")), mode)
 
@@ -419,7 +419,7 @@ internal class ContinuationImport {
             exclude bool,
             depth int32 = 0
         ) {
-            if depth > DirectoryDepthLimit || visited.Count > 100000 {
+            if depth > DirectoryDepthLimit || visited.Count > ProtectedPaths.InventoryPathCountLimit {
                 throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count or depth")
             }
 
@@ -433,7 +433,7 @@ internal class ContinuationImport {
 
                 PathName(path)
 
-                if !visited.Add(path) || visited.Count > 100000 {
+                if !visited.Add(path) || visited.Count > ProtectedPaths.InventoryPathCountLimit {
                     throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count")
                 }
 
@@ -467,10 +467,12 @@ internal class ContinuationImport {
                 PathName(entry.Key)
                 if Excluded(entry.Key) ||
                     (
-                    !entry.Value.StartsWith("040000 tree ") && !entry.Value.StartsWith("100644 blob ") &&
+                    !entry.Value.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ") && !entry.Value.StartsWith(
+                        GitHub.RegularFileMode + " " + GitHub.BlobType + " "
+                    ) &&
                         !entry
                         .Value
-                        .StartsWith("100755 blob ")
+                        .StartsWith(GitHub.ExecutableFileMode + " " + GitHub.BlobType + " ")
                 ) {
                     throw CliFailure(
                         "invalid_state",
@@ -503,7 +505,7 @@ internal class ContinuationImport {
             Files(checkout, "", files, visited, exclude)
 
             for entry in baseline {
-                let wasDirectory = entry.Value.StartsWith("040000 tree ")
+                let wasDirectory = entry.Value.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ")
                 let isDirectory = visited.Contains(entry.Key) && !files.Contains(entry.Key)
                 if visited.Contains(entry.Key) && wasDirectory != isDirectory {
                     throw CliFailure(
@@ -591,7 +593,7 @@ internal class ContinuationImport {
                         File.GetUnixFileMode(Path.Combine(checkout, path)) & (
                             UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute
                         )
-                    ) != 0 ? "100755": "100644"
+                    ) != 0 ? GitHub.ExecutableFileMode: GitHub.RegularFileMode
                     content = Convert.ToBase64String(bytes)
                     blob = Blob(bytes)
                 }
@@ -601,7 +603,7 @@ internal class ContinuationImport {
                 let hasStaged = index.TryGetValue(path, out staged)
                 let hasOriginal = baseline.TryGetValue(path, out original)
 
-                if hasOriginal && original.StartsWith("040000 tree ") {
+                if hasOriginal && original.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ") {
                     throw CliFailure(
                         "invalid_state",
                         "Continuation does not support file/directory replacement: " + path
@@ -758,7 +760,7 @@ internal class ContinuationImport {
                 total += bytes.Length
 
                 if total > CaptureByteLimit ||
-                    (mode != "deleted" && mode != "100644" && mode != "100755") ||
+                    (mode != "deleted" && mode != GitHub.RegularFileMode && mode != GitHub.ExecutableFileMode) ||
                     (
                     mode == "deleted" ? bytes.Length != 0 || J.Text(entry, "blob") != "": Blob(bytes) != J.Text(
                         entry,

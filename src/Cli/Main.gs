@@ -508,7 +508,7 @@ private func SubmitCommand(options Args) int32? {
                 PublicOutput.ResultData = PublicOutput.RunSummary(PublicOutput.RunDirectory)
             }
 
-            return 8
+            return Output.PendingExitCode
         }
     } else {
         let request = run.Pr == 0 ? RequestData.FileData(
@@ -524,7 +524,7 @@ private func SubmitCommand(options Args) int32? {
                 if let guidance = Submission.PendingWorkflow(directory, run) {
                     if !Donate.Active {
                         Terminal.Message(guidance["action"]?.ToString() ?? "")
-                        return 8
+                        return Output.PendingExitCode
                     }
                 }
 
@@ -538,7 +538,7 @@ private func SubmitCommand(options Args) int32? {
                 }
             }
         } catch (error ApiDeadlineException) when !Donate.Active {
-            return 8
+            return Output.PendingExitCode
         } finally {
             ApiTransport.EndDeadline()
         }
@@ -567,7 +567,7 @@ private func WorkCommand(options Args) int32? {
     let ready = Data.Load(directory)
 
     if ready.State == "claim_pending" {
-        return 8
+        return Output.PendingExitCode
     }
 
     if options.Command == "work" && ready.Source == "tokate" {

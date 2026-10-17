@@ -234,7 +234,7 @@ internal class RuntimeBudget {
 
             if run.Unlimited &&
                 (
-                run.Version != 2 ||
+                run.Version != Data.FormatVersion ||
                     run.Source != "tokate" ||
                     run.VerificationReserve < 1 ||
                     run.VerificationReserve != run.Seconds
@@ -534,7 +534,7 @@ internal class Commands {
                 info.Environment["CURL_CA_BUNDLE"] = certificates
             }
 
-            info.Environment["GH_HOST"] = "github.com"
+            info.Environment["GH_HOST"] = GitHub.Hostname
             info.Environment["GH_PROMPT_DISABLED"] = "1"
             info.Environment["GIT_TERMINAL_PROMPT"] = "0"
             info.Environment["GIT_CONFIG_NOSYSTEM"] = "1"

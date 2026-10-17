@@ -8,8 +8,6 @@ import System.Text.Json
 
 internal class PublicOutput {
     shared {
-        private const RowCountLimit int32 = 64
-
         private const JsonOutputByteLimit int32 = 65536
 
         private const CommandCharacterLimit int32 = 2048
@@ -60,11 +58,11 @@ internal class PublicOutput {
 
             let count = value.GetArrayLength()
 
-            if count > RowCountLimit {
+            if count > Output.RowCountLimit {
                 Truncated = true
             }
 
-            for i in 0 ... Math.Min(RowCountLimit, count) {
+            for i in 0 ... Math.Min(Output.RowCountLimit, count) {
                 let item = value[i]
                 let row = arguments ? map[string, Object?]{}: J.Select(item, keys)
 
@@ -139,19 +137,19 @@ internal class PublicOutput {
                 let items = J.Items(source)
                 let rows = List[Object]()
 
-                for i in 0 ... Math.Min(RowCountLimit, items.Count) {
+                for i in 0 ... Math.Min(Output.RowCountLimit, items.Count) {
                     rows.Add(items[i])
                 }
 
                 result[key] = rows
                 result[key + "_count"] = items.Count
-                Truncated = Truncated || items.Count > RowCountLimit
+                Truncated = Truncated || items.Count > Output.RowCountLimit
             }
 
             let entries = policy.AllowedTools
 
             let retained = List[Object]()
-            for i in 0 ... Math.Min(RowCountLimit, entries.Count) {
+            for i in 0 ... Math.Min(Output.RowCountLimit, entries.Count) {
                 let tool = map[string, Object?]{"harness": entries[i].Harness, "provider": entries[i].Provider}
                 if let models = entries[i].Models {
                     for field in PolicyModels(models) {
@@ -164,7 +162,7 @@ internal class PublicOutput {
 
             result["allowed_tools"] = retained
             result["allowed_tools_count"] = entries.Count
-            Truncated = Truncated || entries.Count > RowCountLimit
+            Truncated = Truncated || entries.Count > Output.RowCountLimit
 
             return result
         }
@@ -177,21 +175,21 @@ internal class PublicOutput {
             for model in source {
                 count++
 
-                if count <= RowCountLimit {
+                if count <= Output.RowCountLimit {
                     let efforts = model.Value
                     let retained = List[Object]()
 
-                    for i in 0 ... Math.Min(RowCountLimit, efforts.Count) {
+                    for i in 0 ... Math.Min(Output.RowCountLimit, efforts.Count) {
                         retained.Add(efforts[i])
                     }
 
                     models[model.Key] = retained
                     effortCounts[model.Key] = efforts.Count
-                    Truncated = Truncated || efforts.Count > RowCountLimit
+                    Truncated = Truncated || efforts.Count > Output.RowCountLimit
                 }
             }
 
-            Truncated = Truncated || count > RowCountLimit
+            Truncated = Truncated || count > Output.RowCountLimit
             let result = map[string, Object?]{"models": models}
             result["model_count"] = count
             result["model_effort_counts"] = effortCounts
@@ -202,7 +200,7 @@ internal class PublicOutput {
         internal func RunSummary(directory string) Dictionary[string, Object?] {
             let run = Data.Load(directory)
 
-            if run.Version != 2 {
+            if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Unsupported saved run protocol")
             }
 
@@ -541,7 +539,9 @@ internal class PublicOutput {
 
                     Actions.Add([]string{"tokate", "status", "--run", RunDirectory, "--json"})
 
-                    if run.State == "preparing" && run.PreparationVersion == 1 && code != "stale_approval" {
+                    if run.State == "preparing" &&
+                        run.PreparationVersion == Data.PreparationFormatVersion &&
+                        code != "stale_approval" {
                         Actions.Add([]string{"tokate", "work", "--run", RunDirectory, "--json"})
                     }
 
@@ -604,7 +604,7 @@ internal class PublicOutput {
         internal func Emit(exitCode int32, code string = "", message string = "") int32 {
             var resultCode = exitCode
             let failure Object? = exitCode == 0 ||
-                exitCode == 8 ? nil: map[string, Object?]{
+                exitCode == Output.PendingExitCode ? nil: map[string, Object?]{
                 "code": code == "" ? "command_failed": code,
                 "message": Output.Prose(message == "" ? CliFailure.Message(code): message)
             }
@@ -612,7 +612,7 @@ internal class PublicOutput {
             let envelope = map[string, Object?]{
                 "schema_version": 1,
                 "command": Command,
-                "status": exitCode == 8 ? "pending": (exitCode == 0 ? "ok": "error"),
+                "status": exitCode == Output.PendingExitCode ? "pending": (exitCode == 0 ? "ok": "error"),
                 "exit_code": exitCode,
                 "data": ResultData ?? map[string, Object?]{},
                 "error": failure,

@@ -836,6 +836,10 @@ internal class Data {
     internal func Write(path string) -> WriteText(path, ToJson() + "\n")
 
     shared {
+        internal const FormatVersion int32 = 2
+
+        internal const PreparationFormatVersion int32 = 1
+
         internal func WriteText(path string, text string) {
             try {
                 File.WriteAllText(path + ".tmp", text)
@@ -863,7 +867,8 @@ internal class Data {
         internal func ValidateRequired(value JsonElement, format string = "Saved run") {
             let version = J.Get(value, "version")
             var number int32
-            if version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out number) || number != 2 {
+            if version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out number) ||
+                number != FormatVersion {
                 throw InvalidRequired(format, "version")
             }
 

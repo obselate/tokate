@@ -66,7 +66,7 @@ internal class GratisGuidance {
             while tree.ContainsKey(resolved) && seen.Add(resolved) {
                 let blob = GitHub.Api("repos/" + repo + "/git/blobs/" + J.Text(tree[resolved], "sha"))
                 let text = Encoding.UTF8.GetString(Convert.FromBase64String(J.Text(blob, "content")))
-                if J.Text(tree[resolved], "mode") != "120000" {
+                if J.Text(tree[resolved], "mode") != GitHub.SymbolicLinkMode {
                     return text
                 }
                 resolved = Relative(resolved, text.Trim())
@@ -81,7 +81,7 @@ internal class GratisGuidance {
             }
             let tree = Dictionary[string, JsonElement](StringComparer.Ordinal)
             for entry in J.Items(J.Get(response, "tree")) {
-                if J.Text(entry, "type") == "blob" {
+                if J.Text(entry, "type") == GitHub.BlobType {
                     tree[J.Text(entry, "path")] = entry
                 }
             }
@@ -99,10 +99,8 @@ internal class GratisGuidance {
                 for token in text.Split(" \t\r\n()<>\"`".ToCharArray(), StringSplitOptions.RemoveEmptyEntries) {
                     let linked = Relative(path, Uri.UnescapeDataString(token.Split('#')[0]))
                     let extension = Path.GetExtension(linked).ToLowerInvariant()
-                    if tree.ContainsKey(linked) && J.Text(tree[linked], "mode") != "120000" && !ordered.Contains(
-                        linked
-                    ) &&
-                        !linkedDocuments.Contains(linked) &&
+                    if tree.ContainsKey(linked) && J.Text(tree[linked], "mode") != GitHub.SymbolicLinkMode &&
+                        !ordered.Contains(linked) && !linkedDocuments.Contains(linked) &&
                         (extension == ".md" || extension == ".rst" || extension == ".txt") {
                         linkedDocuments.Add(linked)
                     }

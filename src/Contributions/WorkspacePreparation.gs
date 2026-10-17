@@ -39,7 +39,7 @@ internal class WorkspacePreparation {
         private func Identified(run Data) bool -> run.PreparationIdentity == BoundIdentity(run)
 
         internal func CheckIdentity(run Data) {
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure(
                     "invalid_state",
                     "Saved preparation identity changed; import provenance cannot be removed or rebound"
@@ -83,7 +83,7 @@ internal class WorkspacePreparation {
             }
 
             run.RequestedFork = fork
-            run.PreparationVersion = 1
+            run.PreparationVersion = Data.PreparationFormatVersion
             run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
@@ -119,7 +119,7 @@ internal class WorkspacePreparation {
 
         internal func Promote(directory string, run Data, approvedBase string) {
             let pending = Data.Load(directory)
-            if pending.Version != 2 ||
+            if pending.Version != Data.FormatVersion ||
                 pending.State != "claim_pending" ||
                 pending.HasId ||
                 pending.HasAttempt ||
@@ -141,7 +141,7 @@ internal class WorkspacePreparation {
                 }
             }
 
-            run.PreparationVersion = 1
+            run.PreparationVersion = Data.PreparationFormatVersion
             run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
@@ -163,7 +163,7 @@ internal class WorkspacePreparation {
             let savedState = run.State
             let failure = "work --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
 
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure("invalid_state", failure)
             }
 
@@ -585,7 +585,7 @@ internal class WorkspacePreparation {
         }
 
         internal func Source(checkout string, run Data) {
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure("invalid_state", "Unsupported preparation identity; source is preserved")
             }
 

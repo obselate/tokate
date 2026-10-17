@@ -64,7 +64,7 @@ internal class ReservationRequest {
             if pending {
                 Output.Sink.Actions.Add([]string{"tokate", declaration.Action, "--run", directory, "--json"})
                 Output.Sink.Message("Reservation request pending. Saved work: " + directory)
-                return 8
+                return Output.PendingExitCode
             }
 
             run.ClearReservationRequest()
@@ -81,7 +81,7 @@ internal class ReservationRequest {
             Output.Sink.RunDirectory = directory
             let action = args.Command
 
-            if !LeaseLifecycle.Transition(action) || run.Version != 2 || run.Id == "" {
+            if !LeaseLifecycle.Transition(action) || run.Version != Data.FormatVersion || run.Id == "" {
                 throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")
             }
 

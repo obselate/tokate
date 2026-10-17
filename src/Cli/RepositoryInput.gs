@@ -14,7 +14,7 @@ internal class RepositoryInput {
 
             if value.Contains("://") {
                 let uri = Uri(value)
-                if !String.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) {
+                if !String.Equals(uri.Host, GitHub.Hostname, StringComparison.OrdinalIgnoreCase) {
                     throw Exception("Use a github.com repository URL")
                 }
 

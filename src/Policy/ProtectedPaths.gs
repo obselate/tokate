@@ -11,7 +11,9 @@ internal class ProtectedPaths {
 
         private const PathCharacterLimit int32 = 512
 
-        private const DiffPathEntryLimit int32 = 100001
+        internal const InventoryPathCountLimit int32 = 100000
+
+        private const DiffPathEntryLimit int32 = InventoryPathCountLimit + 1
 
         private const ProtectedRelation int32 = 2
 
@@ -116,9 +118,16 @@ internal class ProtectedPaths {
             RepositoryIdentity.CommitSha(sha)
 
             if !(
-                (mode == "040000" && type == "tree") ||
-                    ((mode == "100644" || mode == "100755" || mode == "120000") && type == "blob") ||
-                    (mode == "160000" && type == "commit")
+                (mode == GitHub.TreeMode && type == GitHub.TreeType) ||
+                    (
+                    (
+                        mode == GitHub.RegularFileMode ||
+                            mode == GitHub.ExecutableFileMode ||
+                            mode == GitHub.SymbolicLinkMode
+                    ) &&
+                        type == GitHub.BlobType
+                ) ||
+                    (mode == GitHub.SubmoduleMode && type == GitHub.CommitType)
             ) ||
                 !entries.TryAdd(path, mode + " " + type + " " + sha) {
                 throw Exception("Incomplete, duplicate or invalid protected tree evidence")
@@ -126,7 +135,7 @@ internal class ProtectedPaths {
         }
 
         internal func CompleteTree(entries Dictionary[string, string]) {
-            if entries.Count > 100000 {
+            if entries.Count > InventoryPathCountLimit {
                 throw Exception("Protected tree exceeds bounded evidence")
             }
 
@@ -139,7 +148,7 @@ internal class ProtectedPaths {
                     var value string
 
                     if !entries.TryGetValue(path, out value) || !value.StartsWith(
-                        "040000 tree ",
+                        GitHub.TreeMode + " " + GitHub.TreeType + " ",
                         StringComparison.Ordinal
                     ) {
                         throw Exception("Missing protected tree ancestor evidence")

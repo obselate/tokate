@@ -95,7 +95,12 @@ internal class AccessState {
             "repos/" + repo + "/git/trees",
             map[string, Object?]{
                 "tree": []Object{
-                    map[string, Object?]{"path": FilePath, "mode": "100644", "type": "blob", "content": text}
+                    map[string, Object?]{
+                        "path": FilePath,
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": text
+                    }
                 }
             }
         )
@@ -110,11 +115,11 @@ internal class AccessState {
             if Sha == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + "tokate/access", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + AccessState.Reference, "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + "tokate/access",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + AccessState.Reference,
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
@@ -150,6 +155,8 @@ internal class AccessState {
     }
 
     shared {
+        internal const Reference string = "tokate/access"
+
         private const FormatName string = "Access record"
 
         private const Version int32 = 1
@@ -180,7 +187,7 @@ internal class AccessState {
             let eligibility = approved.Eligibility
             let donor = approved.Donor
 
-            if approved.Version != 2 ||
+            if approved.Version != OwnerApproval.FormatVersion ||
                 approved.ApprovalScope != "task" ||
                 (eligibility != "open" && eligibility != "trusted") ||
                 donor.ValueKind != JsonValueKind.Undefined {
@@ -264,7 +271,7 @@ internal class AccessState {
         }
 
         internal func Load(repo string, repoId int64) AccessState {
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate/access", missing: true)
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + AccessState.Reference, missing: true)
 
             if reference.ValueKind == JsonValueKind.Undefined {
                 return AccessState{RepoId: repoId}

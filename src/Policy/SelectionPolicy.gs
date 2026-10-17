@@ -245,7 +245,7 @@ internal class SelectionPolicy {
                 throw Exception(failure)
             }
 
-            if run.Version != 2 || J.Text(selected, "policy_hash") != policy.Digest {
+            if run.Version != Data.FormatVersion || J.Text(selected, "policy_hash") != policy.Digest {
                 throw Exception(failure)
             }
 

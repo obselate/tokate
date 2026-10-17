@@ -174,7 +174,7 @@ internal class ContributionStatus {
                     let approved = OwnerApproval.Record.Parse(approval)
                     if !RepositoryIdentity.SameRepo(approved.Repo, Repo) ||
                         approved.Issue != issue ||
-                        approved.Version != 2 {
+                        approved.Version != OwnerApproval.FormatVersion {
                         throw CliFailure("invalid_state", "Malformed approval identity")
                     }
 
@@ -429,7 +429,10 @@ internal class ContributionStatus {
 
         try {
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
-            let complete = receipt.Version == 2 && RepositoryIdentity.SameRepo(receipt.Repo, Repo) &&
+            let complete = receipt.Version == ContributionReceipt.FormatVersion && RepositoryIdentity.SameRepo(
+                receipt.Repo,
+                Repo
+            ) &&
                 receipt.Issue == issue &&
                 receipt.Head == sha &&
                 state.Contribution != nil &&
@@ -1093,7 +1096,7 @@ internal class ContributionStatus {
                         "repos/" +
                             Repo +
                             "/issues?state=open&" +
-                            (GratisRepo ? "": "labels=tokate%3Aapproved&") +
+                            (GratisRepo ? "": "labels=" + GitHub.EncodedApprovedLabel + "&") +
                             "sort=updated&direction=desc&" +
                             DiscoveryPageParameter +
                             "&page=1"
@@ -1129,7 +1132,10 @@ internal class ContributionStatus {
                 Result,
                 "access",
                 async () -> {
-                    let reference = GitHub.Api("repos/" + Repo + "/git/ref/heads/tokate/access", missing: true)
+                    let reference = GitHub.Api(
+                        "repos/" + Repo + "/git/ref/heads/" + AccessState.Reference,
+                        missing: true
+                    )
                     if J.Text(J.Get(reference, "object"), "sha") != Access?.Sha {
                         Result["access_status"] = "stale"
                         Result["requests_status"] = "stale"

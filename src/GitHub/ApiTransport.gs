@@ -33,6 +33,10 @@ internal class ApiResponse {
 
         internal const SuccessStatusExclusiveLimit int32 = 300
 
+        internal const ServerErrorStatusMinimum int32 = 500
+
+        internal const ServerErrorStatusMaximum int32 = 599
+
         private const FailureReasonCharacterLimit int32 = 1024
 
         private const MaximumUnixTimestampSeconds int64 = 253402300799
@@ -53,7 +57,7 @@ internal class ApiResponse {
 
         if status.Length < 2 || !status[0].StartsWith("HTTP/") || !Int32.TryParse(status[1], out Status) ||
             Status < 100 ||
-            Status > 599 {
+            Status > ServerErrorStatusMaximum {
             Status = 0
             return
         }
@@ -468,7 +472,7 @@ internal class ApiTransport {
             for attempt in 0 ... (read ? ReadAttemptLimit: 1) {
                 let remaining = RequestAllowance(timer, read, expires)
 
-                let args = List[string]{"api", "--include", "--hostname", "github.com", "--method", verb, path}
+                let args = List[string]{"api", "--include", "--hostname", GitHub.Hostname, "--method", verb, path}
                 var cached ApiCache
                 let conditional = read && Cache.TryGetValue(key, out cached)
                 if conditional {
@@ -548,7 +552,10 @@ internal class ApiTransport {
                     return value
                 }
 
-                let retryable = response.Status == 0 || success || response.Status >= 500 || limited
+                let retryable = response.Status == 0 ||
+                    success ||
+                    response.Status >= ApiResponse.ServerErrorStatusMinimum ||
+                    limited
                 let delay = Math.Max(response.Delay(limited), retryable ? Convert.ToDouble(attempt + 1): 0.0)
 
                 if read && retryable && delay >= Deadline - Clock.Elapsed.TotalSeconds {

@@ -386,9 +386,9 @@ internal class MachineSetup {
                 []string{
                     "-qfsSL",
                     "--proto",
-                    "=https",
+                    GitHub.CurlHttpsOnly,
                     "--proto-redir",
-                    "=https",
+                    GitHub.CurlHttpsOnly,
                     "--connect-timeout",
                     DownloadConnectTimeoutSeconds,
                     "--max-time",

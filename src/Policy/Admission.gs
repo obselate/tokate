@@ -517,7 +517,9 @@ internal class Admission {
 
         private func Authority(approval JsonElement, repo string, issue int32) {
             let approved = OwnerApproval.Record.Parse(approval)
-            if approved.Version != 2 || approved.Issue != issue || !RepositoryIdentity.SameRepo(approved.Repo, repo) {
+            if approved.Version != OwnerApproval.FormatVersion ||
+                approved.Issue != issue ||
+                !RepositoryIdentity.SameRepo(approved.Repo, repo) {
                 throw Exception("Malformed trusted admission approval identity")
             }
 
@@ -526,7 +528,7 @@ internal class Admission {
             RepositoryIdentity.Branch(approved.AuthorityBranch)
 
             for digest in[]string{approved.PolicyHash, approved.TemplateHash, approved.IssueHash} {
-                if !Regex.IsMatch(digest, "^[0-9a-f]{64}$") {
+                if !Regex.IsMatch(digest, RequestData.Sha256HexPattern) {
                     throw Exception("Malformed trusted admission approval digest")
                 }
             }

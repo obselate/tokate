@@ -430,7 +430,7 @@ internal class ExternalContribution {
                 let run = Data.Load(directory)
                 let retry = run.State == "failed"
 
-                if run.Version != 2 || run.Source != "external" || (run.State != "claimed" && !retry) {
+                if run.Version != Data.FormatVersion || run.Source != "external" || (run.State != "claimed" && !retry) {
                     throw ExecutionFailure.Create(
                         "invalid_state",
                         "Expected unexecuted external work or a recorded external verification failure"

@@ -52,7 +52,8 @@ internal class Decree {
             }
 
             let mode = J.Text(entry, "mode")
-            if (mode != "100644" && mode != "100755") || J.Text(entry, "type") != "blob" {
+            if (mode != GitHub.RegularFileMode && mode != GitHub.ExecutableFileMode) || J.Text(entry, "type") != GitHub
+                .BlobType {
                 throw Exception(
                     "DECREE.md must be a regular Git blob (100644 or 100755); links, directories and submodules are unsupported"
                 )

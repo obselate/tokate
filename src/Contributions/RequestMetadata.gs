@@ -115,7 +115,7 @@ internal class RequestMetadata {
             var uuid Guid
             if !Guid.TryParseExact(parsed.Uuid, "D", out uuid) || uuid.ToString("D") != parsed.Uuid ||
                 parsed.Head != head ||
-                !Regex.IsMatch(parsed.PatchSha256, "^[0-9a-f]{64}$") ||
+                !Regex.IsMatch(parsed.PatchSha256, RequestData.Sha256HexPattern) ||
                 parsed.Seconds < 1 ||
                 parsed.Seconds > RuntimeBudget.MaxBudgetSeconds ||
                 parsed.Verification != RequestData.ObservedVerification {
@@ -215,7 +215,7 @@ internal class RequestMetadata {
 
             if !Guid.TryParseExact(requestId, "D", out uuid) || uuid.ToString("D") != requestId || !Regex.IsMatch(
                 parsed.Approval,
-                "^[0-9a-f]{64}$"
+                RequestData.Sha256HexPattern
             ) {
                 throw CliFailure("invalid_state", "Request needs a canonical UUID and approval identity")
             }

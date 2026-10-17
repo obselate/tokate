@@ -401,7 +401,7 @@ internal class Startup {
                             "--jq",
                             ".id",
                             "--hostname",
-                            "github.com"
+                            GitHub.Hostname
                         },
                         seconds: AuthenticationTimeoutSeconds,
                         harness: codex,
@@ -429,7 +429,7 @@ internal class Startup {
                                 "auth",
                                 "login",
                                 "--hostname",
-                                "github.com"
+                                GitHub.Hostname
                             }
                         )
                     } else {
@@ -465,7 +465,7 @@ internal class Startup {
                 Terminal.Message(error.Message, error: true)
             }
 
-            var selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
+            let selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
             if selected != "" {
                 var choice ToolCheck? = nil
 

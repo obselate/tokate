@@ -259,11 +259,14 @@ internal class CoordinatorSetup {
                 }
 
                 let text = File.ReadAllText(checksumPath).Trim()
-                if !Regex.IsMatch(text, "^[0-9a-f]{64}  " + Regex.Escape(bundle + ".tar.gz") + "$") {
+                if !Regex.IsMatch(
+                    text,
+                    "^" + RequestData.Sha256HexDigitsPattern + "  " + Regex.Escape(bundle + ".tar.gz") + "$"
+                ) {
                     throw Exception("Invalid release checksum sidecar")
                 }
 
-                let hash = text.Substring(0, 64)
+                let hash = text.Substring(0, RequestData.Sha256HexLength)
                 if HashFile(archivePath) != hash {
                     throw Exception("Release archive checksum mismatch")
                 }
@@ -352,9 +355,9 @@ internal class CoordinatorSetup {
             []string{
                 "-qfsSL",
                 "--proto",
-                "=https",
+                GitHub.CurlHttpsOnly,
                 "--proto-redir",
-                "=https",
+                GitHub.CurlHttpsOnly,
                 "--max-time",
                 DownloadTimeLimitSeconds,
                 "--max-filesize",

@@ -23,11 +23,17 @@ internal class RequestData {
 
         internal const ReceiptByteLimit int32 = 1024 * 1024
 
+        internal const Sha256HexLength int32 = 64
+
+        internal const Sha256HexDigitsPattern string = "[0-9a-f]{64}"
+
+        internal const Sha256HexPattern string = "^" + Sha256HexDigitsPattern + "$"
+
         internal const ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
 
         private const JsonDepthLimit int32 = 32
 
-        private const FileBufferByteSize int32 = 8192
+        internal const CopyBufferByteSize int32 = 8192
 
         private const TokenPattern string = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
 
@@ -58,7 +64,7 @@ internal class RequestData {
             try {
                 using let file = File.OpenRead(path)
                 using let bytes = MemoryStream()
-                let buffer = [FileBufferByteSize]byte
+                let buffer = [CopyBufferByteSize]byte
                 var count int32
 
                 while (

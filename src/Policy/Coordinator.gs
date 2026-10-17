@@ -62,7 +62,7 @@ internal class Coordinator {
             let level = J.Text(permission, "permission")
             if level != "write" && level != "maintain" && level != "admin" {
                 GitHub.Api(
-                    "repos/" + repo + "/issues/" + number.ToString() + "/labels/tokate%3Aapproved",
+                    "repos/" + repo + "/issues/" + number.ToString() + "/labels/" + GitHub.EncodedApprovedLabel,
                     method: "DELETE"
                 )
                 GitHub.Api(
@@ -644,7 +644,7 @@ internal class Coordinator {
             let branch = amendmentMetadata.Branch
 
             let run = Data{
-                Version: 2,
+                Version: Data.FormatVersion,
                 Repo: repo,
                 Id: reservation?.Reservation ?? "",
                 HeadRepo: amendmentMetadata.Fork,

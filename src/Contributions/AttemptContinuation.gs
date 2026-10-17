@@ -17,7 +17,7 @@ internal class AttemptContinuation {
         internal func Stopped(run Data) bool -> Harness.Resumes(run.Harness, run.Provider) &&
             run.Source == "tokate" &&
             run.State == "failed" &&
-            run.PreparationVersion == 1 &&
+            run.PreparationVersion == Data.PreparationFormatVersion &&
             run.FailureStage == "inference" &&
             !run.TurnCompleted &&
             run.Commit == "" &&
@@ -150,7 +150,7 @@ internal class AttemptContinuation {
                 source.Element(),
                 "id,attempt,state_sha,approval,base,state,failure_reason,harness,provider,model,effort"
             )
-            prior["version"] = 2
+            prior["version"] = Data.FormatVersion
             prior["repo_id"] = source.PreparationRepoId
             prior["donor_id"] = source.DonorId
 
@@ -172,7 +172,7 @@ internal class AttemptContinuation {
 
             let declared = J.Items(tools)
 
-            if parsed.Attempt == attempt || !Regex.IsMatch(parsed.Approval, "^[0-9a-f]{64}$") ||
+            if parsed.Attempt == attempt || !Regex.IsMatch(parsed.Approval, RequestData.Sha256HexPattern) ||
                 (parsed.State != "failed" && parsed.State != "running") ||
                 declared.Count != 1 ||
                 !Harness.Resumes(parsed.Harness, parsed.Provider) || Array.IndexOf(
@@ -190,7 +190,7 @@ internal class AttemptContinuation {
                 throw CliFailure("invalid_state", "Continuation cannot change its predecessor tool selection")
             }
 
-            if parsed.Version != 2 {
+            if parsed.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Invalid stopped managed v2 predecessor or destination attempt")
             }
         }
@@ -222,7 +222,7 @@ internal class AttemptContinuation {
             let manifest = declaration.ImportManifestValue
             if declaration.SourceKind != "tokate" || manifest.ValueKind != JsonValueKind.String || !Regex.IsMatch(
                 manifest.GetString() ?? "",
-                "^[0-9a-f]{64}$"
+                RequestData.Sha256HexPattern
             ) {
                 throw CliFailure("invalid_state", "Continuation requires managed source and bound import evidence")
             }
@@ -302,7 +302,7 @@ internal class AttemptContinuation {
 
             if !AttemptContinuation.Has(run) || run.Source != "tokate" || !Regex.IsMatch(
                 run.ContinuationSourceMetadataSha256,
-                "^[0-9a-f]{64}$"
+                RequestData.Sha256HexPattern
             ) {
                 throw CliFailure("invalid_state", "Saved continuation lost its explicit import identity")
             }
@@ -340,8 +340,8 @@ internal class AttemptContinuation {
             let source = Data.Parse(J.Parse(ContinuationImport.Metadata(directory)))
             let state = source.State
 
-            if source.Version != 2 ||
-                source.PreparationVersion != 1 ||
+            if source.Version != Data.FormatVersion ||
+                source.PreparationVersion != Data.PreparationFormatVersion ||
                 source.Source != "tokate" ||
                 source.TurnCompleted ||
                 (state != "failed" && state != "running") ||

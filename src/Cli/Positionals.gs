@@ -38,7 +38,7 @@ internal class Positionals {
                 "^/([A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*)/" + segment + "/([0-9]+)/?$"
             )
 
-            if uri.Scheme != "https" || !String.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+            if uri.Scheme != "https" || !String.Equals(uri.Host, GitHub.Hostname, StringComparison.OrdinalIgnoreCase) ||
                 !uri.IsDefaultPort ||
                 uri.UserInfo != "" ||
                 !match.Success {

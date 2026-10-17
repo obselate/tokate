@@ -127,7 +127,7 @@ internal class ContributionPreparation {
             }
 
             let run = Data{
-                Version: 2,
+                Version: Data.FormatVersion,
                 Repo: repo,
                 Issue: issue,
                 Donor: donor,
@@ -342,7 +342,7 @@ internal class ContributionPreparation {
             let request = run.ClaimRequest
             let declaration = RequestMetadata.Request(request)
 
-            if run.Version != 2 ||
+            if run.Version != Data.FormatVersion ||
                 run.State != "claim_pending" ||
                 (run.Source != "tokate" && run.Source != "external") ||
                 declaration.Action != "claim" ||

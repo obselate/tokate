@@ -544,7 +544,12 @@ internal class CoordinationState {
             "repos/" + repo + "/git/trees",
             map[string, Object?]{
                 "tree": []Object{
-                    map[string, Object?]{"path": "state.json", "mode": "100644", "type": "blob", "content": ToText()}
+                    map[string, Object?]{
+                        "path": "state.json",
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": ToText()
+                    }
                 }
             },
             expires: expires
@@ -591,7 +596,8 @@ internal class CoordinationState {
                         )
                     }
 
-                    if error.HttpStatus < 500 || error.HttpStatus > 599 {
+                    if error.HttpStatus < ApiResponse.ServerErrorStatusMinimum ||
+                        error.HttpStatus > ApiResponse.ServerErrorStatusMaximum {
                         throw error
                     }
 

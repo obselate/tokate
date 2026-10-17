@@ -6,7 +6,7 @@ import System.Text.Json
 internal class ContributionAuthority {
     shared {
         internal func Recheck(run Data) JsonElement {
-            if run.Version != 2 {
+            if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Unsupported run protocol; start a current contribution")
             }
 

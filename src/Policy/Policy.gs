@@ -41,7 +41,7 @@ internal class Policy {
     private func Configure() {
         Version = JsonFields.Int64(Value, "Policy", "version")
 
-        if Version != 3 {
+        if Version != FormatVersion {
             throw Exception("Policy requires version 3")
         }
 
@@ -378,6 +378,8 @@ internal class Policy {
     internal func AllowsTool(harness string, provider string) bool -> Tool(harness, provider) != nil
 
     shared {
+        internal const FormatVersion int32 = 3
+
         internal const FileByteLimit int32 = 1024 * 1024
 
         internal const FilePath string = ".github/tokate.json"

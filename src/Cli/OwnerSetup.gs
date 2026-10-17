@@ -73,7 +73,7 @@ internal class OwnerSetup {
                     fields[field.Name] = field.Value
                 }
             } else {
-                fields["version"] = 3
+                fields["version"] = Policy.FormatVersion
                 fields["approval_scope"] = "task"
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = Tools("codex,claude,pi")
@@ -290,12 +290,24 @@ internal class OwnerSetup {
 
             if text != upstream {
                 files.Add(
-                    map[string, Object?]{"path": Policy.FilePath, "mode": "100644", "type": "blob", "content": text}
+                    map[string, Object?]{
+                        "path": Policy.FilePath,
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": text
+                    }
                 )
             }
 
             if workflow != current {
-                files.Add(map[string, Object?]{"path": path, "mode": "100644", "type": "blob", "content": workflow})
+                files.Add(
+                    map[string, Object?]{
+                        "path": path,
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": workflow
+                    }
+                )
             }
 
             return files
@@ -349,7 +361,9 @@ internal class OwnerSetup {
 
             PublicOutput.ResultData = result
             Terminal.Message(
-                "Tokate keeps its state in the tokate/access and " +
+                "Tokate keeps its state in the " +
+                    AccessState.Reference +
+                    " and " +
                     GitHub.ContributionStateRefPrefix +
                     "N branches. Do not delete them or open pull requests from them.",
                 "cyan",
@@ -483,7 +497,9 @@ internal class OwnerSetup {
                 let issues = GitHub.Api(
                     "repos/" +
                         repo +
-                        "/issues?state=open&labels=tokate%3Aapproved&" +
+                        "/issues?state=open&labels=" +
+                        GitHub.EncodedApprovedLabel +
+                        "&" +
                         GitHub.PageSizeParameter +
                         "&page=" +
                         page.ToString()
