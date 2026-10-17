@@ -296,6 +296,14 @@ internal partial class NativeFlow : NativeFixture {
         Save()
         Approve()
         let run = Claim()
+        let runFile = Path.Combine(run, "run.json")
+        let original = File.ReadAllText(runFile).TrimEnd()
+        Check.That(
+            original.StartsWith("{\"version\":2,\"repo\":", StringComparison.Ordinal),
+            "Saved run field order changed"
+        )
+        let legacy = "\"legacy_extension\":{\"number\":1e+02},\"legacy_null\":null"
+        File.WriteAllText(runFile, original.Substring(0, original.Length - 1) + "," + legacy + "}\n")
         Mode("protected_entrypoint")
         State["event_stream"] = JsonValue.Create(
             "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"Fixture completed.\"}}\n" +
@@ -305,6 +313,7 @@ internal partial class NativeFlow : NativeFixture {
         let started = DateTimeOffset.UtcNow
         Call([]string{"work", "--yes", "--run", run})
         let finished = DateTimeOffset.UtcNow
+        Check.Contains(File.ReadAllText(runFile), legacy)
         let checkout = Path.Combine(run, "checkout")
         let replay = Path.Combine(Temp.Root, "candidate-replay")
         let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
