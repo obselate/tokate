@@ -26,29 +26,31 @@ internal class ReceiptVerification {
             revision string,
             base string
         ) {
-            run.Fields["version"] = receipt.Version
-            run.Fields["issue"] = receipt.Issue
-            run.Fields["approval"] = receipt.Approval
-            run.Fields["donor"] = receipt.Donor
-            run.Fields["expected"] = receipt.Expected
-            run.Fields["reservation"] = receipt.Reservation
+            run.Version = receipt.Version
+            run.Issue = receipt.Issue
+            run.Approval = receipt.Approval
+            run.Donor = receipt.Donor
+            run.Expected = receipt.Expected
+            run.Reservation = receipt.Reservation
             if receipt.Incomplete.ValueKind != JsonValueKind.Undefined {
-                run.Fields["incomplete"] = receipt.Incomplete
+                run.Incomplete = receipt.Incomplete.GetBoolean()
             }
             if receipt.RequestedModel.ValueKind != JsonValueKind.Undefined {
-                run.Fields["requested_model"] = receipt.RequestedModel
+                run.RequestedModel = receipt.RequestedModel.ValueKind == JsonValueKind.Null ?
+                nil: JsonFields.String(receipt.ToJson(), "PR receipt", "requested_model")
             }
             if receipt.ReportedModel.ValueKind != JsonValueKind.Undefined {
-                run.Fields["reported_model"] = receipt.ReportedModel
+                run.ReportedModel = receipt.ReportedModel.ValueKind == JsonValueKind.Null ?
+                nil: JsonFields.String(receipt.ToJson(), "PR receipt", "reported_model")
             }
 
             let approved = OwnerApproval.Record.Parse(approval)
-            run.Fields["base"] = base
-            run.Fields["base_branch"] = approved.BaseBranch
+            run.Base = base
+            run.BaseBranch = approved.BaseBranch
 
-            run.Fields["authority_revision"] = revision
-            run.Fields["receipt_hash"] = J.Hash(RequestData.Canonical(receipt.ToJson()))
-            run.Fields["policy_hash"] = approved.PolicyHash
+            run.AuthorityRevision = revision
+            run.ReceiptHash = J.Hash(RequestData.Canonical(receipt.ToJson()))
+            run.PolicyHash = approved.PolicyHash
         }
 
         internal func VerifyCurrent(
@@ -295,7 +297,13 @@ internal class ReceiptVerification {
                 throw CliFailure("stale_approval", "Receipt donor differs from the canonical contribution actor")
             }
 
-            RepositoryAccess.ValidateFork(repo, fork, branch, physicalHead, J.Get(contribution, "actor"))
+            RepositoryAccess.ValidateFork(
+                repo,
+                fork,
+                branch,
+                physicalHead,
+                RepositoryIdentity.PositiveId(J.Get(contribution, "actor"))
+            )
 
             policy.ValidateTools(publication.Tools, publication.SourceKind)
             AttemptContinuation.Declaration(metadata)
@@ -439,25 +447,25 @@ internal class ReceiptVerification {
 
             let run = Data()
 
-            run.Fields["version"] = 2
-            run.Fields["repo"] = repo
-            run.Fields["pr"] = number
-            run.Fields["commit"] = exactHead
-            run.Fields["pr_url"] = J.Text(pull, "html_url")
-            run.Fields["policy"] = J.Get(record, "policy")
+            run.Version = 2
+            run.Repo = repo
+            run.Pr = number
+            run.Commit = exactHead
+            run.PrUrl = J.Text(pull, "html_url")
+            run.Policy = J.Get(record, "policy")
             let authority = J.Get(current, "summary").ValueKind == JsonValueKind.Undefined ?
             publication.Summary: J.Get(current, "summary")
 
             if current.GetRawText() == contribution.GetRawText() {
-                run.Fields["public_report"] = PrBody.PublicReport(metadata).Trim()
+                run.PublicReport = PrBody.PublicReport(metadata).Trim()
             }
 
             if authority.ValueKind != JsonValueKind.Undefined {
-                run.Fields["public_summary"] = authority
+                run.PublicSummary = authority
             }
 
             ReceiptVerification.Binding(run, receipt, approval, state.Sha, J.Text(reservation, "base"))
-            run.Fields["verified_target_revision"] = baseline
+            run.VerifiedTargetRevision = baseline
 
             return run
         }

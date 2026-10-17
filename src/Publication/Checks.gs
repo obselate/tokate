@@ -91,7 +91,7 @@ internal class Checks {
                 facts["checks_status"]?.ToString() ?? "unread",
                 facts
             )
-            let view = []string{"gh", "pr", "view", run.Number("pr").ToString(), "--repo", run.Text("repo"), "--web"}
+            let view = []string{"gh", "pr", "view", run.Pr.ToString(), "--repo", run.Repo, "--web"}
 
             if Output.Sink.Enabled {
                 Output.Sink.Actions.Clear()
@@ -103,7 +103,7 @@ internal class Checks {
 
             let snapshot = J.Write(
                 map[string, Object?]{
-                    "head": run.Text("checks_head") == "" ? run.Text("commit"): run.Text("checks_head"),
+                    "head": run.ChecksHead == "" ? run.Commit: run.ChecksHead,
                     "status": facts["checks_status"],
                     "checks": observed,
                     "result": Output.Sink.ResultData
@@ -129,7 +129,7 @@ internal class Checks {
                 "Machine gates " + machine,
                 machine == "passed" ? "green": (machine == "failed" ? "red": "yellow")
             )
-            Output.Sink.Message("Checks " + status + ": " + run.Text("pr_url"), status == "passed" ? "green": "yellow")
+            Output.Sink.Message("Checks " + status + ": " + run.PrUrl, status == "passed" ? "green": "yellow")
 
             if !Output.Sink.Enabled {
                 if approval {
@@ -167,11 +167,11 @@ internal class Checks {
             var run = directory == "" ? Data(): Data.Load(directory)
 
             if directory == "" {
-                run.Fields["repo"] = RepositoryIdentity.Repo(args.Need("repo"))
-                run.Fields["pr"] = args.Number("pr")
+                run.Repo = RepositoryIdentity.Repo(args.Need("repo"))
+                run.Pr = args.Number("pr")
             }
 
-            if run.Number("pr") == 0 {
+            if run.Pr == 0 {
                 throw CliFailure("invalid_state", "No PR has been published for this run")
             }
 
@@ -245,9 +245,7 @@ internal class Checks {
                     throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
                 }
 
-                ApiTransport.PollWait(
-                    "repos/" + observation.Run.Text("repo") + "/commits/" + observation.Run.Text("checks_head") + "/"
-                )
+                ApiTransport.PollWait("repos/" + observation.Run.Repo + "/commits/" + observation.Run.ChecksHead + "/")
             }
         }
 
@@ -262,7 +260,7 @@ internal class Checks {
         ) int32 {
             ApiTransport.CheckDeadline()
 
-            let pullPath = "repos/" + observation.Run.Text("repo") + "/pulls/" + observation.Run.Number("pr").ToString()
+            let pullPath = "repos/" + observation.Run.Repo + "/pulls/" + observation.Run.Pr.ToString()
 
             let pull = GitHub.Api(pullPath)
 
@@ -270,7 +268,7 @@ internal class Checks {
 
             let checkHead = CheckReceipt(observation, pull, facts, gates)
 
-            if observation.Run.Flag("incomplete") {
+            if observation.Run.Incomplete {
                 observation.Stage = "report"
                 facts["incomplete"] = true
                 throw CliFailure(
@@ -280,7 +278,7 @@ internal class Checks {
             }
 
             observation.Stage = "freshness"
-            let verifiedTarget = observation.Run.Text("verified_target_revision")
+            let verifiedTarget = observation.Run.VerifiedTargetRevision
             facts["verified_target_revision"] = verifiedTarget
 
             observation.Stage = "report"
@@ -290,7 +288,7 @@ internal class Checks {
 
             var rows JsonElement
             try {
-                rows = CommitChecks.Read(observation.Run.Text("repo"), checkHead, observed)
+                rows = CommitChecks.Read(observation.Run.Repo, checkHead, observed)
             } catch (error Exception) when error.GetType() == typeof(Exception) &&
                 (
                 error.Message == "Cannot read complete commit checks" ||
@@ -381,7 +379,7 @@ internal class Checks {
                 let dependencies = Dictionary[string, Object?]()
                 facts["dependency_evidence"] = dependencies
 
-                Overlaps.DependencyEvidence(observation.Run.Text("repo"), observation.Run.Number("issue"), dependencies)
+                Overlaps.DependencyEvidence(observation.Run.Repo, observation.Run.Issue, dependencies)
 
                 let known = dependencies["dependencies_status"]?.ToString() == "complete"
                 let passed = known && dependencies["dependency_gate"]?.ToString() == "no_open_dependencies"
@@ -390,11 +388,7 @@ internal class Checks {
                     "status": passed ? "passed": (known ? "failed": "unavailable")
                 }
 
-                Overlaps.RequireDependencies(
-                    observation.Run.Text("repo"),
-                    observation.Run.Number("issue"),
-                    dependencies
-                )
+                Overlaps.RequireDependencies(observation.Run.Repo, observation.Run.Issue, dependencies)
             }
         }
 
@@ -411,19 +405,15 @@ internal class Checks {
 
             observation.Stage = "freshness"
             let branch = J.Text(J.Get(pull, "base"), "ref")
-            let currentTarget = GitHub.Branch(observation.Run.Text("repo"), branch)
+            let currentTarget = GitHub.Branch(observation.Run.Repo, branch)
             facts["target_branch"] = branch
             facts["target_revision"] = currentTarget
 
             observation.Stage = "receipt"
 
-            observation.Run = ReceiptVerification.Verify(
-                observation.Run.Text("repo"),
-                observation.Run.Number("pr"),
-                pull
-            )
+            observation.Run = ReceiptVerification.Verify(observation.Run.Repo, observation.Run.Pr, pull)
             let checkHead = J.Text(J.Get(pull, "head"), "sha")
-            observation.Run.Fields["checks_head"] = checkHead
+            observation.Run.ChecksHead = checkHead
             facts["checks_head"] = checkHead
             let currentBinding = J.Write(J.Select(observation.Run.Element(), BindingFields))
             facts["binding"] = J.Select(observation.Run.Element(), BindingFields)
@@ -448,7 +438,7 @@ internal class Checks {
         ) {
             facts["pr_observation"] = J.Select(pull, "state,draft,merged,merged_at,closed_at")
             facts["observed_head"] = J.Text(J.Get(pull, "head"), "sha")
-            run.Fields["pr_url"] = J.Text(pull, "html_url")
+            run.PrUrl = J.Text(pull, "html_url")
             let isOpen = J.Text(pull, "state") == "open" && !J.Bool(pull, "merged") &&
                 (
                 J.Get(pull, "merged_at").ValueKind == JsonValueKind.Undefined || J.Get(pull, "merged_at")
@@ -467,7 +457,7 @@ internal class Checks {
             if historical {
                 throw CliFailure(
                     "invalid_state",
-                    "PR #" + run.Number("pr").ToString() +
+                    "PR #" + run.Pr.ToString() +
                         (
                         J.Bool(pull, "merged") || J.Get(pull, "merged_at").ValueKind == JsonValueKind.String ?
                         " was merged.": " was closed without merge."
@@ -487,9 +477,9 @@ internal class Checks {
             try {
                 PublicSummary.Current(
                     PrBody.ReportText(J.Text(pull, "body")),
-                    J.Get(run.Element(), "public_summary"),
-                    run.Text("commit"),
-                    run.Text("public_report")
+                    run.PublicSummary,
+                    run.Commit,
+                    run.PublicReport
                 )
 
                 gates["report"] = map[string, Object?]{"status": "passed", "evidence": "complete"}
@@ -503,7 +493,8 @@ internal class Checks {
         private func ReadApprovals(run Data, checkHead string, awaiting List[Object], observation ChecksObservation) {
             for page in 1 ... 11 {
                 let response = GitHub.Api(
-                    "repos/" + run.Text("repo") +
+                    "repos/" +
+                        run.Repo +
                         "/actions/runs?head_sha=" +
                         checkHead +
                         "&status=action_required&per_page=100&page=" +
@@ -560,7 +551,7 @@ internal class Checks {
             }
 
             let required = List[Object]()
-            let names = J.Items(Policy.Parse(J.Get(run.Element(), "policy")).RequiredChecks)
+            let names = J.Items(Policy.Parse(run.Policy).RequiredChecks)
 
             for name in names {
                 var found bool
@@ -614,7 +605,7 @@ internal class Checks {
 
             if missing && !approval {
                 let workflows = J.Get(
-                    GitHub.Api("repos/" + run.Text("repo") + "/actions/runs?head_sha=" + checkHead + "&per_page=1"),
+                    GitHub.Api("repos/" + run.Repo + "/actions/runs?head_sha=" + checkHead + "&per_page=1"),
                     "workflow_runs"
                 )
 
@@ -650,7 +641,7 @@ internal class Checks {
                 throw CliFailure("stale_approval", "PR head, target, receipt or lifecycle changed while reading checks")
             }
 
-            let live = ReceiptVerification.Verify(run.Text("repo"), run.Number("pr"), livePull)
+            let live = ReceiptVerification.Verify(run.Repo, run.Pr, livePull)
 
             facts["binding_after"] = J.Select(live.Element(), BindingFields)
 
@@ -666,7 +657,7 @@ internal class Checks {
                 throw CliFailure("stale_approval", "PR head, target, receipt or lifecycle changed while reading checks")
             }
 
-            let liveTarget = GitHub.Branch(run.Text("repo"), run.Text("base_branch"))
+            let liveTarget = GitHub.Branch(run.Repo, run.BaseBranch)
 
             facts["target_revision_after"] = liveTarget
             facts["target_moved"] = liveTarget != verifiedTarget

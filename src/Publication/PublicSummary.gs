@@ -119,8 +119,8 @@ internal class PublicSummary {
                     )
                 }
 
-                run.Fields["public_summary"] = summary
-                run.Fields.Remove("summary_patch_sha256")
+                run.PublicSummary = summary
+                run.ClearSummaryPatchSha256()
 
                 File.Delete(path)
 
@@ -131,7 +131,7 @@ internal class PublicSummary {
         }
 
         internal func Bind(run Data, patch string) {
-            let summary = J.Get(run.Element(), "public_summary")
+            let summary = run.PublicSummary
 
             if summary.ValueKind == JsonValueKind.Undefined {
                 return
@@ -139,16 +139,16 @@ internal class PublicSummary {
 
             Validate(summary)
 
-            if run.Text("summary_patch_sha256") == "" {
-                run.Fields["summary_patch_sha256"] = J.Hash(patch)
-            } else if run.Text("summary_patch_sha256") != J.Hash(patch) {
-                run.Fields.Remove("public_summary")
-                run.Fields.Remove("summary_patch_sha256")
+            if run.SummaryPatchSha256 == "" {
+                run.SummaryPatchSha256 = J.Hash(patch)
+            } else if run.SummaryPatchSha256 != J.Hash(patch) {
+                run.ClearPublicSummary()
+                run.ClearSummaryPatchSha256()
             }
         }
 
         internal func ForHead(run Data, head string) JsonElement {
-            let summary = J.Get(run.Element(), "public_summary")
+            let summary = run.PublicSummary
 
             if summary.ValueKind == JsonValueKind.Undefined {
                 return summary
