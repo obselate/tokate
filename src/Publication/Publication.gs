@@ -97,17 +97,20 @@ internal class Publication {
             }
             let marker = "<!-- tokate-v2:" + run.Text("id") + " -->"
             let body = J.Text(pull, "body")
-            let receipt = RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
-            if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), J.Text(expectedReceipt, "repo")) {
+            let receipt = ContributionReceipt.Record.Parse(
+                RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+            )
+            let expected = ContributionReceipt.Record.Parse(expectedReceipt)
+            if !RepositoryIdentity.SameRepo(receipt.Repo, expected.Repo) {
                 throw CliFailure("invalid_state", failure)
             }
             let comparable = Dictionary[string, Object?]()
-            for field in receipt.EnumerateObject() {
-                comparable[field.Name] = field.Name == "repo" ? J.Text(expectedReceipt, "repo"): field.Value
+            for field in receipt.ToJson().EnumerateObject() {
+                comparable[field.Name] = field.Name == "repo" ? expected.Repo: field.Value
             }
-            if !RequestData.Same(J.Parse(J.Write(comparable)), expectedReceipt) || !body.Contains(marker) ||
+            if !RequestData.Same(J.Parse(J.Write(comparable)), expected.ToJson()) || !body.Contains(marker) ||
                 body.IndexOf(marker, StringComparison.Ordinal) != body.LastIndexOf(marker, StringComparison.Ordinal) ||
-                J.Text(head, "sha") != J.Text(expectedReceipt, "head") {
+                J.Text(head, "sha") != expected.Head {
                 throw CliFailure("invalid_state", failure)
             }
         }
@@ -165,7 +168,7 @@ internal class Publication {
                 J.Get(request, "metadata"),
                 J.Get(run.Element(), "donor_id")
             )
-            let expected = J.Parse(J.Write(receipt))
+            let expected = receipt.ToJson()
             var pull = Find(run, expected, newIntent)
             if pull.ValueKind == JsonValueKind.Undefined {
                 pull = GitHub.Api(

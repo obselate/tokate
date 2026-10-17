@@ -432,25 +432,20 @@ internal class ContributionStatus {
 
         try {
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
-            var complete = J.Number(receipt, "version") == 2 && RepositoryIdentity.SameRepo(
-                J.Text(receipt, "repo"),
-                Repo
-            ) &&
-                J.Number(receipt, "issue") == issue && J.Text(receipt, "head") == sha && J.Get(
-                state.Value(),
-                "contribution"
-            )
-                .ValueKind == JsonValueKind.Object
-
-            for key in[]string{"approval", "expected", "reservation", "donor"} {
-                complete = complete && J.Text(receipt, key) != ""
-            }
+            let complete = receipt.Version == 2 && RepositoryIdentity.SameRepo(receipt.Repo, Repo) &&
+                receipt.Issue == issue &&
+                receipt.Head == sha &&
+                J
+                .Get(state.Value(), "contribution")
+                .ValueKind == JsonValueKind.Object &&
+                receipt.Approval != "" &&
+                receipt.Expected != "" &&
+                receipt.Reservation != "" &&
+                receipt.Donor != ""
 
             if complete {
-                draft["receipt"] = J.Bool(
-                    receipt,
-                    "incomplete"
-                ) ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
+                draft["receipt"] = receipt.Incomplete.ValueKind == JsonValueKind.True
+                ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
             }
         } catch (error Exception) when Expected(error) { }
 
@@ -497,7 +492,7 @@ internal class ContributionStatus {
             J.Get(current, "actor")
         ) != actor ||
             !String.Equals(J.Text(current, "donor"), donor, StringComparison.OrdinalIgnoreCase) || !RequestData.Same(
-            receipt,
+            receipt.ToJson(),
             ContributionReceipt.FromState(value)
         ) ||
             J.Text(metadata, "head") != J.Text(J.Get(contribution, "outcome"), "head") {

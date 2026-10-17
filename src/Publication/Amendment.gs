@@ -875,7 +875,8 @@ internal class Amendment {
             }
 
             if remote == published {
-                if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) || owned != previousOwned {
+                if RequestData.Canonical(receipt.ToJson()) != RequestData.Canonical(previousReceipt.ToJson()) ||
+                    owned != previousOwned {
                     throw CliFailure(
                         "stale_approval",
                         "Invalid physical state: candidate receipt on the previous remote head"
@@ -946,14 +947,14 @@ internal class Amendment {
             pull JsonElement,
             remote string,
             published string,
-            receipt JsonElement,
-            previousReceipt JsonElement
+            receipt ContributionReceipt.Record,
+            previousReceipt ContributionReceipt.Record
         ) {
-            if remote != published || J.Text(receipt, "head") != amendment.Text("previous") {
+            if remote != published || receipt.Head != amendment.Text("previous") {
                 throw CliFailure("stale_approval", "Remote changed before amendment publication intent")
             }
 
-            if RequestData.Canonical(receipt) != RequestData.Canonical(previousReceipt) {
+            if RequestData.Canonical(receipt.ToJson()) != RequestData.Canonical(previousReceipt.ToJson()) {
                 throw CliFailure("stale_approval", "Previous receipt changed after amendment acceptance")
             }
 
@@ -966,7 +967,12 @@ internal class Amendment {
 
             amendment.Fields["publication"] = intent
 
-            let updatedReceipt = Receipt(receipt, amendment, amendment.Text("commit"), amendment.Text("expected"))
+            let updatedReceipt = Receipt(
+                receipt.ToJson(),
+                amendment,
+                amendment.Text("commit"),
+                amendment.Text("expected")
+            )
 
             let original = J.Get(J.Get(authority, "state"), "contribution")
 
@@ -1160,9 +1166,9 @@ internal class Amendment {
                 run.Text("id"),
                 run.Text("donor")
             )
-            Preview(Path.Combine(directory, "publication.json"), J.Write(receipt) + "\n")
+            Preview(Path.Combine(directory, "publication.json"), receipt.ToText() + "\n")
             let unrecorded = J.Get(J.Get(authority, "state"), "contribution").ValueKind != JsonValueKind.Object
-            let existing = Publication.Find(run, J.Parse(J.Write(receipt)), newIntent: unrecorded)
+            let existing = Publication.Find(run, receipt.ToJson(), newIntent: unrecorded)
             if J.Text(authority, "sha") != change.Text("expected") {
                 if existing.ValueKind == JsonValueKind.Undefined || remote != change.Text("commit") || J.Number(
                     J.Get(J.Get(J.Get(authority, "state"), "contribution"), "outcome"),

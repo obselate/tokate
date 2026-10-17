@@ -541,7 +541,7 @@ internal class Coordinator {
                 }
             }
 
-            let oldCanonical = RequestData.Canonical(oldReceipt)
+            let oldCanonical = RequestData.Canonical(oldReceipt.ToJson())
             let candidateCanonical = RequestData.Canonical(receipt)
 
             if oldCanonical == candidateCanonical {
@@ -594,9 +594,8 @@ internal class Coordinator {
             RepositoryAccess.ValidateFork(repo, metadata, actor)
 
             let latest = Amendment.Pull(run, J.Number(metadata, "pr"), J.Text(metadata, "head"), "")
-            if RequestData.Canonical(PrBody.Receipt(J.Text(latest, "body"))) != candidateCanonical || PrBody.ReportText(
-                J.Text(latest, "body")
-            ) != report {
+            if RequestData.Canonical(PrBody.Receipt(J.Text(latest, "body")).ToJson()) != candidateCanonical ||
+                PrBody.ReportText(J.Text(latest, "body")) != report {
                 throw Exception("Physical PR receipt changed; amendment has no coordination authority")
             }
 
