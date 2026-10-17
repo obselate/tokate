@@ -160,3 +160,59 @@ internal class RequestData {
         internal func ModelIdentifier(value string) string -> Identifier(value, model: true)
     }
 }
+
+internal class ToolDeclaration(
+    harness string,
+    provider string,
+    model string,
+    effort string,
+    codingSeconds int64?,
+    invalidCodingTime bool,
+    usage JsonElement
+) {
+    internal let Harness string = harness
+    internal let Provider string = provider
+    internal let Model string = model
+    internal let Effort string = effort
+    internal let CodingSeconds int64? = codingSeconds
+    internal let InvalidCodingTime bool = invalidCodingTime
+    internal let Usage JsonElement = usage
+
+    shared {
+        internal func Parse(value JsonElement) ToolDeclaration {
+            RequestData.Keys(value, "harness,provider,model,effort,usage,coding_seconds")
+
+            let number = J.Get(value, "coding_seconds")
+            let present = number.ValueKind != JsonValueKind.Undefined && number.ValueKind != JsonValueKind.Null
+            var seconds int64
+            let valid = !present || (number.ValueKind == JsonValueKind.Number && number.TryGetInt64(out seconds))
+            let codingSeconds int64? = present && valid ? seconds as int64?: nil
+
+            return ToolDeclaration(
+                JsonFields.String(value, "Request tool", "harness"),
+                JsonFields.String(value, "Request tool", "provider"),
+                JsonFields.String(value, "Request tool", "model"),
+                JsonFields.String(value, "Request tool", "effort"),
+                codingSeconds,
+                !valid,
+                J.Get(value, "usage")
+            )
+        }
+    }
+}
+
+internal class RequestUsage {
+    shared {
+        internal func Validate(value JsonElement) {
+            RequestData.Keys(value, "input_tokens,cached_input_tokens,output_tokens")
+
+            for field in value.EnumerateObject() {
+                var count int64
+
+                if field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt64(out count) || count < 0 {
+                    throw CliFailure("invalid_state", "Usage must be a nonnegative donor-reported count")
+                }
+            }
+        }
+    }
+}

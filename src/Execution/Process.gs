@@ -214,20 +214,16 @@ internal class RuntimeBudget {
         }
 
         internal func Validate(run Data) {
-            let unlimited = J.Get(run.Element(), "unlimited")
-
-            if unlimited.ValueKind != JsonValueKind.Undefined &&
-                unlimited.ValueKind != JsonValueKind.True &&
-                unlimited.ValueKind != JsonValueKind.False {
+            if !run.UnlimitedIsValid {
                 throw ExecutionFailure.Create("invalid_state", "Invalid saved unlimited coding choice")
             }
 
-            if run.Flag("unlimited") &&
+            if run.Unlimited &&
                 (
-                run.Number("version") != 2 || run.Text("source") != "tokate" || run.Number(
-                    "verification_reserve"
-                ) < 1 ||
-                    run.Number("verification_reserve") != run.Number("seconds")
+                run.Version != 2 ||
+                    run.Source != "tokate" ||
+                    run.VerificationReserve < 1 ||
+                    run.VerificationReserve != run.Seconds
             ) {
                 throw ExecutionFailure.Create(
                     "invalid_state",
@@ -235,22 +231,17 @@ internal class RuntimeBudget {
                 )
             }
 
-            let field = J.Get(run.Element(), "verification_reserve")
-            var reserve int32
-            if field.ValueKind != JsonValueKind.Undefined &&
-                (
-                field.ValueKind != JsonValueKind.Number || !field.TryGetInt32(out reserve) ||
-                    reserve < 1 ||
-                    (run.Flag("unlimited") ? reserve != run.Number("seconds"): reserve >= run.Number("seconds"))
-            ) {
+            let reserve = run.VerificationReserve
+            if run.HasVerificationReserve &&
+                (reserve < 1 || (run.Unlimited ? reserve != run.Seconds: reserve >= run.Seconds)) {
                 throw ExecutionFailure.Create("invalid_state", "Invalid saved verification reserve")
             }
         }
 
         internal func Description(run Data) string {
-            let total = run.Number("seconds")
-            let reserve = run.Number("verification_reserve")
-            if run.Flag("unlimited") {
+            let total = run.Seconds
+            let reserve = run.VerificationReserve
+            if run.Unlimited {
                 return "unlimited coding time, independent verification budget " + reserve.ToString() + "s"
             }
 

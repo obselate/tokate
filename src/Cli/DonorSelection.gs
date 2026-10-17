@@ -66,12 +66,9 @@ internal class DonorSelection {
                 return
             }
 
-            let reserve = args.Get("verification-reserve", (run?.Number("verification_reserve") ?? 0).ToString())
+            let reserve = args.Get("verification-reserve", (run?.VerificationReserve ?? 0).ToString())
             Terminal.Message(
-                "Task: " + args.Get("repo", run?.Text("repo") ?? "") + " #" + args.Get(
-                    "issue",
-                    (run?.Number("issue") ?? 0).ToString()
-                ) +
+                "Task: " + args.Get("repo", run?.Repo ?? "") + " #" + args.Get("issue", (run?.Issue ?? 0).ToString()) +
                     "\nTool: " +
                     J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
                     selection,
@@ -81,8 +78,8 @@ internal class DonorSelection {
                     J.Text(selection, "effort") +
                     "\nBudget: " +
                     (
-                    args.Get("unlimited") == "true" || run?.Flag("unlimited") == true ? "Unlimited coding":
-                    args.Get("seconds", (run?.Number("seconds") ?? 0).ToString()) + " seconds total"
+                    args.Get("unlimited") == "true" || run?.Unlimited == true ? "Unlimited coding":
+                    args.Get("seconds", (run?.Seconds ?? 0).ToString()) + " seconds total"
                 ) +
                     "; " +
                     (
@@ -92,7 +89,7 @@ internal class DonorSelection {
                     (J.Text(selection, "harness") == "command" ? "\nCommand: " + CommandHarness.Text(selection): ""),
                 error: true
             )
-            let posting = run?.Text("state") == "claim_pending"
+            let posting = run?.State == "claim_pending"
             let question = args.Command != "claim" ? "Start this donation?":
             posting ? "Post this claim?": "Prepare this attempt?"
             if !OwnerSetup.Confirm(args, question) {

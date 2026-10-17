@@ -81,12 +81,12 @@ internal class ContributionStatus {
 
         let runs = Saved.For(Repo, issue)
         let run = runs.Count == 0 ? nil: runs[runs.Count - 1]
-        if GratisRepo || (run != nil && J.Bool(run.Value, "gratis")) {
+        if GratisRepo || (run != nil && run.Run.Gratis) {
             row["approval_status"] = "not_required"
             row["eligibility_status"] = "not_required"
             row["coordination_status"] = "not_required"
             row["drafts_status"] = "not_observed"
-            row["state"] = run != nil && J.Bool(run.Value, "gratis") ? run.State: J.Text(task, "state")
+            row["state"] = run != nil && run.Run.Gratis ? run.State: J.Text(task, "state")
             row["next"] = run == nil ?
             Next(
                 "donor",
@@ -108,10 +108,9 @@ internal class ContributionStatus {
                 row["coordination_status"] = state.Sha == "" ? "absent": "observed"
                 row["state_sha"] = state.Sha
                 if state.Sha != "" {
-                    let value = state.Value()
-                    approval = J.Get(value, "approval")
-                    row["approval_id"] = J.Text(value, "approval_id")
-                    row["revoked"] = J.Bool(value, "revoked")
+                    approval = state.Approval?.Value() ?? default(JsonElement)
+                    row["approval_id"] = state.ApprovalId
+                    row["revoked"] = state.Revoked
                     Reservation(row, state)
                 }
             }
@@ -163,21 +162,19 @@ internal class ContributionStatus {
             return row
         }
 
-        row["approval"] = J.Select(
-            approval,
-            "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
-        )
-
         let valid = Observe(
             row,
             "approval",
             async () -> {
                 try {
-                    if !RepositoryIdentity.SameRepo(J.Text(approval, "repo"), Repo) || J.Number(
+                    row["approval"] = J.Select(
                         approval,
-                        "issue"
-                    ) != issue ||
-                        J.Number(approval, "version") != 2 {
+                        "version,approval_scope,eligibility,donor,base,base_branch,authority_branch"
+                    )
+                    let approved = OwnerApproval.Record.Parse(approval)
+                    if !RepositoryIdentity.SameRepo(approved.Repo, Repo) ||
+                        approved.Issue != issue ||
+                        approved.Version != 2 {
                         throw CliFailure("invalid_state", "Malformed approval identity")
                     }
 
@@ -234,11 +231,9 @@ internal class ContributionStatus {
             row["eligibility_status"] = "unavailable"
         } else if valid && Text(row, "approval_status") == "current" {
             try {
-                AccessState.Task(approval)
+                let approved = AccessState.Task(approval)
 
-                if RepositoryIdentity.PositiveId(J.Get(approval, "repo_id")) != RepositoryIdentity.PositiveId(
-                    J.Get(Info, "id")
-                ) {
+                if approved.RepoId != RepositoryIdentity.PositiveId(J.Get(Info, "id")) {
                     throw CliFailure("stale_approval", "Task repository numeric identity changed")
                 }
 
@@ -258,15 +253,15 @@ internal class ContributionStatus {
                     "eligible": eligible
                 }
 
-                for member in Access?.Members ?? List[JsonElement]() {
-                    if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
-                        row["viewer_denied"] = J.Bool(member, "denied")
+                for member in Access?.Members ?? List[AccessState.Member]() {
+                    if member.Actor == actor {
+                        row["viewer_denied"] = member.Denied
                     }
                 }
 
-                let reservation = J.Get(state.Value(), "reservation")
-                if reservation.ValueKind == JsonValueKind.Object {
-                    let holder = RepositoryIdentity.PositiveId(J.Get(reservation, "actor"))
+                let reservation = state.Lease
+                if reservation != nil {
+                    let holder = RepositoryIdentity.PositiveId(reservation.ActorJson)
                     row["holder_eligible"] = Access?.Allows(holder, mode, approval) == true
                 }
             } catch (error Exception) when Expected(error) {
@@ -283,26 +278,27 @@ internal class ContributionStatus {
         policy JsonElement,
         drafts List[Object]
     ) {
-        let value = state.Value()
-        let handoff = J.Get(J.Get(J.Get(value, "contribution"), "metadata"), "handoff")
+        let metadata = state.Contribution?.Metadata ?? default(JsonElement)
+        let handoff = metadata.ValueKind == JsonValueKind.Object ? PublicationRequestMetadata.Parse(metadata)
+            .Handoff: JsonElement{}
 
         if handoff.ValueKind == JsonValueKind.Object {
             row["handoff"] = handoff
         }
 
-        let numbers = List[int32]{J.Number(J.Get(CoordinationState.Current(value), "outcome"), "pr")}
-        let reservation = J.Get(value, "reservation")
-        let donor = J.Text(reservation, "donor")
+        let numbers = List[int32]{state.Current()?.Outcome.Pr ?? 0}
+        let reservation = state.Lease
+        let donor = reservation?.Donor ?? ""
 
         if numbers[0] == 0 && donor != "" {
-            let branch = "tokate/v2-" + J.Text(reservation, "reservation")
+            let branch = "tokate/v2-" + (reservation?.Reservation ?? "")
             RepositoryIdentity.Login(donor)
             RepositoryIdentity.Branch(branch)
 
             let pulls = GitHub.Api(
                 "repos/" + Repo + "/pulls?state=all&head=" + Uri.EscapeDataString(donor + ":" + branch) +
                     "&base=" +
-                    Uri.EscapeDataString(J.Text(approval, "base_branch")) + "&per_page=5&page=1"
+                    Uri.EscapeDataString(OwnerApproval.Record.Parse(approval).BaseBranch) + "&per_page=5&page=1"
             )
 
             if pulls.ValueKind != JsonValueKind.Array || pulls.GetArrayLength() > 5 {
@@ -335,22 +331,20 @@ internal class ContributionStatus {
     }
 
     private func Reservation(row Dictionary[string, Object?], state CoordinationState) {
-        let reservation = J.Get(state.Value(), "reservation")
+        let reservation = state.Lease
 
-        if reservation.ValueKind != JsonValueKind.Object {
+        if reservation == nil {
             row["reservation"] = nil
             return
         }
 
-        let displayed = J.Select(reservation, "reservation,lease,donor,actor,created,expires,status,attempt")
-        displayed["expired"] = CoordinationState.Unix(reservation, "expires") <= DateTimeOffset
-            .UtcNow
-            .ToUnixTimeSeconds()
+        let displayed = reservation.Display()
+        displayed["expired"] = reservation.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds()
         displayed["local_process"] = "unknown; a remote lease does not prove a local process is running"
         row["reservation"] = displayed
 
         try {
-            LeaseLifecycle.Owner(state, J.Get(reservation, "actor"))
+            LeaseLifecycle.Owner(state, reservation.ActorJson)
         } catch (error CliFailure) when error.Code == "stale_approval" { }
     }
 
@@ -365,7 +359,7 @@ internal class ContributionStatus {
         let number = J.Number(pull, "number")
         let head = J.Get(pull, "head")
         let base = J.Get(pull, "base")
-        let recorded = J.Number(J.Get(CoordinationState.Current(state.Value()), "outcome"), "pr")
+        let recorded = state.Current()?.Outcome.Pr ?? 0
 
         if number < 1 || !RepositoryIdentity.SameRepo(J.Text(J.Get(base, "repo"), "full_name"), Repo) ||
             RepositoryIdentity.PositiveId(J.Get(J.Get(base, "repo"), "id")) != RepositoryIdentity.PositiveId(
@@ -432,25 +426,18 @@ internal class ContributionStatus {
 
         try {
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
-            var complete = J.Number(receipt, "version") == 2 && RepositoryIdentity.SameRepo(
-                J.Text(receipt, "repo"),
-                Repo
-            ) &&
-                J.Number(receipt, "issue") == issue && J.Text(receipt, "head") == sha && J.Get(
-                state.Value(),
-                "contribution"
-            )
-                .ValueKind == JsonValueKind.Object
-
-            for key in[]string{"approval", "expected", "reservation", "donor"} {
-                complete = complete && J.Text(receipt, key) != ""
-            }
+            let complete = receipt.Version == 2 && RepositoryIdentity.SameRepo(receipt.Repo, Repo) &&
+                receipt.Issue == issue &&
+                receipt.Head == sha &&
+                state.Contribution != nil &&
+                receipt.Approval != "" &&
+                receipt.Expected != "" &&
+                receipt.Reservation != "" &&
+                receipt.Donor != ""
 
             if complete {
-                draft["receipt"] = J.Bool(
-                    receipt,
-                    "incomplete"
-                ) ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
+                draft["receipt"] = receipt.Incomplete.ValueKind == JsonValueKind.True
+                ? "incomplete": "unverified; completed-work readiness requires receipt verification and owner review"
             }
         } catch (error Exception) when Expected(error) { }
 
@@ -477,45 +464,45 @@ internal class ContributionStatus {
 
         let owner = J.Get(fork, "owner")
         let receipt = PrBody.Receipt(J.Text(pull, "body"))
-        let value = state.Value()
-        let contribution = J.Get(value, "contribution")
+        let contribution = state.Contribution
 
-        if contribution.ValueKind != JsonValueKind.Object {
+        if contribution == nil {
             throw CliFailure("invalid_state", "Historical contribution evidence is unavailable")
         }
 
-        let current = CoordinationState.Current(value)
-        let outcome = J.Get(current, "outcome")
-        let metadata = J.Get(contribution, "metadata")
-        let donor = RepositoryIdentity.Login(J.Text(contribution, "donor"))
-        let actor = RepositoryIdentity.PositiveId(J.Get(contribution, "actor"))
-        let branch = RepositoryIdentity.Branch(J.Text(metadata, "branch"))
-        let repository = RepositoryIdentity.Repo(J.Text(metadata, "fork"))
+        let current = state.Current()
+        let outcome = current?.Outcome
+        let metadata = contribution.Metadata
+        let publication = PublicationRequestMetadata.Parse(metadata)
+        let donor = RepositoryIdentity.Login(contribution.Donor)
+        let actor = RepositoryIdentity.PositiveId(contribution.ActorJson)
+        let branch = RepositoryIdentity.Branch(publication.Branch)
+        let repository = RepositoryIdentity.Repo(publication.Fork)
 
-        if J.Number(outcome, "pr") != J.Number(pull, "number") || J.Text(outcome, "head") != J.Text(head, "sha") ||
-            J.Number(J.Get(contribution, "outcome"), "pr") != J.Number(pull, "number") || RepositoryIdentity.PositiveId(
-            J.Get(current, "actor")
+        if (outcome?.Pr ?? 0) != J.Number(pull, "number") || (outcome?.Head ?? "") != J.Text(head, "sha") ||
+            contribution
+            .Outcome
+            .Pr != J.Number(pull, "number") || RepositoryIdentity.PositiveId(
+            current?.ActorJson ?? default(JsonElement)
         ) != actor ||
-            !String.Equals(J.Text(current, "donor"), donor, StringComparison.OrdinalIgnoreCase) || !RequestData.Same(
-            receipt,
-            ContributionReceipt.FromState(value)
+            !String.Equals(current?.Donor ?? "", donor, StringComparison.OrdinalIgnoreCase) || !RequestData.Same(
+            receipt.ToJson(),
+            ContributionReceipt.FromState(state)
         ) ||
-            J.Text(metadata, "head") != J.Text(J.Get(contribution, "outcome"), "head") {
+            publication.Head != contribution
+            .Outcome
+            .Head {
             return false
         }
 
         let live = GitHub.Api("repos/" + repository)
 
-        RepositoryAccess.ValidateRepository(
-            Repo,
-            repository,
-            J.Parse(actor.ToString()),
-            live,
-            push: false,
-            upstream: Info
-        )
+        RepositoryAccess.ValidateRepository(Repo, repository, actor, live, push: false, upstream: Info)
 
-        return J.Text(J.Get(pull, "base"), "ref") == J.Text(approval, "base_branch") && J.Text(head, "ref") == branch &&
+        return J.Text(J.Get(pull, "base"), "ref") == OwnerApproval.Record.Parse(approval).BaseBranch && J.Text(
+            head,
+            "ref"
+        ) == branch &&
             RepositoryIdentity.PositiveId(J.Get(live, "id")) == RepositoryIdentity.PositiveId(J.Get(fork, "id")) &&
             RepositoryIdentity.SameRepo(J.Text(fork, "full_name"), repository) && RepositoryIdentity.PositiveId(
             J.Get(owner, "id")
@@ -586,7 +573,7 @@ internal class ContributionStatus {
             }
         }
 
-        for name in J.Items(J.Get(policy, "required_checks")) {
+        for name in J.Items(Policy.Parse(policy).RequiredChecks) {
             var status = "missing"
             for check in checks {
                 let bucket = Bucket(check)
@@ -756,11 +743,14 @@ internal class ContributionStatus {
             }
         }
 
-        let reservation = J.Get(state.Value(), "reservation")
+        let reservation = state.Lease
 
-        if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-            CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
-            stage = J.Text(reservation, "status") == "paused" ? "paused": "claim_accepted"
+        if reservation != nil &&
+            reservation.Status != "released" &&
+            reservation.Expires > DateTimeOffset
+            .UtcNow
+            .ToUnixTimeSeconds() {
+            stage = reservation.Status == "paused" ? "paused": "claim_accepted"
             next = stage == "paused" ? Next(
                 "donor",
                 "This claim is paused. The donor checks their saved work on their own machine."
@@ -772,7 +762,7 @@ internal class ContributionStatus {
                     " on their own machine.",
                 []string{"tokate", "work", target}
             )
-        } else if reservation.ValueKind == JsonValueKind.Object {
+        } else if reservation != nil {
             stage = "lease_expired_or_released"
             next = Next(
                 "donor",
@@ -895,14 +885,14 @@ internal class ContributionStatus {
                     "Review the remaining open issue and approve further work if needed; this contribution was closed without merging.",
                     []string{"gh", "issue", "view", issue, "--repo", Repo}
                 )
-                let reservation = J.Get(state.Value(), "reservation")
-                if !merged && reservation.ValueKind == JsonValueKind.Object && RepositoryIdentity.PositiveId(
-                    J.Get(reservation, "actor")
-                ) == RepositoryIdentity.PositiveId(J.Get(J.Get(state.Value(), "contribution"), "actor")) && J.Text(
-                    reservation,
-                    "status"
-                ) != "released" &&
-                    CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                let reservation = state.Lease
+                if !merged && reservation != nil && RepositoryIdentity.PositiveId(
+                    reservation.ActorJson
+                ) == RepositoryIdentity.PositiveId(state.Contribution?.ActorJson ?? default(JsonElement)) &&
+                    reservation.Status != "released" &&
+                    reservation.Expires > DateTimeOffset
+                    .UtcNow
+                    .ToUnixTimeSeconds() {
                     next = Next(
                         "donor",
                         "This contribution was closed without merging. Use tokate release to free its active reservation.",
@@ -920,8 +910,13 @@ internal class ContributionStatus {
         let holder = row["reservation"] is Dictionary[string, Object?]reservation ? Text(reservation, "actor"): ""
         let run = SavedRuns.Pick(SavedRuns.Recent(Saved.For(Repo, Int32.Parse(Text(row, "issue")))))
 
-        if run == nil || viewer == "" || J.Get(run.Value, "donor_id").ToString() != viewer ||
-            (stage == "claim_accepted" ? holder != viewer: run.Text("state") != "claim_pending") {
+        if run == nil ||
+            viewer == "" ||
+            run
+            .Run
+            .DonorId
+            .ToString() != viewer ||
+            (stage == "claim_accepted" ? holder != viewer: run.Run.State != "claim_pending") {
             return
         }
 
@@ -929,7 +924,7 @@ internal class ContributionStatus {
 
         if run.Busy() {
             row["next"] = Next("donor", "Your tokate work for this issue is running on this machine.")
-        } else if run.Text("state") == "claim_pending" {
+        } else if run.Run.State == "claim_pending" {
             row["next"] = Submission.PendingWorkflow(run.Location, Data.Load(run.Location)) ??
                 Next(
                 "donor",
@@ -1019,7 +1014,7 @@ internal class ContributionStatus {
                 "coordination",
                 async () -> {
                     let state = CoordinationState.Load(Repo, issue, missing: true)
-                    Result["coordination"] = state.Sha == "" ? nil: Output.Sink.Coordination(state.Value(), state.Sha)
+                    Result["coordination"] = state.Sha == "" ? nil: Output.Sink.Coordination(state, state.Sha)
                 }
             )
         }
@@ -1207,7 +1202,7 @@ internal class ContributionStatus {
                 let attempts = SavedRuns.Recent(status.Saved.For(args.Get("repo"), args.Number("issue")))
 
                 for attempt in attempts {
-                    let pr = J.Number(attempt.Value, "pr").ToString()
+                    let pr = attempt.Run.Pr.ToString()
 
                     if outcomes.ContainsKey(pr) {
                         attempt.Outcome = outcomes[pr]
@@ -1233,7 +1228,8 @@ internal class ContributionStatus {
         internal func Attempt(options Args) {
             let directory = Output.Sink.RunDirectory
             let summary = Output.Sink.RunSummary(directory)
-            let run = SavedRun(directory, Data.Load(directory).Element(), true)
+            let saved = Data.Load(directory)
+            let run = SavedRun(directory, saved.Element(), true, saved)
             SavedRuns.Outcomes(List[SavedRun]{run})
 
             if run.Outcome != "" {

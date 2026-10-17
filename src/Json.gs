@@ -129,3 +129,79 @@ internal class J {
         }
     }
 }
+
+internal class JsonFields {
+    shared {
+        internal func Int64(value JsonElement, format string, field string) int64 {
+            let item = J.Get(value, field)
+            var result int64
+
+            if item.ValueKind != JsonValueKind.Number || !item.TryGetInt64(out result) {
+                throw Invalid(format, field, "an int64")
+            }
+
+            return result
+        }
+
+        internal func Bool(value JsonElement, format string, field string) bool {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.True && item.ValueKind != JsonValueKind.False {
+                throw Invalid(format, field, "a boolean")
+            }
+
+            return item.GetBoolean()
+        }
+
+        internal func Array(value JsonElement, format string, field string) JsonElement {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.Array {
+                throw Invalid(format, field, "an array")
+            }
+
+            return item
+        }
+
+        private func Invalid(format string, field string, expected string) CliFailure -> CliFailure(
+            "invalid_state",
+            format + ": field \"" + field + "\" is missing or not " + expected
+        )
+
+        internal func String(value JsonElement, format string, field string) string {
+            let item = J.Get(value, field)
+
+            if item.ValueKind != JsonValueKind.String {
+                throw Invalid(format, field, "a string")
+            }
+
+            return item.GetString() ?? ""
+        }
+
+        internal func Int32(value JsonElement, format string, field string) int32 {
+            let item = J.Get(value, field)
+            var result int32
+
+            if item.ValueKind != JsonValueKind.Number || !item.TryGetInt32(out result) {
+                throw Invalid(format, field, "an int32")
+            }
+
+            return result
+        }
+
+        internal func OptionalString(value JsonElement, format string, field string, fallback string) string {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: String(value, format, field)
+        }
+
+        internal func OptionalInt64(value JsonElement, format string, field string, fallback int64) int64 {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: Int64(value, format, field)
+        }
+
+        internal func OptionalBool(value JsonElement, format string, field string, fallback bool) bool {
+            let item = J.Get(value, field)
+            return item.ValueKind == JsonValueKind.Undefined ? fallback: Bool(value, format, field)
+        }
+    }
+}

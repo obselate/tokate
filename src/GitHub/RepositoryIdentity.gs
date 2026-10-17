@@ -6,6 +6,14 @@ import System.Text.RegularExpressions
 
 internal class RepositoryIdentity {
     shared {
+        internal func PositiveId(id int64) int64 {
+            if id < 1 {
+                throw Exception("Expected a positive numeric GitHub identity")
+            }
+
+            return id
+        }
+
         internal func PositiveId(value JsonElement) int64 {
             var id int64
             if value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out id) || id < 1 {
@@ -67,13 +75,12 @@ internal class RepositoryIdentity {
         }
 
         internal func SameDonor(viewer JsonElement, run Data) bool ->
-        String.Equals(J.Text(viewer, "login"), run.Text("donor"), StringComparison.OrdinalIgnoreCase) && J.Get(
-            viewer,
-            "id"
-        )
-            .ToString() == J.Get(run.Element(), "donor_id").ToString()
+        String.Equals(J.Text(viewer, "login"), run.Donor, StringComparison.OrdinalIgnoreCase) && J.Get(viewer, "id")
+            .ToString() == run.DonorId.ToString()
 
-        internal func Email(id JsonElement, login string) string ->
+        internal func Email(id JsonElement, login string) string -> Email(PositiveId(id), login)
+
+        internal func Email(id int64, login string) string ->
         PositiveId(id).ToString() + "+" + Login(login) + "@users.noreply.github.com"
     }
 }

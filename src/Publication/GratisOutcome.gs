@@ -33,7 +33,7 @@ internal class GratisOutcome {
 
             if refusal != "" {
                 run.Transition("refused")
-                run.Fields["refusal"] = refusal
+                run.Refusal = refusal
             } else {
                 let home = Environment.GetEnvironmentVariable("HOME") ?? ""
                 let title = Artifact(checkout, "tokate-title.txt")
@@ -51,11 +51,11 @@ internal class GratisOutcome {
                             (home == "" || !title.Contains(home, StringComparison.Ordinal)),
                         "Invalid gratis title"
                     )
-                    run.Fields["gratis_title"] = title
+                    run.GratisTitle = title
                 }
 
-                let guidance = J.Get(J.Get(run.Element(), "gratis_context"), "guidance").EnumerateObject().MoveNext()
-                run.Fields["ready"] = Artifact(checkout, "tokate-ready.txt") != "" && guidance
+                let guidance = J.Get(run.GratisContext, "guidance").EnumerateObject().MoveNext()
+                run.Ready = Artifact(checkout, "tokate-ready.txt") != "" && guidance
                 let findings = Artifact(checkout, "tokate-findings.md")
 
                 if findings != "" {
@@ -69,9 +69,9 @@ internal class GratisOutcome {
                         (home == "" || !findings.Contains(home, StringComparison.Ordinal))
 
                     if guidance && safe {
-                        run.Fields["findings"] = findings
+                        run.Findings = findings
                     } else {
-                        run.Fields["discussion_error"] = "Findings were not published"
+                        run.DiscussionError = "Findings were not published"
                     }
                 }
 
@@ -84,8 +84,8 @@ internal class GratisOutcome {
                 run.Transition("skipped")
             }
 
-            run.Fields.Remove("failure_stage")
-            run.Fields.Remove("failure_reason")
+            run.ClearFailureStage()
+            run.ClearFailureReason()
 
             run.Save(directory)
 

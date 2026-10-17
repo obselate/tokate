@@ -10,14 +10,14 @@ import System.Text.Json
 internal class HarnessRunner {
     shared {
         private func ValidateUnexecuted(directory string, run Data) {
-            if run.Number("version") != 2 || run.Text("source") != "tokate" {
+            if run.Version != 2 || run.Source != "tokate" {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "External work uses external --run; inference is never launched"
                 )
             }
 
-            if run.Text("state") != "claimed" {
+            if run.State != "claimed" {
                 throw CliFailure(
                     "invalid_state",
                     "This claim has already run. Use submit for publication, or request a new coding attempt."
@@ -29,7 +29,7 @@ internal class HarnessRunner {
             )
 
             for name in Harness.Table.Keys {
-                started = started || run.Fields.ContainsKey(name + "_version")
+                started = started || run.HasHarnessVersion(name)
             }
 
             if started {
@@ -39,23 +39,21 @@ internal class HarnessRunner {
                 )
             }
 
-            Output.Sink.Step(
-                run.Flag("gratis") ? "Checking donor login...": "Checking owner approval and donor login..."
-            )
+            Output.Sink.Step(run.Gratis ? "Checking donor login...": "Checking owner approval and donor login...")
         }
 
         private func Authenticate(run Data, options Args, policy Policy, harness string, codex bool) Harness {
             SelectionPolicy.Revalidate(run, policy)
 
-            Output.Sink.ConfirmSelection(options, J.Get(run.Element(), "selection"), run)
+            Output.Sink.ConfirmSelection(options, run.Selection, run)
 
             RuntimeBudget.Validate(run)
 
-            let adapter = policy.Adapter(harness, run.Text("provider")) ??
+            let adapter = policy.Adapter(harness, run.Provider) ??
                 throw Exception("Unsupported managed harness/provider")
 
             if codex {
-                let harnessPath = run.Text("harness_path")
+                let harnessPath = run.HarnessPath
 
                 if options.Get("harness-path") != "" && options.Get("harness-path") != harnessPath {
                     throw ExecutionFailure.Create(
@@ -67,7 +65,7 @@ internal class HarnessRunner {
                 Worker.Authenticate(run)
             }
 
-            if (harness == "pi" || harness == "omp") && run.Number("preparation_version") != 1 {
+            if (harness == "pi" || harness == "omp") && run.PreparationVersion != 1 {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "Managed " + (harness == "omp" ? "OMP": "pi") + " requires a prepared version-2 contribution"
@@ -78,19 +76,19 @@ internal class HarnessRunner {
         }
 
         private func RecordFailure(directory string, run Data, codex bool, error Exception) {
-            if run.Text("failure_stage") == "inference" {
+            if run.FailureStage == "inference" {
                 if let result = Commands.InterruptedResult(error) {
-                    run.Fields["failure_reason"] = "inference_interrupted"
-                    run.Fields["output_truncated"] = result.OutputTruncated
-                    run.Fields["error_truncated"] = result.ErrorTruncated
+                    run.FailureReason = "inference_interrupted"
+                    run.OutputTruncated = result.OutputTruncated
+                    run.ErrorTruncated = result.ErrorTruncated
                 }
             }
 
             run.Transition("failed")
-            run.Fields["error"] = error.Message
+            run.Error = error.Message
 
-            if codex && !run.Fields.ContainsKey("failure_reason") {
-                run.Fields["failure_reason"] = Output.Sink.FailureCode
+            if codex && !run.HasFailureReason {
+                run.FailureReason = Output.Sink.FailureCode
             }
 
             run.Save(directory)
@@ -105,24 +103,24 @@ internal class HarnessRunner {
             result CommandResult,
             timer Stopwatch
         ) Evidence {
-            run.Fields["output_truncated"] = result.OutputTruncated
-            run.Fields["error_truncated"] = result.ErrorTruncated
-            run.Fields["inference_exit_code"] = result.Code
+            run.OutputTruncated = result.OutputTruncated
+            run.ErrorTruncated = result.ErrorTruncated
+            run.InferenceExitCode = result.Code
 
             let evidence = adapter.Read.Invoke(
                 directory,
                 run,
                 record,
                 result,
-                name -> policy.AllowsModel(run.Text("harness"), run.Text("provider"), name)
+                name -> policy.AllowsModel(run.Harness, run.Provider, name)
             )
 
             File.WriteAllText(Path.Combine(directory, "report.md"), evidence.Report)
 
-            run.Fields["reported_model"] = evidence.Model
-            run.Fields["turn_completed"] = true
-            run.Fields["usage"] = evidence.Usage
-            run.Fields["execution_seconds"] = Convert.ToInt32(timer.Elapsed.TotalSeconds)
+            run.ReportedModel = evidence.Model
+            run.TurnCompleted = true
+            run.Usage = J.Parse(J.Write(evidence.Usage))
+            run.ExecutionSeconds = Convert.ToInt32(timer.Elapsed.TotalSeconds)
 
             run.Save(directory)
 
@@ -138,14 +136,14 @@ internal class HarnessRunner {
 
                 let record = ContributionAuthority.Recheck(run)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
-                policy.Digest = run.Text("policy_hash")
-                let harness = run.Text("harness")
+                policy.Digest = run.PolicyHash
+                let harness = run.Harness
                 let codex = harness == "codex"
                 let adapter = Authenticate(run, options, policy, harness, codex)
 
-                let seconds = run.Number("seconds")
-                let reserve = run.Number("verification_reserve")
-                let totalSeconds = run.Flag("unlimited") ? 0: seconds
+                let seconds = run.Seconds
+                let reserve = run.VerificationReserve
+                let totalSeconds = run.Unlimited ? 0: seconds
                 let timer = Stopwatch.StartNew()
                 let coding = RuntimeBudget(timer, seconds - reserve)
                 let checkout = Path.Combine(directory, "checkout")
@@ -160,22 +158,16 @@ internal class HarnessRunner {
                 try {
                     adapter.BeforeRun?.Invoke(run, coding)
 
-                    if let fields = prepared.Item2 {
-                        for (name, value) in fields {
-                            run.Fields[name] = value
-                        }
-                    }
+                    prepared.Item2?.Invoke(run)
 
                     run.Transition("running")
-                    run.Fields["failure_stage"] = "inference"
-                    run.Fields["failure_reason"] = "inference_failed"
+                    run.FailureStage = "inference"
+                    run.FailureReason = "inference_failed"
                     run.Save(directory)
 
                     if codex {
                         let allowance = RuntimeBudget.Description(run)
-                        Output.Sink.Step(
-                            "Running " + run.Text("model") + " / " + run.Text("effort") + ": " + allowance + "..."
-                        )
+                        Output.Sink.Step("Running " + run.Model + " / " + run.Effort + ": " + allowance + "...")
                         timer.Restart()
                     }
 

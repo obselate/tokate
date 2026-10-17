@@ -14,12 +14,7 @@ internal class ExternalContribution {
         ).LinkTarget != nil
 
         private func Unpublished(directory string, run Data) {
-            if run.Number("pr") != 0 || run.Fields.ContainsKey("publication_uuid") || run.Fields.ContainsKey(
-                "publication_expected"
-            ) ||
-                run
-                .Fields
-                .ContainsKey("correction") {
+            if run.Pr != 0 || run.HasPublicationUuid || run.HasPublicationExpected || run.HasCorrection {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "External verification cannot replace publication intent"
@@ -35,9 +30,8 @@ internal class ExternalContribution {
                 }
             }
 
-            let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-            if J.Get(state.Value(), "contribution").ValueKind != JsonValueKind.Null || Publication.Pulls(run)
-                .Count != 0 {
+            let state = CoordinationState.Load(run.Repo, run.Issue)
+            if !state.ContributionPresent || state.Contribution != nil || Publication.Pulls(run).Count != 0 {
                 throw ExecutionFailure.Create("invalid_state", "External contribution already has publication evidence")
             }
         }
@@ -56,13 +50,12 @@ internal class ExternalContribution {
             }
 
             using let reader = StreamReader(file)
-            let recorded = J.Get(run.Element(), "verification")
+            let recorded = run.Verification
             let checks = J.Items(recorded)
-            let commands = J.Items(J.Get(policy, "verification"))
+            let commands = J.Items(Policy.Parse(policy).Verification)
 
-            if run.Text("failure_stage") != "owner_verification" || run.Text(
-                "failure_reason"
-            ) != "verification_failed" ||
+            if run.FailureStage != "owner_verification" ||
+                run.FailureReason != "verification_failed" ||
                 checks.Count == 0 ||
                 checks.Count > commands.Count ||
                 !RequestData.Same(recorded, J.Parse(reader.ReadToEnd())) {
@@ -70,25 +63,21 @@ internal class ExternalContribution {
             }
 
             for index in 0 ... checks.Count {
-                let check = checks[index]
-                if !RequestData.Same(J.Get(check, "command"), commands[index]) {
+                let check = Verification.Result.Parse(checks[index])
+                if !RequestData.Same(check.Command, commands[index]) {
                     throw ExecutionFailure.Create("invalid_state", failure)
                 }
 
-                let state = J.Text(check, "state")
-                let code = J.Get(check, "exit_code")
-                if state == "completed" && code.ValueKind == JsonValueKind.Number && code.GetInt32() == 0 {
+                let state = check.State
+                let code = check.ExitCode
+                if state == "completed" && code == 0 {
                     continue
                 }
 
                 if index == checks.Count - 1 &&
                     (
-                    (state == "completed" && code.ValueKind == JsonValueKind.Number && code.GetInt32() != 0) ||
-                        (
-                        (state == "failed" || state == "interrupted") &&
-                            code.ValueKind == JsonValueKind.Undefined &&
-                            J.Text(check, "failure") != ""
-                    )
+                    (state == "completed" && code != nil && code != 0) ||
+                        ((state == "failed" || state == "interrupted") && code == nil && (check.Failure ?? "") != "")
                 ) {
                     return
                 }
@@ -96,7 +85,7 @@ internal class ExternalContribution {
                 throw ExecutionFailure.Create("invalid_state", failure)
             }
 
-            if checks.Count == commands.Count || run.Text("error") != "Verification budget exhausted" {
+            if checks.Count == commands.Count || run.Error != "Verification budget exhausted" {
                 throw ExecutionFailure.Create("invalid_state", failure)
             }
         }
@@ -122,7 +111,7 @@ internal class ExternalContribution {
         }
 
         private func History(directory string, run Data, commit string) string {
-            let previous = RepositoryIdentity.CommitSha(run.Text("commit"))
+            let previous = RepositoryIdentity.CommitSha(run.Commit)
             if commit != "" && commit == previous {
                 throw ExecutionFailure.Create(
                     "invalid_state",
@@ -131,7 +120,7 @@ internal class ExternalContribution {
             }
 
             let root = Path.Combine(directory, "external-history")
-            let recorded = J.Get(run.Element(), "external_history")
+            let recorded = run.ExternalHistory
             if recorded.ValueKind != JsonValueKind.Undefined && recorded.ValueKind != JsonValueKind.Array {
                 throw ExecutionFailure.Create("invalid_state", "External verification history is invalid")
             }
@@ -166,9 +155,7 @@ internal class ExternalContribution {
                     }
 
                     let saved = OriginalEvidence.Load(entry)
-                    if saved.Text("commit") != head || saved.Text("state") != "failed" || saved.Text(
-                        "failure_stage"
-                    ) != "owner_verification" {
+                    if saved.Commit != head || saved.State != "failed" || saved.FailureStage != "owner_verification" {
                         throw ExecutionFailure.Create("invalid_state", "External verification history is incomplete")
                     }
 
@@ -198,7 +185,7 @@ internal class ExternalContribution {
                         }
                     }
 
-                    KeepTools(J.Get(saved.Element(), "tools"), J.Get(run.Element(), "tools"))
+                    KeepTools(saved.Tools, run.Tools)
                 }
             }
 
@@ -255,9 +242,9 @@ internal class ExternalContribution {
             args Args,
             commit string,
             retry bool
-        ) ValueTuple[int32, JsonElement, string] {
-            var seconds = run.Number("seconds")
-            var tools = J.Get(run.Element(), "tools")
+        ) ValueTuple[int32, string] {
+            var seconds = run.Seconds
+            var tools = run.Tools
             var history = ""
 
             if retry {
@@ -270,9 +257,9 @@ internal class ExternalContribution {
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 policy.ValidateBudget(seconds)
                 policy.ValidateTools(tools, "external")
-                KeepTools(J.Get(run.Element(), "tools"), tools)
+                KeepTools(run.Tools, tools)
 
-                if J.Count(tools) == J.Count(J.Get(run.Element(), "tools")) {
+                if J.Count(tools) == J.Count(run.Tools) {
                     throw ExecutionFailure.Create(
                         "invalid_state",
                         "External correction must append at least one tool declaration"
@@ -283,17 +270,12 @@ internal class ExternalContribution {
                 history = History(directory, run, commit)
             }
 
-            let metadata = J.Parse(
-                J.Write(
-                    map[string, Object?]{"fork": run.Text("head_repo"), "branch": run.Text("branch"), "head": commit}
-                )
-            )
-            RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
+            RepositoryAccess.ValidateFork(run.Repo, run.HeadRepo, run.Branch, commit, run.DonorId)
 
             let checkout = Path.Combine(directory, "checkout")
             if retry {
                 Verification.Candidate(checkout)
-                if Commands.Git(checkout, "rev-parse", "HEAD") != run.Text("commit") {
+                if Commands.Git(checkout, "rev-parse", "HEAD") != run.Commit {
                     throw ExecutionFailure.Create(
                         "invalid_state",
                         "Failed external checkout differs from its recorded commit"
@@ -302,20 +284,21 @@ internal class ExternalContribution {
 
                 Preserve(directory, history)
 
-                let heads = J.Items(J.Get(run.Element(), "external_history"))
-                heads.Add(J.Get(run.Element(), "commit"))
-                run.Fields["external_history"] = heads
-                run.Fields["commit"] = commit
-                run.Fields["verification_seconds"] = seconds
-                run.Fields["tools"] = tools
+                let heads = J.Items(run.ExternalHistory)
+                heads.Add(J.Parse(J.Write(run.Commit)))
+                run.ExternalHistory = J.Parse(J.Write(heads))
+                run.Commit = commit
+                run.VerificationSeconds = seconds
+                run.Tools = tools
                 run.Transition("verifying")
-                run.Fields["failure_stage"] = "candidate_validation"
-                run.Fields["failure_reason"] = "candidate_invalid"
-                run.Fields["verification"] = J.Parse("[]")
+                run.FailureStage = "candidate_validation"
+                run.FailureReason = "candidate_invalid"
+                run.Verification = J.Parse("[]")
 
-                for key in[]string{"public_summary", "verification_provenance", "tool_provenance", "error"} {
-                    run.Fields.Remove(key)
-                }
+                run.ClearPublicSummary()
+                run.ClearVerificationProvenance()
+                run.ClearToolProvenance()
+                run.ClearError()
 
                 run.Save(directory)
 
@@ -327,7 +310,7 @@ internal class ExternalContribution {
                 )
             }
 
-            return (seconds, metadata, checkout)
+            return (seconds, checkout)
         }
 
         private func VerifyExternal(
@@ -337,18 +320,17 @@ internal class ExternalContribution {
             checkout string,
             commit string,
             seconds int32,
-            retry bool,
-            metadata JsonElement
+            retry bool
         ) {
             let timer = Stopwatch.StartNew()
             run.Transition("verifying")
             run.Save(directory)
 
             let results = List[Object]()
-            run.Fields["verification"] = results
+            run.Verification = J.Parse(J.Write(results))
             Output.Sink.FailureCode = "verification_failed"
-            run.Fields["failure_stage"] = "owner_verification"
-            run.Fields["failure_reason"] = "verification_failed"
+            run.FailureStage = "owner_verification"
+            run.FailureReason = "verification_failed"
 
             run.Save(directory)
 
@@ -360,7 +342,7 @@ internal class ExternalContribution {
                 {
                     using let workspace = VerificationWorkspace.Create(checkout, budget)
 
-                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                    for command in J.Items(Policy.Parse(J.Get(record, "policy")).Verification) {
                         let remaining = seconds - Convert.ToInt32(timer.Elapsed.TotalSeconds)
                         if remaining < 1 {
                             throw ExecutionFailure.Create("verification_failed", "Verification budget exhausted")
@@ -384,14 +366,14 @@ internal class ExternalContribution {
                     }
 
                     Output.Sink.FailureCode = "invalid_state"
-                    run.Fields["failure_stage"] = "changed_candidate"
-                    run.Fields["failure_reason"] = "candidate_changed"
+                    run.FailureStage = "changed_candidate"
+                    run.FailureReason = "candidate_changed"
                     workspace.Unchanged(budget)
                 }
 
                 Output.Sink.FailureCode = "invalid_state"
-                run.Fields["failure_stage"] = "changed_candidate"
-                run.Fields["failure_reason"] = "candidate_changed"
+                run.FailureStage = "changed_candidate"
+                run.FailureReason = "candidate_changed"
                 Verification.Candidate(checkout)
 
                 if Commands.Git(checkout, "rev-parse", "HEAD") != commit || Commands.Git(
@@ -408,19 +390,17 @@ internal class ExternalContribution {
                 ContributionAuthority.Recheck(run)
 
                 if retry {
-                    RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
+                    RepositoryAccess.ValidateFork(run.Repo, run.HeadRepo, run.Branch, commit, run.DonorId)
                     Unpublished(directory, run)
                     History(directory, run, "")
                 }
 
-                run.Fields["verification"] = results
-                run.Fields["verification_provenance"] = "tokate-observed locally, exact commit " + commit
-                run.Fields[
-                    "tool_provenance"
-                ] = "donor-reported; identity, usage and coding time not independently attested"
+                run.Verification = J.Parse(J.Write(results))
+                run.VerificationProvenance = "tokate-observed locally, exact commit " + commit
+                run.ToolProvenance = "donor-reported; identity, usage and coding time not independently attested"
                 run.Transition("generated")
-                run.Fields.Remove("failure_stage")
-                run.Fields.Remove("failure_reason")
+                run.ClearFailureStage()
+                run.ClearFailureReason()
 
                 run.Save(directory)
             } catch (error Exception) when error is CliFailure ||
@@ -431,7 +411,8 @@ internal class ExternalContribution {
                 error is UnauthorizedAccessException ||
                 error is JsonException {
                 run.Transition("failed")
-                run.Fields["error"] = error.Message
+                run.Error = error.Message
+                run.Verification = J.Parse(J.Write(results))
 
                 run.Save(directory)
 
@@ -444,10 +425,9 @@ internal class ExternalContribution {
                 let directory = Path.GetFullPath(args.Need("run"))
                 using let lease = RunStorage.Lease(directory)
                 let run = Data.Load(directory)
-                let retry = run.Text("state") == "failed"
+                let retry = run.State == "failed"
 
-                if run.Number("version") != 2 || run.Text("source") != "external" ||
-                    (run.Text("state") != "claimed" && !retry) {
+                if run.Version != 2 || run.Source != "external" || (run.State != "claimed" && !retry) {
                     throw ExecutionFailure.Create(
                         "invalid_state",
                         "Expected unexecuted external work or a recorded external verification failure"
@@ -467,16 +447,15 @@ internal class ExternalContribution {
                 }
 
                 let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
-                ContributionHandoff.Candidate(J.Get(run.Element(), "handoff"), run.Text("head_repo"), commit)
+                ContributionHandoff.Candidate(ContributionHandoff.Declaration(run.Handoff), run.HeadRepo, commit)
                 let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
 
                 let prepared = PrepareCheckout(directory, run, record, args, commit, retry)
                 let seconds = prepared.Item1
-                let metadata = prepared.Item2
-                let checkout = prepared.Item3
+                let checkout = prepared.Item2
 
                 if summary.ValueKind != JsonValueKind.Undefined {
-                    run.Fields["public_summary"] = summary
+                    run.PublicSummary = summary
                 }
 
                 Directory.CreateDirectory(checkout)
@@ -488,7 +467,7 @@ internal class ExternalContribution {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Text("head_repo") + ".git",
+                    "https://github.com/" + run.HeadRepo + ".git",
                     commit
                 )
                 Commands.Git(
@@ -498,8 +477,8 @@ internal class ExternalContribution {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Text("repo") + ".git",
-                    run.Text("base")
+                    "https://github.com/" + run.Repo + ".git",
+                    run.Base
                 )
                 Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)
                 Verification.Candidate(checkout)
@@ -508,11 +487,11 @@ internal class ExternalContribution {
                     throw ExecutionFailure.Create("invalid_state", "Fetched commit differs from exact declaration")
                 }
 
-                Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), commit)
-                run.Fields["commit"] = commit
+                Commands.Git(checkout, "merge-base", "--is-ancestor", run.Base, commit)
+                run.Commit = commit
 
                 try {
-                    Commands.Git(checkout, "diff", "--check", run.Text("base"), commit)
+                    Commands.Git(checkout, "diff", "--check", run.Base, commit)
                     Contribution.CheckPaths(checkout, record, run, commit)
                 } catch (error Exception) when error is CliFailure ||
                     error is CommandInterrupted ||
@@ -520,14 +499,14 @@ internal class ExternalContribution {
                     error is IOException ||
                     error is UnauthorizedAccessException {
                     run.Transition("failed")
-                    run.Fields["error"] = error.Message
+                    run.Error = error.Message
 
                     run.Save(directory)
 
                     throw ExecutionFailure.From(error, Output.Sink.FailureCode)
                 }
 
-                VerifyExternal(directory, run, record, checkout, commit, seconds, retry, metadata)
+                VerifyExternal(directory, run, record, checkout, commit, seconds, retry)
 
                 Output.Sink.Message(
                     "Exact external commit passed independent verification. Use " + Output.Sink.Command(

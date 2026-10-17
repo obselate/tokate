@@ -21,9 +21,7 @@ internal class Submission {
         private func CommitPrepared(directory string, run Data, incomplete bool = false) {
             let record = ContributionAuthority.Recheck(run)
 
-            if run.Text("source") != "tokate" || run.Text("state") != (
-                incomplete ? "incomplete_generated": "generated"
-            ) {
+            if run.Source != "tokate" || run.State != (incomplete ? "incomplete_generated": "generated") {
                 throw CliFailure("invalid_state", "Expected successfully verified Tokate execution")
             }
 
@@ -43,9 +41,9 @@ internal class Submission {
             }
 
             Commands.Git(checkout, "diff", "--exit-code")
-            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Text("base"))
+            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base)
 
-            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")})
+            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Base})
 
             if patch != File.ReadAllText(Path.Combine(directory, "changes.patch")) {
                 throw CliFailure("invalid_state", "Verified patch changed")
@@ -53,7 +51,7 @@ internal class Submission {
 
             PublicSummary.Bind(run, patch)
 
-            if incomplete && J.Get(run.Element(), "public_summary").ValueKind == JsonValueKind.Undefined {
+            if incomplete && run.PublicSummary.ValueKind == JsonValueKind.Undefined {
                 throw CliFailure("invalid_state", "Incomplete draft summary no longer matches the saved patch")
             }
 
@@ -61,43 +59,33 @@ internal class Submission {
                 Commands.Git(
                     checkout,
                     "-c",
-                    "user.name=" + run.Text("donor"),
+                    "user.name=" + run.Donor,
                     "-c",
-                    "user.email=" + RepositoryIdentity.Email(J.Get(run.Element(), "donor_id"), run.Text("donor")),
+                    "user.email=" + RepositoryIdentity.Email(run.DonorId, run.Donor),
                     "-c",
                     "commit.gpgsign=false",
                     "commit",
                     "-m",
                     (incomplete ? "Incomplete: ": "") +
                         (
-                        run.Flag("gratis") && run.Text("gratis_title") != "" ?
-                        run.Text("gratis_title"): J.Text(J.Get(record, "issue"), "title")
+                        run.Gratis && run.GratisTitle != "" ?
+                        run.GratisTitle: J.Text(J.Get(record, "issue"), "title")
                     )
                 )
             }
 
-            run.Fields["commit"] = Commands.Git(checkout, "rev-parse", "HEAD")
+            run.Commit = Commands.Git(checkout, "rev-parse", "HEAD")
 
-            ProtectedPaths.Local(
-                checkout,
-                J.Get(record, "policy"),
-                J.Get(record, "approval"),
-                run.Text("base"),
-                run.Text("commit")
-            )
+            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base, run.Commit)
 
-            let summary = PublicSummary.ForHead(run, run.Text("commit"))
+            let summary = PublicSummary.ForHead(run, run.Commit)
 
             if summary.ValueKind != JsonValueKind.Undefined {
-                run.Fields["public_summary"] = summary
+                run.PublicSummary = summary
             }
 
-            run.Fields["verification_provenance"] = run.Flag(
-                "gratis"
-            ) ? "No repository check ran": incomplete ? "not passed; incomplete draft": "tokate-observed locally"
-            run.Fields[
-                "tool_provenance"
-            ] = "Tokate-observed harness invocation and requested model/effort; tool-reported usage, not identity attestation"
+            run.VerificationProvenance = run.Gratis ? "No repository check ran": incomplete ? "not passed; incomplete draft": "tokate-observed locally"
+            run.ToolProvenance = "Tokate-observed harness invocation and requested model/effort; tool-reported usage, not identity attestation"
 
             run.Save(directory)
 
@@ -109,8 +97,8 @@ internal class Submission {
         }
 
         private func Partial(directory string, run Data) {
-            if RequestMetadata.Incomplete(run.Element()) {
-                if run.Text("commit") == "" && run.Text("state") == "incomplete_generated" {
+            if RequestMetadata.Incomplete(run.HasIncomplete, run.Incomplete) {
+                if run.Commit == "" && run.State == "incomplete_generated" {
                     CommitPrepared(directory, run, true)
                 }
 
@@ -119,12 +107,13 @@ internal class Submission {
 
             var started = false
             for name in Harness.Table.Keys {
-                started = started || run.Text(name + "_version") != ""
+                started = started || run.HarnessVersion(name) != ""
             }
-            if run.Text("source") != "tokate" ||
-                (run.Text("state") != "failed" && run.Text("state") != "running") ||
+            if run.Source != "tokate" ||
+                (run.State != "failed" && run.State != "running") ||
                 !started ||
-                run.Text("commit") != "" || run.Number("pr") != 0 {
+                run.Commit != "" ||
+                run.Pr != 0 {
                 throw CliFailure("invalid_state", "Incomplete publication requires stopped, unpublished managed work")
             }
 
@@ -133,30 +122,24 @@ internal class Submission {
 
             PublicSummary.Capture(directory, checkout, run)
 
-            if J.Get(run.Element(), "public_summary").ValueKind == JsonValueKind.Undefined {
+            if run.PublicSummary.ValueKind == JsonValueKind.Undefined {
                 throw CliFailure(
                     "invalid_state",
                     "Write a short tokate-public-summary.json in the saved checkout before publishing incomplete work"
                 )
             }
 
-            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(60, run.Number("seconds")))
+            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(60, run.Seconds))
             let patch = Contribution.Snapshot(checkout, run, budget)
 
-            ProtectedPaths.Local(
-                checkout,
-                J.Get(record, "policy"),
-                J.Get(record, "approval"),
-                run.Text("base"),
-                budget: budget
-            )
+            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base, budget: budget)
 
             PublicSummary.Bind(run, patch)
 
             File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
 
-            run.Fields["partial_source_state"] = run.Text("state")
-            run.Fields["incomplete"] = true
+            run.PartialSourceState = run.State
+            run.Incomplete = true
             run.Transition("incomplete_generated")
 
             run.Save(directory)
@@ -170,6 +153,7 @@ internal class Submission {
 
         internal func Comment(repo string, issue int32, actor JsonElement, request JsonElement) JsonElement {
             RepositoryIdentity.PositiveId(actor)
+            let declaration = CoordinatorRequest.Parse(request)
 
             var count int32
             var found JsonElement
@@ -195,14 +179,16 @@ internal class Submission {
                     }
 
                     var candidate JsonElement
+                    var candidateId string
 
                     try {
                         candidate = RequestMetadata.CommentData(body)
+                        candidateId = J.Text(candidate, "uuid")
                     } catch (error CliFailure) {
                         continue
                     }
 
-                    if J.Text(candidate, "uuid") != J.Text(request, "uuid") {
+                    if candidateId != declaration.Uuid {
                         continue
                     }
 
@@ -263,27 +249,27 @@ internal class Submission {
         internal func ResetWorkflow() -> WorkflowGuidance.Clear()
 
         internal func PendingWorkflow(directory string, run Data) Dictionary[string, Object?]? {
-            let claim = run.Text("state") == "claim_pending"
+            let claim = run.State == "claim_pending"
             let path = Path.Combine(directory, "request.json")
-            if run.Number("pr") != 0 || (!claim && (run.Text("publication_uuid") == "" || !File.Exists(path))) {
+            if run.Pr != 0 || (!claim && (run.PublicationUuid == "" || !File.Exists(path))) {
                 return nil
             }
-            let request = claim ? J.Get(run.Element(), "claim_request"): RequestData.FileData(path, 8192)
-            let key = run.Text("repo") + ":" + J.Text(request, "uuid")
+            let request = claim ? run.ClaimRequest: RequestData.FileData(path, 8192)
+            let key = run.Repo + ":" + CoordinatorRequest.Parse(request).Uuid
             var guidance Dictionary[string, Object?]?
             if WorkflowGuidance.TryGetValue(key, out guidance) {
                 return guidance
             }
             WorkflowGuidance[key] = nil
             try {
-                let repo = "repos/" + run.Text("repo")
-                let comment = Comment(run.Text("repo"), run.Number("issue"), J.Get(run.Element(), "donor_id"), request)
+                let repo = "repos/" + run.Repo
+                let comment = Comment(run.Repo, run.Issue, J.Parse(J.Write(run.DonorId)), request)
                 let created = J.Text(comment, "created_at")
                 if created == "" {
                     return nil
                 }
                 let runs = WorkflowRuns(
-                    run.Text("repo"),
+                    run.Repo,
                     "event=issue_comment&actor=" + Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
                         "&created=" +
                         Uri.EscapeDataString(">=" + created) + "&per_page=10"
@@ -368,7 +354,7 @@ internal class Submission {
             journal string,
             expectedActor JsonElement? = nil
         ) {
-            RequestMetadata.Request(value)
+            let declaration = RequestMetadata.Request(value)
 
             let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(requestRepo))
             let repo = RepositoryIdentity.Repo(J.Text(info, "full_name"))
@@ -393,7 +379,7 @@ internal class Submission {
                 }
             }
 
-            let binding = RequestMetadata.Binding(actor, value)
+            let binding = RequestMetadata.Binding(RepositoryIdentity.PositiveId(actor), value)
 
             if FileInfo(journal).LinkTarget != nil {
                 throw CliFailure("invalid_state", "Request posting journal must not be a symbolic link")
@@ -420,14 +406,14 @@ internal class Submission {
 
             let state = CoordinationState.Load(repo, issue)
 
-            if J.Text(value, "action") != "release" {
+            if declaration.Action != "release" {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestMetadata.Recorded(state.Value(), actor, value)
+            let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(actor), value)
 
-            if outcome.ValueKind != JsonValueKind.Undefined {
-                Output.Sink.RequestOutcome(outcome)
+            if outcome != nil {
+                Output.Sink.RequestOutcome(outcome.Value())
                 return
             }
 
@@ -443,28 +429,30 @@ internal class Submission {
                 )
             }
 
-            if state.Sha != J.Text(value, "expected") || J.Text(state.Value(), "approval_id") != J.Text(
-                value,
-                "approval"
-            ) {
+            if state.Sha != declaration.Expected || state.ApprovalId != declaration.Approval {
                 throw CliFailure("stale_approval", "Stale state or approval; no request posted")
             }
 
-            if J.Text(value, "action") != "release" {
+            if declaration.Action != "release" {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
             var expires int64
 
-            if J.Text(value, "action") != "claim" {
-                if LeaseLifecycle.Transition(J.Text(value, "action")) {
+            if declaration.Action != "claim" {
+                if LeaseLifecycle.Transition(declaration.Action) {
                     LeaseLifecycle.Owner(state, actor)
                 } else {
                     state.Reservation(actor)
-                    LeaseLifecycle.Fence(state, J.Text(J.Get(value, "metadata"), "attempt"))
+                    LeaseLifecycle.Fence(
+                        state,
+                        declaration.Action == "publish" ?
+                        PublicationRequestMetadata.Parse(declaration.Metadata).Attempt:
+                        AmendmentRequestMetadata.Parse(declaration.Metadata).Attempt
+                    )
                 }
 
-                expires = CoordinationState.Unix(J.Get(state.Value(), "reservation"), "expires")
+                expires = state.Lease?.Expires ?? 0
             }
 
             WritePostingJournal(journal, repo, issue, actor, binding, value)
@@ -501,8 +489,7 @@ internal class Submission {
             } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
                 let latest = CoordinationState.Load(repo, issue)
 
-                if RequestMetadata.Recorded(latest.Value(), actor, request)
-                    .ValueKind == JsonValueKind.Undefined &&
+                if RequestMetadata.Recorded(latest, RepositoryIdentity.PositiveId(actor), request) == nil &&
                     !Posted(repo, issue, actor, request) {
                     let code = error is CliFailure failure && failure.Code != "invalid_state" ? failure.Code:
                     "command_failed"
@@ -519,15 +506,14 @@ internal class Submission {
         }
 
         internal func PublicationRequest(run Data, correction Data? = nil) JsonElement {
-            let value = run.Element()
-            var tools Object = J.Get(value, "tools")
+            var tools Object = run.Tools
 
-            if run.Text("source") == "tokate" && run.Flag("turn_completed") {
-                let tool = J.Select(J.Items(J.Get(value, "tools"))[0], "harness,provider,model,effort")
+            if run.Source == "tokate" && run.TurnCompleted {
+                let tool = J.Select(J.Items(run.Tools)[0], "harness,provider,model,effort")
                 let usage = map[string, Object?]{}
 
                 for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                    let item = J.Get(J.Get(value, "usage"), key)
+                    let item = J.Get(run.Usage, key)
                     var count int64
 
                     if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
@@ -536,61 +522,60 @@ internal class Submission {
                 }
 
                 tool["usage"] = usage
-                tool["coding_seconds"] = run.Number("execution_seconds")
+                tool["coding_seconds"] = run.ExecutionSeconds
                 tools = []Object{tool}
             }
 
             let metadata = map[string, Object?]{
-                "fork": run.Text("head_repo"),
-                "branch": run.Text("branch"),
-                "head": correction?.Text("commit") ?? run.Text("commit"),
-                "attempt": run.Text("attempt"),
-                "source": run.Text("source"),
+                "fork": run.HeadRepo,
+                "branch": run.Branch,
+                "head": correction?.Commit ?? run.Commit,
+                "attempt": run.Attempt,
+                "source": run.Source,
                 "tools": tools,
-                "verification": RequestMetadata.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
+                "verification": RequestMetadata.Incomplete(
+                    run.HasIncomplete,
+                    run.Incomplete
+                ) ? "not-passed": "donor-reported-pass"
             }
-            let pr = correction?.Number("publication_pr") ?? run.Number("publication_pr")
+            let pr = correction?.PublicationPr ?? run.PublicationPr
             if pr > 0 {
                 metadata["pr"] = pr
             }
 
             ContributionReceipt.Models(metadata, run.Element())
 
-            if RequestMetadata.Incomplete(run.Element()) {
+            if RequestMetadata.Incomplete(run.HasIncomplete, run.Incomplete) {
                 metadata["incomplete"] = true
             }
 
             if ContributionHandoff.Has(run) {
-                metadata["handoff"] = J.Get(run.Element(), "handoff")
+                metadata["handoff"] = run.Handoff
             }
 
             if AttemptContinuation.Has(run) {
-                AttemptContinuation.Keep(metadata, AttemptContinuation.Metadata(run))
+                AttemptContinuation.Keep(metadata, PublicationRequestMetadata.Parse(AttemptContinuation.Metadata(run)))
             }
 
             if correction != nil {
                 metadata["correction"] = Amendment.Provenance(correction)
             }
 
-            var summary = PublicSummary.ForHead(run, run.Text("commit"))
+            var summary = PublicSummary.ForHead(run, run.Commit)
 
             if let current = correction {
-                summary = PublicSummary.ForHead(current, current.Text("commit"))
+                summary = PublicSummary.ForHead(current, current.Commit)
             }
 
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "uuid": correction?.Text("publication_uuid") ?? run.Text("publication_uuid"),
-                        "expected": run.Text("publication_expected") == "" ? run.Text("state_sha"): run.Text(
-                            "publication_expected"
-                        ),
-                        "approval": run.Text("approval"),
-                        "action": "publish",
-                        "metadata": PublicSummary.Attach(metadata, summary)
-                    }
-                )
+            let request = CoordinatorRequest(
+                correction?.PublicationUuid ?? run.PublicationUuid,
+                run.PublicationExpected == "" ? run.StateSha: run.PublicationExpected,
+                run.Approval,
+                "publish",
+                J.Parse(J.Write(PublicSummary.Attach(metadata, summary)))
             )
+
+            return J.Parse(request.ToJson())
         }
 
         internal func Submit(args Args, directory string, run Data) {
@@ -600,7 +585,7 @@ internal class Submission {
                 Partial(directory, run)
             }
 
-            if run.Text("amendment") != "" {
+            if run.Amendment != "" {
                 Amendment.PublishSaved(directory, run)
                 return
             }
@@ -613,18 +598,20 @@ internal class Submission {
 
             let record = ContributionAuthority.Recheck(run)
 
-            if run.Text("state") != (RequestMetadata.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
-                run.Text("commit") == "" {
+            if run.State != (
+                RequestMetadata.Incomplete(run.HasIncomplete, run.Incomplete) ? "incomplete_generated": "generated"
+            ) ||
+                run.Commit == "" {
                 throw CliFailure("invalid_state", "Only an independently verified exact commit can be submitted")
             }
 
-            if !RequestMetadata.Incomplete(run.Element()) {
-                Verification.Results(run, record)
+            if !RequestMetadata.Incomplete(run.HasIncomplete, run.Incomplete) {
+                Verification.Results(run, Policy.Parse(J.Get(record, "policy")).Verification)
             }
 
             let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
 
-            if Commands.Git(checkout, "rev-parse", "HEAD") != run.Text("commit") || Commands.Git(
+            if Commands.Git(checkout, "rev-parse", "HEAD") != run.Commit || Commands.Git(
                 checkout,
                 "status",
                 "--porcelain"
@@ -632,51 +619,46 @@ internal class Submission {
                 throw CliFailure("invalid_state", "Verified checkout changed")
             }
 
-            Commands.Git(checkout, "merge-base", "--is-ancestor", run.Text("base"), run.Text("commit"))
-            Commands.Git(checkout, "diff", "--check", run.Text("base"), run.Text("commit"))
+            Commands.Git(checkout, "merge-base", "--is-ancestor", run.Base, run.Commit)
+            Commands.Git(checkout, "diff", "--check", run.Base, run.Commit)
 
-            ProtectedPaths.Local(
-                checkout,
-                J.Get(record, "policy"),
-                J.Get(record, "approval"),
-                run.Text("base"),
-                run.Text("commit")
-            )
+            ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base, run.Commit)
 
-            if run.Text("source") == "tokate" {
+            if run.Source == "tokate" {
                 File.WriteAllText(Path.Combine(directory, "publication.json"), "{}\n")
 
                 AccessState.Check(
-                    run.Text("repo"),
-                    run.Number("issue"),
+                    run.Repo,
+                    run.Issue,
                     J.Get(record, "approval"),
-                    J.Get(run.Element(), "donor_id"),
+                    J.Parse(J.Write(run.DonorId)),
                     J.Get(record, "policy")
                 )
 
-                Publication.Push(checkout, run, run.Text("commit"))
+                Publication.Push(checkout, run, run.Commit)
 
                 ContributionAuthority.Recheck(run)
             }
 
-            if run.Text("publication_uuid") == "" {
-                let live = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-                live.Reservation(J.Get(run.Element(), "donor_id"))
-                LeaseLifecycle.Fence(live, run.Text("attempt"))
+            if run.PublicationUuid == "" {
+                let live = CoordinationState.Load(run.Repo, run.Issue)
+                live.Reservation(J.Parse(J.Write(run.DonorId)))
+                LeaseLifecycle.Fence(live, run.Attempt)
 
-                run.Fields["publication_expected"] = live.Sha
-                run.Fields["publication_uuid"] = Guid.NewGuid().ToString("D")
+                run.PublicationExpected = live.Sha
+                run.PublicationUuid = Guid.NewGuid().ToString("D")
 
                 run.Save(directory)
             }
 
             let request = Publication.Prepare(run, record, PublicationRequest(run))
-            run.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
+            let declaration = CoordinatorRequest.Parse(request)
+            run.PublicationPr = PublicationRequestMetadata.Parse(declaration.Metadata).Pr
             run.Save(directory)
 
-            File.WriteAllText(path, J.Write(request) + "\n")
+            File.WriteAllText(path, declaration.ToJson() + "\n")
 
-            Request(Args([]string{"request", run.Text("repo") + "#" + run.Number("issue").ToString(), "--file", path}))
+            Request(Args([]string{"request", run.Repo + "#" + run.Issue.ToString(), "--file", path}))
         }
 
         private func WritePostingJournal(
@@ -718,31 +700,32 @@ internal class Submission {
         }
 
         private func RetrySummary(args Args, directory string, run Data) {
-            if run.Text("source") == "tokate" && run.Text("state") == "failed" && run.Text(
-                "failure_reason"
-            ) == "public_summary_invalid" &&
-                run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 && args.Get(
-                "incomplete"
-            ) != "true" {
+            if run.Source == "tokate" &&
+                run.State == "failed" &&
+                run.FailureReason == "public_summary_invalid" &&
+                run.TurnCompleted &&
+                run.Commit == "" &&
+                run.Pr == 0 &&
+                args.Get("incomplete") != "true" {
                 let record = ContributionAuthority.Recheck(run)
                 let timer = Stopwatch.StartNew()
-                let elapsed = run.Number("elapsed_seconds")
+                let elapsed = run.ElapsedSeconds
 
                 try {
                     Contribution.Finish(
                         directory,
                         run,
                         record,
-                        J.Select(J.Get(run.Element(), "usage"), "input_tokens,cached_input_tokens,output_tokens"),
+                        J.Select(run.Usage, "input_tokens,cached_input_tokens,output_tokens"),
                         timer,
-                        run.Number("seconds"),
-                        run.Number("verification_reserve"),
+                        run.Seconds,
+                        run.VerificationReserve,
                         elapsed
                     )
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
                     run.Transition("failed")
-                    run.Fields["error"] = error.Message
-                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+                    run.Error = error.Message
+                    run.ElapsedSeconds = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
 
                     run.Save(directory)
 
@@ -758,7 +741,7 @@ internal class Submission {
         }
 
         private func RestorePublication(directory string, run Data, path string) bool {
-            if run.Text("publication_uuid") != "" && File.Exists(path) {
+            if run.PublicationUuid != "" && File.Exists(path) {
                 let saved = RequestData.FileData(path, 8192)
                 let expected = PublicationRequest(run)
 
@@ -768,45 +751,33 @@ internal class Submission {
 
                 let viewer = GitHub.Api("user")
 
-                if J.Get(viewer, "id").ToString() != J.Get(run.Element(), "donor_id").ToString() {
+                if J.Get(viewer, "id").ToString() != run.DonorId.ToString() {
                     throw CliFailure("stale_approval", "Saved publication belongs to another authenticated actor")
                 }
 
-                let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), saved)
+                let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Repo), run.Issue)
+                let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(J.Get(viewer, "id")), saved)
 
-                if outcome.ValueKind != JsonValueKind.Undefined {
-                    if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(
-                        J.Get(state.Value(), "reservation"),
-                        "reservation"
-                    ) != run.Text("id") {
+                if outcome != nil {
+                    if state.ApprovalId != run.Approval || (state.Lease?.Reservation ?? "") != run.Id {
                         throw CliFailure("stale_approval", "Saved publication has stale coordination authority")
                     }
 
                     state.Reservation(J.Get(viewer, "id"))
-                    state.Check(
-                        RepositoryIdentity.Repo(run.Text("repo")),
-                        run.Number("issue"),
-                        run.Text("donor"),
-                        J.Get(viewer, "id")
-                    )
+                    state.Check(RepositoryIdentity.Repo(run.Repo), run.Issue, run.Donor, J.Get(viewer, "id"))
 
-                    let repo = RepositoryIdentity.Repo(run.Text("repo"))
-                    let number = J.Number(outcome, "pr")
+                    let repo = RepositoryIdentity.Repo(run.Repo)
+                    let number = outcome.Pr
                     let pull = GitHub.Api("repos/" + repo + "/pulls/" + number.ToString())
                     let published = ReceiptVerification.Verify(repo, number, pull)
 
-                    if published.Text("commit") != run.Text("commit") || published.Text("approval") != run.Text(
-                        "approval"
-                    ) ||
-                        published.Text("reservation") != run.Text("id") {
+                    if published.Commit != run.Commit ||
+                        published.Approval != run.Approval ||
+                        published.Reservation != run.Id {
                         throw CliFailure("stale_approval", "Published receipt differs from this saved contribution")
                     }
 
-                    if run.Text("state") != "published" || run.Number("pr") != number || run.Text("pr_url") != J.Text(
-                        pull,
-                        "html_url"
-                    ) {
+                    if run.State != "published" || run.Pr != number || run.PrUrl != J.Text(pull, "html_url") {
                         Publication.SavePr(directory, run, pull)
                     }
 

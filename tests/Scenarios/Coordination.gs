@@ -130,6 +130,22 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 }
 
                 test.Flow.Approve()
+                let task = JsonObject()
+                for key in[]string{"verification", "required_checks", "protected_paths"} {
+                    task[key] = policy[key]?.DeepClone() ?? JsonArray()
+                }
+                task["allowed_tools"] = policy["allowed_tools"]?.DeepClone()
+                task["max_seconds"] = policy["max_seconds"]?.DeepClone()
+                task["allow_unlimited"] = policy["allow_unlimited"]?.DeepClone() ?? JsonValue.Create(false)
+                task["reservation_seconds"] = policy["reservation_seconds"]?.DeepClone() ?? JsonValue.Create(86400)
+                if policy["maintainer_edits"] != nil {
+                    task["maintainer_edits"] = policy["maintainer_edits"]?.DeepClone()
+                }
+                Check.That(
+                    Check.Text(test.State()["state"]?["approval"]?["policy_hash"]) == Check.FixtureDigest(task),
+                    "Owner approval policy hash changed"
+                )
+
                 let budget = Check.Envelope(
                     test.Flow.Call(
                         []string{
@@ -259,6 +275,17 @@ internal partial class CoordinationFlow : CoordinationFixture {
             test.Flow.SetModelPolicy("whitelist", "{\"gpt-6-sol\":[\"high\",\"unknown\",\"absent\"]}")
             let policyPath = Path.Combine(test.Flow.Upstream, ".github/tokate.json")
             let policy = Check.Json(File.ReadAllText(policyPath))
+            let malformed = policy.DeepClone()
+            malformed["max_seconds"] = JsonValue.Create("3600")
+            File.WriteAllText(policyPath, malformed.ToJsonString())
+            test.Flow.Commit("Owner policy has a mistyped budget")
+            test.Flow.Reject(
+                []string{"defaults", "check", "owner/project", "--model", "gpt-6.1-sol", "--effort", "high"},
+                "Policy: field \"max_seconds\" is missing or not an int32"
+            )
+            File.WriteAllText(policyPath, policy.ToJsonString())
+            test.Flow.Commit("Owner repairs policy budget")
+
             let models = policy["allowed_tools"]?[0]?["models"]?.DeepClone()
             policy["version"] = JsonValue.Create(3)
             policy.AsObject().Remove("models")
@@ -637,6 +664,28 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
         Flow.DiffFault("diff_fault", "")
         Flow.Receipt("owner/project#10", owner: true)
+        Flow.Reload()
+        let publishedPull = Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+        let publishedBody = Check.Text(publishedPull["body"])
+        let receiptPrefix = "<!-- tokate-receipt:"
+        let receiptStart = publishedBody.IndexOf(receiptPrefix, StringComparison.Ordinal) + receiptPrefix.Length
+        let receiptEnd = publishedBody.IndexOf(" -->", receiptStart, StringComparison.Ordinal)
+        let receiptText = publishedBody.Substring(receiptStart, receiptEnd - receiptStart)
+        let missingIssue = Check.Json(receiptText)
+        missingIssue.AsObject().Remove("issue")
+        publishedPull["body"] = JsonValue.Create(
+            publishedBody.Remove(receiptStart, receiptText.Length).Insert(receiptStart, missingIssue.ToJsonString())
+        )
+        Flow.Save()
+        let refusedReceipt = Flow.Call([]string{"checks", "owner/project#10", "--json"}, 1, owner: true)
+        Check.Contains(refusedReceipt.Output, "invalid_state")
+        Check.Contains(refusedReceipt.Output, "PR receipt: field")
+        Check.Contains(refusedReceipt.Output, "issue")
+        Flow.Reload()
+        let restoredPull = Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+        restoredPull["body"] = JsonValue.Create(publishedBody)
+        Flow.Save()
+
         let checkout = Path.Combine(Flow.Temp.Root, "donor-work")
         let marker = Path.Combine(checkout, "receipt-code-ran")
         File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "touch '" + marker + "'\nexit 0\n")
@@ -1372,6 +1421,14 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let prohibited = request.DeepClone()
         prohibited["uuid,expected"] = JsonValue.Create("untrusted synthetic value")
         Coordinate(Event(prohibited), 1)
+        let missing = request.DeepClone()
+        missing.AsObject().Remove("expected")
+        Coordinate(Event(missing), 1)
+
+        let wrong = request.DeepClone()
+        wrong["metadata"] = JsonValue.Create("not an object")
+        Coordinate(Event(wrong), 1)
+
         Check.That(State()["state"]?["reservation"] == nil, "Invalid event changed authority")
         Flow.NoInference()
     }

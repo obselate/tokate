@@ -18,15 +18,15 @@ internal class Contribution {
             reserve int32 = 0,
             elapsed int32 = 0
         ) {
-            run.Fields["failure_stage"] = "candidate_validation"
-            run.Fields["failure_reason"] = "candidate_invalid"
+            run.FailureStage = "candidate_validation"
+            run.FailureReason = "candidate_invalid"
 
-            if !run.Flag("unlimited") && seconds - reserve <= elapsed {
+            if !run.Unlimited && seconds - reserve <= elapsed {
                 throw ExecutionFailure.Create("command_failed", "Runtime allowance exhausted")
             }
 
-            let coding = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds - reserve - elapsed)
-            var total = RuntimeBudget(timer, run.Flag("unlimited") ? 0: seconds - elapsed)
+            let coding = RuntimeBudget(timer, run.Unlimited ? 0: seconds - reserve - elapsed)
+            var total = RuntimeBudget(timer, run.Unlimited ? 0: seconds - elapsed)
             var checkout string
             var candidate string
 
@@ -35,7 +35,7 @@ internal class Contribution {
                 coding.Remaining()
                 checkout = Verification.Candidate(Path.Combine(directory, "checkout"), coding)
 
-                if run.Flag("gratis") && GratisOutcome.Collect(directory, checkout, run, coding) {
+                if run.Gratis && GratisOutcome.Collect(directory, checkout, run, coding) {
                     return
                 }
 
@@ -43,7 +43,7 @@ internal class Contribution {
                     throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
                 }
 
-                run.Fields["failure_reason"] = "public_summary_invalid"
+                run.FailureReason = "public_summary_invalid"
 
                 try {
                     PublicSummary.Capture(directory, checkout, run)
@@ -53,11 +53,11 @@ internal class Contribution {
                     error is IOException ||
                     error is UnauthorizedAccessException ||
                     error is JsonException {
-                    run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
+                    run.ElapsedSeconds = elapsed + Convert.ToInt32(Math.Ceiling(timer.Elapsed.TotalSeconds))
                     throw error
                 }
 
-                run.Fields["failure_reason"] = "candidate_invalid"
+                run.FailureReason = "candidate_invalid"
                 candidate = Snapshot(checkout, run, coding)
                 PublicSummary.Bind(run, candidate)
                 run.Save(directory)
@@ -76,23 +76,23 @@ internal class Contribution {
                 coding.Remaining()
             }
 
-            if !run.Flag("gratis") {
+            if !run.Gratis {
                 Output.Sink.Step("Running independent owner verification...")
             }
 
-            if run.Flag("unlimited") {
+            if run.Unlimited {
                 total = RuntimeBudget(Stopwatch.StartNew(), reserve)
             }
 
             let verification = VerifyOwner(directory, run, record, checkout, seconds, total)
 
-            run.Fields["verification"] = verification
+            run.Verification = J.Parse(J.Write(verification))
             Output.Sink.FailureCode = "invalid_state"
-            run.Fields["failure_stage"] = "changed_candidate"
-            run.Fields["failure_reason"] = "candidate_changed"
+            run.FailureStage = "changed_candidate"
+            run.FailureReason = "candidate_changed"
 
             using let progress = Output.Sink.Progress(
-                run.Flag("gratis") ? "Candidate validation": "Verified candidate validation",
+                run.Gratis ? "Candidate validation": "Verified candidate validation",
                 total
             )
             let patch = Snapshot(checkout, run, total)
@@ -105,11 +105,11 @@ internal class Contribution {
 
             File.WriteAllText(Path.Combine(directory, "changes.patch"), patch)
 
-            run.Fields["usage"] = usage
-            run.Fields["elapsed_seconds"] = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
+            run.Usage = J.Parse(J.Write(usage))
+            run.ElapsedSeconds = elapsed + Convert.ToInt32(timer.Elapsed.TotalSeconds)
             run.Transition("generated")
-            run.Fields.Remove("failure_reason")
-            run.Fields.Remove("failure_stage")
+            run.ClearFailureReason()
+            run.ClearFailureStage()
 
             run.Save(directory)
         }
@@ -123,22 +123,22 @@ internal class Contribution {
             total RuntimeBudget
         ) List[Object] {
             Output.Sink.FailureCode = "verification_failed"
-            run.Fields["failure_stage"] = "owner_verification"
-            run.Fields["failure_reason"] = "verification_failed"
+            run.FailureStage = "owner_verification"
+            run.FailureReason = "verification_failed"
             let verification = List[Object]()
-            run.Fields["verification"] = verification
+            run.Verification = J.Parse(J.Write(verification))
 
             run.Save(directory)
 
             File.WriteAllText(Path.Combine(directory, "verification.json"), J.Write(verification))
 
-            {
-                if !run.Flag("gratis") {
+            try {
+                if !run.Gratis {
                     using let workspace = VerificationWorkspace.Create(checkout, total)
 
-                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                    for command in J.Items(Policy.Parse(J.Get(record, "policy")).Verification) {
                         total.Remaining()
-                        run.Fields["verification"] = verification
+                        run.Verification = J.Parse(J.Write(verification))
                         run.Save(directory)
 
                         let check = Verification.Verify(
@@ -151,7 +151,7 @@ internal class Contribution {
                             workspace: workspace
                         )
                         if check.Code != 0 {
-                            run.Fields["failure_reason"] = "verification_failed"
+                            run.FailureReason = "verification_failed"
                             throw CliFailure(
                                 "verification_failed",
                                 "Owner verification failed. Inspect the private verification.json artifact before explicit recovery."
@@ -160,10 +160,12 @@ internal class Contribution {
                     }
 
                     Output.Sink.FailureCode = "invalid_state"
-                    run.Fields["failure_stage"] = "changed_candidate"
-                    run.Fields["failure_reason"] = "candidate_changed"
+                    run.FailureStage = "changed_candidate"
+                    run.FailureReason = "candidate_changed"
                     workspace.Unchanged(total)
                 }
+            } finally {
+                run.Verification = J.Parse(J.Write(verification))
             }
 
             return verification
@@ -181,7 +183,7 @@ internal class Contribution {
                     checkout,
                     J.Get(record, "policy"),
                     J.Get(record, "approval"),
-                    run.Text("base"),
+                    run.Base,
                     head,
                     budget
                 )
@@ -201,7 +203,7 @@ internal class Contribution {
             budget.Git(checkout, "add", "-A")
             budget.Git(checkout, "diff", "--cached", "--check")
 
-            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Text("base")}, budget)
+            let patch = Commands.GitRaw(checkout, []string{"diff", "--cached", "--binary", run.Base}, budget)
             if patch == "" {
                 throw ExecutionFailure.Create("invalid_state", "No changes returned. No PR will be opened.")
             }

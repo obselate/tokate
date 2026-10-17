@@ -2,12 +2,34 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
+import System.Text
 import System.Text.Json
 
 internal class AccessState {
     internal var Sha string = ""
     internal var RepoId int64
-    internal let Members List[JsonElement] = List[JsonElement]()
+    internal let Members List[Member] = List[Member]()
+
+    internal class Member(actor int64, trusted bool, denied bool, source JsonElement = default(JsonElement)) {
+        internal let Actor int64 = actor
+        internal let Trusted bool = trusted
+        internal let Denied bool = denied
+        private let Source JsonElement = source
+
+        internal func Write(writer Utf8JsonWriter) {
+            if Source.ValueKind != JsonValueKind.Undefined {
+                Source.WriteTo(writer)
+                return
+            }
+
+            writer.WriteStartObject()
+            writer.WriteNumber("actor", Actor)
+            writer.WriteBoolean("trusted", Trusted)
+            writer.WriteBoolean("denied", Denied)
+            writer.WriteEndObject()
+        }
+    }
 
     internal func Allows(actor int64, mode string, approval JsonElement) bool -> Refusal(actor, mode, approval) == ""
 
@@ -16,9 +38,9 @@ internal class AccessState {
         var denied bool
 
         for member in Members {
-            if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
-                trusted = J.Bool(member, "trusted")
-                denied = J.Bool(member, "denied")
+            if member.Actor == actor {
+                trusted = member.Trusted
+                denied = member.Denied
             }
         }
 
@@ -30,8 +52,12 @@ internal class AccessState {
             return ""
         }
 
-        for allowed in J.Items(J.Get(approval, "allowed_actor_ids")) {
-            if RepositoryIdentity.PositiveId(allowed) == actor {
+        if approval.ValueKind == JsonValueKind.Undefined {
+            return "Missing donor trust and issue approval access."
+        }
+
+        for allowed in OwnerApproval.Record.Parse(approval).AllowedActorIds {
+            if allowed == actor {
                 return ""
             }
         }
@@ -39,13 +65,31 @@ internal class AccessState {
         return "Missing donor trust and issue approval access."
     }
 
-    internal func Value() JsonElement -> J.Parse(
-        J.Write(map[string, Object?]{"version": 1, "repo_id": RepoId, "members": Members})
-    )
+    internal func Value() JsonElement -> J.Parse(ToJson())
+
+    internal func ToJson() string {
+        using let bytes = MemoryStream()
+        using let writer = Utf8JsonWriter(bytes)
+
+        writer.WriteStartObject()
+        writer.WriteNumber("version", Version)
+        writer.WriteNumber("repo_id", RepoId)
+        writer.WriteStartArray("members")
+
+        for member in Members {
+            member.Write(writer)
+        }
+
+        writer.WriteEndArray()
+        writer.WriteEndObject()
+        writer.Flush()
+
+        return Encoding.UTF8.GetString(bytes.ToArray())
+    }
 
     internal func Write(repo string, expected string, identity Object) bool {
-        let text = J.Write(Value())
-        RequestData.Parse(text, 65536)
+        let text = ToJson()
+        RequestData.Parse(text, ByteLimit)
 
         let tree = GitHub.Api(
             "repos/" + repo + "/git/trees",
@@ -106,90 +150,127 @@ internal class AccessState {
     }
 
     shared {
-        internal func Mode(policy JsonElement) string -> J.Text(policy, "eligibility")
+        private const FormatName string = "Access record"
 
-        internal func Task(approval JsonElement) bool {
+        private const Version int32 = 1
+
+        private const ByteLimit int32 = 65536
+
+        internal func Mode(policy JsonElement) string -> Policy.Parse(policy).Eligibility
+
+        internal func Task(approval JsonElement) OwnerApproval.Record {
             RequestData.Parse(J.Write(approval), 1024 * 1024)
-            let eligibility = Mode(approval)
-            let donor = J.Get(approval, "donor")
+            let approved = OwnerApproval.Record.Parse(approval)
+            let eligibility = approved.Eligibility
+            let donor = approved.Donor
 
-            if J.Number(approval, "version") != 2 || J.Text(approval, "approval_scope") != "task" ||
+            if approved.Version != 2 ||
+                approved.ApprovalScope != "task" ||
                 (eligibility != "open" && eligibility != "trusted") ||
                 donor.ValueKind != JsonValueKind.Undefined {
                 throw CliFailure("stale_approval", "Malformed or contradictory task eligibility approval")
             }
 
-            RepositoryIdentity.PositiveId(J.Get(approval, "repo_id"))
-            let allowed = J.Get(approval, "allowed_actor_ids")
-            if allowed.ValueKind != JsonValueKind.Undefined && allowed.ValueKind != JsonValueKind.Array {
+            if approved.RepoId < 1 {
+                throw Exception("Expected a positive numeric GitHub identity")
+            }
+            if approved
+                .AllowedActors
+                .ValueKind != JsonValueKind.Undefined &&
+                approved
+                .AllowedActors
+                .ValueKind != JsonValueKind.Array {
                 throw CliFailure("stale_approval", "Malformed issue approval access")
             }
+
             let actors = HashSet[int64]()
-            for actor in J.Items(allowed) {
-                if !actors.Add(RepositoryIdentity.PositiveId(actor)) {
+            for actor in approved.AllowedActorIds {
+                if actor < 1 {
+                    throw Exception("Expected a positive numeric GitHub identity")
+                }
+                if !actors.Add(actor) {
                     throw CliFailure("stale_approval", "Duplicate issue approval donor")
                 }
             }
 
-            return true
+            return approved
         }
 
-        internal func Load(repo string, repoId int64) AccessState {
-            let result = AccessState{RepoId: repoId}
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate/access", missing: true)
-
-            if reference.ValueKind == JsonValueKind.Undefined {
-                return result
-            }
-
-            if J.Text(J.Get(reference, "object"), "type") != "commit" {
-                throw Exception("Donor access ref must identify a commit")
-            }
-
-            result.Sha = RepositoryIdentity.CommitSha(J.Text(J.Get(reference, "object"), "sha"))
-            let value = RequestData.Parse(GitHub.FileAt(repo, "access.json", result.Sha), 65536)
+        internal func Parse(value JsonElement) AccessState {
             RequestData.Keys(value, "version,repo_id,members")
-            let members = J.Get(value, "members")
-            if J.Number(value, "version") != 1 || RepositoryIdentity.PositiveId(J.Get(value, "repo_id")) != repoId ||
-                members.ValueKind != JsonValueKind.Array {
-                throw Exception("Invalid donor access repository identity or membership")
+            let version = JsonFields.Int64(value, FormatName, "version")
+            let repoId = JsonFields.Int64(value, FormatName, "repo_id")
+            let members = JsonFields.Array(value, FormatName, "members")
+
+            if version != Version {
+                throw CliFailure("invalid_state", FormatName + ": field \"version\" must be 1")
             }
 
+            if repoId < 1 {
+                throw CliFailure("invalid_state", FormatName + ": field \"repo_id\" must be positive")
+            }
+
+            let result = AccessState{RepoId: repoId}
             let actors = HashSet[int64]()
 
-            for member in J.Items(members) {
+            for member in members.EnumerateArray() {
                 RequestData.Keys(member, "actor,trusted,denied,issues")
-                let actor = RepositoryIdentity.PositiveId(J.Get(member, "actor"))
+                let actor = JsonFields.Int64(member, FormatName, "actor")
+                let trusted = JsonFields.Bool(member, FormatName, "trusted")
+                let denied = JsonFields.Bool(member, FormatName, "denied")
+                var issues JsonElement = JsonElement{}
+                member.TryGetProperty("issues", out issues)
 
-                if !actors.Add(actor) {
-                    throw Exception("Invalid or duplicate donor access membership")
+                if actor < 1 || !actors.Add(actor) {
+                    throw CliFailure("invalid_state", FormatName + ": field \"actor\" must be positive and unique")
                 }
 
-                for flag in[]string{"trusted", "denied"} {
-                    let item = J.Get(member, flag)
-                    if item.ValueKind != JsonValueKind.True && item.ValueKind != JsonValueKind.False {
-                        throw Exception("Invalid donor access flag")
-                    }
-                }
-
-                if !J.Bool(member, "trusted") && !J.Bool(member, "denied") {
-                    if J.Get(member, "issues").ValueKind != JsonValueKind.Undefined {
+                if !trusted && !denied {
+                    if issues.ValueKind != JsonValueKind.Undefined {
                         continue
                     }
-                    throw Exception("Empty donor access membership")
+
+                    throw CliFailure("invalid_state", "Empty donor access membership")
                 }
 
                 result.Members.Add(
-                    J.Get(member, "issues").ValueKind == JsonValueKind.Undefined ? member:
-                    J.Parse(J.Write(J.Select(member, "actor,trusted,denied")))
+                    Member(
+                        actor,
+                        trusted,
+                        denied,
+                        issues.ValueKind == JsonValueKind.Undefined ? member:
+                        J.Parse(J.Write(J.Select(member, "actor,trusted,denied")))
+                    )
                 )
             }
 
             return result
         }
 
+        internal func Load(repo string, repoId int64) AccessState {
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate/access", missing: true)
+
+            if reference.ValueKind == JsonValueKind.Undefined {
+                return AccessState{RepoId: repoId}
+            }
+
+            if J.Text(J.Get(reference, "object"), "type") != "commit" {
+                throw Exception("Donor access ref must identify a commit")
+            }
+
+            let sha = RepositoryIdentity.CommitSha(J.Text(J.Get(reference, "object"), "sha"))
+            let result = Parse(RequestData.Parse(GitHub.FileAt(repo, "access.json", sha), ByteLimit))
+
+            if result.RepoId != repoId {
+                throw Exception("Invalid donor access repository identity or membership")
+            }
+
+            result.Sha = sha
+            return result
+        }
+
         internal func Check(repo string, issue int32, approval JsonElement, actor JsonElement, policy JsonElement) {
-            Task(approval)
+            let approved = Task(approval)
 
             Output
                 .Sink
@@ -199,17 +280,20 @@ internal class AccessState {
                 "eligible": false,
                 "authority": "unknown"
             }
+            var loadingAccess = false
             try {
                 let id = RepositoryIdentity.PositiveId(actor)
                 let info = GitHub.Api("repos/" + repo)
                 let repoId = RepositoryIdentity.PositiveId(J.Get(info, "id"))
 
-                if repoId != RepositoryIdentity.PositiveId(J.Get(approval, "repo_id")) {
+                if repoId != approved.RepoId {
                     throw Exception("Task repository numeric identity changed")
                 }
 
                 let mode = Mode(policy)
+                loadingAccess = true
                 let access = Load(repo, repoId)
+                loadingAccess = false
                 let allowed = access.Allows(id, mode, approval)
 
                 Output
@@ -242,7 +326,7 @@ internal class AccessState {
                         command
                     )
                 }
-            } catch (error CliFailure) {
+            } catch (error CliFailure) when !loadingAccess {
                 throw error
             } catch (error ApiDeadlineException) {
                 throw error
@@ -423,25 +507,27 @@ internal class AccessState {
                     var resolved bool
 
                     for member in access.Members {
-                        if RepositoryIdentity.PositiveId(J.Get(member, "actor")) != id {
+                        if member.Actor != id {
                             continue
                         }
 
-                        resolved = J.Bool(member, "denied") || J.Bool(member, "trusted")
+                        resolved = member.Denied || member.Trusted
                     }
                     if !resolved && J.Text(request, "scope") == "issue" {
                         let number = J.Number(request, "issue")
                         var approval JsonElement
                         if !approvals.TryGetValue(number, out approval) {
-                            let state = CoordinationState.Load(repo, number, true).Value()
-                            approval = J.Bool(state, "revoked") ? JsonElement{}: J.Get(state, "approval")
+                            let state = CoordinationState.Load(repo, number, true)
+                            approval = state.Revoked ? JsonElement{}: state.Approval?.Value() ?? default(JsonElement)
                             if approval.ValueKind == JsonValueKind.Object {
                                 Task(approval)
                             }
                             approvals.Add(number, approval)
                         }
-                        for allowed in J.Items(J.Get(approval, "allowed_actor_ids")) {
-                            resolved = resolved || RepositoryIdentity.PositiveId(allowed) == id
+                        if approval.ValueKind == JsonValueKind.Object {
+                            for allowed in OwnerApproval.Record.Parse(approval).AllowedActorIds {
+                                resolved = resolved || allowed == id
+                            }
                         }
                     }
 
@@ -482,20 +568,16 @@ internal class AccessState {
             let trusted = List[JsonElement]()
 
             for member in access.Members {
-                if actor == 0 || RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
+                if actor == 0 || member.Actor == actor {
                     let displayed = map[string, Object?]{
-                        "actor": J.Get(member, "actor"),
-                        "trusted": J.Get(member, "trusted"),
-                        "denied": J.Get(member, "denied")
+                        "actor": member.Actor,
+                        "trusted": member.Trusted,
+                        "denied": member.Denied
                     }
 
-                    let identity = GitHub.Api(
-                        "user/" + RepositoryIdentity.PositiveId(J.Get(member, "actor")).ToString()
-                    )
+                    let identity = GitHub.Api("user/" + member.Actor.ToString())
 
-                    if RepositoryIdentity.PositiveId(J.Get(identity, "id")) != RepositoryIdentity.PositiveId(
-                        J.Get(member, "actor")
-                    ) {
+                    if RepositoryIdentity.PositiveId(J.Get(identity, "id")) != member.Actor {
                         throw Exception("Donor display identity changed")
                     }
 
@@ -503,7 +585,7 @@ internal class AccessState {
                     let row = J.Parse(J.Write(displayed))
                     members.Add(row)
 
-                    if J.Bool(member, "trusted") && !J.Bool(member, "denied") {
+                    if member.Trusted && !member.Denied {
                         trusted.Add(row)
                     }
                 }
@@ -538,20 +620,20 @@ internal class AccessState {
                         let headOwner = J.Get(J.Get(J.Get(pull, "head"), "repo"), "owner")
                         let donorId = RepositoryIdentity.PositiveId(J.Get(headOwner, "id"))
                         let donorLogin = RepositoryIdentity.Login(J.Text(headOwner, "login"))
-                        if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) || !String.Equals(
-                            J.Text(receipt, "donor"),
+                        if !RepositoryIdentity.SameRepo(receipt.Repo, repo) || !String.Equals(
+                            receipt.Donor,
                             donorLogin,
                             StringComparison.OrdinalIgnoreCase
                         ) ||
                             (actor != 0 && donorId != actor) ||
-                            (args.Get("issue") != "" && J.Number(receipt, "issue") != args.Number("issue")) {
+                            (args.Get("issue") != "" && receipt.Issue != args.Number("issue")) {
                             continue
                         }
 
                         history.Add(
                             map[string, Object?]{
                                 "pr": J.Number(pull, "number"),
-                                "issue": J.Number(receipt, "issue"),
+                                "issue": receipt.Issue,
                                 "donor": donorLogin,
                                 "state": J.Text(pull, "state"),
                                 "merged": J.Get(pull, "merged_at").ValueKind == JsonValueKind.String,
@@ -687,10 +769,10 @@ internal class AccessState {
 
             for i in 0 ... access.Members.Count {
                 let member = access.Members[i]
-                if RepositoryIdentity.PositiveId(J.Get(member, "actor")) == actor {
+                if member.Actor == actor {
                     index = i
-                    trusted = J.Bool(member, "trusted")
-                    denied = J.Bool(member, "denied")
+                    trusted = member.Trusted
+                    denied = member.Denied
                 }
             }
             switch operation {
@@ -713,9 +795,7 @@ internal class AccessState {
             }
 
             if trusted || denied {
-                access.Members.Add(
-                    J.Parse(J.Write(map[string, Object?]{"actor": actor, "trusted": trusted, "denied": denied}))
-                )
+                access.Members.Add(Member(actor, trusted, denied))
             }
         }
     }

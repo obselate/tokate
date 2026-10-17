@@ -58,6 +58,19 @@ internal class EligibilityChecks {
                 approval["donor"] == nil && Check.Text(approval["repo_id"]) == "1",
                 "Task approval assigned a donor or lacks numeric identity"
             )
+            let state = test.State()["state"] ?? throw Exception("Missing state")
+            Check.That(
+                Check.Text(state["approval_id"]) == Check.FixtureDigest(approval),
+                "Approval writer changed the approval identity"
+            )
+            var keys = ""
+            for field in approval.AsObject() {
+                keys += (keys == "" ? "": ",") + field.Key
+            }
+            Check.That(
+                keys == "version,repo,repo_id,issue,approval_scope,eligibility,allowed_actor_ids,issue_hash,policy_hash,template_hash,base,base_branch,decree,authority_branch,nonce",
+                "Approval writer changed stored field order"
+            )
             test.Flow.Reload()
             let issue = test.Flow.State["issue"] ?? throw Exception("Missing issue")
             issue["assignees"] = JsonArray()
@@ -611,6 +624,40 @@ internal class EligibilityChecks {
             Check.That(current["members"]?.AsArray().Count == 2, "Creation retry lost concurrent donor access")
         }
 
+        private func AccessRecord(test CoordinationFixture) {
+            for invalid in map[string, string]{
+                "{\"version\":\"1\",\"repo_id\":1,\"members\":[]}": "version",
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":123,\"trusted\":true}]}": "denied"
+            } {
+                test.Flow.Reload()
+                test.Flow.State["access_override"] = JsonValue.Create(invalid.Key)
+                test.Flow.Save()
+
+                let rejected = Check.Envelope(
+                    test.Flow.Call([]string{"access", "list", "owner/project", "--json"}, 1, true),
+                    "access",
+                    "error",
+                    "invalid_state"
+                )
+                let message = Check.Text(rejected["error"]?["message"])
+                Check.Contains(message, "Access record")
+                Check.Contains(message, "\"" + invalid.Value + "\"")
+            }
+
+            test.Flow.Reload()
+            test.Flow.State["access_override"] = JsonValue.Create(
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"denied\":false,\"trusted\":true,\"actor\":9007199254740993},{\"actor\":124,\"trusted\":true,\"denied\":false,\"issues\":[]}]}"
+            )
+            test.Flow.Save()
+            Access(test, "trust")
+
+            Check.That(
+                test.Flow.Git("-C", test.Flow.Upstream, "show", "tokate/access:access.json").TrimEnd() ==
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"denied\":false,\"trusted\":true,\"actor\":9007199254740993},{\"actor\":124,\"trusted\":true,\"denied\":false},{\"actor\":123,\"trusted\":true,\"denied\":false}]}",
+                "Access record rewrite changed stored bytes or legacy membership migration"
+            )
+        }
+
         private func Declarations(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
@@ -637,6 +684,27 @@ internal class EligibilityChecks {
             Policy(test, "open")
             test.Flow.Call([]string{"approve", "--yes", "owner/project#1", "donor", "other"}, 1, true)
             test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
+            using let approvalBaseline = FixtureSnapshot(test.Flow.Temp.Root)
+            let malformed = test.State()["state"] ?? throw Exception("Missing state")
+            let malformedApproval = malformed["approval"] ?? throw Exception("Missing approval")
+            malformedApproval.AsObject().Remove("base")
+            test.RewriteState(malformed)
+            let refused = Access(test, "check", issue: "1", code: 1, owner: false)
+            Check.Contains(refused.Error, "Approval record: field \"base\" is missing or not a string")
+            approvalBaseline.Restore()
+            let legacy = test.State()["state"] ?? throw Exception("Missing state")
+            let legacyApproval = legacy["approval"] ?? throw Exception("Missing approval")
+            legacyApproval["version"] = JsonValue.Create(1)
+            legacyApproval["donor"] = JsonValue.Create("donor")
+            for field in[]string{"repo_id", "nonce", "eligibility", "approval_scope"} {
+                legacyApproval.AsObject().Remove(field)
+            }
+            test.RewriteState(legacy)
+            let stale = Access(test, "check", issue: "1", code: 1, owner: false)
+            Check.Contains(stale.Error, "Malformed or contradictory task eligibility approval")
+            test.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
+            Access(test, "check", issue: "1", owner: false)
+            approvalBaseline.Restore()
             for text in[]string{
                 "{\"version\":1,\"repo_id\":99,\"members\":[]}",
                 "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":\"123\",\"trusted\":true,\"denied\":false}]}",
@@ -649,6 +717,7 @@ internal class EligibilityChecks {
                 Access(test, "check", issue: "1", code: 1, owner: false)
                 Claim(test, 1)
             }
+            AccessRecord(test)
             test.Flow.Reload()
             test.Flow.State["access_override"] = nil
             test.Flow.Save()

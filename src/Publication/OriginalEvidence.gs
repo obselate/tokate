@@ -97,15 +97,14 @@ internal class OriginalEvidence {
         private func VerificationReferences(directory string, checks JsonElement) {
             let root = LocalPaths.DirectoryPath(directory)
 
-            for check in J.Items(checks) {
-                for field in[]string{"output_file", "error_file"} {
-                    let value = J.Get(check, field)
+            for item in J.Items(checks) {
+                let check = Verification.Result.Parse(item)
 
-                    if value.ValueKind == JsonValueKind.Undefined {
+                for relative in[]string? {check.OutputFile, check.ErrorFile} {
+                    if relative == nil {
                         continue
                     }
 
-                    let relative = J.Text(check, field)
                     let path = Path.GetFullPath(Path.Combine(root, relative))
                     let failure = "Original recorded verification artifact is missing or outside its archive"
 
@@ -127,7 +126,7 @@ internal class OriginalEvidence {
 
         internal func Seal(directory string) {
             try {
-                VerificationReferences(directory, J.Get(Data.Load(directory).Element(), "verification"))
+                VerificationReferences(directory, Data.Load(directory).Verification)
 
                 let checks = Path.Combine(directory, "verification.json")
 
@@ -140,10 +139,10 @@ internal class OriginalEvidence {
 
                 File.WriteAllText(Path.Combine(directory, "manifest.json"), manifest + "\n")
 
-                let seal = Data()
-                seal.Fields["manifest_sha256"] = J.Hash(manifest)
+                let seal = map[string, Object?]{"manifest_sha256": J.Hash(manifest)}
+                let sealPath = Path.Combine(directory, "seal.json")
 
-                seal.Write(Path.Combine(directory, "seal.json"))
+                Data.WriteText(sealPath, J.Write(seal) + "\n")
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
@@ -156,12 +155,12 @@ internal class OriginalEvidence {
                 let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
                 let inventory = Inventory(archive)
                 let manifest = File.ReadAllText(Path.Combine(archive, "manifest.json")).TrimEnd('\n')
-                let seal = Data.Read(Path.Combine(archive, "seal.json"))
+                let seal = Data.ReadElement(Path.Combine(archive, "seal.json"))
 
                 inventory.Remove("manifest.json")
                 inventory.Remove("seal.json")
 
-                if J.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
+                if J.Hash(manifest) != J.Text(seal, "manifest_sha256") || RequestData.Canonical(
                     J.Parse(J.Write(inventory))
                 ) != manifest {
                     throw CliFailure(
@@ -185,6 +184,9 @@ internal class OriginalEvidence {
         }
 
         private func Authority(original Data, run Data) {
+            let originalValue = original.Element()
+            let runValue = run.Element()
+
             for key in[]string{
                 "version",
                 "id",
@@ -218,10 +220,12 @@ internal class OriginalEvidence {
                 "turn_completed"
             } {
                 if key == "repo" || key == "head_repo" {
-                    if !RepositoryIdentity.SameRepo(original.Text(key), run.Text(key)) {
+                    let originalRepo = key == "repo" ? original.Repo: original.HeadRepo
+                    let runRepo = key == "repo" ? run.Repo: run.HeadRepo
+                    if !RepositoryIdentity.SameRepo(originalRepo, runRepo) {
                         throw CliFailure("stale_approval", "Saved original authority changed: " + key)
                     }
-                } else if !RequestData.Same(J.Get(original.Element(), key), J.Get(run.Element(), key)) {
+                } else if !RequestData.Same(J.Get(originalValue, key), J.Get(runValue, key)) {
                     throw CliFailure(
                         "stale_approval",
                         "Saved original authority or execution attribution changed: " + key
@@ -264,7 +268,7 @@ internal class OriginalEvidence {
 
             if Directory.Exists(final) {
                 Amended(directory, run)
-                return Data.Read(Path.Combine(final, "seal.json")).Text("manifest_sha256")
+                return J.Text(Data.ReadElement(Path.Combine(final, "seal.json")), "manifest_sha256")
             }
 
             let checkout = Verification.Validate(Path.Combine(directory, "checkout"))
@@ -315,7 +319,7 @@ internal class OriginalEvidence {
                             "--find-renames=100%"
                         }
                         if kind == "staged" {
-                            args.AddRange([]string{"--cached", run.Text("base")})
+                            args.AddRange([]string{"--cached", run.Base})
                         }
                         args.Add("--")
                         File.WriteAllText(
@@ -328,17 +332,16 @@ internal class OriginalEvidence {
                         Commands.GitRaw(checkout, []string{"status", "--porcelain=v1", "--untracked-files=all"})
                     )
                     CopyTree(checkout, Path.Combine(temporary, "checkout"), links)
-                    let capture = Data(
-                        map[string, Object?]{
-                            "captured_at": DateTimeOffset.UtcNow.ToString("O"),
-                            "head": Commands.Git(checkout, "rev-parse", "HEAD"),
-                            "missing": missing,
-                            "links": links,
-                            "failure": run.Text("error"),
-                            "candidate_provenance": "Available staged/unstaged/untracked evidence captured at preparation; original model provenance is unproven. Missing original artifacts are not reconstructed."
-                        }
-                    )
-                    capture.Write(Path.Combine(temporary, "capture.json"))
+                    let capture = map[string, Object?]{
+                        "captured_at": DateTimeOffset.UtcNow.ToString("O"),
+                        "head": Commands.Git(checkout, "rev-parse", "HEAD"),
+                        "missing": missing,
+                        "links": links,
+                        "failure": run.Error,
+                        "candidate_provenance": "Available staged/unstaged/untracked evidence captured at preparation; original model provenance is unproven. Missing original artifacts are not reconstructed."
+                    }
+                    let capturePath = Path.Combine(temporary, "capture.json")
+                    Data.WriteText(capturePath, J.Write(capture) + "\n")
                 }
 
                 OriginalEvidence.Seal(temporary)
@@ -349,7 +352,7 @@ internal class OriginalEvidence {
                     Directory.Delete(temporary, true)
                 }
             }
-            return Data.Read(Path.Combine(final, "seal.json")).Text("manifest_sha256")
+            return J.Text(Data.ReadElement(Path.Combine(final, "seal.json")), "manifest_sha256")
         }
 
         internal func Pinned(directory string, run Data, record JsonElement) {
@@ -373,7 +376,7 @@ internal class OriginalEvidence {
         internal func Amended(directory string, run Data, amendment Data? = nil) Data {
             try {
                 let archive = LocalPaths.DirectoryPath(Path.Combine(directory, "original-evidence"))
-                let history = J.Items(J.Get(run.Element(), "amendments"))
+                let history = J.Items(run.Amendments)
                 var first = amendment
 
                 if history.Count > 0 {
@@ -387,16 +390,16 @@ internal class OriginalEvidence {
 
                     first = Data.Load(location, amendment: true)
 
-                    if first.Text("id") != J.Text(history[0], "id") {
+                    if first.Id != J.Text(history[0], "id") {
                         throw CliFailure("invalid_state", "Saved first amendment differs from contribution history")
                     }
                 }
 
                 let original = Load(directory, run)
-                let digest = Data.Read(Path.Combine(archive, "seal.json")).Text("manifest_sha256")
+                let digest = J.Text(Data.ReadElement(Path.Combine(archive, "seal.json")), "manifest_sha256")
 
                 for saved in[]Data? {first, amendment} {
-                    if saved != nil && saved.Text("original_evidence_sha256") != digest {
+                    if saved != nil && saved.OriginalEvidenceSha256 != digest {
                         throw CliFailure("invalid_state", "Saved original evidence seal changed")
                     }
                 }

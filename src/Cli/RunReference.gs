@@ -160,20 +160,20 @@ internal class RunReference {
         }
 
         internal func Label(row SavedRun, saved SavedRuns, pull bool = false) string {
-            let repo = row.Text("repo")
+            let repo = row.Run.Repo
             let name = repo.Substring(repo.IndexOf('/') + 1)
             let unique = saved.Rows.TrueForAll(other -> !Named(other, name) || Named(other, repo))
             let prefix = String.Equals(repo, Here, StringComparison.OrdinalIgnoreCase) ? "": (unique ? name: repo) + "#"
 
             if pull {
-                return prefix + J.Number(row.Value, "pr").ToString()
+                return prefix + row.Run.Pr.ToString()
             }
 
             let picked = SavedRuns.Pick(saved.For(repo, row.Issue))?.Location == row.Location
             return prefix + row.Issue.ToString() + (picked ? "": "-" + row.Number.ToString())
         }
 
-        private func Named(row SavedRun, name string) bool -> ("/" + row.Text("repo")).EndsWith(
+        private func Named(row SavedRun, name string) bool -> ("/" + row.Run.Repo).EndsWith(
             "/" + name,
             StringComparison.OrdinalIgnoreCase
         )
@@ -181,11 +181,11 @@ internal class RunReference {
         internal func Repo(name string) string {
             let rows = SavedRuns(RunStorage.Roots()).Rows.FindAll(row -> Named(row, name))
 
-            if rows.Count == 0 || !rows.TrueForAll(row -> Named(row, rows[0].Text("repo"))) {
+            if rows.Count == 0 || !rows.TrueForAll(row -> Named(row, rows[0].Run.Repo)) {
                 throw Exception("Saved runs do not identify " + name + "; name OWNER/REPO#N")
             }
 
-            return rows[0].Text("repo")
+            return rows[0].Run.Repo
         }
 
         internal func Short(actions List[[]string], full bool) List[[]string] {
@@ -274,7 +274,7 @@ internal class RunReference {
                 throw Exception(
                 "Saved run name " + name + " is ambiguous: " + String.Join(
                     ", ",
-                    rows.FindAll(other -> other.Text("state") != "failed").ConvertAll(other -> Label(other, saved))
+                    rows.FindAll(other -> other.Run.State != "failed").ConvertAll(other -> Label(other, saved))
                 ) +
                     ". Name one attempt"
             )
@@ -282,7 +282,7 @@ internal class RunReference {
             args.Run = Label(row, saved)
 
             if !named {
-                Terminal.Message("Run " + args.Run + ": " + row.Text("state") + ", " + row.Age() + " old", "cyan", true)
+                Terminal.Message("Run " + args.Run + ": " + row.Run.State + ", " + row.Age() + " old", "cyan", true)
             }
 
             for key in[]string{"--repo", "--issue", "--attempt", "--pr", "--runs"} {
@@ -297,7 +297,7 @@ internal class RunReference {
             let saved = SavedRuns(RunStorage.Roots())
             let rows = saved
                 .Rows
-                .Where(row -> repo == "" || String.Equals(row.Text("repo"), repo, StringComparison.OrdinalIgnoreCase))
+                .Where(row -> repo == "" || String.Equals(row.Run.Repo, repo, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(row -> row.Modified)
                 .ThenBy(row -> row.Location, StringComparer.Ordinal)
                 .ToList()

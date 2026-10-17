@@ -57,8 +57,14 @@ internal class ProtectedPaths {
             return path == entry
         }
 
-        internal func Check(policy JsonElement, approval JsonElement, path string) {
-            if Decree.Protected(path, approval) {
+        internal func Check(policy JsonElement, approval JsonElement, path string) -> Check(
+            J.Items(Policy.Parse(policy).ProtectedPaths),
+            Decree.HasSnapshot(approval),
+            path
+        )
+
+        private func Check(configured List[JsonElement], decree bool, path string) {
+            if decree && (path == "DECREE.md" || path.StartsWith("DECREE.md/")) {
                 throw Exception("Contribution changes approved root DECREE.md")
             }
 
@@ -66,7 +72,7 @@ internal class ProtectedPaths {
                 throw Exception("Contribution changes protected owner configuration: " + J.Write(path))
             }
 
-            for entry in J.Items(J.Get(policy, "protected_paths")) {
+            for entry in configured {
                 if Matches(entry.GetString() ?? "", path) {
                     throw Exception("Contribution changes protected owner path: " + J.Write(path))
                 }
@@ -205,9 +211,12 @@ internal class ProtectedPaths {
                 throw Exception("Contribution exceeds the bounded Git path diff")
             }
 
+            let configured = J.Items(Policy.Parse(policy).ProtectedPaths)
+            let decree = Decree.HasSnapshot(approval)
+
             for i in 0 ... paths.Length - 1 {
                 Relative(paths[i])
-                Check(policy, approval, paths[i])
+                Check(configured, decree, paths[i])
             }
         }
     }

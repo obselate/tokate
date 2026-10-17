@@ -14,7 +14,7 @@ internal class CleanupEligibility {
                     return "Run is in use."
                 }
 
-                let pr = J.Number(row.Value, "pr")
+                let pr = row.Run.Pr
 
                 if pr == 0 {
                     if Unpublished(row, "") {
@@ -26,7 +26,7 @@ internal class CleanupEligibility {
                     }
                 }
 
-                let repo = row.Text("repo")
+                let repo = row.Run.Repo
                 let issue = GitHub.Api("repos/" + repo + "/issues/" + row.Issue.ToString())
                 let state = J.Text(issue, "state")
 
@@ -38,17 +38,14 @@ internal class CleanupEligibility {
                     return "Cannot establish that the issue is closed."
                 }
 
-                let coordination = CoordinationState.Load(repo, row.Issue, true).Value()
-                let reservation = J.Get(coordination, "reservation")
+                let coordination = CoordinationState.Load(repo, row.Issue, true)
+                let reservation = coordination.Lease
 
-                if reservation.ValueKind != JsonValueKind.Undefined &&
-                    reservation.ValueKind != JsonValueKind.Null &&
-                    reservation.ValueKind != JsonValueKind.Object {
-                    return "Cannot establish reservation state."
-                }
-
-                if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                    CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                if reservation != nil &&
+                    reservation.Status != "released" &&
+                    reservation.Expires > DateTimeOffset
+                    .UtcNow
+                    .ToUnixTimeSeconds() {
                     return "Active reservation."
                 }
 
@@ -83,11 +80,19 @@ internal class CleanupEligibility {
                 return true
             }
 
-            let commit = row.Text("commit")
+            let commit = row.Run.Commit
 
             if head == "" {
-                if commit != "" || row.Text("state") == "generated" || row.Text("state") == "incomplete_generated" ||
-                    J.Bool(row.Value, "turn_completed") {
+                if commit != "" ||
+                    row
+                    .Run
+                    .State == "generated" ||
+                    row
+                    .Run
+                    .State == "incomplete_generated" ||
+                    row
+                    .Run
+                    .TurnCompleted {
                     return true
                 }
             } else if commit == "" || commit != head {

@@ -128,7 +128,7 @@ internal class OwnerHealth {
                 try {
                     let policy = Policy(text)
                     Parsed = policy
-                    let policyVersion = J.Number(policy.Value, "version").ToString()
+                    let policyVersion = policy.Version.ToString()
                     Add("policy", "ok", "Version " + policyVersion + ", eligibility " + policy.Eligibility + ".")
                 } catch (error Exception) {
                     let command = []string{"tokate", "init", repo}
@@ -147,7 +147,7 @@ internal class OwnerHealth {
                 let access = AccessState.Load(repo, RepositoryIdentity.PositiveId(J.Get(info, "id")))
                 var trusted int32
                 for member in access.Members {
-                    if J.Bool(member, "trusted") && !J.Bool(member, "denied") {
+                    if member.Trusted && !member.Denied {
                         trusted++
                     }
                 }
@@ -338,7 +338,7 @@ internal class OwnerHealth {
         internal func WarnCoordinator(args Args) {
             try {
                 let repo = RepositoryIdentity.Repo(
-                    args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Text("repo"):
+                    args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Repo:
                     args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
                 )
                 let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)
