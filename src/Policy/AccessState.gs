@@ -498,7 +498,7 @@ internal class AccessState {
         ) bool {
             let commentsPath = issue == 0 ? "/issues/comments?": "/issues/" + issue.ToString() + "/comments?"
             let seen = HashSet[string]()
-            let approvals = Dictionary[int32, JsonElement]()
+            let approvals = map[int32, JsonElement]{}
             let limit = bounded ? BoundedRequestPageLimit: GitHub.PageCountLimit
 
             for page in 1 ... limit + 1 {

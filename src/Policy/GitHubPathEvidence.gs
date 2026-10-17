@@ -9,7 +9,7 @@ internal class GitHubPathEvidence {
     shared {
         private const ComparisonFileCountLimit int32 = 300
 
-        private let CleanMergeParents Dictionary[string, List[string]] = Dictionary[string, List[string]]()
+        private let CleanMergeParents Dictionary[string, List[string]] = map[string, List[string]]{}
 
         internal func Ancestor(repo string, base string, fork string, head string) {
             RepositoryIdentity.Repo(repo)

@@ -98,7 +98,6 @@ internal class SelectionPolicy {
             }
 
             let saved = args.SavedDefaults
-            var reason = "No usable saved default."
             let compatible = J.Text(saved, "harness") == harness && J.Text(saved, "provider") == provider
             let model = args.Get("model", compatible ? J.Text(saved, "model"): "")
             let effort = args.Get("effort", compatible ? J.Text(saved, "effort"): "")
@@ -166,9 +165,11 @@ internal class SelectionPolicy {
                     throw CliFailure("command_failed", rejection + guidance)
                 }
 
-                if saved.ValueKind != JsonValueKind.Undefined {
-                    reason = compatible ? "Saved default rejected: " + rejection:
+                let reason = if saved.ValueKind != JsonValueKind.Undefined {
+                    compatible ? "Saved default rejected: " + rejection:
                     "Saved default harness/provider does not match the selected codex/openai harness."
+                } else {
+                    "No usable saved default."
                 }
 
                 throw CliFailure("invalid_arguments", reason + guidance)
