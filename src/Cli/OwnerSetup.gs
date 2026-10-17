@@ -8,6 +8,12 @@ import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
+        private const DefaultBudgetSeconds int32 = 3600
+
+        internal const CoordinatorWorkflowPath string = ".github/workflows/tokate-coordinator.yml"
+
+        private const SetupBranchName string = "tokate-setup"
+
         internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
@@ -71,7 +77,7 @@ internal class OwnerSetup {
                 fields["approval_scope"] = "task"
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = Tools("codex,claude,pi")
-                fields["max_seconds"] = 3600
+                fields["max_seconds"] = DefaultBudgetSeconds
             }
 
             return fields
@@ -130,7 +136,7 @@ internal class OwnerSetup {
                 policy.Value
             ) ? upstream: Pretty(policy.Value)
 
-            let path = ".github/workflows/tokate-coordinator.yml"
+            let path = CoordinatorWorkflowPath
             let current = GitHub.FileAt(repo, path, head, missing: true)
             let generated = CoordinatorSetup.Resolve(args.Get("pin") == "true")
             let pin = CoordinatorSetup.Pin(generated)
@@ -157,11 +163,11 @@ internal class OwnerSetup {
             CoordinatorSetup.EventPolicy(repo, path)
             let files = SetupFiles(text, upstream, workflow, current, path)
 
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate-setup", missing: true)
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + SetupBranchName, missing: true)
             let setup = J.Text(J.Get(reference, "object"), "sha")
             let pulls = GitHub.Api(
                 "repos/" + repo + "/pulls?state=open&per_page=1&head=" + Uri.EscapeDataString(
-                    repo.Split('/')[0] + ":tokate-setup"
+                    repo.Split('/')[0] + ":" + SetupBranchName
                 )
             )
             var pull = pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() > 0 ? J.Text(
@@ -306,14 +312,14 @@ internal class OwnerSetup {
             if rebuild {
                 Change(
                     changes,
-                    "Branch tokate-setup",
+                    "Branch " + SetupBranchName,
                     setup,
                     "new commit on " + main + " at " + head + " with the files above"
                 )
             }
 
             if createPull {
-                Change(changes, "Setup PR", "", "Set up Tokate, from tokate-setup into " + main)
+                Change(changes, "Setup PR", "", "Set up Tokate, from " + SetupBranchName + " into " + main)
             }
         }
 
@@ -422,31 +428,29 @@ internal class OwnerSetup {
             if setup == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + "tokate-setup", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + SetupBranchName, "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + "tokate-setup",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + SetupBranchName,
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
             }
         }
 
-        private func CreatePull(repo string, main string) string {
-            return J.Text(
-                GitHub.Api(
-                    "repos/" + repo + "/pulls",
-                    map[string, Object?]{
-                        "title": "Set up Tokate",
-                        "head": repo.Split('/')[0] + ":tokate-setup",
-                        "base": main,
-                        "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
-                    }
-                ),
-                "html_url"
-            )
-        }
+        private func CreatePull(repo string, main string) string -> J.Text(
+            GitHub.Api(
+                "repos/" + repo + "/pulls",
+                map[string, Object?]{
+                    "title": "Set up Tokate",
+                    "head": repo.Split('/')[0] + ":" + SetupBranchName,
+                    "base": main,
+                    "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
+                }
+            ),
+            "html_url"
+        )
 
         private func Prepared(repo string, setup string, head string, files List[Object]) bool {
             if setup == "" {

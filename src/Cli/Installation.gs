@@ -92,11 +92,7 @@ internal class Installation {
 
             go Commands.Wait(info, started, exited)
 
-            let launched = <-started
-
-            if launched == nil {
-                throw <-exited ?? Exception("Cannot start the installer")
-            }
+            let launched = <-started ?? throw (<-exited ?? Exception("Cannot start the installer"))
 
             using let process = launched
             let cancel = ConsoleCancelEventHandler(
@@ -129,8 +125,8 @@ internal class Installation {
                     errorStarted = true
                 }
 
-                if input != nil {
-                    process.StandardInput.Write(input)
+                if let text = input {
+                    process.StandardInput.Write(text)
                     process.StandardInput.Close()
                 }
 

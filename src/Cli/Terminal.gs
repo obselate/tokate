@@ -19,12 +19,20 @@ internal class TerminalProgress : IDisposable {
     private let Interactive bool
     private let Live bool
 
+    shared {
+        private const MinimumInteractiveWidth int32 = 80
+
+        private const LiveUpdateIntervalSeconds int32 = 1
+
+        private const MessageUpdateIntervalSeconds int32 = 5
+    }
+
     internal init(phase string, budget RuntimeBudget, total RuntimeBudget? = nil) {
         Phase = Output.Clean(phase).Replace('\n', ' ')
         Budget = budget
         Total = total
         Live = DonationView.Start()
-        Interactive = !Live && Terminal.Rich(true) && Terminal.Width(true) >= 80
+        Interactive = !Live && Terminal.Rich(true) && Terminal.Width(true) >= MinimumInteractiveWidth
         Draw()
         go Update()
     }
@@ -45,7 +53,7 @@ internal class TerminalProgress : IDisposable {
 
     private func Update() {
         try {
-            let interval int32 = Live ? 1: 5
+            let interval = Live ? LiveUpdateIntervalSeconds: MessageUpdateIntervalSeconds
 
             while true {
                 using let tick = after(TimeSpan.FromSeconds(interval))
@@ -79,11 +87,27 @@ internal class Terminal {
     shared {
         internal var Plain bool
         internal var Ascii bool
-        private let Parchment string = "#f3e7d4"
-        private let Gold string = "#89723f"
-        private let Sage string = "#697459"
-        private let Terracotta string = "#97492e"
-        private let Blue string = "#50688e"
+        internal const DefaultWidth int32 = 80
+
+        private const MinimumWidth int32 = 20
+
+        private const HeadingWidthLimit int32 = 32
+
+        private const MinimumColumnWidth int32 = 8
+
+        private const ColumnSeparator string = "  "
+
+        private const Ellipsis string = "..."
+
+        private const Parchment string = "#f3e7d4"
+
+        private const Gold string = "#89723f"
+
+        private const Sage string = "#697459"
+
+        private const Terracotta string = "#97492e"
+
+        private const Blue string = "#50688e"
 
         internal func Initialize() {
             let term = Environment.GetEnvironmentVariable("TERM")
@@ -124,10 +148,10 @@ internal class Terminal {
 
         internal func Width(error bool = false) int32 {
             if error ? Console.IsErrorRedirected: Console.IsOutputRedirected {
-                return 80
+                return DefaultWidth
             }
 
-            return Math.Max(20, Output(error).Profile.Width)
+            return Math.Max(MinimumWidth, Output(error).Profile.Width)
         }
 
         private func Accent(color string) string {
@@ -235,14 +259,21 @@ internal class Terminal {
             }
 
             if fit >= 0 && !(error ? Console.IsErrorRedirected: Console.IsOutputRedirected) {
-                let room = Width(error) - widths.Sum() + widths[fit] - 2 * widths.Count + 2
-                widths[fit] = Math.Min(widths[fit], Math.Max(8, room))
+                let room = Width(error) - widths.Sum() +
+                    widths[fit] - ColumnSeparator.Length * widths.Count +
+                    ColumnSeparator.Length
+                widths[fit] = Math.Min(widths[fit], Math.Max(MinimumColumnWidth, room))
             }
 
             for row in rows {
                 if row.Length == 1 {
                     Line(
-                        String(' ', widths[0] + 2) + Tokate.Output.Clean(row[0]).Replace('\n', ' ').Trim(),
+                        String(' ', widths[0] + ColumnSeparator.Length) +
+                            Tokate
+                            .Output
+                            .Clean(row[0])
+                            .Replace('\n', ' ')
+                            .Trim(),
                         "default",
                         error
                     )
@@ -253,18 +284,22 @@ internal class Terminal {
                     var text = row[fit]
 
                     while text.Length > 0 &&
-                        (text.GetCellWidth() > widths[fit] - 3 || Char.IsHighSurrogate(text[text.Length - 1])) {
+                        (
+                        text.GetCellWidth() > widths[fit] - Ellipsis.Length || Char.IsHighSurrogate(
+                            text[text.Length - 1]
+                        )
+                    ) {
                         text = text.Substring(0, text.Length - 1)
                     }
 
-                    row[fit] = text + "..."
+                    row[fit] = text + Ellipsis
                 }
 
                 for i in 0 ... row.Length - 1 {
                     row[i] += String(' ', widths[i] - row[i].GetCellWidth())
                 }
 
-                Line(String.Join("  ", row), "default", error)
+                Line(String.Join(ColumnSeparator, row), "default", error)
             }
         }
 
@@ -317,28 +352,27 @@ internal class Terminal {
 
             try {
                 let run = Data.Load(PublicOutput.RunDirectory)
-                var stage = "Run"
-                if code == "inference_failed" {
-                    stage = "Inference"
-                } else if code == "verification_failed" {
-                    stage = "Verification"
-                } else if (run.State == "generated" || run.State == "incomplete_generated") && exitCode != 0 {
-                    stage = "Publication"
+                let stage = switch code {
+                    case "inference_failed": "Inference"
+                    case "verification_failed": "Verification"
+                    default: (run.State == "generated" || run.State == "incomplete_generated") && exitCode != 0 ?
+                    "Publication": "Run"
                 }
 
-                var outcome = " failed (" + code + ")"
-                var color = "red"
-                if exitCode == 0 {
-                    outcome = " completed"
-                    color = "green"
-                } else if exitCode == 8 {
-                    outcome = " pending"
-                    color = "yellow"
+                let outcome = switch exitCode {
+                    case 0: " completed"
+                    case 8: " pending"
+                    default: " failed (" + code + ")"
+                }
+                let color = switch exitCode {
+                    case 0: "green"
+                    case 8: "yellow"
+                    default: "red"
                 }
 
                 Message(stage + outcome + ". Run: " + PublicOutput.RunDirectory, color, true)
 
-                let summary = RunSummaryArtifacts(PublicOutput.RunDirectory)
+                let summary = String.Join(", ", PublicOutput.Artifacts(PublicOutput.RunDirectory).Keys)
 
                 Message("Saved artifacts: " + summary, "default", true)
 
@@ -354,11 +388,6 @@ internal class Terminal {
             } catch (error Exception) { }
         }
 
-        private func RunSummaryArtifacts(directory string) string -> String.Join(
-            ", ",
-            PublicOutput.Artifacts(directory).Keys
-        )
-
         internal func Heading(title string, error bool = false) {
             if Rich(error) {
                 let console = Output(error)
@@ -366,7 +395,10 @@ internal class Terminal {
 
                 console.Write(ascii ? "* ": "☼ ", Style.Parse(Accent("yellow")))
                 console.WriteLine("Tokate", Style.Parse("bold " + Parchment + " on " + Blue))
-                console.WriteLine(String(ascii ? '-': '─', Math.Min(Width(error), 32)), Style.Parse(Accent("yellow")))
+                console.WriteLine(
+                    String(ascii ? '-': '─', Math.Min(Width(error), HeadingWidthLimit)),
+                    Style.Parse(Accent("yellow"))
+                )
             }
 
             if Rich(error) {

@@ -8,6 +8,8 @@ import System.Text.Json
 
 internal class RunReference {
     shared {
+        private const LabelColumnWidth int32 = 7
+
         internal func Status(options Args) {
             let failure = ContributionStatus.Run(options)
 
@@ -141,7 +143,7 @@ internal class RunReference {
         }
 
         private func Cell(label string, value string, color string) -> Terminal.Line(
-            Output.Clean(label.PadRight(7) + (value == "" ? "none": value)).Replace('\n', ' '),
+            Output.Clean(label.PadRight(LabelColumnWidth) + (value == "" ? "none": value)).Replace('\n', ' '),
             color,
             false
         )
