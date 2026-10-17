@@ -41,10 +41,6 @@ internal class CleanupEligibility {
                 let coordination = CoordinationState.Load(repo, row.Issue, true)
                 let reservation = coordination.Lease
 
-                if reservation != nil && reservation.Value().ValueKind != JsonValueKind.Object {
-                    return "Cannot establish reservation state."
-                }
-
                 if reservation != nil &&
                     reservation.Status != "released" &&
                     reservation.Expires > DateTimeOffset

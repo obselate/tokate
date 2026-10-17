@@ -99,7 +99,7 @@ internal class ReceiptVerification {
             }
 
             let donor = RepositoryIdentity.Login(receipt.Donor)
-            let record = state.Check(repo, receipt.Issue, donor, contribution?.ActorValue() ?? default(JsonElement))
+            let record = state.Check(repo, receipt.Issue, donor, contribution?.ActorJson ?? default(JsonElement))
             let publicationRevision = state.PublicationRevision
             let authenticated = publicationRevision == "" ? state: CoordinationState.At(
                 repo,
@@ -162,8 +162,8 @@ internal class ReceiptVerification {
                     "sha"
                 ) == receipt
                     .Head {
-                    state.Check(repo, receipt.Issue, receipt.Donor, reservation?.ActorValue() ?? default(JsonElement))
-                    LeaseLifecycle.Owner(state, reservation?.ActorValue() ?? default(JsonElement), active: true)
+                    state.Check(repo, receipt.Issue, receipt.Donor, reservation?.ActorJson ?? default(JsonElement))
+                    LeaseLifecycle.Owner(state, reservation?.ActorJson ?? default(JsonElement), active: true)
                     throw CliFailure(
                         "evidence_pending",
                         "PR publication is awaiting coordinator adoption. Wait, then run tokate checks " +
@@ -211,12 +211,10 @@ internal class ReceiptVerification {
                 (publishedLease?.Attempt ?? "") == "" ||
                 (publishedIdentity?.Id ?? "") != (publishedLease?.Reservation ?? "") ||
                 RepositoryIdentity.PositiveId(
-                publishedIdentity?.ActorValue() ?? default(JsonElement)
-            ) != RepositoryIdentity.PositiveId(contribution?.ActorValue() ?? default(JsonElement)) ||
-                RepositoryIdentity.PositiveId(
-                publishedLease?.ActorValue() ?? default(JsonElement)
-            ) != RepositoryIdentity
-                .PositiveId(contribution?.ActorValue() ?? default(JsonElement)) {
+                publishedIdentity?.ActorJson ?? default(JsonElement)
+            ) != RepositoryIdentity.PositiveId(contribution?.ActorJson ?? default(JsonElement)) ||
+                RepositoryIdentity.PositiveId(publishedLease?.ActorJson ?? default(JsonElement)) != RepositoryIdentity
+                .PositiveId(contribution?.ActorJson ?? default(JsonElement)) {
                 throw CliFailure("stale_approval", "Publication revision lacks authenticated active attempt authority")
             }
 
@@ -306,7 +304,7 @@ internal class ReceiptVerification {
                 fork,
                 branch,
                 physicalHead,
-                RepositoryIdentity.PositiveId(contribution?.ActorValue() ?? default(JsonElement))
+                RepositoryIdentity.PositiveId(contribution?.ActorJson ?? default(JsonElement))
             )
 
             policy.ValidateTools(publication.Tools, publication.SourceKind)
@@ -454,7 +452,7 @@ internal class ReceiptVerification {
                 repo,
                 receipt.Issue,
                 approval,
-                contribution?.ActorValue() ?? default(JsonElement),
+                contribution?.ActorJson ?? default(JsonElement),
                 J.Get(record, "policy")
             )
 

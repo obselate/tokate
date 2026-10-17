@@ -226,15 +226,14 @@ internal class AttemptContinuation {
 
         internal func Authority(state CoordinationState, prior JsonElement) {
             let parsed = ContinuationPredecessor.Parse(prior)
-            let approval = state.Approval?.Value() ?? default(JsonElement)
             let reservation = state.Lease
             let identity = state.Identity
             let actor = RepositoryIdentity.PositiveId(parsed.Donor)
             let repoId = RepositoryIdentity.PositiveId(parsed.Repository)
-            let approved = OwnerApproval.Record.Parse(approval)
+            let approvedRepo = state.Approval?.RepoId ?? 0
 
             if RepositoryIdentity.PositiveId(J.Get(GitHub.Api("repos/" + state.Repo), "id")) != repoId ||
-                (approved.RepoId != 0 && approved.RepoId != repoId) {
+                (approvedRepo != 0 && approvedRepo != repoId) {
                 throw CliFailure("stale_approval", "Continuation repository numeric identity changed")
             }
 
@@ -243,8 +242,8 @@ internal class AttemptContinuation {
                 (reservation?.Attempt ?? "") == parsed.Attempt ||
                 (reservation?.Reservation ?? "") != parsed.Id ||
                 (identity?.Id ?? "") != parsed.Id ||
-                RepositoryIdentity.PositiveId(identity?.ActorValue() ?? default(JsonElement)) != actor ||
-                RepositoryIdentity.PositiveId(reservation?.ActorValue() ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(identity?.ActorJson ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(reservation?.ActorJson ?? default(JsonElement)) != actor ||
                 state.ApprovalId != parsed.Approval ||
                 (reservation?.Base ?? "") != parsed.Base {
                 throw CliFailure(
@@ -263,13 +262,16 @@ internal class AttemptContinuation {
             if !LeaseLifecycle.Supported(original) ||
                 original.Revoked ||
                 original.ApprovalId != parsed.Approval ||
-                !RequestData.Same(original.Approval?.Value() ?? default(JsonElement), approval) ||
+                !RequestData.Same(
+                original.Approval?.Value() ?? default(JsonElement),
+                state.Approval?.Value() ?? default(JsonElement)
+            ) ||
                 (old?.Status ?? "") != "active" ||
                 (old?.Attempt ?? "") != parsed.Attempt ||
                 (old?.Reservation ?? "") != parsed.Id ||
                 (oldIdentity?.Id ?? "") != parsed.Id ||
-                RepositoryIdentity.PositiveId(old?.ActorValue() ?? default(JsonElement)) != actor ||
-                RepositoryIdentity.PositiveId(oldIdentity?.ActorValue() ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(old?.ActorJson ?? default(JsonElement)) != actor ||
+                RepositoryIdentity.PositiveId(oldIdentity?.ActorJson ?? default(JsonElement)) != actor ||
                 original.Contribution != nil ||
                 original
                 .Amendments

@@ -265,7 +265,7 @@ internal class ContributionPreparation {
                 reservation.Expires > DateTimeOffset
                 .UtcNow
                 .ToUnixTimeSeconds() {
-                if !Output.Sink.Donating && RepositoryIdentity.PositiveId(reservation.ActorValue())
+                if !Output.Sink.Donating && RepositoryIdentity.PositiveId(reservation.ActorJson)
                 == RepositoryIdentity.PositiveId(J.Get(viewer, "id")) && state.Contribution == nil {
                     return Prepare(args, repo, issue, viewer, state, record)
                 }
@@ -408,7 +408,7 @@ internal class ContributionPreparation {
                 (outcome?.Lease?.Lease ?? "") != uuid ||
                 (outcome?.Lease?.Attempt ?? "") != uuid ||
                 RepositoryIdentity.PositiveId(
-                outcome?.Lease?.ActorValue() ?? default(JsonElement)
+                outcome?.Lease?.ActorJson ?? default(JsonElement)
             ) != RepositoryIdentity.PositiveId(J.Get(viewer, "id")) ||
                 (outcome?.Reservation ?? "") != (reservation?.Reservation ?? "") ||
                 (reservation?.Lease ?? "") != uuid ||

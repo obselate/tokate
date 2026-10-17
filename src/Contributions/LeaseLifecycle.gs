@@ -21,7 +21,7 @@ internal class LeaseLifecycle {
 
             RepositoryIdentity.PositiveId(actor)
 
-            if RepositoryIdentity.PositiveId(reservation.ActorValue()) != RepositoryIdentity.PositiveId(actor) ||
+            if RepositoryIdentity.PositiveId(reservation.ActorJson) != RepositoryIdentity.PositiveId(actor) ||
                 reservation.Expires <= DateTimeOffset
                 .UtcNow
                 .ToUnixTimeSeconds() || reservation.Status == "released" {
@@ -38,7 +38,7 @@ internal class LeaseLifecycle {
             }
 
             if (identity?.Id ?? "") != reservation.Reservation || RepositoryIdentity.PositiveId(
-                identity?.ActorValue() ?? default(JsonElement)
+                identity?.ActorJson ?? default(JsonElement)
             ) != RepositoryIdentity.PositiveId(actor) {
                 throw CliFailure("invalid_state", "Lease differs from the contribution identity")
             }
@@ -150,7 +150,7 @@ internal class LeaseLifecycle {
             let task = state.Approval
             let repo = state.Repo
             let same = Supported(state) && RepositoryIdentity.PositiveId(
-                identity?.ActorValue() ?? default(JsonElement)
+                identity?.ActorJson ?? default(JsonElement)
             ) == RepositoryIdentity.PositiveId(actor)
             let base = same ? RepositoryIdentity.CommitSha(reservation?.Base ?? ""):
             GitHub.Branch(repo, task?.BaseBranch ?? "")
@@ -188,7 +188,7 @@ internal class LeaseLifecycle {
                         Revision: state.Sha,
                         Id: identity?.Id ?? "",
                         Actor: identity?.Actor ?? 0,
-                        ActorJson: identity?.ActorValue() ?? default(JsonElement)
+                        ActorJson: identity?.ActorJson ?? default(JsonElement)
                     }
                 }
 

@@ -261,7 +261,7 @@ internal class ContributionStatus {
 
                 let reservation = state.Lease
                 if reservation != nil {
-                    let holder = RepositoryIdentity.PositiveId(reservation.ActorValue())
+                    let holder = RepositoryIdentity.PositiveId(reservation.ActorJson)
                     row["holder_eligible"] = Access?.Allows(holder, mode, approval) == true
                 }
             } catch (error Exception) when Expected(error) {
@@ -344,7 +344,7 @@ internal class ContributionStatus {
         row["reservation"] = displayed
 
         try {
-            LeaseLifecycle.Owner(state, reservation.ActorValue())
+            LeaseLifecycle.Owner(state, reservation.ActorJson)
         } catch (error CliFailure) when error.Code == "stale_approval" { }
     }
 
@@ -475,7 +475,7 @@ internal class ContributionStatus {
         let metadata = contribution.Metadata
         let publication = PublicationRequestMetadata.Parse(metadata)
         let donor = RepositoryIdentity.Login(contribution.Donor)
-        let actor = RepositoryIdentity.PositiveId(contribution.ActorValue())
+        let actor = RepositoryIdentity.PositiveId(contribution.ActorJson)
         let branch = RepositoryIdentity.Branch(publication.Branch)
         let repository = RepositoryIdentity.Repo(publication.Fork)
 
@@ -483,7 +483,7 @@ internal class ContributionStatus {
             contribution
             .Outcome
             .Pr != J.Number(pull, "number") || RepositoryIdentity.PositiveId(
-            current?.ActorValue() ?? default(JsonElement)
+            current?.ActorJson ?? default(JsonElement)
         ) != actor ||
             !String.Equals(current?.Donor ?? "", donor, StringComparison.OrdinalIgnoreCase) || !RequestData.Same(
             receipt.ToJson(),
@@ -887,8 +887,8 @@ internal class ContributionStatus {
                 )
                 let reservation = state.Lease
                 if !merged && reservation != nil && RepositoryIdentity.PositiveId(
-                    reservation.ActorValue()
-                ) == RepositoryIdentity.PositiveId(state.Contribution?.ActorValue() ?? default(JsonElement)) &&
+                    reservation.ActorJson
+                ) == RepositoryIdentity.PositiveId(state.Contribution?.ActorJson ?? default(JsonElement)) &&
                     reservation.Status != "released" &&
                     reservation.Expires > DateTimeOffset
                     .UtcNow

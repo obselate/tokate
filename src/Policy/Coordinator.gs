@@ -670,7 +670,7 @@ internal class Coordinator {
             let reservation = state.Lease
             let branch = amendmentMetadata.Branch
             let failure = "Amendment differs from current published contribution authority"
-            let originalActor = (original?.ActorValue() ?? default(JsonElement)).ToString()
+            let originalActor = (original?.ActorJson ?? default(JsonElement)).ToString()
 
             if amendmentMetadata.Seconds > policy.MaxSeconds || originalActor != actor.ToString() {
                 throw Exception(failure)

@@ -48,8 +48,6 @@ internal class CoordinationState {
             return J.Parse(Encoding.UTF8.GetString(bytes.ToArray()))
         }
 
-        internal func ActorValue() JsonElement -> ActorJson
-
         internal func Write(writer Utf8JsonWriter) {
             if Source.ValueKind != JsonValueKind.Undefined {
                 Source.WriteTo(writer)
@@ -75,13 +73,11 @@ internal class CoordinationState {
                     return nil
                 }
 
-                let format = predecessor ? "Coordination predecessor": "Coordination identity"
-
                 let result = IdentityRecord{
-                    Id: JsonFields.String(value, format, "id"),
-                    Actor: JsonFields.Int64(value, format, "actor"),
+                    Id: J.Text(value, "id"),
+                    Actor: OptionalNumber(value, "actor") ?? 0,
                     ActorJson: J.Get(value, "actor"),
-                    Revision: predecessor ? JsonFields.String(value, format, "revision"): "",
+                    Revision: predecessor ? J.Text(value, "revision"): "",
                     Source: value
                 }
                 if !predecessor {
@@ -101,7 +97,6 @@ internal class CoordinationState {
         internal var Actor int64
         internal var ActorJson JsonElement
         internal var Created int64
-        internal var Expires int64
         internal var Status string = ""
         internal var Attempt string = ""
         private var HasLease bool
@@ -110,6 +105,12 @@ internal class CoordinationState {
         private var Source JsonElement
         private var Updated bool
         private var LifecycleChanged bool
+        private var ExpiresValue int64?
+
+        internal prop Expires int64 {
+            get -> ExpiresValue ?? throw CliFailure("invalid_state", "Invalid coordination timestamp")
+            set -> ExpiresValue = value
+        }
 
         internal func Value() JsonElement {
             if Source.ValueKind != JsonValueKind.Undefined && !Updated {
@@ -123,8 +124,6 @@ internal class CoordinationState {
 
             return J.Parse(Encoding.UTF8.GetString(bytes.ToArray()))
         }
-
-        internal func ActorValue() JsonElement -> ActorJson
 
         internal func Update(donor string, expires int64, status string, attempt string, lifecycleChanged bool) {
             Donor = donor
@@ -192,22 +191,20 @@ internal class CoordinationState {
         }
 
         shared {
-            private const FormatName string = "Coordination reservation"
-
             internal func Parse(value JsonElement) LeaseRecord? {
                 if value.ValueKind == JsonValueKind.Undefined || value.ValueKind == JsonValueKind.Null {
                     return nil
                 }
 
                 return LeaseRecord{
-                    Reservation: JsonFields.String(value, FormatName, "reservation"),
-                    Base: JsonFields.String(value, FormatName, "base"),
+                    Reservation: J.Text(value, "reservation"),
+                    Base: J.Text(value, "base"),
                     Lease: J.Text(value, "lease"),
-                    Donor: JsonFields.String(value, FormatName, "donor"),
-                    Actor: JsonFields.Int64(value, FormatName, "actor"),
+                    Donor: J.Text(value, "donor"),
+                    Actor: OptionalNumber(value, "actor") ?? 0,
                     ActorJson: J.Get(value, "actor"),
-                    Created: JsonFields.Int64(value, FormatName, "created"),
-                    Expires: JsonFields.Int64(value, FormatName, "expires"),
+                    Created: OptionalNumber(value, "created") ?? 0,
+                    ExpiresValue: OptionalNumber(value, "expires"),
                     Status: J.Text(value, "status"),
                     Attempt: J.Text(value, "attempt"),
                     HasLease: J.Get(value, "lease").ValueKind == JsonValueKind.String,
@@ -227,9 +224,10 @@ internal class CoordinationState {
         internal var Reservation string = ""
         internal var Lease LeaseRecord?
         private var Source JsonElement
+        private var Parsed bool
 
         internal func Value() JsonElement {
-            if Source.ValueKind != JsonValueKind.Undefined {
+            if Parsed {
                 return Source
             }
 
@@ -241,10 +239,8 @@ internal class CoordinationState {
             return J.Parse(Encoding.UTF8.GetString(bytes.ToArray()))
         }
 
-        internal func PrValue() JsonElement -> PrJson
-
         internal func Write(writer Utf8JsonWriter) {
-            if Source.ValueKind != JsonValueKind.Undefined {
+            if Parsed {
                 Source.WriteTo(writer)
                 return
             }
@@ -265,24 +261,15 @@ internal class CoordinationState {
         map[string, Object?]{"pr": Pr, "url": Url, "head": Head, "reservation": Reservation}
 
         shared {
-            private const FormatName string = "Coordination outcome"
-
             internal func Parse(value JsonElement, publication bool = false) ResultRecord {
-                if value.ValueKind != JsonValueKind.Object {
-                    throw CliFailure(
-                        "invalid_state",
-                        "Coordination outcome: field \"outcome\" is missing or not an object"
-                    )
-                }
-
-                let result = ResultRecord{Source: value}
+                let result = ResultRecord{Source: value, Parsed: true}
 
                 if publication || J.Get(value, "pr").ValueKind != JsonValueKind.Undefined {
-                    result.Pr = JsonFields.Int32(value, FormatName, "pr")
+                    result.Pr = J.Number(value, "pr")
                     result.PrJson = J.Get(value, "pr")
-                    result.Url = JsonFields.String(value, FormatName, "url")
-                    result.Head = JsonFields.String(value, FormatName, "head")
-                    result.Reservation = JsonFields.String(value, FormatName, "reservation")
+                    result.Url = J.Text(value, "url")
+                    result.Head = J.Text(value, "head")
+                    result.Reservation = J.Text(value, "reservation")
                 } else if J.Get(value, "reservation").ValueKind != JsonValueKind.Undefined {
                     result.Lease = LeaseRecord.Parse(value)
                     result.Reservation = result.Lease?.Reservation ?? ""
@@ -324,8 +311,6 @@ internal class CoordinationState {
 
             return J.Parse(Encoding.UTF8.GetString(bytes.ToArray()))
         }
-
-        internal func ActorValue() JsonElement -> ActorJson
 
         internal func Write(writer Utf8JsonWriter) {
             if Source.ValueKind != JsonValueKind.Undefined {
@@ -372,14 +357,12 @@ internal class CoordinationState {
                     return nil
                 }
 
-                let format = amendment ? "Coordination amendment": "Coordination publication"
-
                 let result = PublicationRecord{
-                    Request: JsonFields.String(value, format, "request"),
-                    Expected: JsonFields.String(value, format, "expected"),
-                    Actor: JsonFields.Int64(value, format, "actor"),
+                    Request: J.Text(value, "request"),
+                    Expected: J.Text(value, "expected"),
+                    Actor: OptionalNumber(value, "actor") ?? 0,
                     ActorJson: J.Get(value, "actor"),
-                    Donor: JsonFields.String(value, format, "donor"),
+                    Donor: J.Text(value, "donor"),
                     Outcome: ResultRecord.Parse(J.Get(value, "outcome"), true),
                     Attempt: J.Text(value, "attempt"),
                     Summary: J.Get(value, "summary"),
@@ -390,15 +373,12 @@ internal class CoordinationState {
                 }
 
                 if amendment {
-                    result.Previous = JsonFields.String(value, format, "previous")
-                    result.Head = JsonFields.String(value, format, "head")
-                    result.Seconds = JsonFields.Int32(value, format, "seconds")
-                    result.Tools = JsonFields.Array(value, format, "tools")
+                    result.Previous = J.Text(value, "previous")
+                    result.Head = J.Text(value, "head")
+                    result.Seconds = J.Number(value, "seconds")
+                    result.Tools = J.Get(value, "tools")
                 } else {
                     result.Metadata = J.Get(value, "metadata")
-                    if result.Metadata.ValueKind != JsonValueKind.Object {
-                        throw CliFailure("invalid_state", format + ": field \"metadata\" is missing or not an object")
-                    }
                 }
 
                 return result
@@ -427,11 +407,9 @@ internal class CoordinationState {
         }
 
         shared {
-            private const FormatName string = "Coordination replay"
-
             internal func Parse(value JsonElement) ReplayRecord -> ReplayRecord{
-                Uuid: JsonFields.String(value, FormatName, "uuid"),
-                Binding: JsonFields.String(value, FormatName, "binding"),
+                Uuid: J.Text(value, "uuid"),
+                Binding: J.Text(value, "binding"),
                 Outcome: ResultRecord.Parse(J.Get(value, "outcome")),
                 Source: value
             }
@@ -693,7 +671,6 @@ internal class CoordinationState {
     shared {
         private const StateVersion int64 = 2
         private const StateByteLimit int32 = 1024 * 1024
-        private const FormatName string = "Coordination state"
         private const InvalidStateMessage string = "Invalid version-2 coordination state"
 
         internal func ApprovalFailure(repo string, issue int32, reason string) CliFailure {
@@ -775,16 +752,23 @@ internal class CoordinationState {
             state.Write(repo, issue, expected)
         }
 
+        private func OptionalNumber(value JsonElement, field string) int64? {
+            let item = J.Get(value, field)
+            var result int64
+
+            return item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out result) ? result: nil
+        }
+
         internal func Parse(value JsonElement, repo string = "", issue int32 = 0) CoordinationState {
-            let version = JsonFields.Int64(value, FormatName, "version")
+            let version = J.Number(value, "version")
             if version != StateVersion {
                 throw CliFailure("invalid_state", InvalidStateMessage)
             }
 
             let result = CoordinationState{
                 Version: version,
-                Repo: JsonFields.String(value, FormatName, "repo"),
-                Issue: JsonFields.Int32(value, FormatName, "issue"),
+                Repo: J.Text(value, "repo"),
+                Issue: J.Number(value, "issue"),
                 Source: value
             }
 
@@ -796,8 +780,7 @@ internal class CoordinationState {
             result.Revoked = J.Bool(value, "revoked")
             result.RevocationValid = J.Get(value, "revoked").ValueKind == JsonValueKind.True || J.Get(value, "revoked")
                 .ValueKind == JsonValueKind.False
-            result.PublicationRevision = J.Get(value, "publication_revision").ValueKind == JsonValueKind.Null ? "":
-            JsonFields.OptionalString(value, FormatName, "publication_revision", "")
+            result.PublicationRevision = J.Text(value, "publication_revision")
             result.Identity = IdentityRecord.Parse(J.Get(value, "identity"))
             result.Lease = LeaseRecord.Parse(J.Get(value, "reservation"))
             result.Contribution = PublicationRecord.Parse(J.Get(value, "contribution"))
@@ -811,24 +794,18 @@ internal class CoordinationState {
                 result.Order.Add(field.Name)
             }
 
-            if J.Get(value, "amendments").ValueKind != JsonValueKind.Undefined && J.Get(value, "amendments")
-                .ValueKind != JsonValueKind
-                .Null {
-                for entry in JsonFields.Array(value, FormatName, "amendments").EnumerateArray() {
-                    result.Amendments.Add(
-                        PublicationRecord.Parse(entry, true) ??
-                            throw CliFailure(
-                            "invalid_state",
-                            "Coordination state: field \"amendments\" must contain objects"
-                        )
-                    )
+            let amendments = J.Get(value, "amendments")
+            if amendments.ValueKind == JsonValueKind.Array {
+                for entry in amendments.EnumerateArray() {
+                    if let amendment = PublicationRecord.Parse(entry, true) {
+                        result.Amendments.Add(amendment)
+                    }
                 }
             }
 
-            if J.Get(value, "outcomes").ValueKind != JsonValueKind.Undefined && J.Get(value, "outcomes")
-                .ValueKind != JsonValueKind
-                .Null {
-                for entry in JsonFields.Array(value, FormatName, "outcomes").EnumerateArray() {
+            let outcomes = J.Get(value, "outcomes")
+            if outcomes.ValueKind == JsonValueKind.Array {
+                for entry in outcomes.EnumerateArray() {
                     result.Outcomes.Add(ReplayRecord.Parse(entry))
                 }
             }

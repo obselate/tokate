@@ -228,7 +228,7 @@ internal class Admission {
                     }
                     state = BoundState(repo, pull)
                     if state.Sha == "" || state.Contribution != nil || RepositoryIdentity.PositiveId(
-                        state.Lease?.ActorValue() ?? default(JsonElement)
+                        state.Lease?.ActorJson ?? default(JsonElement)
                     ) != actor {
                         return false
                     }
@@ -260,7 +260,7 @@ internal class Admission {
                 }
 
                 actor = RepositoryIdentity.PositiveId(
-                    state.Contribution?.ActorValue() ?? state.Lease?.ActorValue() ?? default(JsonElement)
+                    state.Contribution?.ActorJson ?? state.Lease?.ActorJson ?? default(JsonElement)
                 )
                 login = RepositoryIdentity.Login(state.Contribution?.Donor ?? state.Lease?.Donor ?? "")
                 if access.Allows(actor, mode, JsonElement{}) {
@@ -323,7 +323,7 @@ internal class Admission {
             if contribution != nil {
                 let metadata = contribution.Metadata
                 let publication = PublicationRequestMetadata.Parse(metadata)
-                RepositoryIdentity.PositiveId(outcome?.PrValue() ?? default(JsonElement))
+                RepositoryIdentity.PositiveId(outcome?.PrJson ?? default(JsonElement))
                 RepositoryIdentity.CommitSha(outcome?.Head ?? "")
                 RepositoryIdentity.Branch(publication.Branch)
                 RepositoryIdentity.Repo(publication.Fork)
@@ -344,15 +344,15 @@ internal class Admission {
                         reservation.Status != "active" ||
                         branch != "tokate/v2-" +
                         reservation.Reservation ||
-                        RepositoryIdentity.PositiveId(reservation.ActorValue()) != RepositoryIdentity.PositiveId(
-                        contribution.ActorValue()
+                        RepositoryIdentity.PositiveId(reservation.ActorJson) != RepositoryIdentity.PositiveId(
+                        contribution.ActorJson
                     ) ||
                         !String.Equals(reservation.Donor, contribution.Donor, StringComparison.OrdinalIgnoreCase) {
                         return JsonElement{}
                     }
 
                     try {
-                        state.Reservation(contribution.ActorValue())
+                        state.Reservation(contribution.ActorJson)
                     } catch (error CliFailure) {
                         if error.Code == "stale_approval" {
                             return JsonElement{}
@@ -371,8 +371,8 @@ internal class Admission {
 
                 let donor = reservation.Donor
                 if LeaseLifecycle.Supported(state) && RepositoryIdentity.PositiveId(
-                    state.Identity?.ActorValue() ?? default(JsonElement)
-                ) != RepositoryIdentity.PositiveId(reservation.ActorValue()) {
+                    state.Identity?.ActorJson ?? default(JsonElement)
+                ) != RepositoryIdentity.PositiveId(reservation.ActorJson) {
                     return JsonElement{}
                 }
 
@@ -385,7 +385,7 @@ internal class Admission {
 
                 if requireLease {
                     try {
-                        LeaseLifecycle.Owner(state, reservation.ActorValue(), active: true)
+                        LeaseLifecycle.Owner(state, reservation.ActorJson, active: true)
                     } catch (error CliFailure) {
                         if error.Code == "stale_approval" {
                             return JsonElement{}
@@ -402,7 +402,7 @@ internal class Admission {
                 repo,
                 pull,
                 binding,
-                contribution?.ActorValue() ?? state.Lease?.ActorValue() ?? default(JsonElement),
+                contribution?.ActorJson ?? state.Lease?.ActorJson ?? default(JsonElement),
                 contribution?.Donor ?? state.Lease?.Donor ?? ""
             )
         }

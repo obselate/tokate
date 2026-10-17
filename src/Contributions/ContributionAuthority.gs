@@ -49,7 +49,7 @@ internal class ContributionAuthority {
                 if run.Attempt != (reservation?.Attempt ?? "") || RepositoryIdentity.PositiveId(
                     run.DonorId
                 ) != RepositoryIdentity
-                    .PositiveId(state.Identity?.ActorValue() ?? default(JsonElement)) {
+                    .PositiveId(state.Identity?.ActorJson ?? default(JsonElement)) {
                     throw CliFailure(
                         "stale_approval",
                         "Saved execution attempt fence changed; old work is preserved",

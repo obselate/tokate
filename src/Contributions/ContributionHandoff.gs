@@ -37,9 +37,9 @@ internal class ContributionHandoff {
             let original = state.Contribution
             let current = state.Current()
             let identity = state.Identity
-            let actor = RepositoryIdentity.PositiveId(identity?.ActorValue() ?? default(JsonElement))
+            let actor = RepositoryIdentity.PositiveId(identity?.ActorJson ?? default(JsonElement))
 
-            if original == nil || RepositoryIdentity.PositiveId(original.ActorValue()) != actor {
+            if original == nil || RepositoryIdentity.PositiveId(original.ActorJson) != actor {
                 throw CliFailure("invalid_state", "Handoff requires published progress from the prior donor")
             }
 
@@ -66,7 +66,7 @@ internal class ContributionHandoff {
         internal func Read(state CoordinationState, actor JsonElement, record JsonElement, number int32) JsonElement {
             var prior = state
 
-            if RepositoryIdentity.PositiveId(state.Identity?.ActorValue() ?? default(JsonElement)) == RepositoryIdentity
+            if RepositoryIdentity.PositiveId(state.Identity?.ActorJson ?? default(JsonElement)) == RepositoryIdentity
                 .PositiveId(actor) {
                 let predecessor = state.Identity?.Predecessor
                 prior = CoordinationState.At(state.Repo, state.Issue, predecessor?.Revision ?? "")
@@ -134,9 +134,9 @@ internal class ContributionHandoff {
             if (predecessor?.Revision ?? "") != source.Revision ||
                 (predecessor?.Id ?? "") != source.Id ||
                 RepositoryIdentity.PositiveId(
-                predecessor?.ActorValue() ?? default(JsonElement)
+                predecessor?.ActorJson ?? default(JsonElement)
             ) != RepositoryIdentity.PositiveId(source.Actor) || RepositoryIdentity.PositiveId(
-                identity?.ActorValue() ?? default(JsonElement)
+                identity?.ActorJson ?? default(JsonElement)
             ) == RepositoryIdentity
                 .PositiveId(source.Actor) {
                 throw CliFailure("stale_approval", "Handoff differs from the authoritative donor takeover")

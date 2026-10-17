@@ -92,7 +92,7 @@ internal class Amendment {
             let publication = PublicationRequestMetadata.Parse(metadata)
             let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
             let actor = J.Get(viewer, "id").ToString()
-            let originalActor = (original?.ActorValue() ?? default(JsonElement)).ToString()
+            let originalActor = (original?.ActorJson ?? default(JsonElement)).ToString()
             let reservationId = reservation?.Reservation ?? ""
             let declaredAttempt = amendment?.Attempt ?? ""
             let attempt = declaredAttempt != "" ? declaredAttempt:
@@ -124,7 +124,7 @@ internal class Amendment {
                     (current?.Expected ?? "") != amendment.Expected ||
                     (outcome?.Head ?? "") != amendment.Commit ||
                     (outcome?.Pr ?? 0) != amendment.Pr ||
-                    (current?.ActorValue() ?? default(JsonElement)).ToString() != actor {
+                    (current?.ActorJson ?? default(JsonElement)).ToString() != actor {
                     throw CliFailure("stale_approval", stale)
                 }
                 if (current?.Previous ?? "") != amendment.Previous ||
@@ -179,7 +179,7 @@ internal class Amendment {
                 Transition(run.Repo, state, amendment?.Expected ?? "")
                 if (original?.Request ?? "") != amendment?.PublicationUuid ||
                     (original?.Expected ?? "") != amendment?.Expected ||
-                    (original?.ActorValue() ?? default(JsonElement)).ToString() != J.Get(viewer, "id").ToString() ||
+                    (original?.ActorJson ?? default(JsonElement)).ToString() != J.Get(viewer, "id").ToString() ||
                     !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) || !RequestData.Same(
                     original?.Metadata ?? default(JsonElement),
                     CoordinatorRequest.Parse(request).Metadata
