@@ -45,8 +45,15 @@ internal class OverlapContribution {
 
 internal class Overlaps {
     shared {
-        private let Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify and checks for single-contribution gates."
-        private var Remaining int32 = 24000
+        private const Advisory string = "Filename overlap is advisory and never blocks work or determines merge order. Disjoint files and clean merge metadata do not prove semantic compatibility. Closed-completed dependencies remove only the open-dependency gate; they do not prove implementation completion. Previous checks and owner review do not verify a new head or target. Owners retain final acceptance; use verify and checks for single-contribution gates."
+
+        private const OutputByteLimit int32 = 24000
+
+        private const MinimumPullCount int32 = 2
+
+        private const MaximumPullCount int32 = 16
+
+        private var Remaining int32 = OutputByteLimit
 
         private func Retain(rows List[Object], item Object) {
             let bytes = Encoding.UTF8.GetByteCount(J.Write(item))
@@ -210,7 +217,7 @@ internal class Overlaps {
             let remaining = Remaining
 
             try {
-                Remaining = 24000
+                Remaining = OutputByteLimit
                 Dependencies(repo, issue, facts)
             } finally {
                 Remaining = remaining
@@ -462,7 +469,7 @@ internal class Overlaps {
         }
 
         internal func Run(args Args) {
-            Remaining = 24000
+            Remaining = OutputByteLimit
 
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let numbers = Overlaps.PullNumbers(args.Need("prs"))
@@ -545,7 +552,7 @@ internal class Overlaps {
         internal func PullNumbers(value string) List[int32] {
             let parts = value.Split(',')
 
-            if parts.Length < 2 || parts.Length > 16 {
+            if parts.Length < MinimumPullCount || parts.Length > MaximumPullCount {
                 throw Exception("overlaps requires 2 to 16 unique positive PR numbers")
             }
 

@@ -8,6 +8,10 @@ import System.Text.RegularExpressions
 
 internal class AttemptContinuation {
     shared {
+        private const RetryBudgetMultiplier int32 = 2
+
+        private const VerificationReserveDivisor int32 = 3
+
         internal func Has(run Data) bool -> run.ContinuationSource != ""
 
         internal func Stopped(run Data) bool -> Harness.Resumes(run.Harness, run.Provider) &&
@@ -47,8 +51,12 @@ internal class AttemptContinuation {
                     return next
                 }
 
-                let seconds = Math.Min(run.Seconds * 2, Policy.Parse(J.Get(record, "policy")).MaxSeconds)
-                let reserve = run.VerificationReserve > 0 ? run.VerificationReserve: Math.Max(1, seconds / 3)
+                let seconds = Math.Min(
+                    run.Seconds * RetryBudgetMultiplier,
+                    Policy.Parse(J.Get(record, "policy")).MaxSeconds
+                )
+                let reserve = run.VerificationReserve > 0 ? run.VerificationReserve:
+                Math.Max(1, seconds / VerificationReserveDivisor)
                 let command = List[string]{
                     "tokate",
                     "work",

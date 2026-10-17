@@ -570,7 +570,7 @@ internal class CoordinationState {
                 expires: expires
             )
         } else {
-            for attempt in 0 ... 2 {
+            for attempt in 0 ... RefUpdateAttemptLimit {
                 try {
                     GitHub.Api(
                         "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + Ref(issue),
@@ -672,6 +672,8 @@ internal class CoordinationState {
         private const StateVersion int64 = 2
         private const StateByteLimit int32 = 1024 * 1024
         private const InvalidStateMessage string = "Invalid version-2 coordination state"
+
+        private const RefUpdateAttemptLimit int32 = 2
 
         internal func ApprovalFailure(repo string, issue int32, reason string) CliFailure {
             let task = repo + "#" + issue.ToString()
