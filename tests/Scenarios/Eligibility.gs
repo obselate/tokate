@@ -611,6 +611,40 @@ internal class EligibilityChecks {
             Check.That(current["members"]?.AsArray().Count == 2, "Creation retry lost concurrent donor access")
         }
 
+        private func AccessRecord(test CoordinationFixture) {
+            for invalid in map[string, string]{
+                "{\"version\":\"1\",\"repo_id\":1,\"members\":[]}": "version",
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"actor\":123,\"trusted\":true}]}": "denied"
+            } {
+                test.Flow.Reload()
+                test.Flow.State["access_override"] = JsonValue.Create(invalid.Key)
+                test.Flow.Save()
+
+                let rejected = Check.Envelope(
+                    test.Flow.Call([]string{"access", "list", "owner/project", "--json"}, 1, true),
+                    "access",
+                    "error",
+                    "invalid_state"
+                )
+                let message = Check.Text(rejected["error"]?["message"])
+                Check.Contains(message, "Access record")
+                Check.Contains(message, "\"" + invalid.Value + "\"")
+            }
+
+            test.Flow.Reload()
+            test.Flow.State["access_override"] = JsonValue.Create(
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"denied\":false,\"trusted\":true,\"actor\":9007199254740993},{\"actor\":124,\"trusted\":true,\"denied\":false,\"issues\":[]}]}"
+            )
+            test.Flow.Save()
+            Access(test, "trust")
+
+            Check.That(
+                test.Flow.Git("-C", test.Flow.Upstream, "show", "tokate/access:access.json").TrimEnd() ==
+                "{\"version\":1,\"repo_id\":1,\"members\":[{\"denied\":false,\"trusted\":true,\"actor\":9007199254740993},{\"actor\":124,\"trusted\":true,\"denied\":false},{\"actor\":123,\"trusted\":true,\"denied\":false}]}",
+                "Access record rewrite changed stored bytes or legacy membership migration"
+            )
+        }
+
         private func Declarations(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
@@ -649,6 +683,7 @@ internal class EligibilityChecks {
                 Access(test, "check", issue: "1", code: 1, owner: false)
                 Claim(test, 1)
             }
+            AccessRecord(test)
             test.Flow.Reload()
             test.Flow.State["access_override"] = nil
             test.Flow.Save()
