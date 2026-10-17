@@ -7,6 +7,12 @@ import System.Text.RegularExpressions
 
 internal class Coordinator {
     shared {
+        internal const EventByteLimit int32 = 1024 * 1024
+
+        private const RetainedOutcomeCount int32 = 31
+
+        private const StateReadAttemptLimit int32 = 5
+
         private func ApproveLabel(repo string, event JsonElement) {
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
@@ -78,14 +84,18 @@ internal class Coordinator {
             let args = Args([]string{"approve", repo + "#" + number.ToString(), "--non-interactive"})
             let state = CoordinationState.Load(repo, number, true)
             let previous = state.Approval
-            let active = previous != nil && !state.Revoked ? previous: nil
-            if active != nil {
-                args.Values["--base-branch"] = active.BaseBranch
+            let active = state.Revoked ? nil: previous
+
+            if let current = active {
+                args.Values["--base-branch"] = current.BaseBranch
             }
+
             let approval = OwnerApproval.Capture(args, info, issue)
-            if active != nil {
-                approval.AllowedActorIds = active.AllowedActorIds
+
+            if let current = active {
+                approval.AllowedActorIds = current.AllowedActorIds
             }
+
             if active != nil &&
                 approval.PolicyHash == active.PolicyHash &&
                 approval.TemplateHash == active.TemplateHash &&
@@ -101,7 +111,7 @@ internal class Coordinator {
 
         internal func Run(args Args) ValueTuple[JsonElement, string] {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            let event = RequestData.FileData(args.Need("event"), EventByteLimit)
             if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
                 ApproveLabel(repo, event)
                 return ValueTuple[JsonElement, string](JsonElement{}, "")
@@ -210,15 +220,14 @@ internal class Coordinator {
 
             let action = declaration.Action
             let record = action == "release" ? JsonElement{}: state.Check(repo, number, donor, actor)
-            var outcome CoordinationState.ResultRecord
             let originalExpiry = state.Lease?.Expires ?? 0
 
-            if action == "claim" || LeaseLifecycle.Transition(action) {
-                outcome = LeaseLifecycle.Apply(state, request, actor, donor, J.Get(record, "policy"))
+            let outcome = if action == "claim" || LeaseLifecycle.Transition(action) {
+                LeaseLifecycle.Apply(state, request, actor, donor, J.Get(record, "policy"))
             } else if action == "amend" {
-                outcome = Amend(repo, number, state, record, request, actor, donor)
+                Amend(repo, number, state, record, request, actor, donor)
             } else {
-                outcome = Publish(repo, number, state, record, request, actor, donor)
+                Publish(repo, number, state, record, request, actor, donor)
             }
 
             if action == "publish" || action == "amend" {
@@ -228,7 +237,7 @@ internal class Coordinator {
 
             let retained = List[CoordinationState.ReplayRecord]()
 
-            for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
+            for i in Math.Max(0, outcomes.Count - RetainedOutcomeCount) ... outcomes.Count {
                 retained.Add(outcomes[i])
             }
 
@@ -422,10 +431,10 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(live, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(live, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, live, request, actor, donor, recorded)
                 }
+
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
             let previous = live.Sha
@@ -455,8 +464,7 @@ internal class Coordinator {
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
-                let recorded = RequestMetadata.Recorded(inspected, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(inspected, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
 
@@ -468,7 +476,7 @@ internal class Coordinator {
             }
 
             var acquired = CoordinationState.Load(repo, number)
-            for attempt in 0 ... 5 {
+            for attempt in 0 ... StateReadAttemptLimit {
                 if acquired.Sha != previous {
                     break
                 }
@@ -478,10 +486,10 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(acquired, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(acquired, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
+
                 throw CliFailure(
                     "stale_approval",
                     "Coordination changed after reservation update; inspect current state"

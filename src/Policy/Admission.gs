@@ -7,9 +7,13 @@ import System.Text.RegularExpressions
 
 internal class Admission {
     shared {
+        private const CommentMarker string = "<!-- tokate-admission:v1 -->"
+
+        private const BindingRefCountLimit int32 = 1000
+
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            let event = RequestData.FileData(args.Need("event"), Coordinator.EventByteLimit)
             let actions = []string{
                 "opened",
                 "reopened",
@@ -51,7 +55,6 @@ internal class Admission {
                 return
             }
 
-            let marker = "<!-- tokate-admission:v1 -->"
             var commented bool
 
             for page in 1 ... GitHub.PageCountLimit + 1 {
@@ -75,7 +78,7 @@ internal class Admission {
                             comment,
                             "body"
                         )
-                            .Contains(marker)
+                            .Contains(CommentMarker)
                     )
                 }
 
@@ -100,7 +103,7 @@ internal class Admission {
             if !commented && message != "" {
                 GitHub.Api(
                     "repos/" + repo + "/issues/" + number.ToString() + "/comments",
-                    map[string, Object?]{"body": message + "\n\n" + marker}
+                    map[string, Object?]{"body": message + "\n\n" + CommentMarker}
                 )
             }
 
@@ -475,7 +478,7 @@ internal class Admission {
 
         private func BoundState(repo string, pull JsonElement) CoordinationState {
             let refs = GitHub.Api("repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix)
-            if refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > 1000 {
+            if refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > BindingRefCountLimit {
                 throw Exception("Cannot inspect bounded canonical contribution bindings")
             }
 

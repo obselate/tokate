@@ -7,7 +7,9 @@ import System.Text.Json
 
 internal class GitHubPathEvidence {
     shared {
-        private let CleanMergeParents Dictionary[string, List[string]] = Dictionary[string, List[string]]()
+        private const ComparisonFileCountLimit int32 = 300
+
+        private let CleanMergeParents Dictionary[string, List[string]] = map[string, List[string]]{}
 
         internal func Ancestor(repo string, base string, fork string, head string) {
             RepositoryIdentity.Repo(repo)
@@ -168,7 +170,7 @@ internal class GitHubPathEvidence {
                 "sha"
             ) != head ||
                 files.ValueKind != JsonValueKind.Array ||
-                files.GetArrayLength() == 0 || files.GetArrayLength() >= 300 {
+                files.GetArrayLength() == 0 || files.GetArrayLength() >= ComparisonFileCountLimit {
                 throw Exception("Missing, truncated or mismatched approved-base-to-head diff evidence")
             }
 

@@ -89,13 +89,13 @@ internal class AccessState {
 
     internal func Write(repo string, expected string, identity Object) bool {
         let text = ToJson()
-        RequestData.Parse(text, ByteLimit)
+        RequestData.Parse(text, RecordByteLimit)
 
         let tree = GitHub.Api(
             "repos/" + repo + "/git/trees",
             map[string, Object?]{
                 "tree": []Object{
-                    map[string, Object?]{"path": "access.json", "mode": "100644", "type": "blob", "content": text}
+                    map[string, Object?]{"path": FilePath, "mode": "100644", "type": "blob", "content": text}
                 }
             }
         )
@@ -154,12 +154,28 @@ internal class AccessState {
 
         private const Version int32 = 1
 
-        private const ByteLimit int32 = 65536
+        private const RecordByteLimit int32 = 65536
+
+        private const TaskApprovalByteLimit int32 = 1024 * 1024
+
+        private const FilePath string = "access.json"
+
+        private const RequestCommentPrefix string = "/tokate-access "
+
+        private const RequestCharacterLimit int32 = 2048
+
+        private const RequestByteLimit int32 = 2048
+
+        private const RequestVersion int32 = 1
+
+        private const BoundedRequestPageLimit int32 = 2
+
+        private const MembershipWriteAttemptLimit int32 = 2
 
         internal func Mode(policy JsonElement) string -> Policy.Parse(policy).Eligibility
 
         internal func Task(approval JsonElement) OwnerApproval.Record {
-            RequestData.Parse(J.Write(approval), 1024 * 1024)
+            RequestData.Parse(J.Write(approval), TaskApprovalByteLimit)
             let approved = OwnerApproval.Record.Parse(approval)
             let eligibility = approved.Eligibility
             let donor = approved.Donor
@@ -259,7 +275,7 @@ internal class AccessState {
             }
 
             let sha = RepositoryIdentity.CommitSha(J.Text(J.Get(reference, "object"), "sha"))
-            let result = Parse(RequestData.Parse(GitHub.FileAt(repo, "access.json", sha), ByteLimit))
+            let result = Parse(RequestData.Parse(GitHub.FileAt(repo, FilePath, sha), RecordByteLimit))
 
             if result.RepoId != repoId {
                 throw Exception("Invalid donor access repository identity or membership")
@@ -375,17 +391,17 @@ internal class AccessState {
         private func AccessRequest(repo string, comment JsonElement) JsonElement {
             let body = J.Text(comment, "body")
 
-            if !body.StartsWith("/tokate-access ") || body.Length > 2048 {
+            if !body.StartsWith(RequestCommentPrefix) || body.Length > RequestCharacterLimit {
                 return JsonElement{}
             }
 
             try {
-                let request = RequestData.Parse(body.Substring(15), 2048)
+                let request = RequestData.Parse(body.Substring(RequestCommentPrefix.Length), RequestByteLimit)
                 RequestData.Keys(request, "version,scope,issue")
                 let issue = J.Number(request, "issue")
                 let requestScope = J.Text(request, "scope")
 
-                if J.Number(request, "version") != 1 ||
+                if J.Number(request, "version") != RequestVersion ||
                     issue < 1 ||
                     (requestScope != "issue" && requestScope != "trust") ||
                     !RepositoryIdentity.IsIssueUrl(J.Text(comment, "issue_url"), repo, issue) {
@@ -451,8 +467,8 @@ internal class AccessState {
             let comment = GitHub.Api(
                 "repos/" + repo + "/issues/" + issue.ToString() + "/comments",
                 map[string, Object?]{
-                    "body": "/tokate-access " + J.Write(
-                        map[string, Object?]{"version": 1, "scope": requestScope, "issue": issue}
+                    "body": RequestCommentPrefix + J.Write(
+                        map[string, Object?]{"version": RequestVersion, "scope": requestScope, "issue": issue}
                     )
                 }
             )
@@ -482,8 +498,8 @@ internal class AccessState {
         ) bool {
             let commentsPath = issue == 0 ? "/issues/comments?": "/issues/" + issue.ToString() + "/comments?"
             let seen = HashSet[string]()
-            let approvals = Dictionary[int32, JsonElement]()
-            let limit = bounded ? 2: GitHub.PageCountLimit
+            let approvals = map[int32, JsonElement]{}
+            let limit = bounded ? BoundedRequestPageLimit: GitHub.PageCountLimit
 
             for page in 1 ... limit + 1 {
                 let value = GitHub.Api(
@@ -697,7 +713,7 @@ internal class AccessState {
             let actor int64 = operation == "init" ? 0: RepositoryIdentity.PositiveId(
                 J.Get(GitHub.Api("users/" + RepositoryIdentity.Login(args.Need("donor"))), "id")
             )
-            for attempt in 0 ... 2 {
+            for attempt in 0 ... MembershipWriteAttemptLimit {
                 let expected = access.Sha == "" ? GitHub.Branch(repo, J.Text(info, "default_branch")): access.Sha
                 if operation == "init" {
                     if access.Sha != "" {
