@@ -102,49 +102,49 @@ internal class ContributionReceipt {
             }
         }
 
-        internal func FromState(state JsonElement) JsonElement {
-            let current = CoordinationState.Current(state)
-            let original = J.Get(state, "contribution")
+        internal func FromState(state CoordinationState) JsonElement {
+            let current = state.Current()
+            let original = state.Contribution
             let fields = Coordinated(
-                J.Text(state, "repo"),
-                J.Number(state, "issue"),
-                J.Text(state, "approval_id"),
-                J.Text(current, "expected"),
-                J.Text(J.Get(state, "reservation"), "reservation"),
-                J.Text(original, "donor"),
-                J.Text(J.Get(current, "outcome"), "head")
+                state.Repo,
+                state.Issue,
+                state.ApprovalId,
+                current?.Expected ?? "",
+                state.Lease?.Reservation ?? "",
+                original?.Donor ?? "",
+                current?.Outcome.Head ?? ""
             )
-            Models(fields, J.Get(original, "metadata"))
-            let correction = J.Get(J.Get(original, "metadata"), "correction")
-            let handoff = J.Get(J.Get(original, "metadata"), "handoff")
+            Models(fields, original?.Metadata ?? default(JsonElement))
+            let correction = J.Get(original?.Metadata ?? default(JsonElement), "correction")
+            let handoff = J.Get(original?.Metadata ?? default(JsonElement), "handoff")
 
             if handoff.ValueKind != JsonValueKind.Undefined {
                 fields["handoff"] = handoff
             }
 
-            if J.Count(J.Get(state, "amendments")) == 0 && RequestMetadata.Incomplete(J.Get(original, "metadata")) {
+            if state.Amendments.Count == 0 && RequestMetadata.Incomplete(original?.Metadata ?? default(JsonElement)) {
                 fields["incomplete"] = true
             }
 
-            AttemptContinuation.Keep(fields, J.Get(original, "metadata"))
+            AttemptContinuation.Keep(fields, original?.Metadata ?? default(JsonElement))
 
             if correction.ValueKind != JsonValueKind.Undefined {
                 fields["correction"] = correction
             }
 
-            if J.Count(J.Get(state, "amendments")) > 0 {
+            if state.Amendments.Count > 0 {
                 let amended = map[string, Object?]{
-                    "id": J.Text(current, "request"),
-                    "previous": J.Text(current, "previous"),
-                    "seconds": J.Number(current, "seconds"),
-                    "tools": J.Get(current, "tools")
+                    "id": current?.Request ?? "",
+                    "previous": current?.Previous ?? "",
+                    "seconds": current?.Seconds ?? 0,
+                    "tools": current?.Tools ?? default(JsonElement)
                 }
 
-                if J.Text(current, "base") != "" {
-                    amended["base"] = J.Text(current, "base")
+                if (current?.Base ?? "") != "" {
+                    amended["base"] = current?.Base ?? ""
                 }
 
-                fields["amendment"] = PublicSummary.Attach(amended, J.Get(current, "summary"))
+                fields["amendment"] = PublicSummary.Attach(amended, current?.Summary ?? default(JsonElement))
             }
 
             return J.Parse(J.Write(fields))

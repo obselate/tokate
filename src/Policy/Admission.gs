@@ -215,19 +215,19 @@ internal class Admission {
                     return false
                 }
 
-                issue = J.Number(state.Value(), "issue")
+                issue = state.Issue
             } else {
                 if issue == 0 {
                     if !J.Bool(pull, "draft") {
                         return false
                     }
                     state = BoundState(repo, pull)
-                    if state.Sha == "" || J.Get(state.Value(), "contribution")
-                        .ValueKind == JsonValueKind.Object ||
-                        RepositoryIdentity.PositiveId(J.Get(J.Get(state.Value(), "reservation"), "actor")) != actor {
+                    if state.Sha == "" || state.Contribution != nil || RepositoryIdentity.PositiveId(
+                        state.Lease?.ActorValue() ?? default(JsonElement)
+                    ) != actor {
                         return false
                     }
-                    issue = J.Number(state.Value(), "issue")
+                    issue = state.Issue
                 } else {
                     state = CoordinationState.Load(repo, issue, missing: true)
                 }
@@ -237,11 +237,9 @@ internal class Admission {
                 return false
             }
 
-            let value = state.Value()
-            let approval = J.Get(value, "approval")
+            let approval = state.Approval?.Value() ?? default(JsonElement)
 
-            if J.Get(value, "revoked").ValueKind != JsonValueKind.True && J.Get(value, "revoked")
-                .ValueKind != JsonValueKind.False {
+            if !state.RevocationValid {
                 throw Exception("Malformed coordination revocation state")
             }
 
@@ -256,8 +254,10 @@ internal class Admission {
                     return false
                 }
 
-                actor = RepositoryIdentity.PositiveId(J.Get(binding, "actor"))
-                login = RepositoryIdentity.Login(J.Text(binding, "donor"))
+                actor = RepositoryIdentity.PositiveId(
+                    state.Contribution?.ActorValue() ?? state.Lease?.ActorValue() ?? default(JsonElement)
+                )
+                login = RepositoryIdentity.Login(state.Contribution?.Donor ?? state.Lease?.Donor ?? "")
                 if access.Allows(actor, mode, JsonElement{}) {
                     return true
                 }
@@ -300,54 +300,52 @@ internal class Admission {
             state CoordinationState,
             requireLease bool = true
         ) JsonElement {
-            let value = state.Value()
-            let contribution = J.Get(value, "contribution")
-            let current = CoordinationState.Current(value)
-            let outcome = J.Get(current, "outcome")
+            let contribution = state.Contribution
+            let current = state.Current()
+            let outcome = current?.Outcome
             let head = J.Get(pull, "head")
             let headRepo = J.Get(head, "repo")
             let fork = J.Text(headRepo, "full_name")
             let branch = J.Text(head, "ref")
             let target = J.Text(J.Get(pull, "base"), "ref")
 
-            if target != OwnerApproval.Record.Parse(J.Get(value, "approval")).BaseBranch {
+            if target != (state.Approval?.BaseBranch ?? "") {
                 return JsonElement{}
             }
 
             var binding JsonElement
 
-            if contribution.ValueKind == JsonValueKind.Object {
-                let metadata = J.Get(contribution, "metadata")
-                RepositoryIdentity.PositiveId(J.Get(outcome, "pr"))
-                RepositoryIdentity.CommitSha(J.Text(outcome, "head"))
+            if contribution != nil {
+                let metadata = contribution.Metadata
+                RepositoryIdentity.PositiveId(outcome?.PrValue() ?? default(JsonElement))
+                RepositoryIdentity.CommitSha(outcome?.Head ?? "")
                 RepositoryIdentity.Branch(J.Text(metadata, "branch"))
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
 
-                if J.Number(outcome, "pr") != J.Number(pull, "number") || J.Text(metadata, "branch") != branch ||
+                if (outcome?.Pr ?? 0) != J.Number(pull, "number") || J.Text(metadata, "branch") != branch ||
                     !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), fork) {
                     return JsonElement{}
                 }
 
-                if J.Text(outcome, "head") != J.Text(head, "sha") {
+                if (outcome?.Head ?? "") != J.Text(head, "sha") {
                     if !requireLease {
                         return JsonElement{}
                     }
 
-                    let reservation = J.Get(value, "reservation")
-                    if reservation.ValueKind != JsonValueKind.Object || J.Text(reservation, "status") != "active" ||
+                    let reservation = state.Lease
+                    if reservation == nil ||
+                        reservation.Status != "active" ||
                         branch != "tokate/v2-" +
-                        J.Text(reservation, "reservation") || RepositoryIdentity.PositiveId(
-                        J.Get(reservation, "actor")
-                    ) != RepositoryIdentity.PositiveId(J.Get(contribution, "actor")) || !String.Equals(
-                        J.Text(reservation, "donor"),
-                        J.Text(contribution, "donor"),
-                        StringComparison.OrdinalIgnoreCase
-                    ) {
+                        reservation.Reservation ||
+                        RepositoryIdentity.PositiveId(reservation.ActorValue()) != RepositoryIdentity.PositiveId(
+                        contribution.ActorValue()
+                    ) ||
+                        !String.Equals(reservation.Donor, contribution.Donor, StringComparison.OrdinalIgnoreCase) {
                         return JsonElement{}
                     }
 
                     try {
-                        state.Reservation(J.Get(contribution, "actor"))
+                        state.Reservation(contribution.ActorValue())
                     } catch (error CliFailure) {
                         if error.Code == "stale_approval" {
                             return JsonElement{}
@@ -357,25 +355,21 @@ internal class Admission {
                     }
                 }
 
-                binding = contribution
+                binding = contribution.Value()
             } else {
-                if contribution.ValueKind != JsonValueKind.Undefined && contribution.ValueKind != JsonValueKind.Null {
-                    throw Exception("Malformed trusted contribution binding")
-                }
-
-                let reservation = J.Get(value, "reservation")
-                if reservation.ValueKind != JsonValueKind.Object {
+                let reservation = state.Lease
+                if reservation == nil {
                     return JsonElement{}
                 }
 
-                let donor = J.Text(reservation, "donor")
-                if LeaseLifecycle.Supported(value) && RepositoryIdentity.PositiveId(
-                    J.Get(J.Get(value, "identity"), "actor")
-                ) != RepositoryIdentity.PositiveId(J.Get(reservation, "actor")) {
+                let donor = reservation.Donor
+                if LeaseLifecycle.Supported(state) && RepositoryIdentity.PositiveId(
+                    state.Identity?.ActorValue() ?? default(JsonElement)
+                ) != RepositoryIdentity.PositiveId(reservation.ActorValue()) {
                     return JsonElement{}
                 }
 
-                if branch != "tokate/v2-" + J.Text(reservation, "reservation") || !fork.StartsWith(
+                if branch != "tokate/v2-" + reservation.Reservation || !fork.StartsWith(
                     donor + "/",
                     StringComparison.OrdinalIgnoreCase
                 ) {
@@ -384,7 +378,7 @@ internal class Admission {
 
                 if requireLease {
                     try {
-                        LeaseLifecycle.Owner(state, J.Get(reservation, "actor"), active: true)
+                        LeaseLifecycle.Owner(state, reservation.ActorValue(), active: true)
                     } catch (error CliFailure) {
                         if error.Code == "stale_approval" {
                             return JsonElement{}
@@ -394,23 +388,35 @@ internal class Admission {
                     }
                 }
 
-                binding = reservation
+                binding = reservation.Value()
             }
 
-            return ValidateDonorFork(repo, pull, binding)
+            return ValidateDonorFork(
+                repo,
+                pull,
+                binding,
+                contribution?.ActorValue() ?? state.Lease?.ActorValue() ?? default(JsonElement),
+                contribution?.Donor ?? state.Lease?.Donor ?? ""
+            )
         }
 
-        private func ValidateDonorFork(repo string, pull JsonElement, binding JsonElement) JsonElement {
+        private func ValidateDonorFork(
+            repo string,
+            pull JsonElement,
+            binding JsonElement,
+            actorValue JsonElement,
+            donor string
+        ) JsonElement {
             let head = J.Get(pull, "head")
             let headRepo = J.Get(head, "repo")
             let fork = J.Text(headRepo, "full_name")
             let branch = J.Text(head, "ref")
-            let actor = RepositoryIdentity.PositiveId(J.Get(binding, "actor"))
+            let actor = RepositoryIdentity.PositiveId(actorValue)
             let owner = J.Get(headRepo, "owner")
 
             if RepositoryIdentity.PositiveId(J.Get(owner, "id")) != actor || !String.Equals(
                 J.Text(owner, "login"),
-                J.Text(binding, "donor"),
+                donor,
                 StringComparison.OrdinalIgnoreCase
             ) {
                 return JsonElement{}
@@ -476,7 +482,7 @@ internal class Admission {
                 }
 
                 let state = CoordinationState.At(repo, issue, J.Text(J.Get(reference, "object"), "sha"))
-                Authority(J.Get(state.Value(), "approval"), repo, issue)
+                Authority(state.Approval?.Value() ?? default(JsonElement), repo, issue)
 
                 if DonorBinding(repo, pull, state).ValueKind == JsonValueKind.Undefined {
                     continue

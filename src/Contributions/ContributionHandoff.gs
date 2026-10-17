@@ -35,15 +35,12 @@ internal class ContributionHandoff {
         }
 
         private func Source(state CoordinationState) JsonElement {
-            let value = state.Value()
-            let original = J.Get(value, "contribution")
-            let current = CoordinationState.Current(value)
-            let identity = J.Get(value, "identity")
-            let actor = RepositoryIdentity.PositiveId(J.Get(identity, "actor"))
+            let original = state.Contribution
+            let current = state.Current()
+            let identity = state.Identity
+            let actor = RepositoryIdentity.PositiveId(identity?.ActorValue() ?? default(JsonElement))
 
-            if original.ValueKind != JsonValueKind.Object || RepositoryIdentity.PositiveId(
-                J.Get(original, "actor")
-            ) != actor {
+            if original == nil || RepositoryIdentity.PositiveId(original.ActorValue()) != actor {
                 throw CliFailure("invalid_state", "Handoff requires published progress from the prior donor")
             }
 
@@ -51,12 +48,12 @@ internal class ContributionHandoff {
                 J.Write(
                     map[string, Object?]{
                         "revision": state.Sha,
-                        "pr": J.Number(J.Get(current, "outcome"), "pr"),
-                        "head": CoordinationState.Head(value),
-                        "fork": J.Text(J.Get(original, "metadata"), "fork"),
-                        "donor": J.Text(original, "donor"),
+                        "pr": current?.Outcome.Pr ?? 0,
+                        "head": state.Head(),
+                        "fork": J.Text(original.Metadata, "fork"),
+                        "donor": original.Donor,
                         "actor": actor,
-                        "id": J.Text(identity, "id")
+                        "id": identity?.Id ?? ""
                     }
                 )
             )
@@ -67,28 +64,19 @@ internal class ContributionHandoff {
         }
 
         internal func Read(state CoordinationState, actor JsonElement, record JsonElement, number int32) JsonElement {
-            let value = state.Value()
             var prior = state
 
-            if RepositoryIdentity.PositiveId(J.Get(J.Get(value, "identity"), "actor")) == RepositoryIdentity.PositiveId(
-                actor
-            ) {
-                let predecessor = J.Get(J.Get(value, "identity"), "predecessor")
-                prior = CoordinationState.At(
-                    J.Text(value, "repo"),
-                    J.Number(value, "issue"),
-                    J.Text(predecessor, "revision")
-                )
+            if RepositoryIdentity.PositiveId(state.Identity?.ActorValue() ?? default(JsonElement)) == RepositoryIdentity
+                .PositiveId(actor) {
+                let predecessor = state.Identity?.Predecessor
+                prior = CoordinationState.At(state.Repo, state.Issue, predecessor?.Revision ?? "")
             }
 
             let source = Source(prior)
 
             if J.Number(source, "pr") != number || RepositoryIdentity.PositiveId(
                 J.Get(source, "actor")
-            ) == RepositoryIdentity.PositiveId(actor) || J.Text(prior.Value(), "approval_id") != J.Text(
-                value,
-                "approval_id"
-            ) {
+            ) == RepositoryIdentity.PositiveId(actor) || prior.ApprovalId != state.ApprovalId {
                 throw CliFailure(
                     "invalid_state",
                     "Handoff requires another donor's published contribution under the same approval; use amend --resume for your own work"
@@ -99,7 +87,7 @@ internal class ContributionHandoff {
                 Authority(state, source)
             }
 
-            let pull = GitHub.Api("repos/" + J.Text(value, "repo") + "/pulls/" + number.ToString())
+            let pull = GitHub.Api("repos/" + state.Repo + "/pulls/" + number.ToString())
 
             if J.Number(pull, "number") != number || J.Bool(pull, "merged") || J.Get(pull, "merged_at")
                 .ValueKind == JsonValueKind.String ||
@@ -109,7 +97,7 @@ internal class ContributionHandoff {
                 throw CliFailure("invalid_state", "Prior pull request no longer identifies unmerged donor work")
             }
 
-            let repo = J.Text(value, "repo")
+            let repo = state.Repo
 
             RepositoryAccess.ValidateRepository(
                 repo,
@@ -139,30 +127,26 @@ internal class ContributionHandoff {
 
             Declaration(source)
 
-            let value = state.Value()
-            let identity = J.Get(value, "identity")
-            let predecessor = J.Get(identity, "predecessor")
+            let identity = state.Identity
+            let predecessor = identity?.Predecessor
 
-            if J.Text(predecessor, "revision") != J.Text(source, "revision") || J.Text(predecessor, "id") != J.Text(
+            if (predecessor?.Revision ?? "") != J.Text(source, "revision") || (predecessor?.Id ?? "") != J.Text(
                 source,
                 "id"
             ) ||
-                RepositoryIdentity.PositiveId(J.Get(predecessor, "actor")) != RepositoryIdentity.PositiveId(
-                J.Get(source, "actor")
-            ) ||
-                RepositoryIdentity.PositiveId(J.Get(identity, "actor")) == RepositoryIdentity.PositiveId(
-                J.Get(source, "actor")
-            ) {
+                RepositoryIdentity.PositiveId(
+                predecessor?.ActorValue() ?? default(JsonElement)
+            ) != RepositoryIdentity.PositiveId(J.Get(source, "actor")) || RepositoryIdentity.PositiveId(
+                identity?.ActorValue() ?? default(JsonElement)
+            ) == RepositoryIdentity
+                .PositiveId(J.Get(source, "actor")) {
                 throw CliFailure("stale_approval", "Handoff differs from the authoritative donor takeover")
             }
 
-            let repo = J.Text(value, "repo")
-            let prior = CoordinationState.At(repo, J.Number(value, "issue"), J.Text(source, "revision"))
+            let repo = state.Repo
+            let prior = CoordinationState.At(repo, state.Issue, J.Text(source, "revision"))
 
-            if J.Text(prior.Value(), "approval_id") != J.Text(value, "approval_id") || !RequestData.Same(
-                Source(prior),
-                source
-            ) {
+            if prior.ApprovalId != state.ApprovalId || !RequestData.Same(Source(prior), source) {
                 throw CliFailure("stale_approval", "Handoff source or approval changed")
             }
 
@@ -177,20 +161,17 @@ internal class ContributionHandoff {
         }
 
         internal func Supersede(state CoordinationState, request JsonElement) {
-            let contribution = J.Get(state.Value(), "contribution")
-            let source = J.Get(J.Get(contribution, "metadata"), "handoff")
+            let contribution = state.Contribution
+            let source = J.Get(contribution?.Metadata ?? default(JsonElement), "handoff")
 
-            if source.ValueKind == JsonValueKind.Undefined || J.Text(contribution, "request") != J.Text(
-                request,
-                "uuid"
-            ) {
+            if source.ValueKind == JsonValueKind.Undefined || (contribution?.Request ?? "") != J.Text(request, "uuid") {
                 return
             }
 
             Authority(state, source)
 
-            let number = J.Number(J.Get(contribution, "outcome"), "pr")
-            let repo = J.Text(state.Value(), "repo")
+            let number = contribution?.Outcome.Pr ?? 0
+            let repo = state.Repo
             let path = "repos/" + repo + "/pulls/" + J.Number(source, "pr").ToString()
 
             let pull = GitHub.Api(path)

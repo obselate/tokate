@@ -26,22 +26,18 @@ internal class ReservationRequest {
 
                 actions = []string{J.Text(request, "action")}
             } else {
-                if J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
+                if (state.Identity?.Id ?? "") != run.Text("id") {
                     throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
                 }
 
                 LeaseLifecycle.Owner(state, J.Get(viewer, "id"))
-                actions = []string{
-                    J.Text(J.Get(state.Value(), "reservation"), "status") == "paused" ? "resume": "pause",
-                    "renew",
-                    "release"
-                }
+                actions = []string{(state.Lease?.Status ?? "") == "paused" ? "resume": "pause", "renew", "release"}
             }
 
             return J.Parse(
                 J.Write(
                     map[string, Object?]{
-                        "status": J.Text(J.Get(state.Value(), "reservation"), "status"),
+                        "status": state.Lease?.Status ?? "",
                         "pending_request": request.ValueKind != JsonValueKind.Undefined,
                         "actions": actions
                     }
@@ -50,8 +46,8 @@ internal class ReservationRequest {
         }
 
         private func Result(directory string, run Data, state CoordinationState, request JsonElement) int32 {
-            let outcome = RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
-            let pending = outcome.ValueKind == JsonValueKind.Undefined
+            let outcome = RequestMetadata.Recorded(state, J.Get(run.Element(), "donor_id"), request)
+            let pending = outcome == nil
 
             Output
                 .Sink
@@ -60,8 +56,8 @@ internal class ReservationRequest {
                 "operation": J.Text(request, "action"),
                 "pending": pending,
                 "state_sha": state.Sha,
-                "reservation": J.Get(state.Value(), "reservation"),
-                "outcome": pending ? nil: outcome as Object
+                "reservation": state.Lease?.Value(),
+                "outcome": outcome?.Value()
             }
 
             if pending {
@@ -101,16 +97,16 @@ internal class ReservationRequest {
 
             if request.ValueKind != JsonValueKind.Undefined {
                 RequestMetadata.Request(request)
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(state, J.Get(viewer, "id"), request)
 
-                if outcome.ValueKind == JsonValueKind.Undefined && J.Text(request, "action") != action {
+                if outcome == nil && J.Text(request, "action") != action {
                     throw CliFailure(
                         "invalid_state",
                         "A different reservation request is pending; inspect its outcome before another action"
                     )
                 }
 
-                if outcome.ValueKind != JsonValueKind.Undefined {
+                if outcome != nil {
                     let result = Result(directory, run, state, request)
                     if J.Text(request, "action") == action {
                         return result
@@ -119,19 +115,14 @@ internal class ReservationRequest {
                     request = JsonElement{}
                 }
 
-                if outcome.ValueKind == JsonValueKind.Undefined && action == "release" && J.Text(
-                    request,
-                    "expected"
-                ) != state.Sha {
+                if outcome == nil && action == "release" && J.Text(request, "expected") != state.Sha {
                     request = JsonElement{}
                     run.Fields.Remove("reservation_request")
                     run.Save(directory)
                 }
             }
 
-            let value = state.Value()
-
-            if J.Text(J.Get(value, "identity"), "id") != run.Text("id") {
+            if (state.Identity?.Id ?? "") != run.Text("id") {
                 throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
             }
 
@@ -140,12 +131,12 @@ internal class ReservationRequest {
             if request.ValueKind == JsonValueKind.Undefined {
                 if action != "release" {
                     state.Check(repo, issue, run.Text("donor"), J.Get(viewer, "id"))
-                    if J.Text(value, "approval_id") != run.Text("approval") {
+                    if state.ApprovalId != run.Text("approval") {
                         throw CliFailure("stale_approval", "Saved contribution approval changed")
                     }
                 }
 
-                let status = J.Text(J.Get(value, "reservation"), "status")
+                let status = state.Lease?.Status ?? ""
 
                 if (action == "pause" && status != "active") || (action == "resume" && status != "paused") {
                     throw CliFailure("invalid_state", "Reservation state does not permit this operation")
@@ -156,7 +147,7 @@ internal class ReservationRequest {
                         map[string, Object?]{
                             "uuid": Guid.NewGuid().ToString("D"),
                             "expected": state.Sha,
-                            "approval": J.Text(value, "approval_id"),
+                            "approval": state.ApprovalId,
                             "action": action,
                             "metadata": map[string, Object?]{}
                         }

@@ -38,17 +38,18 @@ internal class CleanupEligibility {
                     return "Cannot establish that the issue is closed."
                 }
 
-                let coordination = CoordinationState.Load(repo, row.Issue, true).Value()
-                let reservation = J.Get(coordination, "reservation")
+                let coordination = CoordinationState.Load(repo, row.Issue, true)
+                let reservation = coordination.Lease
 
-                if reservation.ValueKind != JsonValueKind.Undefined &&
-                    reservation.ValueKind != JsonValueKind.Null &&
-                    reservation.ValueKind != JsonValueKind.Object {
+                if reservation != nil && reservation.Value().ValueKind != JsonValueKind.Object {
                     return "Cannot establish reservation state."
                 }
 
-                if reservation.ValueKind == JsonValueKind.Object && J.Text(reservation, "status") != "released" &&
-                    CoordinationState.Unix(reservation, "expires") > DateTimeOffset.UtcNow.ToUnixTimeSeconds() {
+                if reservation != nil &&
+                    reservation.Status != "released" &&
+                    reservation.Expires > DateTimeOffset
+                    .UtcNow
+                    .ToUnixTimeSeconds() {
                     return "Active reservation."
                 }
 

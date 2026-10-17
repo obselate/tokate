@@ -36,8 +36,7 @@ internal class ExternalContribution {
             }
 
             let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-            if J.Get(state.Value(), "contribution").ValueKind != JsonValueKind.Null || Publication.Pulls(run)
-                .Count != 0 {
+            if !state.ContributionPresent || state.Contribution != nil || Publication.Pulls(run).Count != 0 {
                 throw ExecutionFailure.Create("invalid_state", "External contribution already has publication evidence")
             }
         }

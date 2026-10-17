@@ -42,21 +42,20 @@ internal class ContributionAuthority {
                 }
             } else {
                 let state = CoordinationState.Load(repo, run.Number("issue"))
-                let value = state.Value()
-                let reservation = J.Get(value, "reservation")
+                let reservation = state.Lease
 
-                if !RepositoryIdentity.SameDonor(viewer, run) || J.Text(value, "approval_id") != run.Text("approval") ||
-                    J.Text(reservation, "reservation") != run.Text("id") {
+                if !RepositoryIdentity.SameDonor(viewer, run) || state.ApprovalId != run.Text("approval") ||
+                    (reservation?.Reservation ?? "") != run.Text("id") {
                     throw CliFailure("stale_approval", "Saved run has stale coordination authority")
                 }
 
                 RepositoryIdentity.PositiveId(J.Get(saved, "donor_id"))
                 state.Reservation(J.Get(viewer, "id"))
 
-                if run.Text("attempt") != J.Text(reservation, "attempt") || RepositoryIdentity.PositiveId(
+                if run.Text("attempt") != (reservation?.Attempt ?? "") || RepositoryIdentity.PositiveId(
                     J.Get(saved, "donor_id")
                 ) != RepositoryIdentity
-                    .PositiveId(J.Get(J.Get(value, "identity"), "actor")) {
+                    .PositiveId(state.Identity?.ActorValue() ?? default(JsonElement)) {
                     throw CliFailure(
                         "stale_approval",
                         "Saved execution attempt fence changed; old work is preserved",
@@ -69,7 +68,7 @@ internal class ContributionAuthority {
 
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 
-                if run.Text("base") != J.Text(reservation, "base") || run.Text("policy_hash") != approval.PolicyHash ||
+                if run.Text("base") != (reservation?.Base ?? "") || run.Text("policy_hash") != approval.PolicyHash ||
                     run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
                     "base_branch"
                 ) != approval.BaseBranch {

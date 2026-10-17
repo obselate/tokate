@@ -65,7 +65,10 @@ internal class CliOutput : OutputSink {
         directory
     )
 
-    public override func Coordination(value JsonElement, sha string) Object -> PublicOutput.Coordination(value, sha)
+    public override func Coordination(value CoordinationState, sha string) Object -> PublicOutput.Coordination(
+        value,
+        sha
+    )
 
     public override func CheckResult(
         run Data,

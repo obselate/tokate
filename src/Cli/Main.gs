@@ -526,8 +526,7 @@ private func SubmitCommand(options Args) int32? {
                 }
 
                 let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-                if RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
-                    .ValueKind == JsonValueKind.Undefined {
+                if RequestMetadata.Recorded(state, J.Get(run.Element(), "donor_id"), request) == nil {
                     ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
                     Submission.ResetWorkflow()
                 } else {
