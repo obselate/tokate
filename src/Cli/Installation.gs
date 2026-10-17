@@ -251,9 +251,9 @@ internal class Installation {
             if let output = lines {
                 output.AddRange(stdout.Text.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             } else {
-                Console.Error.Write(PublicOutput.Prose(stdout.Text))
+                Console.Error.Write(Output.Prose(stdout.Text))
             }
-            Console.Error.Write(PublicOutput.Prose(stderr.Text))
+            Console.Error.Write(Output.Prose(stderr.Text))
         }
     }
 }

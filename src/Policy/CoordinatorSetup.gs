@@ -109,7 +109,7 @@ internal class CoordinatorSetup {
             }
 
             if configured {
-                Terminal.Message(
+                Output.Sink.Message(
                     "Actions event policy permits Tokate events. Review actor rules so external PR events can run admission."
                 )
             }

@@ -92,9 +92,11 @@ internal class AttemptContinuation {
                     next["action"] = "First " +
                         (
                         J.Text(reservation, "status") == "paused" ? "":
-                        Terminal.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
+                        Output.Sink.Command([]string{"tokate", "pause", "--run", directory}) + ", then "
                     ) +
-                        Terminal.Command([]string{"tokate", "resume", "--run", directory}) +
+                        Output
+                        .Sink
+                        .Command([]string{"tokate", "resume", "--run", directory}) +
                         ". Wait for each coordinator acceptance, then read status again. Review the new time budget before work."
                 }
             } catch (error Exception) when error is CliFailure ||
@@ -165,7 +167,7 @@ internal class AttemptContinuation {
             RepositoryIdentity.PositiveId(J.Get(prior, "donor_id"))
             RepositoryIdentity.PositiveId(J.Get(prior, "repo_id"))
 
-            RequestData.Tools(tools)
+            RequestMetadata.Tools(tools)
 
             let declared = J.Items(tools)
 

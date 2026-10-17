@@ -245,7 +245,7 @@ internal class ContinuationImport {
             try {
                 return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", 1024 * 1024))
             } catch (error DecoderFallbackException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -328,7 +328,7 @@ internal class ContinuationImport {
             try {
                 return Convert.FromBase64String(value)
             } catch (error FormatException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -620,7 +620,7 @@ internal class ContinuationImport {
 
             let sourceText = Metadata(sourceDirectory)
 
-            if Data.Hash(sourceText) != run.Text("continuation_source_metadata_sha256") || !RequestData.Same(
+            if J.Hash(sourceText) != run.Text("continuation_source_metadata_sha256") || !RequestData.Same(
                 AttemptContinuation.Provenance(source),
                 J.Get(run.Element(), "continuation")
             ) {
@@ -675,7 +675,7 @@ internal class ContinuationImport {
             }
 
             run.Fields["continuation"] = AttemptContinuation.Provenance(source)
-            run.Fields["continuation_manifest_sha256"] = Data.Hash(manifest)
+            run.Fields["continuation_manifest_sha256"] = J.Hash(manifest)
             run.Fields["continuation_phase"] = "captured"
 
             run.Save(directory)
@@ -684,7 +684,7 @@ internal class ContinuationImport {
         private func Manifest(directory string, run Data) JsonElement {
             let text = Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024))
 
-            if Data.Hash(text) != run.Text("continuation_manifest_sha256") {
+            if J.Hash(text) != run.Text("continuation_manifest_sha256") {
                 throw CliFailure(
                     "invalid_state",
                     "Captured continuation manifest changed; inspect the original preparation"
@@ -695,7 +695,7 @@ internal class ContinuationImport {
             try {
                 manifest = J.Parse(text)
             } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
 
             if J.Number(manifest, "version") != 1 || !RequestData.Same(
@@ -829,7 +829,7 @@ internal class ContinuationImport {
             using let lease = SourceLease(directory)
             let source = AttemptContinuation.Source(directory, run, record)
 
-            if Metadata(directory) != J.Text(manifest, "source_metadata") || Data.Hash(Metadata(directory)) != run.Text(
+            if Metadata(directory) != J.Text(manifest, "source_metadata") || J.Hash(Metadata(directory)) != run.Text(
                 "continuation_source_metadata_sha256"
             ) ||
                 !RequestData.Same(AttemptContinuation.Provenance(source), J.Get(manifest, "predecessor")) ||

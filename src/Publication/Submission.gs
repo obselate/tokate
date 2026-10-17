@@ -14,7 +14,7 @@ internal class Submission {
                 let run = Data.Load(directory)
                 CommitPrepared(directory, run)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -101,15 +101,15 @@ internal class Submission {
 
             run.Save(directory)
 
-            Terminal.Message(
-                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Terminal.Command(
+            Output.Sink.Message(
+                (incomplete ? "Incomplete commit": "Verified commit") + " saved. Use " + Output.Sink.Command(
                     []string{"tokate", "submit", "--run", directory}
                 )
             )
         }
 
         private func Partial(directory string, run Data) {
-            if RequestData.Incomplete(run.Element()) {
+            if RequestMetadata.Incomplete(run.Element()) {
                 if run.Text("commit") == "" && run.Text("state") == "incomplete_generated" {
                     CommitPrepared(directory, run, true)
                 }
@@ -197,7 +197,7 @@ internal class Submission {
                     var candidate JsonElement
 
                     try {
-                        candidate = RequestData.CommentData(body)
+                        candidate = RequestMetadata.CommentData(body)
                     } catch (error CliFailure) {
                         continue
                     }
@@ -357,7 +357,7 @@ internal class Submission {
 
                 Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -368,7 +368,7 @@ internal class Submission {
             journal string,
             expectedActor JsonElement? = nil
         ) {
-            RequestData.Request(value)
+            RequestMetadata.Request(value)
 
             let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(requestRepo))
             let repo = RepositoryIdentity.Repo(J.Text(info, "full_name"))
@@ -393,7 +393,7 @@ internal class Submission {
                 }
             }
 
-            let binding = RequestData.Binding(actor, value)
+            let binding = RequestMetadata.Binding(actor, value)
 
             if FileInfo(journal).LinkTarget != nil {
                 throw CliFailure("invalid_state", "Request posting journal must not be a symbolic link")
@@ -424,15 +424,15 @@ internal class Submission {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestData.Recorded(state.Value(), actor, value)
+            let outcome = RequestMetadata.Recorded(state.Value(), actor, value)
 
             if outcome.ValueKind != JsonValueKind.Undefined {
-                Terminal.Json(outcome, "Recorded request outcome; no comment posted", raw: false)
+                Output.Sink.RequestOutcome(outcome)
                 return
             }
 
             if Posted(repo, issue, actor, value) {
-                Terminal.Message("Exact request already posted; awaiting coordinator outcome")
+                Output.Sink.Message("Exact request already posted; awaiting coordinator outcome")
                 return
             }
 
@@ -471,14 +471,14 @@ internal class Submission {
 
             WriteRequest(repo, issue, actor, value, expires)
 
-            Terminal.Message("Request posted; coordinator outcome is recorded in the issue state ref")
+            Output.Sink.Message("Request posted; coordinator outcome is recorded in the issue state ref")
         }
 
         internal func WriteRequest(repo string, issue int32, actor JsonElement, request JsonElement, expires int64) {
             try {
                 let posted = GitHub.Api(
                     "repos/" + repo + "/issues/" + issue.ToString() + "/comments",
-                    map[string, Object?]{"body": RequestData.Comment(request)},
+                    map[string, Object?]{"body": RequestMetadata.Comment(request)},
                     expires: expires
                 )
 
@@ -493,7 +493,7 @@ internal class Submission {
                 if RepositoryIdentity.PositiveId(author) != RepositoryIdentity.PositiveId(actor) || J.Text(
                     posted,
                     "body"
-                ) != RequestData.Comment(request) {
+                ) != RequestMetadata.Comment(request) {
                     throw CliFailure("invalid_state", failure)
                 }
 
@@ -501,7 +501,7 @@ internal class Submission {
             } catch (error Exception) when error is CliFailure || error.GetType() == typeof(Exception) {
                 let latest = CoordinationState.Load(repo, issue)
 
-                if RequestData.Recorded(latest.Value(), actor, request)
+                if RequestMetadata.Recorded(latest.Value(), actor, request)
                     .ValueKind == JsonValueKind.Undefined &&
                     !Posted(repo, issue, actor, request) {
                     let code = error is CliFailure failure && failure.Code != "invalid_state" ? failure.Code:
@@ -510,7 +510,7 @@ internal class Submission {
                         code,
                         "Uncertain request write; no unique canonical evidence. No POST retry made. " + error.Message,
                         action: error is CliFailure actionable ? actionable.Action: []string{},
-                        summary: PublicOutput.Message(code),
+                        summary: CliFailure.Message(code),
                         attemptInvalidated: error is CliFailure invalidated && invalidated.AttemptInvalidated,
                         httpStatus: error is CliFailure transport ? transport.HttpStatus: 0
                     )
@@ -547,7 +547,7 @@ internal class Submission {
                 "attempt": run.Text("attempt"),
                 "source": run.Text("source"),
                 "tools": tools,
-                "verification": RequestData.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
+                "verification": RequestMetadata.Incomplete(run.Element()) ? "not-passed": "donor-reported-pass"
             }
             let pr = correction?.Number("publication_pr") ?? run.Number("publication_pr")
             if pr > 0 {
@@ -556,7 +556,7 @@ internal class Submission {
 
             ContributionReceipt.Models(metadata, run.Element())
 
-            if RequestData.Incomplete(run.Element()) {
+            if RequestMetadata.Incomplete(run.Element()) {
                 metadata["incomplete"] = true
             }
 
@@ -593,50 +593,7 @@ internal class Submission {
             )
         }
 
-        internal func Submit(args Args) {
-            try {
-                SubmitSaved(args)
-            } catch (error Exception) when error is IOException ||
-                error is UnauthorizedAccessException ||
-                error is CommandInterrupted ||
-                error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
-                let code = (
-                    error is IOException || error is UnauthorizedAccessException
-                ) ? "invalid_state": "command_failed"
-                throw CliFailure(code, error.Message, summary: PublicOutput.Message(code))
-            }
-        }
-
-        private func SubmitSaved(args Args) {
-            let directory = Path.GetFullPath(args.Need("run"))
-            using let lease = RunStorage.Lease(directory)
-            let run = Data.Load(directory)
-
-            if run.Flag("gratis") {
-                Gratis.Publish(directory, run, args)
-                return
-            }
-
-            if args.Get("yes") != "true" {
-                let change = Cli.Find("submit").Brief
-                PublicOutput.ResultData = map[string, Object?]{
-                    "operation": "submit",
-                    "subject": args.Subject,
-                    "repo": args.Get("repo"),
-                    "issue": args.Get("issue"),
-                    "donor": args.Get("donor"),
-                    "base_branch": args.Get("base-branch"),
-                    "changes": []string{change},
-                    "run_directory": directory,
-                    "applied": false
-                }
-                Terminal.Message(change + ". Target: " + directory + ".", error: true)
-                if !OwnerSetup.Confirm(args) {
-                    throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
-                }
-                args.Values["--yes"] = "true"
-            }
-
+        internal func Submit(args Args, directory string, run Data) {
             RetrySummary(args, directory, run)
 
             if args.Get("incomplete") == "true" {
@@ -656,12 +613,12 @@ internal class Submission {
 
             let record = ContributionAuthority.Recheck(run)
 
-            if run.Text("state") != (RequestData.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
+            if run.Text("state") != (RequestMetadata.Incomplete(run.Element()) ? "incomplete_generated": "generated") ||
                 run.Text("commit") == "" {
                 throw CliFailure("invalid_state", "Only an independently verified exact commit can be submitted")
             }
 
-            if !RequestData.Incomplete(run.Element()) {
+            if !RequestMetadata.Incomplete(run.Element()) {
                 Verification.Results(run, record)
             }
 
@@ -756,7 +713,7 @@ internal class Submission {
                 writer.Flush()
                 file.Flush(true)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -793,7 +750,7 @@ internal class Submission {
                         throw error
                     }
 
-                    throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                    throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
                 }
 
                 CommitPrepared(directory, run)
@@ -816,7 +773,7 @@ internal class Submission {
                 }
 
                 let state = CoordinationState.Load(RepositoryIdentity.Repo(run.Text("repo")), run.Number("issue"))
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), saved)
+                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), saved)
 
                 if outcome.ValueKind != JsonValueKind.Undefined {
                     if J.Text(state.Value(), "approval_id") != run.Text("approval") || J.Text(

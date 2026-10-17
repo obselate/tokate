@@ -86,7 +86,7 @@ internal class ContributionAuthority {
             let policy = Policy(J.Write(J.Get(record, "policy")))
             let declaredTools = J.Get(saved, "tools")
 
-            RequestData.Tools(declaredTools)
+            RequestMetadata.Tools(declaredTools)
             policy.ValidateTools(declaredTools, run.Text("source"))
 
             if run.Fields.ContainsKey("requested_model") && run.Text("requested_model") != run.Text("model") {

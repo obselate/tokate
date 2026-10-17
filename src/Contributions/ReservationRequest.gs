@@ -19,7 +19,7 @@ internal class ReservationRequest {
             var actions[]string
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestData.Request(request)
+                RequestMetadata.Request(request)
                 if !LeaseLifecycle.Transition(J.Text(request, "action")) {
                     throw CliFailure("invalid_state", "Invalid saved reservation request")
                 }
@@ -50,10 +50,12 @@ internal class ReservationRequest {
         }
 
         private func Result(directory string, run Data, state CoordinationState, request JsonElement) int32 {
-            let outcome = RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+            let outcome = RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
             let pending = outcome.ValueKind == JsonValueKind.Undefined
 
-            PublicOutput.ResultData = map[string, Object?]{
+            Output
+                .Sink
+                .ResultData = map[string, Object?]{
                 "run_directory": directory,
                 "operation": J.Text(request, "action"),
                 "pending": pending,
@@ -63,14 +65,14 @@ internal class ReservationRequest {
             }
 
             if pending {
-                PublicOutput.Actions.Add([]string{"tokate", J.Text(request, "action"), "--run", directory, "--json"})
-                Terminal.Message("Reservation request pending. Saved work: " + directory)
+                Output.Sink.Actions.Add([]string{"tokate", J.Text(request, "action"), "--run", directory, "--json"})
+                Output.Sink.Message("Reservation request pending. Saved work: " + directory)
                 return 8
             }
 
             run.Fields.Remove("reservation_request")
             run.Save(directory)
-            Terminal.Message("Reservation " + J.Text(request, "action") + " accepted. Saved work: " + directory)
+            Output.Sink.Message("Reservation " + J.Text(request, "action") + " accepted. Saved work: " + directory)
 
             return 0
         }
@@ -79,7 +81,7 @@ internal class ReservationRequest {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
-            PublicOutput.RunDirectory = directory
+            Output.Sink.RunDirectory = directory
             let action = args.Command
 
             if !LeaseLifecycle.Transition(action) || run.Number("version") != 2 || run.Text("id") == "" {
@@ -98,8 +100,8 @@ internal class ReservationRequest {
             var request = J.Get(run.Element(), "reservation_request")
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestData.Request(request)
-                let outcome = RequestData.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                RequestMetadata.Request(request)
+                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
 
                 if outcome.ValueKind == JsonValueKind.Undefined && J.Text(request, "action") != action {
                     throw CliFailure(

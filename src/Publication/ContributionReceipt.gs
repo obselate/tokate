@@ -81,7 +81,7 @@ internal class ContributionReceipt {
                 fields["handoff"] = handoff
             }
 
-            if J.Count(J.Get(state, "amendments")) == 0 && RequestData.Incomplete(J.Get(original, "metadata")) {
+            if J.Count(J.Get(state, "amendments")) == 0 && RequestMetadata.Incomplete(J.Get(original, "metadata")) {
                 fields["incomplete"] = true
             }
 

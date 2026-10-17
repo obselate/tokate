@@ -45,7 +45,7 @@ internal class OriginalEvidence {
 
                 input.CopyTo(output)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -90,7 +90,7 @@ internal class OriginalEvidence {
                     }
                 }
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -141,13 +141,13 @@ internal class OriginalEvidence {
                 File.WriteAllText(Path.Combine(directory, "manifest.json"), manifest + "\n")
 
                 let seal = Data()
-                seal.Fields["manifest_sha256"] = Data.Hash(manifest)
+                seal.Fields["manifest_sha256"] = J.Hash(manifest)
 
                 seal.Write(Path.Combine(directory, "seal.json"))
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
             }
         }
 
@@ -161,7 +161,7 @@ internal class OriginalEvidence {
                 inventory.Remove("manifest.json")
                 inventory.Remove("seal.json")
 
-                if Data.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
+                if J.Hash(manifest) != seal.Text("manifest_sha256") || RequestData.Canonical(
                     J.Parse(J.Write(inventory))
                 ) != manifest {
                     throw CliFailure(
@@ -180,7 +180,7 @@ internal class OriginalEvidence {
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -403,7 +403,7 @@ internal class OriginalEvidence {
 
                 return original
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
     }

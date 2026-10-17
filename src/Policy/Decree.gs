@@ -98,7 +98,7 @@ internal class Decree {
 
             ValidateText(text)
 
-            return J.Parse(J.Write(map[string, Object?]{"present": true, "sha256": Data.Hash(text), "text": text}))
+            return J.Parse(J.Write(map[string, Object?]{"present": true, "sha256": J.Hash(text), "text": text}))
         }
 
         private func ValidateText(text string) {
@@ -135,7 +135,7 @@ internal class Decree {
                 }
             } else {
                 ValidateText(text)
-                if J.Text(snapshot, "sha256") != Data.Hash(text) {
+                if J.Text(snapshot, "sha256") != J.Hash(text) {
                     throw Exception("Approved DECREE.md text differs from its SHA-256")
                 }
             }

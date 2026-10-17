@@ -1,10 +1,13 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.IO
 import System.Text.Json
 
-func Main(args[]string) int32 {
+private func Initialize(args[]string) {
+    Output.Sink = CliOutput()
+    Args.Parse = Cli.Parse
     Terminal.Initialize()
 
     for argument in args {
@@ -12,6 +15,10 @@ func Main(args[]string) int32 {
         Terminal.Plain = Terminal.Plain || argument == "--plain" || argument.StartsWith("--plain=")
         Terminal.Ascii = Terminal.Ascii || argument == "--ascii"
     }
+}
+
+func Main(args[]string) int32 {
+    Initialize(args)
 
     PublicOutput.Command = Cli.Name(args)
 
@@ -66,7 +73,7 @@ func Main(args[]string) int32 {
                 PublicOutput.Actions.Add(failure.Action)
             }
         } else {
-            message = !validated ? error.Message: PublicOutput.Message(code)
+            message = !validated ? error.Message: CliFailure.Message(code)
         }
 
         if error is CliFailure invalidation &&
@@ -106,7 +113,10 @@ func Main(args[]string) int32 {
     } finally {
         DonationView.Close()
         if traffic {
-            ApiTransport.Report()
+            Console.Error.WriteLine("Tokate API traffic: " + J.Write(ApiTransport.Report()))
+            Console.Error.WriteLine(
+                "Counts measure Tokate gh-api operations; exclude unseen GitHub CLI/Git requests and workflow executions."
+            )
         }
     }
     if PublicOutput.Enabled || (PublicOutput.RunDirectory != "" && Terminal.Foreground()) {
@@ -292,10 +302,15 @@ private func RunCommand(options Args) int32 {
 
         case "access" {
             AccessState.Run(options)
+            RenderAccess(options)
         }
 
         case "coordinate" {
-            Coordinator.Run(options)
+            let outcome = Coordinator.Run(options)
+
+            if outcome.Item1.ValueKind != JsonValueKind.Undefined {
+                Terminal.Json(outcome.Item1, outcome.Item2)
+            }
         }
 
         case "admit" {
@@ -352,18 +367,24 @@ private func RunCommand(options Args) int32 {
 
         case "overlaps" {
             Overlaps.Run(options)
+
+            RenderOverlaps()
         }
 
         case "checks" {
-            return Checks.Run(options)
+            return Checks.Run(options, RenderCheckDetails)
         }
 
         case "status" when options.Get("run") == "" {
-            ContributionStatus.Run(options)
+            RunReference.Status(options)
         }
 
         case "status" {
             ContributionStatus.Attempt(options)
+
+            if !PublicOutput.Enabled {
+                RunReference.PrintStatus(J.Parse(J.Write(PublicOutput.ResultData)))
+            }
 
             return 0
         }
@@ -376,8 +397,99 @@ private func RunCommand(options Args) int32 {
     return 0
 }
 
+private func RenderAccess(options Args) {
+    if PublicOutput.Enabled || (options.Subject != "list" && options.Subject != "history") {
+        return
+    }
+
+    let value = PublicOutput.ResultData as Dictionary[string, Object?] ?? throw Exception("Missing donor access result")
+
+    if options.Subject == "history" {
+        Terminal.Json(J.Parse(J.Write(value)), "Donor access and owner review")
+        return
+    }
+
+    Terminal.Heading("Donor access")
+
+    let trusted = value["trusted"] as List[JsonElement] ?? throw Exception("Missing trusted donors")
+
+    for member in trusted {
+        Terminal.Row("Trusted donor", J.Text(member, "donor"))
+    }
+
+    let members = value["members"] as List[JsonElement] ?? throw Exception("Missing donor access members")
+    let pending = value["pending"] as List[JsonElement] ?? throw Exception("Missing donor access requests")
+
+    for member in members {
+        let login = J.Text(member, "donor")
+
+        if J.Bool(member, "denied") {
+            Terminal.Row("Denied donor", login)
+        }
+    }
+
+    for request in pending {
+        Terminal.Row(
+            "Pending request",
+            J.Text(request, "donor") + " #" + J.Number(request, "issue").ToString() + " (" + J.Text(request, "scope") +
+                ")"
+        )
+    }
+
+    if members.Count == 0 && pending.Count == 0 {
+        Terminal.Message("No donor access or pending requests.", "default")
+    }
+}
+
+private func SubmitSaved(args Args) {
+    try {
+        let directory = Path.GetFullPath(args.Need("run"))
+        using let lease = RunStorage.Lease(directory)
+        let run = Data.Load(directory)
+
+        if run.Flag("gratis") {
+            Publication.PublishGratis(
+                directory,
+                run,
+                (preview, consent) -> Gratis.ConfirmPublish(directory, args, preview, consent)
+            )
+            return
+        }
+
+        if args.Get("yes") != "true" {
+            let change = Cli.Find("submit").Brief
+            PublicOutput.ResultData = map[string, Object?]{
+                "operation": "submit",
+                "subject": args.Subject,
+                "repo": args.Get("repo"),
+                "issue": args.Get("issue"),
+                "donor": args.Get("donor"),
+                "base_branch": args.Get("base-branch"),
+                "changes": []string{change},
+                "run_directory": directory,
+                "applied": false
+            }
+            Terminal.Message(change + ". Target: " + directory + ".", error: true)
+
+            if !OwnerSetup.Confirm(args) {
+                throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
+            }
+
+            args.Values["--yes"] = "true"
+        }
+
+        Submission.Submit(args, directory, run)
+    } catch (error Exception) when error is IOException ||
+        error is UnauthorizedAccessException ||
+        error is CommandInterrupted ||
+        error.GetType() == typeof(Exception) && error.Message.StartsWith("git failed: ") {
+        let code = (error is IOException || error is UnauthorizedAccessException) ? "invalid_state": "command_failed"
+        throw CliFailure(code, error.Message, summary: CliFailure.Message(code))
+    }
+}
+
 private func SubmitCommand(options Args) int32? {
-    Submission.Submit(options)
+    SubmitSaved(options)
 
     let directory = Path.GetFullPath(options.Need("run"))
     var run = Data.Load(directory)
@@ -414,12 +526,12 @@ private func SubmitCommand(options Args) int32? {
                 }
 
                 let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-                if RequestData.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+                if RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
                     .ValueKind == JsonValueKind.Undefined {
                     ApiTransport.PollWait("repos/" + run.Text("repo") + "/actions/")
                     Submission.ResetWorkflow()
                 } else {
-                    Submission.Submit(options)
+                    SubmitSaved(options)
                     run = Data.Load(directory)
                 }
             }
@@ -470,4 +582,23 @@ private func WorkCommand(options Args) int32? {
     }
 
     return nil
+}
+
+private func RenderCheckDetails(facts Dictionary[string, Object?]) {
+    Terminal.Checks(J.Get(J.Parse(J.Write(PublicOutput.ResultData ?? map[string, Object?]{})), "checks"))
+
+    let evidence = Dictionary[string, Object?](facts)
+    evidence.Remove("owner_inspection_required")
+
+    Terminal.Json(J.Parse(J.Write(evidence)), "Check gates and required owner actions")
+}
+
+private func RenderOverlaps() {
+    if !PublicOutput.Enabled {
+        let result = PublicOutput.ResultData as Dictionary[string, Object?] ??
+            throw Exception("Invalid overlaps result")
+        result["truncated"] = PublicOutput.Truncated
+        Terminal.Message(result["advisory"]?.ToString() ?? "", "cyan")
+        Terminal.Json(J.Parse(J.Write(result)), "Selected contributions")
+    }
 }

@@ -3,8 +3,6 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.IO
-import System.Security.Cryptography
-import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
 
@@ -68,9 +66,9 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
             File.WriteAllText(path + ".tmp", J.Write(Fields) + "\n")
             File.Move(path + ".tmp", path, true)
         } catch (error IOException) {
-            throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
         } catch (error UnauthorizedAccessException) {
-            throw CliFailure("command_failed", error.Message, summary: PublicOutput.Message("command_failed"))
+            throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
         }
     }
 
@@ -248,13 +246,10 @@ internal class Data(fields Dictionary[string, Object?]? = nil) {
                     result.Fields[field.Name] = field.Value.Clone()
                 }
             } catch (error InvalidOperationException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
 
             return result
         }
-
-        internal func Hash(text string) string -> Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))
-            .ToLowerInvariant()
     }
 }

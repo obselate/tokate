@@ -101,7 +101,7 @@ internal class RunStorage {
                 Int32.TryParse(name.Substring(prefix.Length), out number) ? number: 0
         }
 
-        internal func Allocate(root string, repo string, issue int32, id string) string {
+        internal func Allocate(root string, repo string, issue int32, id string, stopped Func[Data, bool]) string {
             let prefix = Prefix(repo, issue)
             var number int32
             let roots = List[string](Roots())
@@ -109,17 +109,21 @@ internal class RunStorage {
 
             for row in SavedRuns(roots.ToArray()).Rows {
                 if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
-                    PublicOutput.RunDirectory = row.Location
-                    if AttemptContinuation.Stopped(Data.From(row.Value)) {
+                    Output.Sink.RunDirectory = row.Location
+                    if stopped(Data.From(row.Value)) {
                         throw ExecutionFailure.Create(
                             "invalid_state",
-                            "Saved contribution already exists: " + row.Location + ". Run " + Terminal.Command(
+                            "Saved contribution already exists: " + row.Location + ". Run " + Output.Sink.Command(
                                 []string{"tokate", "pause", "--run", row.Location}
                             ) +
                                 ", then " +
-                                Terminal.Command([]string{"tokate", "resume", "--run", row.Location}) +
+                                Output
+                                .Sink
+                                .Command([]string{"tokate", "resume", "--run", row.Location}) +
                                 ". Wait for each coordinator acceptance, then run " +
-                                Terminal.Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
+                                Output
+                                .Sink
+                                .Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
                                 " for the continuation command. No files were overwritten."
                         )
                     }
@@ -155,7 +159,7 @@ internal class RunStorage {
 
             for path in[]string{directory, Path.Combine(root, id)} {
                 if Directory.Exists(path) || File.Exists(path) || FileInfo(path).LinkTarget != nil {
-                    PublicOutput.RunDirectory = path
+                    Output.Sink.RunDirectory = path
                     throw ExecutionFailure.Create(
                         "invalid_state",
                         "Saved contribution already exists; inspect it instead of overwriting"

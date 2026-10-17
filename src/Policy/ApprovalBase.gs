@@ -31,12 +31,12 @@ internal class ApprovalBase {
             let template = PrBody.Template(repo, current)
 
             let taskChanged = policy.Digest != J.Text(approval, "policy_hash")
-            if taskChanged || Data.Hash(template) != J.Text(approval, "template_hash") {
+            if taskChanged || J.Hash(template) != J.Text(approval, "template_hash") {
                 var reason = taskChanged ? "Approval no longer matches current task fields.": ""
                 if taskChanged {
                     reason += ChangedFields(repo, approval, policy)
                 }
-                if Data.Hash(template) != J.Text(approval, "template_hash") {
+                if J.Hash(template) != J.Text(approval, "template_hash") {
                     reason += (reason == "" ? "": " ") + "PR template changed."
                 }
                 throw CoordinationState.ApprovalFailure(

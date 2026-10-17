@@ -8,8 +8,8 @@ import System.Text.RegularExpressions
 
 internal class ClaudeHarness {
     shared {
-        internal func Select(args Args, policy Policy, source string) JsonElement {
-            let selected = DonorSelection.Selection(args, policy, source)
+        internal func Select(args Args, selection Func[Dictionary[string, Object?]]) JsonElement {
+            let selected = selection()
             let runtime = ClaudeCode.Runtime(args)
 
             selected["capability"] = "native configured tools inside whole-process isolation"
@@ -52,10 +52,10 @@ internal class ClaudeHarness {
 
             for item in J.Items(J.Get(J.Get(value, "message"), "content")) {
                 if J.Text(item, "type") == "text" {
-                    DonationView.Append("Assistant: " + J.Text(item, "text"))
+                    Output.Sink.Append("Assistant: " + J.Text(item, "text"))
                 } else if J.Text(item, "type") == "tool_use" {
                     let input = J.Get(item, "input")
-                    DonationView.Append(
+                    Output.Sink.Append(
                         J.Text(item, "name") +
                             ": " +
                             (J.Text(input, "command") == "" ? J.Text(input, "file_path"): J.Text(input, "command"))
@@ -64,10 +64,13 @@ internal class ClaudeHarness {
             }
         }
 
-        internal func Prepare(directory string, run Data, record JsonElement, coding RuntimeBudget) ValueTuple[
-            []string,
-            Dictionary[string, Object?]?
-        ] {
+        internal func Prepare(
+            directory string,
+            run Data,
+            record JsonElement,
+            coding RuntimeBudget,
+            models Func[string, string, string, List[string]?]
+        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
             let options = Args([]string{"work", "--harness", "claude"})
             options.Values["--harness-path"] = run.Text("harness_path")
             options.Values["--claude-profile"] = run.Text("claude_profile")
@@ -80,12 +83,12 @@ internal class ClaudeHarness {
 
             let checkout = Path.Combine(directory, "checkout")
             let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
-            let policy = Policy(J.Write(J.Get(record, "policy")))
+            let allowedModels = models("claude", "anthropic", ClaudeCode.ModelPattern)
             let invocation = ClaudeCode.Invocation(
                 run.Text("model"),
                 run.Text("effort"),
                 run.Text("claude_profile"),
-                policy.AllowedModels("claude", "anthropic", ClaudeCode.ModelPattern)
+                allowedModels
             )
             args.AddRange(invocation)
             run.Fields["claude_version"] = J.Text(runtime, "version")
@@ -100,8 +103,13 @@ internal class ClaudeHarness {
             return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
         }
 
-        internal func Read(directory string, run Data, record JsonElement, result CommandResult) Evidence {
-            let policy = Policy(J.Write(J.Get(record, "policy")))
+        internal func Read(
+            directory string,
+            run Data,
+            record JsonElement,
+            result CommandResult,
+            allowsModel Func[string, bool]
+        ) Evidence {
             let evidence = Evidence()
             let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), evidence)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
@@ -112,15 +120,12 @@ internal class ClaudeHarness {
             }
 
             let models = J.Get(reports, "model_usage")
+
             if models.ValueKind == JsonValueKind.Object {
                 for used in models.EnumerateObject() {
                     let name = Regex.Replace(used.Name, "(?:-[0-9]{8})?(?:\\[[^\\]]*\\])?$", "")
 
-                    if !policy.AllowsModel(run.Text("harness"), run.Text("provider"), name) && !policy.AllowsModel(
-                        run.Text("harness"),
-                        run.Text("provider"),
-                        used.Name
-                    ) {
+                    if !allowsModel(name) && !allowsModel(used.Name) {
                         throw ExecutionFailure.Create(
                             "inference_failed",
                             "Claude used " +
@@ -130,6 +135,7 @@ internal class ClaudeHarness {
                     }
                 }
             }
+
             evidence.Usage = J.Select(J.Get(reports, "usage"), "input_tokens,output_tokens")
             let cached = J.Get(J.Get(reports, "usage"), "cache_read_input_tokens")
             if cached.ValueKind != JsonValueKind.Undefined {

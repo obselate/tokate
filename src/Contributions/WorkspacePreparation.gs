@@ -8,7 +8,7 @@ import System.Text.Json
 
 internal class WorkspacePreparation {
     shared {
-        private func Identity(run Data) string -> Data.Hash(
+        private func Identity(run Data) string -> J.Hash(
             J.Write(
                 map[string, Object?]{
                     "version": run.Number("version"),
@@ -46,24 +46,24 @@ internal class WorkspacePreparation {
             var identity = Identity(run)
 
             if run.Text("harness_path") != "" {
-                identity = Data.Hash(identity + ":" + run.Text("harness_path"))
+                identity = J.Hash(identity + ":" + run.Text("harness_path"))
             }
 
             if Harness.Owns(run.Text("harness"), "claude-profile") {
-                identity = Data.Hash(identity + ":" + run.Text("claude_profile"))
+                identity = J.Hash(identity + ":" + run.Text("claude_profile"))
             }
 
-            identity = Data.Hash(identity + ":" + run.Text("attempt"))
+            identity = J.Hash(identity + ":" + run.Text("attempt"))
 
             if ContributionHandoff.Has(run) {
-                identity = Data.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "handoff")))
+                identity = J.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "handoff")))
             }
 
             if run.Flag("gratis") {
-                identity = Data.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "gratis_context")))
+                identity = J.Hash(identity + ":" + RequestData.Canonical(J.Get(run.Element(), "gratis_context")))
             }
 
-            return AttemptContinuation.Has(run) ? Data.Hash(
+            return AttemptContinuation.Has(run) ? J.Hash(
                 identity + ":" + run.Text("continuation_source") + ":" + RequestData.Canonical(
                     J.Get(run.Element(), "continuation")
                 ) +
@@ -227,14 +227,16 @@ internal class WorkspacePreparation {
 
             run.Save(directory)
 
-            Terminal.Step(
+            Output.Sink.Step(
                 (run.Flag("gratis") ? "Selected source ": "Approved source ") + run.Text("base") +
                     " for target " +
                     run.Text("base_branch")
             )
             if run.Text("source") == "external" {
-                Terminal.Step("External coding checkout: " + checkout + "; independent verification uses DIR/checkout")
-                Terminal.Step(
+                Output.Sink.Step(
+                    "External coding checkout: " + checkout + "; independent verification uses DIR/checkout"
+                )
+                Output.Sink.Step(
                     "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
                         "' push https://github.com/" +
                         run.Text("head_repo") + ".git HEAD:refs/heads/" + run.Text("branch")

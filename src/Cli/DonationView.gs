@@ -228,7 +228,7 @@ internal class DonationView {
 
         internal func Append(text string) {
             if let view = Current {
-                let safe = Terminal.Clean(text)
+                let safe = Output.Clean(text)
 
                 lock view.Gate {
                     for line in safe.Split('\n') {
@@ -248,7 +248,7 @@ internal class DonationView {
         internal func Status(text string) {
             if let view = Current {
                 lock view.Gate {
-                    view.Footer = Terminal.Clean(text)
+                    view.Footer = Output.Clean(text)
                     view.Dirty = true
                 }
             }

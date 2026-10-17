@@ -105,7 +105,7 @@ internal class ApiResponse {
                     continue
                 }
                 let text = Regex.Replace(
-                    Terminal.Clean(message.GetString() ?? "").Replace('\n', ' ').Trim(),
+                    Output.Clean(message.GetString() ?? "").Replace('\n', ' ').Trim(),
                     "(?i)(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|bearer\\s+[^\\s,;]+",
                     "[redacted]"
                 )
@@ -266,21 +266,11 @@ internal class ApiTransport {
             Wait(1.0)
         }
 
-        internal func Report() {
-            Console.Error.WriteLine(
-                "Tokate API traffic: " + J.Write(
-                    map[string, Object?]{
-                        "reads": Reads,
-                        "mutations": Mutations,
-                        "conditional_responses": ConditionalResponses,
-                        "retry_attempts": Retries
-                    }
-                )
-            )
-
-            Console.Error.WriteLine(
-                "Counts measure Tokate gh-api operations; exclude unseen GitHub CLI/Git requests and workflow executions."
-            )
+        internal func Report() Dictionary[string, Object?] -> map[string, Object?]{
+            "reads": Reads,
+            "mutations": Mutations,
+            "conditional_responses": ConditionalResponses,
+            "retry_attempts": Retries
         }
 
         private func Wait(seconds double) {

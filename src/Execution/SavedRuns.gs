@@ -3,6 +3,7 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.IO
+import System.Linq
 import System.Text.Json
 
 internal class SavedRun(location string, value JsonElement, current bool) {
@@ -113,6 +114,47 @@ internal class SavedRuns {
                 "skipped": skipped,
                 "skipped_entries": skippedEntries ?? List[Object?](),
                 "truncated": truncated || rows.Count > items.Count
+            }
+        }
+
+        internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
+            Math.Max(0, rows.Count - 16),
+            Math.Min(16, rows.Count)
+        )
+
+        internal func Pick(rows List[SavedRun]) SavedRun? {
+            let active = rows.FindAll(row -> row.Text("state") != "failed")
+            return active.Count > 1 ? nil: active.Count == 1 ? active[0]: rows.Count > 0 ? rows[rows.Count - 1]: nil
+        }
+
+        internal func Outcomes(rows List[SavedRun]) {
+            let pulls = rows.Where(row -> J.Number(row.Value, "pr") > 0 && !row.Finished).Take(100).ToList()
+
+            if pulls.Count == 0 {
+                return
+            }
+
+            var query = ""
+
+            for i in 0 ... pulls.Count {
+                let repo = pulls[i].Text("repo").Split('/')
+                query += "p" + i.ToString() + ":repository(owner:\"" + repo[0] + "\",name:\"" + repo[1] + "\")"
+                query += "{pullRequest(number:" + J.Number(pulls[i].Value, "pr").ToString() + "){state}}"
+            }
+
+            ApiTransport.BeginDeadline(10)
+            try {
+                let data = J.Get(GitHub.Api("graphql", map[string, Object?]{"query": "query{" + query + "}"}), "data")
+
+                for i in 0 ... pulls.Count {
+                    let state = J.Text(J.Get(J.Get(data, "p" + i.ToString()), "pullRequest"), "state")
+
+                    if state == "MERGED" || state == "CLOSED" {
+                        pulls[i].Outcome = state.ToLowerInvariant()
+                    }
+                }
+            } catch (error Exception) { } finally {
+                ApiTransport.EndDeadline()
             }
         }
     }

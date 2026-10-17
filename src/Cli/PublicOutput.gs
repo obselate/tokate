@@ -26,34 +26,6 @@ internal class PublicOutput {
             Actions.Clear()
         }
 
-        internal func Prose(value string) string -> Prose(value, ref Truncated)
-
-        internal func Prose(value string, ref truncated bool) string {
-            if value.Length <= 2048 {
-                return value
-            }
-
-            truncated = true
-
-            return value.Substring(0, Char.IsHighSurrogate(value[2047]) ? 2047: 2048)
-        }
-
-        internal func Message(code string) string -> switch code {
-            case "invalid_arguments": "Invalid command arguments. Consult command help."
-            case "missing_tools": "Required tools are missing or failed diagnostics. Run doctor."
-            case "namespace_disabled": "User namespaces are disabled. Ask an administrator to review the host or container namespace policy."
-            case "namespace_restricted": "Namespace startup was denied while AppArmor namespace restrictions are enabled. Ask an administrator to review the relevant AppArmor denials."
-            case "namespace_unavailable": "Namespace startup failed. Ask an administrator to review kernel support, namespace limits and host or container security policy."
-            case "authentication_required": "Authentication is required with the appropriate account."
-            case "stale_approval": "Owner approval is absent or changed. Fresh owner approval is required."
-            case "invalid_state": "The saved run or command state does not permit this operation. Inspect its artifacts."
-            case "verification_failed": "Independent verification failed. Inspect the private verification artifact."
-            case "inference_failed": "Inference did not complete successfully. Inspect private events and report artifacts and read saved status for recovery."
-            case "endpoint_unavailable": "Selected local endpoint did not provide valid bounded metadata advertising the exact model ID. No inference started."
-            case "output_too_large": "The complete result cannot fit within 64 KiB. Use focused help or private artifacts for details."
-            default: "Command failed. Inspect relevant state and private artifacts before any explicit next action."
-        }
-
         internal func Tools(tools List[ToolCheck]) {
             let rows = List[Object]()
 
@@ -286,7 +258,7 @@ internal class PublicOutput {
             }
 
             if Encoding.UTF8.GetByteCount(J.Write(result)) > 65536 {
-                throw CliFailure("output_too_large", Message("output_too_large"))
+                throw CliFailure("output_too_large", CliFailure.Message("output_too_large"))
             }
 
             return result
@@ -351,7 +323,7 @@ internal class PublicOutput {
                 ) == "inference_interrupted" ? "inference_interrupted": code
                 result["error"] = map[string, Object?]{
                     "code": code,
-                    "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": Message(
+                    "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": CliFailure.Message(
                         code
                     )
                 }
@@ -448,7 +420,7 @@ internal class PublicOutput {
                     reason == "publication_interrupted" ? "command_failed": "invalid_state"
                 )
                 result["failure_reason"] = code
-                result["error"] = map[string, Object?]{"code": code, "message": Message(code)}
+                result["error"] = map[string, Object?]{"code": code, "message": CliFailure.Message(code)}
             }
 
             result["artifacts"] = Artifacts(directory)
@@ -620,7 +592,7 @@ internal class PublicOutput {
             let failure Object? = exitCode == 0 ||
                 exitCode == 8 ? nil: map[string, Object?]{
                 "code": code == "" ? "command_failed": code,
-                "message": Prose(message == "" ? Message(code): message)
+                "message": Output.Prose(message == "" ? CliFailure.Message(code): message)
             }
 
             let envelope = map[string, Object?]{
@@ -643,7 +615,7 @@ internal class PublicOutput {
                 envelope["data"] = map[string, Object?]{}
                 envelope["error"] = map[string, Object?]{
                     "code": "output_too_large",
-                    "message": Message("output_too_large")
+                    "message": CliFailure.Message("output_too_large")
                 }
 
                 envelope["next_actions"] = []Object{}

@@ -3,11 +3,71 @@ package Tokate
 import Gsharp.Concurrency
 import System
 import System.Collections.Generic
+import System.Diagnostics
 import System.IO
 import System.Text.Json
 
 internal class Verification {
     shared {
+        internal func Verify(
+            storage string,
+            results List[Object],
+            command JsonElement,
+            directory string,
+            seconds int32,
+            budget RuntimeBudget? = nil,
+            progressBudget RuntimeBudget? = nil,
+            workspace VerificationWorkspace? = nil
+        ) CommandResult {
+            let name = "Verification " + (results.Count + 1).ToString() + ": " + Output.Prose(
+                Output.Sink.Command(command)
+            )
+            let timing = progressBudget ?? budget ?? RuntimeBudget(Stopwatch.StartNew(), seconds)
+
+            try {
+                workspace?.CheckCancellation()
+
+                var result CommandResult
+
+                Output.Sink.Message(name, "cyan", true)
+                {
+                    using let progress = Output.Sink.Progress(
+                        "Owner verification " + (results.Count + 1).ToString(),
+                        timing
+                    )
+                    result = Verification.Check(
+                        storage,
+                        results,
+                        command,
+                        workspace?.Checkout ?? directory,
+                        seconds,
+                        budget
+                    )
+                }
+
+                Output.Sink.Message(
+                    name + " - " + (result.Code == 0 ? "passed": "failed") + " (exit " + result.Code.ToString() +
+                        "); " +
+                        timing.Status(),
+                    result.Code == 0 ? "green": "red",
+                    true
+                )
+
+                return result
+            } catch (error Exception) {
+                Output.Sink.Message(
+                    name + " - interrupted or failed; verification_failed. Details: " + Path.Combine(
+                        storage,
+                        "verification.json"
+                    ),
+                    "red",
+                    true
+                )
+
+                throw error
+            }
+        }
+
         internal func Results(run Data, record JsonElement) int32 {
             let checks = J.Items(J.Get(run.Element(), "verification"))
             let commands = J.Items(J.Get(J.Get(record, "policy"), "verification"))
@@ -239,12 +299,12 @@ internal class Verification {
                 arguments.RemoveAt(0)
                 var outputLine Action[string]? = nil
                 var errorLine Action[string]? = nil
-                if DonationView.Active() {
+                if Output.Sink.Active() {
                     if outputPath != "" {
-                        outputLine = line -> DonationView.Append(line)
+                        outputLine = line -> Output.Sink.Append(line)
                     }
                     if errorPath != "" {
-                        errorLine = line -> DonationView.Append(line)
+                        errorLine = line -> Output.Sink.Append(line)
                     }
                 }
 

@@ -2,44 +2,18 @@ package Tokate
 
 import System
 import System.Collections.Generic
-import System.IO
 import System.Text
 import System.Text.Json
 import System.Text.RegularExpressions
 
-internal class RequestData {
+internal class RequestMetadata {
     shared {
-        internal let ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
-
-        internal func Same(left JsonElement, right JsonElement) bool {
-            if left.ValueKind == JsonValueKind.Undefined || right.ValueKind == JsonValueKind.Undefined {
-                return left.ValueKind == right.ValueKind
-            }
-
-            return RequestData.Canonical(left) == RequestData.Canonical(right)
-        }
-
-        internal func Parse(text string, limit int32 = 8192) JsonElement {
-            if Encoding.UTF8.GetByteCount(text) > limit {
-                throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
-            }
-
-            try {
-                using let document = JsonDocument.Parse(text, JsonDocumentOptions{MaxDepth: 32})
-                let value = document.RootElement.Clone()
-                Unique(value)
-                return value
-            } catch (error JsonException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
-            }
-        }
-
         internal func Comment(request JsonElement) string {
             Request(request)
 
             let action = J.Text(request, "action")
-            let payload = Canonical(request).Replace("`", "\\u0060")
-            Parse(payload)
+            let payload = RequestData.Canonical(request).Replace("`", "\\u0060")
+            RequestData.Parse(payload)
 
             return "/tokate " +
                 action +
@@ -59,7 +33,7 @@ internal class RequestData {
 
             let text = body.Substring(8)
             if text.TrimStart().StartsWith("{", StringComparison.Ordinal) {
-                return Parse(text)
+                return RequestData.Parse(text)
             }
 
             let marker = "\n```json\n"
@@ -71,7 +45,7 @@ internal class RequestData {
             }
 
             let payload = body.Substring(start + marker.Length, body.Length - start - marker.Length - ending.Length)
-            let request = Parse(payload)
+            let request = RequestData.Parse(payload)
 
             if body != Comment(request) {
                 throw CliFailure("invalid_state", "Coordination comment differs from its request")
@@ -79,114 +53,6 @@ internal class RequestData {
 
             return request
         }
-
-        internal func FileData(path string, limit int32) JsonElement {
-            try {
-                using let file = File.OpenRead(path)
-                using let bytes = MemoryStream()
-                let buffer = [8192]byte
-                var count int32
-
-                while (
-                    count = file.Read(buffer, 0, Math.Min(buffer.Length, limit + 1 - Convert.ToInt32(bytes.Length)))
-                ) > 0 {
-                    bytes.Write(buffer, 0, count)
-
-                    if bytes.Length > limit {
-                        throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
-                    }
-                }
-
-                return Parse(Encoding.UTF8.GetString(bytes.ToArray()), limit)
-            } catch (error IOException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
-            } catch (error UnauthorizedAccessException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
-            }
-        }
-
-        private func Unique(value JsonElement) {
-            if value.ValueKind == JsonValueKind.Object {
-                let names = HashSet[string](StringComparer.Ordinal)
-                for field in value.EnumerateObject() {
-                    if !names.Add(field.Name) {
-                        throw CliFailure("invalid_state", "Duplicate JSON key")
-                    }
-
-                    Unique(field.Value)
-                }
-            } else if value.ValueKind == JsonValueKind.Array {
-                for item in value.EnumerateArray() {
-                    Unique(item)
-                }
-            }
-        }
-
-        internal func Keys(value JsonElement, names string) {
-            if value.ValueKind != JsonValueKind.Object {
-                throw CliFailure("invalid_state", "Expected one strict JSON object")
-            }
-
-            let allowed = HashSet[string](names.Split(','), StringComparer.Ordinal)
-
-            for field in value.EnumerateObject() {
-                if field.Name == "" || !allowed.Contains(field.Name) {
-                    throw CliFailure("invalid_state", "Unknown or authority-granting request field")
-                }
-            }
-        }
-
-        internal func Canonical(value JsonElement) string {
-            if value.ValueKind == JsonValueKind.Object {
-                let sorted = SortedDictionary[string, JsonElement](StringComparer.Ordinal)
-                for field in value.EnumerateObject() {
-                    sorted.Add(field.Name, field.Value)
-                }
-
-                let fields = List[string]()
-
-                for field in sorted {
-                    fields.Add(J.Write(field.Key) + ":" + Canonical(field.Value))
-                }
-
-                return "{" + String.Join(",", fields) + "}"
-            }
-
-            if value.ValueKind == JsonValueKind.Array {
-                let items = List[string]()
-
-                for item in value.EnumerateArray() {
-                    items.Add(Canonical(item))
-                }
-
-                return "[" + String.Join(",", items) + "]"
-            }
-
-            if value.ValueKind == JsonValueKind.String {
-                return J.Write(value.GetString() ?? "")
-            }
-
-            if value.ValueKind == JsonValueKind.Number {
-                var integer int64
-                if !value.TryGetInt64(out integer) {
-                    throw CliFailure("invalid_state", "Only integer metadata is supported")
-                }
-
-                return integer.ToString(System.Globalization.CultureInfo.InvariantCulture)
-            }
-
-            return value.GetRawText()
-        }
-
-        internal func Token(value string, message string = "Invalid tool identifier") string {
-            if !Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
-                throw CliFailure("invalid_state", message)
-            }
-
-            return value
-        }
-
-        internal func ModelIdentifier(value string) string -> PublicSummary.Identifier(value, model: true)
 
         internal func Tools(value JsonElement) {
             let items = J.Items(value)
@@ -197,11 +63,11 @@ internal class RequestData {
 
             for index in 0 ... items.Count {
                 let tool = items[index]
-                Keys(tool, "harness,provider,model,effort,usage,coding_seconds")
+                RequestData.Keys(tool, "harness,provider,model,effort,usage,coding_seconds")
 
                 for name in[]string{"harness", "provider", "effort"} {
-                    PublicSummary.Identifier(
-                        Token(
+                    RequestData.Identifier(
+                        RequestData.Token(
                             J.Text(tool, name),
                             "Tools row " + (index + 1).ToString() +
                                 " needs " +
@@ -211,7 +77,7 @@ internal class RequestData {
                     )
                 }
 
-                ModelIdentifier(J.Text(tool, "model"))
+                RequestData.ModelIdentifier(J.Text(tool, "model"))
                 let number = J.Get(tool, "coding_seconds")
                 var seconds int64
 
@@ -227,7 +93,7 @@ internal class RequestData {
 
                 let usage = J.Get(tool, "usage")
                 if usage.ValueKind != JsonValueKind.Undefined && usage.ValueKind != JsonValueKind.Null {
-                    Keys(usage, "input_tokens,cached_input_tokens,output_tokens")
+                    RequestData.Keys(usage, "input_tokens,cached_input_tokens,output_tokens")
 
                     for field in usage.EnumerateObject() {
                         var count int64
@@ -241,9 +107,9 @@ internal class RequestData {
         }
 
         internal func Correction(value JsonElement, head string, policy JsonElement) {
-            Keys(value, "uuid,head,tree,patch_sha256,seconds,tools,verification")
+            RequestData.Keys(value, "uuid,head,tree,patch_sha256,seconds,tools,verification")
 
-            if System.Text.Encoding.UTF8.GetByteCount(Canonical(value)) > 6144 {
+            if System.Text.Encoding.UTF8.GetByteCount(RequestData.Canonical(value)) > 6144 {
                 throw CliFailure("invalid_state", "Correction provenance exceeds its byte limit")
             }
 
@@ -287,7 +153,7 @@ internal class RequestData {
             }
 
             if J.Count(tools) > 0 {
-                RequestData.Tools(tools)
+                Tools(tools)
                 let owner = Policy(J.Write(policy))
                 owner.ValidateTools(tools)
             }
@@ -303,7 +169,7 @@ internal class RequestData {
                 "request": request
             }
 
-            return Data.Hash(Canonical(J.Parse(J.Write(binding))))
+            return J.Hash(RequestData.Canonical(J.Parse(J.Write(binding))))
         }
 
         internal func Incomplete(metadata JsonElement) bool {
@@ -340,7 +206,7 @@ internal class RequestData {
         }
 
         internal func Request(value JsonElement) {
-            Keys(value, "uuid,expected,approval,action,metadata")
+            RequestData.Keys(value, "uuid,expected,approval,action,metadata")
 
             var uuid Guid
             let requestId = J.Text(value, "uuid")
@@ -357,9 +223,9 @@ internal class RequestData {
             let metadata = J.Get(value, "metadata")
 
             if J.Text(value, "action") == "claim" || LeaseLifecycle.Transition(J.Text(value, "action")) {
-                Keys(metadata, "")
+                RequestData.Keys(metadata, "")
             } else if J.Text(value, "action") == "publish" {
-                Keys(
+                RequestData.Keys(
                     metadata,
                     "fork,branch,head,pr,source,tools,verification,correction,summary,attempt,predecessor,import_manifest_sha256,incomplete,handoff,requested_model,reported_model"
                 )
@@ -376,7 +242,7 @@ internal class RequestData {
                 for key in[]string{"requested_model", "reported_model"} {
                     let model = J.Get(metadata, key)
                     if model.ValueKind != JsonValueKind.Undefined && model.ValueKind != JsonValueKind.Null {
-                        ModelIdentifier(J.Text(metadata, key))
+                        RequestData.ModelIdentifier(J.Text(metadata, key))
                     }
                 }
 
@@ -407,7 +273,10 @@ internal class RequestData {
                     Correction(correction, J.Text(metadata, "head"), JsonElement{})
                 }
             } else if J.Text(value, "action") == "amend" {
-                Keys(metadata, "fork,branch,previous,head,pr,seconds,tools,verification,base,summary,attempt")
+                RequestData.Keys(
+                    metadata,
+                    "fork,branch,previous,head,pr,seconds,tools,verification,base,summary,attempt"
+                )
                 RepositoryIdentity.Repo(J.Text(metadata, "fork"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "head"))
                 RepositoryIdentity.CommitSha(J.Text(metadata, "previous"))

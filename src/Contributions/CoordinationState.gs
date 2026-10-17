@@ -223,7 +223,7 @@ internal class CoordinationState {
             let state = Load(repo, issue, true)
             let warning = state.ApprovalWarning(repo)
             if warning != "" {
-                Terminal.Message(warning, error: true)
+                Output.Sink.Message(warning, error: true)
             }
 
             let approved = J.Parse(J.Write(approval))
@@ -233,7 +233,7 @@ internal class CoordinationState {
             state.Fields["repo"] = repo
             state.Fields["issue"] = issue
             state.Fields["approval"] = approval
-            state.Fields["approval_id"] = Data.Hash(RequestData.Canonical(approved))
+            state.Fields["approval_id"] = J.Hash(RequestData.Canonical(approved))
             state.Fields["revoked"] = false
             state.Fields["identity"] = nil
             state.Fields["publication_revision"] = nil

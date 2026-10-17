@@ -21,20 +21,7 @@ internal class DonorDefaults {
                 Fill(args, saved)
             }
 
-            if args.Get("harness") == "" && args.Get("provider") == "" {
-                args.Values["--harness"] = "codex"
-            }
-
-            for (name, adapter) in Harness.Table {
-                if adapter.Provider == "" {
-                    continue
-                }
-                if args.Get("harness") == name && args.Get("provider") == "" {
-                    args.Values["--provider"] = adapter.Provider
-                } else if args.Get("harness") == "" && args.Get("provider") == adapter.Provider {
-                    args.Values["--harness"] = name
-                }
-            }
+            SelectionPolicy.NormalizePair(args)
         }
 
         internal func Fill(args Args, saved JsonElement) {
@@ -252,7 +239,7 @@ internal class DonorDefaults {
             if args.Subject == "check" {
                 let repo = RepositoryIdentity.Repo(args.Need("repo"))
                 let policy = Policy.Load(repo, J.Text(GitHub.Api("repos/" + repo), "default_branch"))
-                let selection = DonorSelection.Resolve(args, policy)
+                let selection = SelectionPolicy.Resolve(args, policy)
 
                 if !PublicOutput.Enabled {
                     return selection

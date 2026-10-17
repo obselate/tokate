@@ -18,7 +18,7 @@ internal class OwnerApproval {
                 throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
             }
             let approval = Capture(args, info, issue)
-            let firstApproval = !PublicOutput.Enabled && GitHub.Api(
+            let firstApproval = !Output.Sink.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
             )
                 .GetArrayLength() == 0
@@ -45,7 +45,7 @@ internal class OwnerApproval {
                 map[string, Object?]{"labels": []string{"tokate:approved"}}
             )
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Approved https://github.com/" + repo + "/issues/" + number.ToString() +
                     ". Donors start with: tokate work " +
                     repo +
@@ -54,7 +54,7 @@ internal class OwnerApproval {
             )
 
             if firstApproval {
-                Terminal.Message(
+                Output.Sink.Message(
                     "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
                 )
             }
@@ -94,7 +94,7 @@ internal class OwnerApproval {
                 allowed = []int64{RepositoryIdentity.PositiveId(J.Get(user, "id"))}
             }
 
-            Terminal.Step(
+            Output.Sink.Step(
                 "Approving target " + branch + " at " + revision + "; policy/template authority: " + authority
             )
 
@@ -108,7 +108,7 @@ internal class OwnerApproval {
                 "allowed_actor_ids": allowed,
                 "issue_hash": GitHub.Fingerprint(issue),
                 "policy_hash": policy.Digest,
-                "template_hash": Data.Hash(template),
+                "template_hash": J.Hash(template),
                 "base": revision,
                 "base_branch": branch,
                 "decree": decree,
@@ -137,7 +137,7 @@ internal class OwnerApproval {
                 missing: true
             )
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Approval revoked. Active local computation may continue, but Tokate will refuse publication."
             )
         }

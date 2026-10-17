@@ -9,7 +9,7 @@ import System.Text.Json
 
 internal class Amendment {
     shared {
-        internal func Tools(policy Policy, tools JsonElement) -> RequestData.CorrectionTools(
+        internal func Tools(policy Policy, tools JsonElement) -> RequestMetadata.CorrectionTools(
             tools,
             policy.Value,
             "Amendment"
@@ -192,7 +192,7 @@ internal class Amendment {
 
             if intent.ValueKind == JsonValueKind.Object && state.Sha != amendment?.Text("expected") {
                 let request = J.Get(intent, "request")
-                let outcome = RequestData.Recorded(value, J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(value, J.Get(viewer, "id"), request)
                 Transition(run.Text("repo"), state, amendment?.Text("expected") ?? "")
                 if J.Text(original, "request") != amendment?.Text("publication_uuid") || J.Text(
                     original,
@@ -311,7 +311,7 @@ internal class Amendment {
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -425,7 +425,7 @@ internal class Amendment {
                     }
                 }
 
-                Terminal.Message(
+                Output.Sink.Message(
                     "Original evidence preserved. Edit and commit the checkout, then amend --time TIME. No inference, checks or publication ran."
                 )
                 return true
@@ -608,7 +608,7 @@ internal class Amendment {
                     change.Fields["tree"] = Commands.Git(checkout, "rev-parse", "HEAD^{tree}")
                 }
 
-                change.Fields[correcting ? "patch_sha256": "snapshot"] = Data.Hash(snapshot)
+                change.Fields[correcting ? "patch_sha256": "snapshot"] = J.Hash(snapshot)
                 File.WriteAllText(Path.Combine(location, "candidate.patch"), snapshot)
 
                 File.WriteAllText(
@@ -630,7 +630,7 @@ internal class Amendment {
 
                 throw CliFailure(
                     failure.Code,
-                    PublicOutput.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
+                    Output.Sink.Enabled ? failure.Message: change.Text("failure_reason") + " (" + change.Text(
                         "failure_stage"
                     ) +
                         "): " +
@@ -671,7 +671,7 @@ internal class Amendment {
                     error.GetType() == typeof(Exception) {
                     throw CliFailure(
                         "invalid_state",
-                        "Saved amendment " + Cli.Label(key) +
+                        "Saved amendment " + Args.Label(key) +
                             " input differs or cannot be read. Restore the original input to continue, or start a new amendment with a new --commit and --time."
                     )
                 }
@@ -705,7 +705,7 @@ internal class Amendment {
             )
             let correcting = change.Text("uuid") != ""
             let patch = File.ReadAllText(Path.Combine(Location(directory, change), "candidate.patch"))
-            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) || Data.Hash(
+            if (correcting && Commands.Git(checkout, "rev-parse", "HEAD^{tree}") != change.Text("tree")) || J.Hash(
                 snapshot
             ) != change.Text(correcting ? "patch_sha256": "snapshot") || snapshot != patch {
                 throw CliFailure("invalid_state", "Verified amendment candidate changed")
@@ -724,8 +724,8 @@ internal class Amendment {
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
             Save(directory, change)
-            PublicOutput.FailureCode = "verification_failed"
-            Terminal.Step("Verifying the exact amendment independently. No inference will run.")
+            Output.Sink.FailureCode = "verification_failed"
+            Output.Sink.Step("Verifying the exact amendment independently. No inference will run.")
             let budget = RuntimeBudget(timer, seconds)
             {
                 using let workspace = VerificationWorkspace.Create(checkout, budget)
@@ -735,7 +735,7 @@ internal class Amendment {
                         throw CliFailure("verification_failed", "Amendment verification budget exhausted")
                     }
                     Save(directory, change)
-                    let result = Terminal.Verify(
+                    let result = Verification.Verify(
                         location,
                         results,
                         command,
@@ -752,7 +752,7 @@ internal class Amendment {
                         )
                     }
                 }
-                PublicOutput.FailureCode = "invalid_state"
+                Output.Sink.FailureCode = "invalid_state"
                 change.Fields["failure_stage"] = "changed_candidate"
                 change.Fields["failure_reason"] = "candidate_changed"
                 workspace.Unchanged(budget)
@@ -763,7 +763,7 @@ internal class Amendment {
             )
             change.Fields["failure_stage"] = "owner_verification"
             change.Fields["failure_reason"] = "verification_failed"
-            PublicOutput.FailureCode = "verification_failed"
+            Output.Sink.FailureCode = "verification_failed"
             Verification.Results(change, record)
             change.Transition("verified")
             change.Fields.Remove("failure_stage")
@@ -795,7 +795,7 @@ internal class Amendment {
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 if change.Text("uuid") != "" {
                     Completed(Path.Combine(directory, "original-evidence"), OriginalEvidence.Load(directory, run))
-                    RequestData.CorrectionTools(J.Get(change.Element(), "tools"), policy.Value)
+                    RequestMetadata.CorrectionTools(J.Get(change.Element(), "tools"), policy.Value)
                     if change.Text("state") != "verified" || run.Text("commit") != change.Text("commit") ||
                         !RequestData.Same(J.Get(run.Element(), "correction"), Provenance(change)) || !RequestData.Same(
                         J.Get(run.Element(), "verification"),
@@ -827,7 +827,7 @@ internal class Amendment {
                     "command_failed",
                     error.Message +
                         " Saved amendment retained. Re-run the same amend command to continue only the saved publication intent after inspection.",
-                    summary: PublicOutput.Message("command_failed")
+                    summary: CliFailure.Message("command_failed")
                 )
             }
         }
@@ -933,7 +933,7 @@ internal class Amendment {
                 amendment.Save(location)
             }
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Amendment request saved. Await coordinator outcome, then repeat amend. The PR receipt is invalid until body and coordination state agree."
             )
         }
@@ -1131,7 +1131,7 @@ internal class Amendment {
                 run.Save(directory)
                 let request = Submission.PublicationRequest(run, change)
                 RequestData.Parse(J.Write(request))
-                RequestData.Request(request)
+                RequestMetadata.Request(request)
                 for file in[]string{"request.json", "publication.json"} {
                     RunStorage.ControlFile(directory, file)
                     let previous = Path.Combine(directory, file)
@@ -1204,7 +1204,7 @@ internal class Amendment {
                     )
                 }
                 SetStage(directory, change, "requested")
-                Terminal.Message(
+                Output.Sink.Message(
                     "Exact publication request is already posted; awaiting the coordinator. No write, checks or inference repeated."
                 )
                 return
@@ -1226,7 +1226,7 @@ internal class Amendment {
                 CoordinationState.Unix(J.Get(J.Get(latest, "state"), "reservation"), "expires")
             )
             SetStage(directory, change, "requested")
-            Terminal.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")
+            Output.Sink.Message("Exact correction publication request posted. The coordinator must adopt the donor PR.")
         }
 
         private func Preview(path string, expected string) {
@@ -1309,7 +1309,7 @@ internal class Amendment {
 
             Publication.SavePr(directory, run, pull)
 
-            Terminal.Message(
+            Output.Sink.Message(
                 "Verified amendment published; original evidence: " + Path.Combine(directory, "original-evidence")
             )
         }

@@ -58,7 +58,7 @@ internal class PrBody {
 
                 return text
             } catch (error FormatException) {
-                throw CliFailure("invalid_state", error.Message, summary: PublicOutput.Message("invalid_state"))
+                throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
         }
 
@@ -79,7 +79,7 @@ internal class PrBody {
             let amendment = J.Text(metadata, "previous") != ""
             let verification = gratis ? "Tokate ran no repository checks. Checks below are donor-reported.":
             amendment ? "Donor-reported: all original owner checks passed locally; coordinator did not observe execution.":
-            RequestData.Incomplete(
+            RequestMetadata.Incomplete(
                 metadata
             ) ? "Incomplete draft: independent owner verification has not passed. This work is not ready for acceptance.":
             "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
