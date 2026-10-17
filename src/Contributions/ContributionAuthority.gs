@@ -67,16 +67,12 @@ internal class ContributionAuthority {
                 record = state.Check(repo, run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
                 ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))
 
-                let approval = J.Get(record, "approval")
+                let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 
-                if run.Text("base") != J.Text(reservation, "base") || run.Text("policy_hash") != J.Text(
-                    approval,
-                    "policy_hash"
-                ) ||
-                    run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text("base_branch") != J.Text(
-                    approval,
+                if run.Text("base") != J.Text(reservation, "base") || run.Text("policy_hash") != approval.PolicyHash ||
+                    run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
                     "base_branch"
-                ) {
+                ) != approval.BaseBranch {
                     throw CliFailure("stale_approval", "Saved run differs from reservation and approval")
                 }
 

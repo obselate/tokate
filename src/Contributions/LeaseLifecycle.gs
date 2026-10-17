@@ -165,16 +165,17 @@ internal class LeaseLifecycle {
             }
 
             let approval = J.Get(value, "approval")
+            let task = OwnerApproval.Record.Parse(approval)
             let repo = J.Text(value, "repo")
             let same = Supported(value) && RepositoryIdentity.PositiveId(
                 J.Get(identity, "actor")
             ) == RepositoryIdentity.PositiveId(actor)
             let base = same ? RepositoryIdentity.CommitSha(J.Text(reservation, "base")):
-            GitHub.Branch(repo, J.Text(approval, "base_branch"))
-            let approved = RepositoryIdentity.CommitSha(J.Text(approval, "base"))
-            let authority = GitHub.Branch(repo, J.Text(approval, "authority_branch"))
+            GitHub.Branch(repo, task.BaseBranch)
+            let approved = RepositoryIdentity.CommitSha(task.Base)
+            let authority = GitHub.Branch(repo, task.AuthorityBranch)
 
-            if Policy.Load(repo, authority).Digest != J.Text(approval, "policy_hash") {
+            if Policy.Load(repo, authority).Digest != task.PolicyHash {
                 throw CoordinationState.ApprovalFailure(repo, J.Number(value, "issue"), "Repository policy changed.")
             }
 

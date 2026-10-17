@@ -76,27 +76,24 @@ internal class Coordinator {
             let args = Args([]string{"approve", repo + "#" + number.ToString(), "--non-interactive"})
             let state = CoordinationState.Load(repo, number, true).Value()
             let previous = J.Get(state, "approval")
-            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") {
-                args.Values["--base-branch"] = J.Text(previous, "base_branch")
+            let active = previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") ?
+            OwnerApproval.Record.Parse(previous): nil
+            if active != nil {
+                args.Values["--base-branch"] = active.BaseBranch
             }
             let approval = OwnerApproval.Capture(args, info, issue)
-            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") {
-                approval["allowed_actor_ids"] = J.Get(previous, "allowed_actor_ids").ValueKind == JsonValueKind.Array ?
-                J.Get(previous, "allowed_actor_ids"): J.Parse("[]")
+            if active != nil {
+                approval.AllowedActorIds = active.AllowedActorIds
             }
-            if previous.ValueKind == JsonValueKind.Object && !J.Bool(state, "revoked") && Object.Equals(
-                approval["policy_hash"],
-                J.Text(previous, "policy_hash")
-            ) &&
-                Object.Equals(approval["template_hash"], J.Text(previous, "template_hash")) && Object.Equals(
-                approval["issue_hash"],
-                J.Text(previous, "issue_hash")
-            ) {
+            if active != nil &&
+                approval.PolicyHash == active.PolicyHash &&
+                approval.TemplateHash == active.TemplateHash &&
+                approval.IssueHash == active.IssueHash {
                 Output.Sink.Message("Issue approval is already current.")
                 return
             }
 
-            approval["nonce"] = Guid.NewGuid().ToString("N")
+            approval.Nonce = Guid.NewGuid().ToString("N")
             CoordinationState.Approve(repo, number, approval)
             Output.Sink.Message("Issue approved from the tokate:approved label.")
         }
@@ -359,7 +356,10 @@ internal class Coordinator {
             if !RepositoryIdentity.SameRepo(J.Text(J.Get(target, "repo"), "full_name"), repo) || J.Text(
                 target,
                 "ref"
-            ) != J.Text(J.Get(record, "approval"), "base_branch") {
+            ) != OwnerApproval
+                .Record
+                .Parse(J.Get(record, "approval"))
+                .BaseBranch {
                 throw Exception("Publication PR base differs from reserved target")
             }
 
@@ -505,7 +505,7 @@ internal class Coordinator {
             run.Fields["id"] = J.Text(reservation, "reservation")
             run.Fields["head_repo"] = J.Text(metadata, "fork")
             run.Fields["branch"] = branch
-            run.Fields["base_branch"] = J.Text(J.Get(record, "approval"), "base_branch")
+            run.Fields["base_branch"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).BaseBranch
 
             let amendment = Data()
             amendment.Fields["id"] = J.Text(request, "uuid")

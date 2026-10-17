@@ -23,7 +23,7 @@ internal class PrBody {
             values["effort"] = "per-tool declaration; not independently attested"
             values["seconds"] = "donor-reported or unknown; reservation is not a compute budget"
             values["base"] = J.Text(record, "base")
-            values["policy"] = J.Text(J.Get(record, "approval"), "policy_hash")
+            values["policy"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).PolicyHash
             values["usage"] = "per-tool donor declaration; not independently attested"
             values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"
 

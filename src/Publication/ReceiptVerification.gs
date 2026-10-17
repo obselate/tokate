@@ -34,12 +34,13 @@ internal class ReceiptVerification {
                 }
             }
 
+            let approved = OwnerApproval.Record.Parse(approval)
             run.Fields["base"] = base
-            run.Fields["base_branch"] = J.Get(approval, "base_branch")
+            run.Fields["base_branch"] = approved.BaseBranch
 
             run.Fields["authority_revision"] = revision
             run.Fields["receipt_hash"] = J.Hash(RequestData.Canonical(receipt))
-            run.Fields["policy_hash"] = J.Get(approval, "policy_hash")
+            run.Fields["policy_hash"] = approved.PolicyHash
         }
 
         internal func VerifyCurrent(
@@ -242,7 +243,7 @@ internal class ReceiptVerification {
             let reservationId = J.Text(reservation, "reservation")
             let branch = J.Text(metadata, "branch")
             let fork = J.Text(metadata, "fork")
-            let target = J.Text(approval, "base_branch")
+            let target = OwnerApproval.Record.Parse(approval).BaseBranch
             let failure = "PR receipt lacks current exact-commit coordination authority"
             let receiptApproval = J.Text(receipt, "approval")
             let receiptReservation = J.Text(receipt, "reservation")

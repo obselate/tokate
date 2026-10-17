@@ -6,8 +6,12 @@ import System.Text.Json
 
 internal class Decree {
     shared {
-        internal func HasSnapshot(approval JsonElement) bool -> J.Get(approval, "decree").ValueKind !=
-        JsonValueKind.Undefined
+        internal func HasSnapshot(approval JsonElement) bool -> approval.ValueKind == JsonValueKind.Object &&
+            OwnerApproval
+            .Record
+            .Parse(approval)
+            .Decree
+            .ValueKind != JsonValueKind.Undefined
 
         internal func Capture(repo string, revision string) JsonElement {
             let commit = GitHub.Api("repos/" + repo + "/git/commits/" + RepositoryIdentity.CommitSha(revision))
@@ -144,9 +148,10 @@ internal class Decree {
         }
 
         internal func CheckCurrent(repo string, revision string, approval JsonElement) {
-            let approved = Validate(J.Get(approval, "decree"))
+            let approved = OwnerApproval.Record.Parse(approval)
+            let snapshot = Validate(approved.Decree)
 
-            if revision == J.Text(approval, "base") {
+            if revision == approved.Base {
                 return
             }
 
@@ -161,13 +166,13 @@ internal class Decree {
                 )
             }
 
-            if J.Bool(current, "present") != J.Bool(approved, "present") || J.Text(current, "sha256") != J.Text(
-                approved,
+            if J.Bool(current, "present") != J.Bool(snapshot, "present") || J.Text(current, "sha256") != J.Text(
+                snapshot,
                 "sha256"
             ) {
                 throw CoordinationState.ApprovalFailure(
                     repo,
-                    J.Number(approval, "issue"),
+                    approved.Issue,
                     "DECREE.md changed; fresh owner approval is required."
                 )
             }

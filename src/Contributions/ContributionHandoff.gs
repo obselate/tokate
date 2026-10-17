@@ -124,7 +124,7 @@ internal class ContributionHandoff {
                 repo,
                 J.Get(record, "policy"),
                 J.Get(record, "approval"),
-                J.Text(J.Get(record, "approval"), "base"),
+                OwnerApproval.Record.Parse(J.Get(record, "approval")).Base,
                 J.Text(source, "fork"),
                 J.Text(source, "head")
             )

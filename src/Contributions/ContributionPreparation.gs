@@ -88,6 +88,7 @@ internal class ContributionPreparation {
             }
 
             let approval = J.Get(record, "approval")
+            let approved = state == nil ? nil: OwnerApproval.Record.Parse(approval)
 
             if source == "tokate" {
                 if tools.ValueKind != JsonValueKind.Undefined {
@@ -105,7 +106,7 @@ internal class ContributionPreparation {
                     }
                 }
 
-                policy.Digest = J.Text(approval, "policy_hash")
+                policy.Digest = approved?.PolicyHash ?? J.Text(approval, "policy_hash")
                 selection = SelectionPolicy.Resolve(args, policy)
 
                 if tools.ValueKind == JsonValueKind.Undefined {
@@ -131,9 +132,9 @@ internal class ContributionPreparation {
                     "donor_id": J.Get(viewer, "id"),
                     "head_repo": RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
                     "approval": J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
-                    "base": J.Text(approval, "base"),
-                    "base_branch": J.Text(approval, "base_branch"),
-                    "policy_hash": J.Text(approval, "policy_hash"),
+                    "base": approved?.Base ?? J.Text(approval, "base"),
+                    "base_branch": approved?.BaseBranch ?? J.Text(approval, "base_branch"),
+                    "policy_hash": approved?.PolicyHash ?? J.Text(approval, "policy_hash"),
                     "source": source,
                     "tools": tools
                 }
@@ -360,13 +361,11 @@ internal class ContributionPreparation {
             }
 
             let record = state.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
-            let approval = J.Get(record, "approval")
+            let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 
-            if run.Text("base") != J.Text(approval, "base") || run.Text("base_branch") != J.Text(
-                approval,
-                "base_branch"
-            ) ||
-                run.Text("policy_hash") != J.Text(approval, "policy_hash") {
+            if run.Text("base") != approval.Base || run.Text("base_branch") != approval.BaseBranch || run.Text(
+                "policy_hash"
+            ) != approval.PolicyHash {
                 throw CliFailure("stale_approval", "Pending claim differs from current owner approval")
             }
 
@@ -509,7 +508,11 @@ internal class ContributionPreparation {
                 Bind(run, state)
 
                 WorkspacePreparation.Select(run, run.Text("requested_fork"))
-                WorkspacePreparation.Promote(directory, run, J.Text(J.Get(state.Value(), "approval"), "base"))
+                WorkspacePreparation.Promote(
+                    directory,
+                    run,
+                    OwnerApproval.Record.Parse(J.Get(state.Value(), "approval")).Base
+                )
                 Complete(directory, run)
             } else {
                 Output.Sink.ResultData = Output.Sink.RunSummary(directory)
