@@ -10,6 +10,12 @@ import System.Text.Json
 
 internal class GratisGuidance {
     shared {
+        private const PromptTimeoutSeconds int32 = 30
+
+        private const PromptByteLimit int32 = 32768
+
+        private const RepositoryRoot string = "/repository/"
+
         internal func Prompt(source string, named bool) string {
             if source == "" {
                 return named ? "Complete the selected issue.":
@@ -22,7 +28,7 @@ internal class GratisGuidance {
                     throw CliFailure("invalid_arguments", "Prompt URLs must use HTTPS")
                 }
                 using let client = HttpClient()
-                client.Timeout = TimeSpan.FromSeconds(30)
+                client.Timeout = TimeSpan.FromSeconds(PromptTimeoutSeconds)
                 using let response = client
                     .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead)
                     .GetAwaiter()
@@ -41,17 +47,17 @@ internal class GratisGuidance {
         }
 
         private func Read(stream Stream) string {
-            let bytes = [32769]byte
+            let bytes = [PromptByteLimit + 1]byte
             let count = stream.ReadAtLeast(bytes, bytes.Length, false)
-            if count > 32768 {
+            if count > PromptByteLimit {
                 throw CliFailure("invalid_arguments", "Prompt text exceeds 32 KiB")
             }
             return UTF8Encoding(false, true).GetString(bytes, 0, count)
         }
 
         private func Relative(path string, target string) string {
-            let full = Path.GetFullPath(Path.Combine("/repository", Path.GetDirectoryName(path) ?? "", target))
-            return full.StartsWith("/repository/", StringComparison.Ordinal) ? full.Substring(12): ""
+            let full = Path.GetFullPath(Path.Combine(RepositoryRoot, Path.GetDirectoryName(path) ?? "", target))
+            return full.StartsWith(RepositoryRoot, StringComparison.Ordinal) ? full.Substring(RepositoryRoot.Length): ""
         }
 
         private func Text(repo string, revision string, path string, tree Dictionary[string, JsonElement]) string {

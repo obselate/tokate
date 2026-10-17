@@ -8,6 +8,10 @@ import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
+        private const DefaultBudgetSeconds int32 = 3600
+
+        internal const CoordinatorWorkflowPath string = ".github/workflows/tokate-coordinator.yml"
+
         internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
@@ -71,7 +75,7 @@ internal class OwnerSetup {
                 fields["approval_scope"] = "task"
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = Tools("codex,claude,pi")
-                fields["max_seconds"] = 3600
+                fields["max_seconds"] = DefaultBudgetSeconds
             }
 
             return fields
@@ -130,7 +134,7 @@ internal class OwnerSetup {
                 policy.Value
             ) ? upstream: Pretty(policy.Value)
 
-            let path = ".github/workflows/tokate-coordinator.yml"
+            let path = CoordinatorWorkflowPath
             let current = GitHub.FileAt(repo, path, head, missing: true)
             let generated = CoordinatorSetup.Resolve(args.Get("pin") == "true")
             let pin = CoordinatorSetup.Pin(generated)

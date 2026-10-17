@@ -9,6 +9,16 @@ import System.Threading
 
 internal class Donate {
     shared {
+        private const StopPollIntervalMilliseconds int32 = 100
+
+        private const DefaultTaskBudgetSeconds int32 = 3600
+
+        private const ConsecutiveFailureLimit int32 = 3
+
+        private const IssuePollIntervalSeconds int32 = 600
+
+        private const StopMarkerPollIntervalMilliseconds int32 = 1000
+
         internal var Active bool
         private func Running(directory string) bool {
             try {
@@ -84,7 +94,7 @@ internal class Donate {
             if Running(directory) {
                 File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
                 while Running(directory) {
-                    Thread.Sleep(100)
+                    Thread.Sleep(StopPollIntervalMilliseconds)
                 }
             } else {
                 Terminal.Message("No donation is running for " + repo + ".")
@@ -236,7 +246,7 @@ internal class Donate {
             if gratis {
                 Gratis.Context(context, List[Object]())
             }
-            let maximum = gratis ? 3600: Math.Min(3600, policy.MaxSeconds)
+            let maximum = gratis ? DefaultTaskBudgetSeconds: Math.Min(DefaultTaskBudgetSeconds, policy.MaxSeconds)
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
@@ -303,8 +313,11 @@ internal class Donate {
             Active = true
             try {
                 while !File.Exists(marker) {
-                    if consecutive == 3 || seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
-                        session["reason"] = consecutive == 3 ? "consecutive_failures": "total_exhausted"
+                    if consecutive == ConsecutiveFailureLimit ||
+                        seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
+                        session[
+                            "reason"
+                        ] = consecutive == ConsecutiveFailureLimit ? "consecutive_failures": "total_exhausted"
                         break
                     }
                     PublicOutput.RunDirectory = ""
@@ -316,9 +329,9 @@ internal class Donate {
                     first = false
                     if issue == 0 && !gratis {
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
-                        let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
+                        let next = Math.Min(timer.Elapsed.TotalSeconds + IssuePollIntervalSeconds, total - seconds)
                         while !File.Exists(marker) && timer.Elapsed.TotalSeconds < next {
-                            Thread.Sleep(1000)
+                            Thread.Sleep(StopMarkerPollIntervalMilliseconds)
                         }
                         continue
                     }
@@ -371,7 +384,7 @@ internal class Donate {
                     }
                 }
             }
-            return consecutive == 3 ||
+            return consecutive == ConsecutiveFailureLimit ||
                 (
                 issues.Count > 0 && tasks.Exists(
                     task -> task is Dictionary[string, Object?]item && item["result"]?.ToString() == "failed"
