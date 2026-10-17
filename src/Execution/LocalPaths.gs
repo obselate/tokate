@@ -5,11 +5,37 @@ import System.IO
 
 internal class LocalPaths {
     shared {
+        internal const CurrentWorkingDirectory int32 = -100
+
+        internal const FileTypeMask int32 = 61440
+
+        internal const RegularFileType int32 = 32768
+
+        internal const OpenNoFollow int32 = 131072
+
+        internal const OpenNonBlocking int32 = 2048
+
+        internal const OpenCloseOnExec int32 = 524288
+
+        internal const MetadataByteSize int32 = 256
+
+        internal const MetadataNoFollow int32 = 256
+
+        internal const MetadataTypeMask uint32 = 1
+
+        internal const MetadataModeOffset int32 = 28
+
+        internal const DirectoryFileType int32 = 16384
+
+        private const RuntimePathCharacterLimit int32 = 4096
+
+        private const SymlinkDepthLimit int32 = 40
+
         internal func Musl() bool -> File.Exists("/lib/ld-musl-x86_64.so.1")
 
         internal func RuntimePath(value string) string {
             try {
-                if value.Length > 4096 || !Path.IsPathFullyQualified(value) {
+                if value.Length > RuntimePathCharacterLimit || !Path.IsPathFullyQualified(value) {
                     throw ExecutionFailure.Create(
                         "invalid_arguments",
                         "Runtime overrides require bounded absolute paths"
@@ -268,7 +294,7 @@ internal class LocalPaths {
         }
 
         internal func CanonicalPath(path string, depth int32 = 0) string {
-            if depth > 40 {
+            if depth > SymlinkDepthLimit {
                 throw ExecutionFailure.Create("invalid_state", "Too many executable path symlinks")
             }
 

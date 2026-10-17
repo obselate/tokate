@@ -7,9 +7,13 @@ import System.Text.RegularExpressions
 
 internal class Admission {
     shared {
+        private const CommentMarker string = "<!-- tokate-admission:v1 -->"
+
+        private const BindingRefCountLimit int32 = 1000
+
         internal func Run(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            let event = RequestData.FileData(args.Need("event"), Coordinator.EventByteLimit)
             let actions = []string{
                 "opened",
                 "reopened",
@@ -51,12 +55,15 @@ internal class Admission {
                 return
             }
 
-            let marker = "<!-- tokate-admission:v1 -->"
             var commented bool
 
-            for page in 1 ... 11 {
+            for page in 1 ... GitHub.PageCountLimit + 1 {
                 let comments = GitHub.Api(
-                    "repos/" + repo + "/issues/" + number.ToString() + "/comments?per_page=100&page=" + page.ToString()
+                    "repos/" + repo + "/issues/" + number.ToString() +
+                        "/comments?" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
+                        page.ToString()
                 )
 
                 if comments.ValueKind != JsonValueKind.Array {
@@ -71,15 +78,15 @@ internal class Admission {
                             comment,
                             "body"
                         )
-                            .Contains(marker)
+                            .Contains(CommentMarker)
                     )
                 }
 
-                if comments.GetArrayLength() < 100 {
+                if comments.GetArrayLength() < GitHub.PageSize {
                     break
                 }
 
-                if page == 10 {
+                if page == GitHub.PageCountLimit {
                     throw Exception("PR comment inspection exceeded its bounded page limit")
                 }
             }
@@ -96,7 +103,7 @@ internal class Admission {
             if !commented && message != "" {
                 GitHub.Api(
                     "repos/" + repo + "/issues/" + number.ToString() + "/comments",
-                    map[string, Object?]{"body": message + "\n\n" + marker}
+                    map[string, Object?]{"body": message + "\n\n" + CommentMarker}
                 )
             }
 
@@ -145,7 +152,7 @@ internal class Admission {
             try {
                 let receipt = RequestData.Parse(
                     PrBody.ReceiptText(body, "PR needs exactly one Tokate receipt"),
-                    1024 * 1024
+                    RequestData.ReceiptByteLimit
                 )
                 let nominatedRepo = JsonFields.String(receipt, "PR receipt nomination", "repo")
                 let issue = JsonFields.Int32(receipt, "PR receipt nomination", "issue")
@@ -342,7 +349,7 @@ internal class Admission {
                     let reservation = state.Lease
                     if reservation == nil ||
                         reservation.Status != "active" ||
-                        branch != "tokate/v2-" +
+                        branch != GitHub.ContributionBranchPrefix +
                         reservation.Reservation ||
                         RepositoryIdentity.PositiveId(reservation.ActorJson) != RepositoryIdentity.PositiveId(
                         contribution.ActorJson
@@ -376,7 +383,7 @@ internal class Admission {
                     return JsonElement{}
                 }
 
-                if branch != "tokate/v2-" + reservation.Reservation || !fork.StartsWith(
+                if branch != GitHub.ContributionBranchPrefix + reservation.Reservation || !fork.StartsWith(
                     donor + "/",
                     StringComparison.OrdinalIgnoreCase
                 ) {
@@ -470,15 +477,18 @@ internal class Admission {
         }
 
         private func BoundState(repo string, pull JsonElement) CoordinationState {
-            let refs = GitHub.Api("repos/" + repo + "/git/matching-refs/heads/tokate/contributions/")
-            if refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > 1000 {
+            let refs = GitHub.Api("repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix)
+            if refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > BindingRefCountLimit {
                 throw Exception("Cannot inspect bounded canonical contribution bindings")
             }
 
             var result = CoordinationState()
 
             for reference in J.Items(refs) {
-                let name = Regex.Match(J.Text(reference, "ref"), "^refs/heads/tokate/contributions/([0-9]+)$")
+                let name = Regex.Match(
+                    J.Text(reference, "ref"),
+                    "^" + GitHub.HeadsRefPrefix + GitHub.ContributionStateRefPrefix + "([0-9]+)$"
+                )
                 var issue int32
 
                 if !name.Success || !Int32.TryParse(name.Groups[1].Value, out issue) || issue < 1 || J.Text(
@@ -507,7 +517,9 @@ internal class Admission {
 
         private func Authority(approval JsonElement, repo string, issue int32) {
             let approved = OwnerApproval.Record.Parse(approval)
-            if approved.Version != 2 || approved.Issue != issue || !RepositoryIdentity.SameRepo(approved.Repo, repo) {
+            if approved.Version != OwnerApproval.FormatVersion ||
+                approved.Issue != issue ||
+                !RepositoryIdentity.SameRepo(approved.Repo, repo) {
                 throw Exception("Malformed trusted admission approval identity")
             }
 
@@ -516,7 +528,7 @@ internal class Admission {
             RepositoryIdentity.Branch(approved.AuthorityBranch)
 
             for digest in[]string{approved.PolicyHash, approved.TemplateHash, approved.IssueHash} {
-                if !Regex.IsMatch(digest, "^[0-9a-f]{64}$") {
+                if !Regex.IsMatch(digest, RequestData.Sha256HexPattern) {
                     throw Exception("Malformed trusted admission approval digest")
                 }
             }

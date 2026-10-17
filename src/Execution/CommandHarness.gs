@@ -50,12 +50,12 @@ internal class CommandHarness {
         )
 
         internal func Adapter(command JsonElement, output string) Harness {
-            var activity Action[string] = OmpHarness.Activity
-            if output == "codex" {
-                activity = Worker.Activity
-            } else if output == "claude" {
-                activity = ClaudeHarness.Activity
+            let activity Action[string] = switch output {
+                case "codex": Worker.Activity
+                case "claude": ClaudeHarness.Activity
+                default: OmpHarness.Activity
             }
+
             return Harness(
                 "Command",
                 "",

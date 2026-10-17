@@ -11,6 +11,14 @@ import System.Text.RegularExpressions
 
 internal class ClaudeCode {
     shared {
+        private const NativeTimeoutSeconds int32 = 30
+
+        private const RuntimeBudgetSeconds int32 = 90
+
+        private const ReportByteLimit int32 = 1024 * 1024
+
+        private const AuthenticationByteLimit int32 = 16384
+
         private func Profile(path string) string {
             let profile = LocalPaths.RuntimePath(path)
             let canonical = LocalPaths.CanonicalPath(profile)
@@ -86,7 +94,7 @@ internal class ClaudeCode {
             "CLAUDE_CODE_NONSTREAMING_TIMEOUT_RETRIES": "0"
         }
 
-        internal let ModelPattern string = "^claude-(?:(?:opus|sonnet|haiku)-5-5|fable-5(?:-1)?|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6)(?:-[0-9]{8})?$"
+        internal const ModelPattern string = "^claude-(?:(?:opus|sonnet|haiku)-5-5|fable-5(?:-1)?|opus-5|sonnet-5|opus-4-[678]|sonnet-4-6)(?:-[0-9]{8})?$"
 
         internal func Settings(profile string, models List[string]?) JsonElement {
             let settings = map[string, Object?]{
@@ -176,7 +184,7 @@ internal class ClaudeCode {
                 LocalPaths.NeedSystemTool("env"),
                 command.ToArray(),
                 "/",
-                seconds: 30,
+                seconds: NativeTimeoutSeconds,
                 strictOutput: true,
                 budget: budget,
                 cancellation: Gsharp.Concurrency.Chan[bool](1)
@@ -196,7 +204,7 @@ internal class ClaudeCode {
                         continue
                     }
 
-                    let value = RequestData.Parse(line, 1024 * 1024)
+                    let value = RequestData.Parse(line, ReportByteLimit)
                     if J.Get(value, "parent_tool_use_id").ValueKind == JsonValueKind.String {
                         continue
                     }
@@ -324,18 +332,28 @@ internal class ClaudeCode {
 
             LocalPaths.DirectoryPath(Path.GetDirectoryName(full) ?? "/")
 
-            let metadata = [256]byte
+            let metadata = [LocalPaths.MetadataByteSize]byte
 
             if full == profile || full.StartsWith(profile + "/") ||
-                RuntimeMetadataStat(-100, full, 256, 1, metadata) != 0 ||
-                (BitConverter.ToUInt16(metadata, 28) & 61440) != 32768 {
+                RuntimeMetadataStat(
+                LocalPaths.CurrentWorkingDirectory,
+                full,
+                LocalPaths.MetadataNoFollow,
+                LocalPaths.MetadataTypeMask,
+                metadata
+            ) != 0 ||
+                (BitConverter.ToUInt16(metadata, LocalPaths.MetadataModeOffset) & LocalPaths.FileTypeMask) != LocalPaths
+                .RegularFileType {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "Claude native report must be a regular unlinked file outside the native-login profile."
                 )
             }
 
-            let descriptor = RuntimeMetadataOpen(full, 131072 | 2048 | 524288)
+            let descriptor = RuntimeMetadataOpen(
+                full,
+                LocalPaths.OpenNoFollow | LocalPaths.OpenNonBlocking | LocalPaths.OpenCloseOnExec
+            )
             if descriptor < 0 {
                 throw ExecutionFailure.Create("invalid_state", "Cannot safely open Claude native report.")
             }
@@ -347,8 +365,8 @@ internal class ClaudeCode {
             }
 
             using let reader = BinaryReader(file)
-            let bytes = reader.ReadBytes(1024 * 1024 + 1)
-            if bytes.Length > 1024 * 1024 {
+            let bytes = reader.ReadBytes(ReportByteLimit + 1)
+            if bytes.Length > ReportByteLimit {
                 throw ExecutionFailure.Create("invalid_state", "Claude native report exceeds 1 MiB.")
             }
 
@@ -388,7 +406,7 @@ internal class ClaudeCode {
 
                 args.Values["--harness-path"] = binary
 
-                let limit = budget ?? RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), 90)
+                let limit = budget ?? RuntimeBudget(System.Diagnostics.Stopwatch.StartNew(), RuntimeBudgetSeconds)
                 let version = Native(binary, "", []string{"--version"}, limit)
                 if version.Code != 0 || version.Truncated || version.ReadFailed || !Regex.IsMatch(
                     version.Output.Trim(),
@@ -453,7 +471,7 @@ internal class ClaudeCode {
                         )
                     }
 
-                    authentication = Authentication(RequestData.Parse(status.Output, 16384))
+                    authentication = Authentication(RequestData.Parse(status.Output, AuthenticationByteLimit))
                 }
 
                 return J.Parse(

@@ -44,7 +44,7 @@ internal class Amendment {
             let base = J.Get(pull, "base")
             let headRepo = J.Text(J.Get(head, "repo"), "full_name")
             let mergedAt = J.Get(pull, "merged_at").ValueKind
-            let marker = "<!-- tokate-v2:" + run.Id + " -->"
+            let marker = RequestData.OwnershipMarkerPrefix + run.Id + " -->"
             let failure = "Existing PR changed, closed or merged; saved amendment retained"
 
             let baseRepo = J.Text(J.Get(base, "repo"), "full_name")
@@ -69,7 +69,7 @@ internal class Amendment {
                 throw CliFailure("authentication_required", "Use the same donor account and numeric identity")
             }
 
-            if run.Version != 2 {
+            if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Amend requires a current contribution")
             }
 
@@ -108,7 +108,7 @@ internal class Amendment {
                 originalActor != actor ||
                 !RepositoryIdentity.SameRepo(publication.Fork, run.HeadRepo) ||
                 publication.Branch != run.Branch ||
-                run.Branch != "tokate/v2-" +
+                run.Branch != GitHub.ContributionBranchPrefix +
                 run.Id ||
                 run.Base != (reservation?.Base ?? "") ||
                 run.BaseBranch != approval.BaseBranch ||
@@ -459,7 +459,7 @@ internal class Amendment {
             let seconds = args.Number("seconds")
             let tools = args.Get("tools") == "" ? J.Parse("[]"): RequestData.FileData(
                 args.Need("tools"),
-                correcting ? 4096: 8192
+                correcting ? RequestData.CorrectionToolsByteLimit: RequestData.RequestByteLimit
             )
             let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
             let published = run.Commit
@@ -632,7 +632,7 @@ internal class Amendment {
                         case "seconds": J.Parse(args.Number(key).ToString())
                         case "tools": args.Get(key) == "" ? J.Parse("[]"): RequestData.FileData(
                             args.Need(key),
-                            correcting ? 4096: 8192
+                            correcting ? RequestData.CorrectionToolsByteLimit: RequestData.RequestByteLimit
                         )
                         default: PublicSummary.FileSummary(args.Get(key), commit)
                     }
@@ -972,7 +972,7 @@ internal class Amendment {
                     "pr": amendment.Pr,
                     "seconds": amendment.Seconds,
                     "tools": amendment.Tools,
-                    "verification": "donor-reported-pass"
+                    "verification": RequestData.ReportedVerification
                 },
                 amendment.PublicSummary
             )
@@ -1005,7 +1005,7 @@ internal class Amendment {
 
         internal func Completed(directory string, run Data) Dictionary[string, Object?] {
             let state = run.State
-            if run.Version != 2 || run.Source != "tokate" || run.Pr != 0 || state == "published" {
+            if run.Version != Data.FormatVersion || run.Source != "tokate" || run.Pr != 0 || state == "published" {
                 throw CliFailure(
                     "invalid_state",
                     "Correction requires unpublished managed work; external work uses external --run"
@@ -1070,7 +1070,7 @@ internal class Amendment {
                     "patch_sha256": correction.PatchSha256,
                     "seconds": correction.Seconds,
                     "tools": correction.Tools,
-                    "verification": "tokate-observed-locally-exact-commit"
+                    "verification": RequestData.ObservedVerification
                 }
             )
         )
@@ -1122,7 +1122,7 @@ internal class Amendment {
                 run.PublicationExpected = change.Expected
                 run.Save(directory)
                 let request = Submission.PublicationRequest(run, change)
-                RequestData.Parse(J.Write(request))
+                RequestData.Parse(J.Write(request), RequestData.RequestByteLimit)
                 RequestMetadata.Request(request)
                 for file in[]string{"request.json", "publication.json"} {
                     RunStorage.ControlFile(directory, file)

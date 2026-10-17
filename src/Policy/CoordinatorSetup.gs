@@ -16,12 +16,30 @@ internal class ActionsAllowlist {
 
 internal class CoordinatorSetup {
     shared {
+        internal const WorkflowFile string = "tokate-coordinator.yml"
+
+        internal const WorkflowPath string = ".github/workflows/" + WorkflowFile
+
+        private const AllWorkflowPaths string = "~ALL"
+
+        private const ChecksumSidecarByteLimit int64 = 256
+
+        private const TagDepthLimit int32 = 8
+
+        private const ReleaseAssetByteLimit int64 = 128 * 1024 * 1024
+
+        private const DownloadTimeLimitSeconds string = "60"
+
+        private const DownloadByteLimit string = "134217728"
+
         internal func EventPolicy(repo string, workflow string) bool {
-            let policies = GitHub.Api("repos/" + repo + "/actions/policies?has_parents=true&per_page=100")
+            let policies = GitHub.Api(
+                "repos/" + repo + "/actions/policies?has_parents=true&" + GitHub.PageSizeParameter
+            )
             let rows = J.Get(policies, "policies")
 
             if rows.ValueKind != JsonValueKind.Array || J.Number(policies, "total_count") != rows.GetArrayLength() ||
-                rows.GetArrayLength() > 100 {
+                rows.GetArrayLength() > GitHub.PageSize {
                 throw Exception(
                     "Cannot inspect all applicable Actions policies; owner setup requires a complete policy read"
                 )
@@ -35,7 +53,7 @@ internal class CoordinatorSetup {
                 let self = J.Text(J.Get(J.Get(row, "_links"), "self"), "href")
 
                 if self != "" {
-                    let prefix = "https://api.github.com/"
+                    let prefix = GitHub.ApiUrl
                     if !self.StartsWith(prefix, StringComparison.Ordinal) {
                         throw Exception("Invalid applicable Actions policy location")
                     }
@@ -146,7 +164,7 @@ internal class CoordinatorSetup {
             }
 
             let value = pattern.GetString() ?? ""
-            if value == "~ALL" {
+            if value == AllWorkflowPaths {
                 return true
             }
 
@@ -240,16 +258,19 @@ internal class CoordinatorSetup {
                 Download(archiveUrl, archivePath)
                 Download(checksumUrl, checksumPath)
 
-                if FileInfo(checksumPath).Length > 256 {
+                if FileInfo(checksumPath).Length > ChecksumSidecarByteLimit {
                     throw Exception("Invalid release checksum sidecar")
                 }
 
                 let text = File.ReadAllText(checksumPath).Trim()
-                if !Regex.IsMatch(text, "^[0-9a-f]{64}  " + Regex.Escape(bundle + ".tar.gz") + "$") {
+                if !Regex.IsMatch(
+                    text,
+                    "^" + RequestData.Sha256HexDigitsPattern + "  " + Regex.Escape(bundle + ".tar.gz") + "$"
+                ) {
                     throw Exception("Invalid release checksum sidecar")
                 }
 
-                let hash = text.Substring(0, 64)
+                let hash = text.Substring(0, RequestData.Sha256HexLength)
                 if HashFile(archivePath) != hash {
                     throw Exception("Release archive checksum mismatch")
                 }
@@ -278,7 +299,7 @@ internal class CoordinatorSetup {
                 var identity = J.Get(tag, "object")
                 var depth int32
 
-                while J.Text(identity, "type") == "tag" && depth < 8 {
+                while J.Text(identity, "type") == "tag" && depth < TagDepthLimit {
                     let annotated = GitHub.Api(
                         "repos/obselate/tokate/git/tags/" + RepositoryIdentity.CommitSha(J.Text(identity, "sha"))
                     )
@@ -326,11 +347,11 @@ internal class CoordinatorSetup {
                 asset,
                 "size"
             ) < 1 ||
-                J.Number(asset, "size") > 128 * 1024 * 1024 {
+                J.Number(asset, "size") > ReleaseAssetByteLimit {
                 throw Exception("Release is missing a bounded uploaded archive or checksum asset")
             }
 
-            return "https://api.github.com/repos/obselate/tokate/releases/assets/" + id.ToString()
+            return GitHub.ApiUrl + "repos/obselate/tokate/releases/assets/" + id.ToString()
         }
 
         private func Download(url string, path string) -> Commands.Checked(
@@ -338,13 +359,13 @@ internal class CoordinatorSetup {
             []string{
                 "-qfsSL",
                 "--proto",
-                "=https",
+                GitHub.CurlHttpsOnly,
                 "--proto-redir",
-                "=https",
+                GitHub.CurlHttpsOnly,
                 "--max-time",
-                "60",
+                DownloadTimeLimitSeconds,
                 "--max-filesize",
-                "134217728",
+                DownloadByteLimit,
                 "-H",
                 "Accept: application/octet-stream",
                 "--output",

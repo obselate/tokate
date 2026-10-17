@@ -6,7 +6,7 @@ import System.Text.Json
 internal class ContributionAuthority {
     shared {
         internal func Recheck(run Data) JsonElement {
-            if run.Version != 2 {
+            if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Unsupported run protocol; start a current contribution")
             }
 
@@ -19,7 +19,7 @@ internal class ContributionAuthority {
                 if RepositoryIdentity.SameRepo(repo, run.HeadRepo) || !RepositoryIdentity.SameDonor(viewer, run) ||
                     GitHub
                     .Api(
-                    "repos/" + repo + "/contents/.github/tokate.json?ref=" + Uri.EscapeDataString(run.BaseBranch),
+                    "repos/" + repo + "/contents/" + Policy.FilePath + "?ref=" + Uri.EscapeDataString(run.BaseBranch),
                     missing: true
                 )
                     .ValueKind != JsonValueKind.Undefined {
@@ -29,7 +29,7 @@ internal class ContributionAuthority {
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
                 if run.Base != approval.Base ||
                     run.BaseBranch != approval.BaseBranch ||
-                    run.Branch != "tokate/gratis-" +
+                    run.Branch != ContributionPreparation.GratisBranchPrefix +
                     run.Id {
                     throw CliFailure("invalid_state", "Saved gratis task changed")
                 }
@@ -64,7 +64,7 @@ internal class ContributionAuthority {
 
                 if run.Base != (reservation?.Base ?? "") ||
                     run.PolicyHash != approval.PolicyHash ||
-                    run.Branch != "tokate/v2-" +
+                    run.Branch != GitHub.ContributionBranchPrefix +
                     run.Id ||
                     run.BaseBranch != approval.BaseBranch {
                     throw CliFailure("stale_approval", "Saved run differs from reservation and approval")

@@ -39,7 +39,7 @@ internal class DonationView {
         Dirty = false
 
         let rows = List[string]()
-        let page = Math.Max(1, height - 4)
+        let page = Math.Max(1, height - ReservedRowCount)
 
         if ContentDirty || full {
             let previousCount = Content.Count
@@ -127,9 +127,9 @@ internal class DonationView {
                         let key = Console.ReadKey(true)
 
                         if key.Key == ConsoleKey.PageUp {
-                            Scroll += Math.Max(1, Height - 4)
+                            Scroll += Math.Max(1, Height - ReservedRowCount)
                         } else if key.Key == ConsoleKey.PageDown {
-                            Scroll = Math.Max(0, Scroll - Math.Max(1, Height - 4))
+                            Scroll = Math.Max(0, Scroll - Math.Max(1, Height - ReservedRowCount))
                         } else if key.Key == ConsoleKey.End {
                             Scroll = 0
                         } else if key.Key == ConsoleKey.L && (key.Modifiers & ConsoleModifiers.Control) != 0 {
@@ -142,7 +142,7 @@ internal class DonationView {
                     Draw()
                 }
 
-                using let tick = after(TimeSpan.FromMilliseconds(100))
+                using let tick = after(TimeSpan.FromMilliseconds(RefreshIntervalMilliseconds))
 
                 select {
                     case <- Stop {
@@ -158,6 +158,14 @@ internal class DonationView {
     }
 
     shared {
+        private const ReservedRowCount int32 = 4
+
+        private const RefreshIntervalMilliseconds int32 = 100
+
+        private const TranscriptLineCharacterLimit int32 = 4096
+
+        private const TranscriptLineCountLimit int32 = 500
+
         private var Current DonationView?
 
         private func Available() bool -> !PublicOutput.Enabled &&
@@ -232,11 +240,11 @@ internal class DonationView {
 
                 lock view.Gate {
                     for line in safe.Split('\n') {
-                        view.Transcript.Add(line.Substring(0, Math.Min(line.Length, 4096)))
+                        view.Transcript.Add(line.Substring(0, Math.Min(line.Length, TranscriptLineCharacterLimit)))
                     }
 
-                    if view.Transcript.Count > 500 {
-                        view.Transcript.RemoveRange(0, view.Transcript.Count - 500)
+                    if view.Transcript.Count > TranscriptLineCountLimit {
+                        view.Transcript.RemoveRange(0, view.Transcript.Count - TranscriptLineCountLimit)
                     }
 
                     view.Dirty = true

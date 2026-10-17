@@ -10,7 +10,7 @@ import System.Text.Json
 internal class HarnessRunner {
     shared {
         private func ValidateUnexecuted(directory string, run Data) {
-            if run.Version != 2 || run.Source != "tokate" {
+            if run.Version != Data.FormatVersion || run.Source != "tokate" {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "External work uses external --run; inference is never launched"
@@ -65,7 +65,7 @@ internal class HarnessRunner {
                 Worker.Authenticate(run)
             }
 
-            if (harness == "pi" || harness == "omp") && run.PreparationVersion != 1 {
+            if (harness == "pi" || harness == "omp") && run.PreparationVersion != Data.PreparationFormatVersion {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "Managed " + (harness == "omp" ? "OMP": "pi") + " requires a prepared version-2 contribution"
@@ -180,11 +180,7 @@ internal class HarnessRunner {
                             coding,
                             RuntimeBudget(timer, totalSeconds)
                         )
-                        var activity Action[string]? = nil
-
-                        if Output.Sink.Active() {
-                            activity = adapter.Activity
-                        }
+                        let activity Action[string]? = Output.Sink.Active() ? adapter.Activity: nil
 
                         let prompt = TaskContext.Build(checkout, run, record, coding)
 

@@ -7,6 +7,12 @@ import System.Text.Json
 
 internal class PiBoundary {
     shared {
+        internal const PackageMetadataByteLimit int32 = 128 * 1024
+
+        private const ProbeTimeoutSeconds int32 = 30
+
+        private const ModelLimitsByteLimit int32 = 4096
+
         internal func Endpoint(value string) string {
             var uri Uri
 
@@ -67,7 +73,7 @@ internal class PiBoundary {
                         args.ToArray(),
                         storage.FullName,
                         input: endpoint,
-                        seconds: 30,
+                        seconds: ProbeTimeoutSeconds,
                         isolated: true,
                         budget: budget
                     )
@@ -78,7 +84,7 @@ internal class PiBoundary {
                         )
                     }
 
-                    let limits = RequestData.Parse(result.Output.Trim(), 4096)
+                    let limits = RequestData.Parse(result.Output.Trim(), ModelLimitsByteLimit)
                     RequestData.Keys(limits, "provider,contextWindow,maxTokens,reasoning,efforts")
                     let contextWindow = J.Number(limits, "contextWindow")
                     let maxTokens = J.Number(limits, "maxTokens")
@@ -129,7 +135,7 @@ internal class PiBoundary {
         internal func Probe(root string, node string, budget RuntimeBudget? = nil) JsonElement {
             try {
                 let packageRoot = Path.Combine(root, "@earendil-works/pi-coding-agent")
-                let metadata = RequestData.FileData(Path.Combine(packageRoot, "package.json"), 128 * 1024)
+                let metadata = RequestData.FileData(Path.Combine(packageRoot, "package.json"), PackageMetadataByteLimit)
                 let entry = J.Text(J.Get(metadata, "bin"), "pi")
                 let cli = Path.GetFullPath(Path.Combine(packageRoot, entry))
 
@@ -158,7 +164,7 @@ internal class PiBoundary {
         }
 
         private func Version(root string, node string, arguments[]string, budget RuntimeBudget?) string {
-            let result = Commands.Run(node, arguments, root, seconds: 30, budget: budget)
+            let result = Commands.Run(node, arguments, root, seconds: Commands.VersionTimeoutSeconds, budget: budget)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw LinuxSandbox.ProbeFailure(result, "Pi CLI or Node readiness check failed; no inference started")
             }

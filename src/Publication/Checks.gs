@@ -22,14 +22,21 @@ internal class ChecksObservation {
 
 internal class Checks {
     shared {
-        private let BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
+        private const BindingFields string = "version,issue,approval,authority_revision,donor,base,base_branch,commit,expected,reservation,receipt_hash,policy_hash"
+
+        private const DefaultTimeoutSeconds string = "1200"
+
         private func Review(
             passed bool
         ) string -> "Review implementation scope, acceptance criteria, semantic compatibility and limitations; decide final acceptance" +
             (passed ? " and merge": "") +
             ". Machine checks do not accept or complete the issue or remove draft status."
-        private let ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
-        private let ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
+
+        private const ApprovalAction string = "Workflow runs await owner approval. Inspect the PR diff, then approve the linked runs in GitHub."
+
+        private const ReportAction string = "Require a current public change and verification report bound to this exact commit; publication may preserve the work as a draft."
+
+        private const UnknownApprovalAction string = "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection."
 
         private func Identity(pull JsonElement) string {
             let result = J.Select(pull, "state,draft,merged,merged_at,closed_at")
@@ -149,14 +156,14 @@ internal class Checks {
         }
 
         internal func Run(args Args, render Action[Dictionary[string, Object?]]) int32 {
-            ApiTransport.BeginDeadline(args.Number("timeout", "1200"))
+            ApiTransport.BeginDeadline(args.Number("timeout", DefaultTimeoutSeconds))
 
             try {
                 return ChecksWithinDeadline(args, render)
             } catch (error ApiDeadlineException) {
                 Output.Sink.Message(error.Message, "yellow")
 
-                return 8
+                return Output.PendingExitCode
             } finally {
                 ApiTransport.EndDeadline()
             }
@@ -164,7 +171,7 @@ internal class Checks {
 
         private func ChecksWithinDeadline(args Args, render Action[Dictionary[string, Object?]]) int32 {
             let directory = args.Get("run") == "" ? "": Path.GetFullPath(args.Need("run"))
-            var run = directory == "" ? Data(): Data.Load(directory)
+            let run = directory == "" ? Data(): Data.Load(directory)
 
             if directory == "" {
                 run.Repo = RepositoryIdentity.Repo(args.Need("repo"))
@@ -235,7 +242,7 @@ internal class Checks {
                     )
                     if settling {
                         Output.Sink.Message(error.Message, "yellow")
-                        return 8
+                        return Output.PendingExitCode
                     }
 
                     if error is CliFailure || error is ApiDeadlineException {
@@ -363,7 +370,7 @@ internal class Checks {
             }
 
             if args.Get("watch") != "true" || observation.Approval {
-                return 8
+                return Output.PendingExitCode
             }
 
             return -1
@@ -376,7 +383,7 @@ internal class Checks {
         ) {
             if !observation.Failed && !observation.Pending {
                 observation.Stage = "dependencies"
-                let dependencies = Dictionary[string, Object?]()
+                let dependencies = map[string, Object?]{}
                 facts["dependency_evidence"] = dependencies
 
                 Overlaps.DependencyEvidence(observation.Run.Repo, observation.Run.Issue, dependencies)
@@ -491,19 +498,21 @@ internal class Checks {
         }
 
         private func ReadApprovals(run Data, checkHead string, awaiting List[Object], observation ChecksObservation) {
-            for page in 1 ... 11 {
+            for page in 1 ... GitHub.PageCountLimit + 1 {
                 let response = GitHub.Api(
                     "repos/" +
                         run.Repo +
                         "/actions/runs?head_sha=" +
                         checkHead +
-                        "&status=action_required&per_page=100&page=" +
+                        "&status=action_required&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
 
                 let workflows = J.Get(response, "workflow_runs")
 
-                if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > 100 {
+                if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > GitHub.PageSize {
                     throw CliFailure("command_failed", "Cannot read workflow runs awaiting approval")
                 }
 
@@ -517,18 +526,18 @@ internal class Checks {
 
                     observation.Approval = true
 
-                    if awaiting.Count < 64 {
+                    if awaiting.Count < Output.RowCountLimit {
                         awaiting.Add(J.Select(workflow, "id,name,head_sha,html_url,status,conclusion"))
                     } else {
                         Output.Sink.Truncated = true
                     }
                 }
 
-                if workflows.GetArrayLength() < 100 {
+                if workflows.GetArrayLength() < GitHub.PageSize {
                     break
                 }
 
-                if page == 10 {
+                if page == GitHub.PageCountLimit {
                     throw CliFailure("command_failed", "Workflow approval inspection exceeded its bounded history")
                 }
             }
@@ -574,7 +583,7 @@ internal class Checks {
                 observation.Pending = observation.Pending || !found || !passed
                 missing = missing || !found
 
-                if required.Count < 64 {
+                if required.Count < Output.RowCountLimit {
                     required.Add(
                         map[string, Object?]{
                             "name": name,
@@ -598,7 +607,7 @@ internal class Checks {
 
             if inspection || approval {
                 facts["required_owner_actions"] = []string{
-                    approval ? ApprovalAction: "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
+                    approval ? ApprovalAction: UnknownApprovalAction,
                     Review(status == "passed")
                 }
             }
@@ -745,11 +754,7 @@ internal class Checks {
                 for row in observed {
                     if J.Text(J.Parse(J.Write(row)), "state") == "ACTION_REQUIRED" {
                         facts["owner_inspection_required"] = true
-                        facts["required_owner_actions"] = []string{
-                            "Inspect the PR and linked Actions runs for action_required; the cause is unknown. Approve a fork workflow only after explicit approval evidence and diff inspection.",
-                            action,
-                            Review(false)
-                        }
+                        facts["required_owner_actions"] = []string{UnknownApprovalAction, action, Review(false)}
 
                         break
                     }

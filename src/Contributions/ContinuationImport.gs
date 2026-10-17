@@ -30,7 +30,41 @@ func ContinuationRenameAt(source int32, sourcePath string, target int32, targetP
 
 internal class ContinuationImport {
     shared {
-        private let Limit int32 = 32 * 1024 * 1024
+        private const ManifestVersion int32 = 1
+
+        private const CaptureByteLimit int32 = 32 * 1024 * 1024
+
+        private const ManifestByteLimit int32 = 48 * 1024 * 1024
+
+        private const PathCharacterLimit int32 = 1024
+
+        private const DirectoryDepthLimit int32 = 64
+
+        private const ChangedPathCountLimit int32 = 1000
+
+        private const OpenHowByteSize int32 = 24
+
+        private const OpenAtSystemCall int64 = 437
+
+        private const DirectoryOpenFlags int64 = 589824
+
+        private const ReadOpenFlags int64 = 526336
+
+        private const CreateOpenFlags int64 = 526529
+
+        private const ResolveNoSymlinks int64 = 4
+
+        private const StatByteSize int32 = 144
+
+        private const MissingPathError int32 = 2
+
+        private const ExistingPathError int32 = 17
+
+        private const ExecutableFileMode uint32 = 493
+
+        private const DirectoryMode uint32 = 493
+
+        private const RegularFileMode uint32 = 420
 
         internal func SourceLease(directory string) FileStream {
             LocalPaths.DirectoryPath(directory)
@@ -50,7 +84,7 @@ internal class ContinuationImport {
         }
 
         private func PathName(path string) {
-            if path.Length == 0 || path.Length > 1024 || path.Contains('\\') || path.StartsWith('/') {
+            if path.Length == 0 || path.Length > PathCharacterLimit || path.Contains('\\') || path.StartsWith('/') {
                 throw CliFailure("invalid_state", "Unsafe continuation path")
             }
 
@@ -152,21 +186,26 @@ internal class ContinuationImport {
         }
 
         private func OpenAt(directory int32, path string, flags int64, mode int64 = 0, resolve int64 = 13) int32 {
-            let how = Marshal.AllocHGlobal(24)
+            let how = Marshal.AllocHGlobal(OpenHowByteSize)
 
             try {
                 Marshal.WriteInt64(how, 0, flags)
                 Marshal.WriteInt64(how, 8, mode)
                 Marshal.WriteInt64(how, 16, resolve)
 
-                return Convert.ToInt32(ContinuationOpenAt(437, directory, path, how, 24))
+                return Convert.ToInt32(ContinuationOpenAt(OpenAtSystemCall, directory, path, how, OpenHowByteSize))
             } finally {
                 Marshal.FreeHGlobal(how)
             }
         }
 
         private func Root(directory string) SafeFileHandle {
-            let descriptor = OpenAt(-100, Path.GetFullPath(directory), 589824, resolve: 4)
+            let descriptor = OpenAt(
+                LocalPaths.CurrentWorkingDirectory,
+                Path.GetFullPath(directory),
+                DirectoryOpenFlags,
+                resolve: ResolveNoSymlinks
+            )
 
             if descriptor < 0 {
                 throw CliFailure(
@@ -179,11 +218,11 @@ internal class ContinuationImport {
         }
 
         private func Regular(handle SafeFileHandle, path string) {
-            let stat = Marshal.AllocHGlobal(144)
+            let stat = Marshal.AllocHGlobal(StatByteSize)
 
             try {
                 if ContinuationStat(handle.DangerousGetHandle().ToInt32(), stat) != 0 ||
-                    (Marshal.ReadInt32(stat, 24) & 61440) != 32768 ||
+                    (Marshal.ReadInt32(stat, 24) & LocalPaths.FileTypeMask) != LocalPaths.RegularFileType ||
                     Marshal.ReadInt64(stat, 16) != 1 {
                     throw CliFailure("invalid_state", "Continuation requires regular files without links: " + path)
                 }
@@ -196,7 +235,7 @@ internal class ContinuationImport {
             PathName(path)
 
             using let root = Root(directory)
-            let descriptor = OpenAt(root.DangerousGetHandle().ToInt32(), path, 526336)
+            let descriptor = OpenAt(root.DangerousGetHandle().ToInt32(), path, ReadOpenFlags)
 
             if descriptor < 0 {
                 throw CliFailure("invalid_state", "Cannot safely read continuation file: " + path)
@@ -225,7 +264,7 @@ internal class ContinuationImport {
             }
 
             using let output = MemoryStream()
-            let buffer = [8192]byte
+            let buffer = [RequestData.CopyBufferByteSize]byte
             var count int32
 
             while (
@@ -243,7 +282,7 @@ internal class ContinuationImport {
 
         internal func Metadata(directory string) string {
             try {
-                return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", 1024 * 1024))
+                return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", RunStorage.RunFileByteLimit))
             } catch (error DecoderFallbackException) {
                 throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
@@ -255,15 +294,15 @@ internal class ContinuationImport {
             var retained = false
             try {
                 for part in path.Split('/', StringSplitOptions.RemoveEmptyEntries) {
-                    var descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, 589824)
+                    var descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, DirectoryOpenFlags)
 
-                    if descriptor < 0 && Marshal.GetLastWin32Error() == 2 {
-                        if ContinuationMkdirAt(current.DangerousGetHandle().ToInt32(), part, 493) != 0 &&
-                            Marshal.GetLastWin32Error() != 17 {
+                    if descriptor < 0 && Marshal.GetLastWin32Error() == MissingPathError {
+                        if ContinuationMkdirAt(current.DangerousGetHandle().ToInt32(), part, DirectoryMode) != 0 &&
+                            Marshal.GetLastWin32Error() != ExistingPathError {
                             throw CliFailure("invalid_state", "Cannot create contained import directory: " + path)
                         }
 
-                        descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, 589824)
+                        descriptor = OpenAt(current.DangerousGetHandle().ToInt32(), part, DirectoryOpenFlags)
                     }
 
                     if descriptor < 0 {
@@ -284,9 +323,9 @@ internal class ContinuationImport {
         }
 
         private func Present(directory int32, path string) bool {
-            let descriptor = OpenAt(directory, path, 526336)
+            let descriptor = OpenAt(directory, path, ReadOpenFlags)
             if descriptor < 0 {
-                if Marshal.GetLastWin32Error() == 2 {
+                if Marshal.GetLastWin32Error() == MissingPathError {
                     return false
                 }
 
@@ -306,7 +345,7 @@ internal class ContinuationImport {
         }
 
         private func WriteFile(directory int32, path string, bytes[]byte, mode uint32) {
-            let descriptor = OpenAt(directory, path, 526529, mode)
+            let descriptor = OpenAt(directory, path, CreateOpenFlags, mode)
 
             if descriptor < 0 {
                 throw CliFailure("invalid_state", "Cannot create contained continuation file: " + path)
@@ -352,7 +391,7 @@ internal class ContinuationImport {
 
             using let root = Root(directory)
             let control = root.DangerousGetHandle().ToInt32()
-            let mode uint32 = J.Text(entry, "mode") == "100755" ? 493: 420
+            let mode uint32 = J.Text(entry, "mode") == GitHub.ExecutableFileMode ? ExecutableFileMode: RegularFileMode
 
             WriteFile(control, "continuation-write.tmp", Content(J.Text(entry, "content")), mode)
 
@@ -382,7 +421,7 @@ internal class ContinuationImport {
             exclude bool,
             depth int32 = 0
         ) {
-            if depth > 64 || visited.Count > 100000 {
+            if depth > DirectoryDepthLimit || visited.Count > ProtectedPaths.InventoryPathCountLimit {
                 throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count or depth")
             }
 
@@ -396,7 +435,7 @@ internal class ContinuationImport {
 
                 PathName(path)
 
-                if !visited.Add(path) || visited.Count > 100000 {
+                if !visited.Add(path) || visited.Count > ProtectedPaths.InventoryPathCountLimit {
                     throw CliFailure("invalid_state", "Continuation inventory exceeds bounded path count")
                 }
 
@@ -430,10 +469,12 @@ internal class ContinuationImport {
                 PathName(entry.Key)
                 if Excluded(entry.Key) ||
                     (
-                    !entry.Value.StartsWith("040000 tree ") && !entry.Value.StartsWith("100644 blob ") &&
+                    !entry.Value.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ") && !entry.Value.StartsWith(
+                        GitHub.RegularFileMode + " " + GitHub.BlobType + " "
+                    ) &&
                         !entry
                         .Value
-                        .StartsWith("100755 blob ")
+                        .StartsWith(GitHub.ExecutableFileMode + " " + GitHub.BlobType + " ")
                 ) {
                     throw CliFailure(
                         "invalid_state",
@@ -466,7 +507,7 @@ internal class ContinuationImport {
             Files(checkout, "", files, visited, exclude)
 
             for entry in baseline {
-                let wasDirectory = entry.Value.StartsWith("040000 tree ")
+                let wasDirectory = entry.Value.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ")
                 let isDirectory = visited.Contains(entry.Key) && !files.Contains(entry.Key)
                 if visited.Contains(entry.Key) && wasDirectory != isDirectory {
                     throw CliFailure(
@@ -512,7 +553,7 @@ internal class ContinuationImport {
                 }
             }
 
-            if changed.Count > 1000 {
+            if changed.Count > ChangedPathCountLimit {
                 throw CliFailure("invalid_state", "Continuation exceeds 1000 changed paths")
             }
 
@@ -548,13 +589,13 @@ internal class ContinuationImport {
                 var blob = ""
 
                 if files.Contains(path) {
-                    let bytes = Bytes(checkout, path, Limit - total)
+                    let bytes = Bytes(checkout, path, CaptureByteLimit - total)
                     total += bytes.Length
                     mode = (
                         File.GetUnixFileMode(Path.Combine(checkout, path)) & (
                             UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute
                         )
-                    ) != 0 ? "100755": "100644"
+                    ) != 0 ? GitHub.ExecutableFileMode: GitHub.RegularFileMode
                     content = Convert.ToBase64String(bytes)
                     blob = Blob(bytes)
                 }
@@ -564,7 +605,7 @@ internal class ContinuationImport {
                 let hasStaged = index.TryGetValue(path, out staged)
                 let hasOriginal = baseline.TryGetValue(path, out original)
 
-                if hasOriginal && original.StartsWith("040000 tree ") {
+                if hasOriginal && original.StartsWith(GitHub.TreeMode + " " + GitHub.TreeType + " ") {
                     throw CliFailure(
                         "invalid_state",
                         "Continuation does not support file/directory replacement: " + path
@@ -643,7 +684,7 @@ internal class ContinuationImport {
             let path = Path.Combine(directory, "continuation.json")
             let manifest = J.Write(
                 map[string, Object?]{
-                    "version": 1,
+                    "version": ManifestVersion,
                     "source_metadata": sourceText,
                     "evidence": evidence,
                     "predecessor": AttemptContinuation.Provenance(source),
@@ -652,7 +693,7 @@ internal class ContinuationImport {
             )
 
             if File.Exists(path) {
-                if Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024)) != manifest {
+                if Encoding.UTF8.GetString(Bytes(directory, "continuation.json", ManifestByteLimit)) != manifest {
                     throw CliFailure(
                         "invalid_state",
                         "Interrupted capture differs from source; inspect this saved preparation, no new reservation is created"
@@ -663,7 +704,7 @@ internal class ContinuationImport {
                 let control = root.DangerousGetHandle().ToInt32()
 
                 Remove(control, "continuation.json.tmp")
-                WriteFile(control, "continuation.json.tmp", Encoding.UTF8.GetBytes(manifest), 420)
+                WriteFile(control, "continuation.json.tmp", Encoding.UTF8.GetBytes(manifest), RegularFileMode)
 
                 if Present(control, "continuation.json") ||
                     ContinuationRenameAt(control, "continuation.json.tmp", control, "continuation.json") != 0 {
@@ -682,7 +723,7 @@ internal class ContinuationImport {
         }
 
         private func Manifest(directory string, run Data) JsonElement {
-            let text = Encoding.UTF8.GetString(Bytes(directory, "continuation.json", 48 * 1024 * 1024))
+            let text = Encoding.UTF8.GetString(Bytes(directory, "continuation.json", ManifestByteLimit))
 
             if J.Hash(text) != run.ContinuationManifestSha256 {
                 throw CliFailure(
@@ -698,7 +739,7 @@ internal class ContinuationImport {
                 throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
 
-            if J.Number(manifest, "version") != 1 || !RequestData.Same(
+            if J.Number(manifest, "version") != ManifestVersion || !RequestData.Same(
                 J.Get(manifest, "predecessor"),
                 run.Continuation
             ) {
@@ -712,7 +753,7 @@ internal class ContinuationImport {
                 let path = J.Text(entry, "path")
                 PathName(path)
 
-                if !paths.Add(path) || paths.Count > 1000 || Excluded(path) {
+                if !paths.Add(path) || paths.Count > ChangedPathCountLimit || Excluded(path) {
                     throw CliFailure("invalid_state", "Unsafe or ambiguous captured continuation paths")
                 }
 
@@ -720,8 +761,8 @@ internal class ContinuationImport {
                 let bytes = Content(J.Text(entry, "content"))
                 total += bytes.Length
 
-                if total > Limit ||
-                    (mode != "deleted" && mode != "100644" && mode != "100755") ||
+                if total > CaptureByteLimit ||
+                    (mode != "deleted" && mode != GitHub.RegularFileMode && mode != GitHub.ExecutableFileMode) ||
                     (
                     mode == "deleted" ? bytes.Length != 0 || J.Text(entry, "blob") != "": Blob(bytes) != J.Text(
                         entry,

@@ -8,6 +8,14 @@ import System.Text.Json
 
 internal class Submission {
     shared {
+        private const PartialSnapshotSeconds int32 = 60
+
+        private const WorkflowPageSizeParameter string = "per_page=10"
+
+        private const AnnotationCharacterLimit int32 = 1024
+
+        private const PostingJournalByteLimit int32 = 16384
+
         internal func Commit(directory string) {
             try {
                 using let lease = RunStorage.Lease(directory)
@@ -129,7 +137,7 @@ internal class Submission {
                 )
             }
 
-            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(60, run.Seconds))
+            let budget = RuntimeBudget(Stopwatch.StartNew(), Math.Min(PartialSnapshotSeconds, run.Seconds))
             let patch = Contribution.Snapshot(checkout, run, budget)
 
             ProtectedPaths.Local(checkout, J.Get(record, "policy"), J.Get(record, "approval"), run.Base, budget: budget)
@@ -147,9 +155,8 @@ internal class Submission {
             CommitPrepared(directory, run, true)
         }
 
-        internal func Posted(repo string, issue int32, actor JsonElement, request JsonElement) bool {
-            return Comment(repo, issue, actor, request).ValueKind != JsonValueKind.Undefined
-        }
+        internal func Posted(repo string, issue int32, actor JsonElement, request JsonElement) bool ->
+        Comment(repo, issue, actor, request).ValueKind != JsonValueKind.Undefined
 
         internal func Comment(repo string, issue int32, actor JsonElement, request JsonElement) JsonElement {
             RepositoryIdentity.PositiveId(actor)
@@ -158,9 +165,13 @@ internal class Submission {
             var count int32
             var found JsonElement
 
-            for page in 1 ... 21 {
+            for page in 1 ... Publication.HistoryPageCountLimit + 1 {
                 let response = GitHub.Api(
-                    "repos/" + repo + "/issues/" + issue.ToString() + "/comments?per_page=100&page=" + page.ToString()
+                    "repos/" + repo + "/issues/" + issue.ToString() +
+                        "/comments?" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
+                        page.ToString()
                 )
 
                 if response.ValueKind != JsonValueKind.Array {
@@ -174,7 +185,7 @@ internal class Submission {
 
                     let body = J.Text(row, "body")
 
-                    if !body.StartsWith("/tokate ", StringComparison.Ordinal) {
+                    if !body.StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) {
                         continue
                     }
 
@@ -222,7 +233,7 @@ internal class Submission {
                     found = canonical
                 }
 
-                if response.GetArrayLength() < 100 {
+                if response.GetArrayLength() < GitHub.PageSize {
                     if count > 1 {
                         throw CliFailure("invalid_state", "Ambiguous duplicate request comments")
                     }
@@ -234,15 +245,15 @@ internal class Submission {
             throw CliFailure("invalid_state", "Request comment inspection exceeded its bounded history; no write made")
         }
 
-        private let WorkflowGuidance Dictionary[string, Dictionary[string, Object?]?] = Dictionary[
+        private let WorkflowGuidance Dictionary[string, Dictionary[string, Object?]?] = map[
             string,
             Dictionary[string, Object?]?
-        ]()
+        ]{}
 
         internal const StartupFailure string = "GitHub could not start the Tokate workflow. The usual cause is that the repository's Actions settings do not allow obselate/tokate/.github/workflows/tokate-shared.yml at the pinned commit."
 
         internal func WorkflowRuns(repo string, query string, missing bool = false) JsonElement -> GitHub.Api(
-            "repos/" + repo + "/actions/workflows/tokate-coordinator.yml/runs?" + query,
+            "repos/" + repo + "/actions/workflows/" + CoordinatorSetup.WorkflowFile + "/runs?" + query,
             missing: missing
         )
 
@@ -254,7 +265,7 @@ internal class Submission {
             if run.Pr != 0 || (!claim && (run.PublicationUuid == "" || !File.Exists(path))) {
                 return nil
             }
-            let request = claim ? run.ClaimRequest: RequestData.FileData(path, 8192)
+            let request = claim ? run.ClaimRequest: RequestData.FileData(path, RequestData.RequestByteLimit)
             let key = run.Repo + ":" + CoordinatorRequest.Parse(request).Uuid
             var guidance Dictionary[string, Object?]?
             if WorkflowGuidance.TryGetValue(key, out guidance) {
@@ -272,7 +283,7 @@ internal class Submission {
                     run.Repo,
                     "event=issue_comment&actor=" + Uri.EscapeDataString(J.Text(J.Get(comment, "user"), "login")) +
                         "&created=" +
-                        Uri.EscapeDataString(">=" + created) + "&per_page=10"
+                        Uri.EscapeDataString(">=" + created) + "&" + WorkflowPageSizeParameter
                 )
                 var earliest JsonElement
                 var first = ""
@@ -293,16 +304,19 @@ internal class Submission {
                     message = "Tokate workflow failed."
                     let checks = GitHub.Api(
                         repo + "/check-suites/" + J.Get(earliest, "check_suite_id").ToString() +
-                            "/check-runs?per_page=100"
+                            "/check-runs?" +
+                            GitHub.PageSizeParameter
                     )
                     for check in J.Items(J.Get(checks, "check_runs")) {
                         let annotations = GitHub.Api(
-                            repo + "/check-runs/" + J.Get(check, "id").ToString() + "/annotations?per_page=100"
+                            repo + "/check-runs/" + J.Get(check, "id").ToString() +
+                                "/annotations?" +
+                                GitHub.PageSizeParameter
                         )
                         for annotation in J.Items(annotations) {
                             if J.Text(annotation, "annotation_level") == "failure" {
                                 let text = J.Text(annotation, "message")
-                                message += " " + text.Substring(0, Math.Min(text.Length, 1024))
+                                message += " " + text.Substring(0, Math.Min(text.Length, AnnotationCharacterLimit))
                                 break
                             }
                         }
@@ -339,7 +353,7 @@ internal class Submission {
         internal func Request(args Args) {
             try {
                 let path = Path.GetFullPath(args.Need("file"))
-                let value = RequestData.FileData(path, 8192)
+                let value = RequestData.FileData(path, RequestData.RequestByteLimit)
 
                 Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
@@ -386,7 +400,7 @@ internal class Submission {
             }
 
             if File.Exists(journal) {
-                let saved = RequestData.FileData(journal, 16384)
+                let saved = RequestData.FileData(journal, PostingJournalByteLimit)
                 let failure = "Saved request UUID binding changed; use a new file and UUID for new work"
 
                 if !RepositoryIdentity.SameRepo(J.Text(saved, "repo"), repo) || J.Number(saved, "issue") != issue {
@@ -410,9 +424,7 @@ internal class Submission {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
-            let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(actor), value)
-
-            if outcome != nil {
+            if let outcome = RequestMetadata.Recorded(state, RepositoryIdentity.PositiveId(actor), value) {
                 Output.Sink.RequestOutcome(outcome.Value())
                 return
             }
@@ -536,7 +548,7 @@ internal class Submission {
                 "verification": RequestMetadata.Incomplete(
                     run.HasIncomplete,
                     run.Incomplete
-                ) ? "not-passed": "donor-reported-pass"
+                ) ? "not-passed": RequestData.ReportedVerification
             }
             let pr = correction?.PublicationPr ?? run.PublicationPr
             if pr > 0 {
@@ -557,8 +569,8 @@ internal class Submission {
                 AttemptContinuation.Keep(metadata, PublicationRequestMetadata.Parse(AttemptContinuation.Metadata(run)))
             }
 
-            if correction != nil {
-                metadata["correction"] = Amendment.Provenance(correction)
+            if let current = correction {
+                metadata["correction"] = Amendment.Provenance(current)
             }
 
             var summary = PublicSummary.ForHead(run, run.Commit)
@@ -742,7 +754,7 @@ internal class Submission {
 
         private func RestorePublication(directory string, run Data, path string) bool {
             if run.PublicationUuid != "" && File.Exists(path) {
-                let saved = RequestData.FileData(path, 8192)
+                let saved = RequestData.FileData(path, RequestData.RequestByteLimit)
                 let expected = PublicationRequest(run)
 
                 if RequestData.Canonical(saved) != RequestData.Canonical(expected) {

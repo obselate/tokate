@@ -29,7 +29,7 @@ internal class Policy {
     internal let AllowedTools List[AllowedTool] = List[AllowedTool]()
 
     internal init(text string) {
-        Value = RequestData.Parse(text, 1024 * 1024)
+        Value = RequestData.Parse(text, FileByteLimit)
         Configure()
     }
 
@@ -41,7 +41,7 @@ internal class Policy {
     private func Configure() {
         Version = JsonFields.Int64(Value, "Policy", "version")
 
-        if Version != 3 {
+        if Version != FormatVersion {
             throw Exception("Policy requires version 3")
         }
 
@@ -76,7 +76,7 @@ internal class Policy {
             }
         }
 
-        RequestData.Parse(J.Write(Value), 1024 * 1024)
+        RequestData.Parse(J.Write(Value), FileByteLimit)
         Eligibility = JsonFields.String(Value, "Policy", "eligibility")
         let eligible = Eligibility == "open" || Eligibility == "trusted"
 
@@ -91,7 +91,7 @@ internal class Policy {
 
         MaxSeconds = JsonFields.Int32(Value, "Policy", "max_seconds")
 
-        if MaxSeconds < 1 || MaxSeconds > 86400 {
+        if MaxSeconds < 1 || MaxSeconds > RuntimeBudget.MaxBudgetSeconds {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
 
@@ -118,8 +118,8 @@ internal class Policy {
             }
         }
 
-        let reservation = JsonFields.OptionalInt64(Value, "Policy", "reservation_seconds", 86400)
-        if reservation < 300 || reservation > 604800 {
+        let reservation = JsonFields.OptionalInt64(Value, "Policy", "reservation_seconds", DefaultReservationSeconds)
+        if reservation < MinReservationSeconds || reservation > MaxReservationSeconds {
             throw Exception("reservation_seconds must be from 300 to 604800 (default 86400)")
         }
 
@@ -176,7 +176,7 @@ internal class Policy {
             var item JsonElement
             if Value.TryGetProperty(key, out item) {
                 let text = JsonFields.String(Value, "Policy", key)
-                if Encoding.UTF8.GetByteCount(text) > 4096 {
+                if Encoding.UTF8.GetByteCount(text) > TextFieldByteLimit {
                     throw Exception(key + " must be bounded plain text")
                 }
 
@@ -378,14 +378,26 @@ internal class Policy {
     internal func AllowsTool(harness string, provider string) bool -> Tool(harness, provider) != nil
 
     shared {
+        internal const FormatVersion int32 = 3
+
+        internal const FileByteLimit int32 = 1024 * 1024
+
+        internal const FilePath string = ".github/tokate.json"
+
+        private const DefaultReservationSeconds int64 = 86400
+
+        private const MinReservationSeconds int64 = 300
+
+        private const MaxReservationSeconds int64 = 604800
+
+        private const TextFieldByteLimit int32 = 4096
+
         private func ValidEffort(effort string) bool -> Array.IndexOf(
             "off minimal low medium high xhigh max ultra unknown absent".Split(' '),
             effort
         ) >= 0
 
-        internal func Load(repo string, revision string) Policy -> Policy(
-            GitHub.FileAt(repo, ".github/tokate.json", revision)
-        )
+        internal func Load(repo string, revision string) Policy -> Policy(GitHub.FileAt(repo, FilePath, revision))
 
         internal func Parse(value JsonElement) Policy -> Policy(value)
     }

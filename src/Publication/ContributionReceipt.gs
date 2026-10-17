@@ -26,15 +26,13 @@ internal class ContributionReceipt {
         internal let Attempt JsonElement = J.Get(value, "attempt")
         internal let Amendment JsonElement = J.Get(value, "amendment")
 
-        internal func Write(writer Utf8JsonWriter) -> source.WriteTo(writer)
-
         internal func ToJson() JsonElement -> source
 
         internal func ToText() string {
             using let bytes = MemoryStream()
             using let writer = Utf8JsonWriter(bytes)
 
-            Write(writer)
+            source.WriteTo(writer)
             writer.Flush()
 
             return Encoding.UTF8.GetString(bytes.ToArray())
@@ -42,7 +40,7 @@ internal class ContributionReceipt {
 
         shared {
             internal func Parse(value JsonElement) Record {
-                if J.Number(value, "version") != 2 {
+                if J.Number(value, "version") != ContributionReceipt.FormatVersion {
                     throw CliFailure("invalid_state", "Unsupported receipt protocol")
                 }
 
@@ -52,6 +50,8 @@ internal class ContributionReceipt {
     }
 
     shared {
+        internal const FormatVersion int32 = 2
+
         internal func Coordinated(
             repo string,
             issue int32,
@@ -61,7 +61,7 @@ internal class ContributionReceipt {
             donor string,
             head string
         ) Dictionary[string, Object?] -> map[string, Object?]{
-            "version": 2,
+            "version": FormatVersion,
             "repo": repo,
             "issue": issue,
             "approval": approval,

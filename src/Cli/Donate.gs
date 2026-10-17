@@ -9,6 +9,22 @@ import System.Threading
 
 internal class Donate {
     shared {
+        private const StopPollIntervalMilliseconds int32 = 100
+
+        private const DefaultTaskBudgetSeconds int32 = 3600
+
+        private const ConsecutiveFailureLimit int32 = 3
+
+        private const IssuePollIntervalSeconds int32 = 600
+
+        private const StopMarkerPollIntervalMilliseconds int32 = 1000
+
+        private const StateDirectoryName string = "donations"
+
+        private const SessionFileName string = "session.json"
+
+        private const StopMarkerFileName string = "stop"
+
         internal var Active bool
         private func Running(directory string) bool {
             try {
@@ -75,21 +91,21 @@ internal class Donate {
 
         internal func Stop(options Args) int32 {
             let repo = options.Need("repo")
-            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            let directory = Path.Combine(LocalPaths.StateDirectory(), StateDirectoryName, repo.ToLowerInvariant())
             Terminal.Message("Stop donating to " + repo + " after the current task.", error: true)
             if !OwnerSetup.Confirm(options, "Stop donating?") {
                 throw CliFailure("confirmation_required", "Donation stop requires --yes. Nothing changed.")
             }
             Directory.CreateDirectory(directory)
             if Running(directory) {
-                File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
+                File.WriteAllText(Path.Combine(directory, StopMarkerFileName), "stop\n")
                 while Running(directory) {
-                    Thread.Sleep(100)
+                    Thread.Sleep(StopPollIntervalMilliseconds)
                 }
             } else {
                 Terminal.Message("No donation is running for " + repo + ".")
             }
-            let path = Path.Combine(directory, "session.json")
+            let path = Path.Combine(directory, SessionFileName)
             PublicOutput.ResultData = map[string, Object?]{"repo": repo}
             if File.Exists(path) {
                 Report(Data.ReadElement(path))
@@ -103,8 +119,11 @@ internal class Donate {
                 let issues = GitHub.Api(
                     "repos/" +
                         repo +
-                        "/issues?state=open&labels=tokate%3Aapproved" +
-                        "&sort=created&direction=asc&per_page=100&page=" +
+                        "/issues?state=open&labels=" +
+                        GitHub.EncodedApprovedLabel +
+                        "&sort=created&direction=asc&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
                 for issue in issues.EnumerateArray() {
@@ -114,7 +133,7 @@ internal class Donate {
                     }
                     return number
                 }
-                if issues.GetArrayLength() < 100 {
+                if issues.GetArrayLength() < GitHub.PageSize {
                     return 0
                 }
                 page++
@@ -152,9 +171,11 @@ internal class Donate {
                     task["discussion_error"] = error.Message
                 }
                 if !unclaimed && gratis.ValueKind == JsonValueKind.Undefined {
-                    ApiTransport.BeginDeadline(30)
+                    ApiTransport.BeginDeadline(ApiTransport.DefaultDeadlineSeconds)
                     try {
-                        while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
+                        while ReservationRequest.Run(
+                            Args([]string{"release", "--run", directory})
+                        ) == Output.PendingExitCode {
                             ApiTransport.PollWait("repos/" + options.Need("repo") + "/actions/")
                         }
                     } catch (error Exception) when !(error is CommandInterrupted) {
@@ -184,12 +205,12 @@ internal class Donate {
                     issues.Add(Int32.Parse(number))
                 }
             }
-            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            let directory = Path.Combine(LocalPaths.StateDirectory(), StateDirectoryName, repo.ToLowerInvariant())
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
             let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
             let policyFile = GitHub.Api(
-                "repos/" + repo + "/contents/.github/tokate.json?ref=" + revision,
+                "repos/" + repo + "/contents/" + Policy.FilePath + "?ref=" + revision,
                 missing: true
             )
             let gratis = policyFile.ValueKind == JsonValueKind.Undefined
@@ -218,7 +239,7 @@ internal class Donate {
                 throw CliFailure("invalid_arguments", "--prompt requires a repository without a Tokate policy")
             }
             let policy = gratis ? Gratis.PolicyFor(options): Policy.Load(repo, revision)
-            let guidance = gratis ? GratisGuidance.Find(repo, revision): Dictionary[string, Object?]()
+            let guidance = gratis ? GratisGuidance.Find(repo, revision): map[string, Object?]{}
             let prompt = gratis ? GratisGuidance.Prompt(options.Get("prompt"), issues.Count > 0): ""
             let context = map[string, Object?]{
                 "policy": policy.Value,
@@ -234,7 +255,7 @@ internal class Donate {
             if gratis {
                 Gratis.Context(context, List[Object]())
             }
-            let maximum = gratis ? 3600: Math.Min(3600, policy.MaxSeconds)
+            let maximum = gratis ? DefaultTaskBudgetSeconds: Math.Min(DefaultTaskBudgetSeconds, policy.MaxSeconds)
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)
@@ -281,7 +302,7 @@ internal class Donate {
             seconds int32
         ) int32 {
             let repo = options.Need("repo")
-            let marker = Path.Combine(directory, "stop")
+            let marker = Path.Combine(directory, StopMarkerFileName)
 
             options.Values["--yes"] = "true"
             Directory.CreateDirectory(directory)
@@ -296,13 +317,16 @@ internal class Donate {
             var consecutive int32
             var first bool = true
             let session = map[string, Object?]{"repo": repo, "tasks": tasks, "reason": "stopped"}
-            let sessionPath = Path.Combine(directory, "session.json")
+            let sessionPath = Path.Combine(directory, SessionFileName)
             WriteSession(session, sessionPath)
             Active = true
             try {
                 while !File.Exists(marker) {
-                    if consecutive == 3 || seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
-                        session["reason"] = consecutive == 3 ? "consecutive_failures": "total_exhausted"
+                    if consecutive == ConsecutiveFailureLimit ||
+                        seconds > total - (first ? 0: timer.Elapsed.TotalSeconds) {
+                        session[
+                            "reason"
+                        ] = consecutive == ConsecutiveFailureLimit ? "consecutive_failures": "total_exhausted"
                         break
                     }
                     PublicOutput.RunDirectory = ""
@@ -314,9 +338,9 @@ internal class Donate {
                     first = false
                     if issue == 0 && !gratis {
                         Terminal.Message("No eligible issues. Checking again in 10 minutes.")
-                        let next = Math.Min(timer.Elapsed.TotalSeconds + 600, total - seconds)
+                        let next = Math.Min(timer.Elapsed.TotalSeconds + IssuePollIntervalSeconds, total - seconds)
                         while !File.Exists(marker) && timer.Elapsed.TotalSeconds < next {
-                            Thread.Sleep(1000)
+                            Thread.Sleep(StopMarkerPollIntervalMilliseconds)
                         }
                         continue
                     }
@@ -369,7 +393,7 @@ internal class Donate {
                     }
                 }
             }
-            return consecutive == 3 ||
+            return consecutive == ConsecutiveFailureLimit ||
                 (
                 issues.Count > 0 && tasks.Exists(
                     task -> task is Dictionary[string, Object?]item && item["result"]?.ToString() == "failed"

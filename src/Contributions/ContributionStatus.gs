@@ -69,7 +69,7 @@ internal class ContributionStatus {
         let row = map[string, Object?]{
             "issue": issue,
             "title": Output.Prose(J.Text(task, "title"), ref Truncated),
-            "url": "https://github.com/" + Repo + "/issues/" + issue.ToString(),
+            "url": GitHub.WebUrl + Repo + "/issues/" + issue.ToString(),
             "approval_status": "unknown",
             "eligibility_status": "unknown",
             "coordination_status": "unknown",
@@ -174,7 +174,7 @@ internal class ContributionStatus {
                     let approved = OwnerApproval.Record.Parse(approval)
                     if !RepositoryIdentity.SameRepo(approved.Repo, Repo) ||
                         approved.Issue != issue ||
-                        approved.Version != 2 {
+                        approved.Version != OwnerApproval.FormatVersion {
                         throw CliFailure("invalid_state", "Malformed approval identity")
                     }
 
@@ -291,21 +291,24 @@ internal class ContributionStatus {
         let donor = reservation?.Donor ?? ""
 
         if numbers[0] == 0 && donor != "" {
-            let branch = "tokate/v2-" + (reservation?.Reservation ?? "")
+            let branch = GitHub.ContributionBranchPrefix + (reservation?.Reservation ?? "")
             RepositoryIdentity.Login(donor)
             RepositoryIdentity.Branch(branch)
 
             let pulls = GitHub.Api(
                 "repos/" + Repo + "/pulls?state=all&head=" + Uri.EscapeDataString(donor + ":" + branch) +
                     "&base=" +
-                    Uri.EscapeDataString(OwnerApproval.Record.Parse(approval).BaseBranch) + "&per_page=5&page=1"
+                    Uri.EscapeDataString(OwnerApproval.Record.Parse(approval).BaseBranch) +
+                    "&" +
+                    DraftPageParameter +
+                    "&page=1"
             )
 
-            if pulls.ValueKind != JsonValueKind.Array || pulls.GetArrayLength() > 5 {
+            if pulls.ValueKind != JsonValueKind.Array || pulls.GetArrayLength() > DraftCountLimit {
                 throw CliFailure("invalid_state", "Cannot read bounded draft PRs")
             }
 
-            if pulls.GetArrayLength() == 5 {
+            if pulls.GetArrayLength() == DraftCountLimit {
                 row["drafts_truncated"] = true
                 Truncated = true
             }
@@ -426,7 +429,10 @@ internal class ContributionStatus {
 
         try {
             let receipt = PrBody.Receipt(J.Text(pull, "body"))
-            let complete = receipt.Version == 2 && RepositoryIdentity.SameRepo(receipt.Repo, Repo) &&
+            let complete = receipt.Version == ContributionReceipt.FormatVersion && RepositoryIdentity.SameRepo(
+                receipt.Repo,
+                Repo
+            ) &&
                 receipt.Issue == issue &&
                 receipt.Head == sha &&
                 state.Contribution != nil &&
@@ -558,7 +564,7 @@ internal class ContributionStatus {
             failed = failed || bucket == "fail" || bucket == "cancel"
             pending = pending || (bucket != "pass" && bucket != "skipping" && bucket != "fail" && bucket != "cancel")
 
-            if displayed.Count == 16 {
+            if displayed.Count == CheckCountLimit {
                 draft["checks_truncated"] = true
                 Truncated = true
             } else {
@@ -609,13 +615,15 @@ internal class ContributionStatus {
     }
 
     private func Reviews(pr int32, head string, draft Dictionary[string, Object?]) {
-        let reviews = GitHub.Api("repos/" + Repo + "/pulls/" + pr.ToString() + "/reviews?per_page=30&page=1")
+        let reviews = GitHub.Api(
+            "repos/" + Repo + "/pulls/" + pr.ToString() + "/reviews?" + ReviewPageParameter + "&page=1"
+        )
 
-        if reviews.ValueKind != JsonValueKind.Array || reviews.GetArrayLength() > 30 {
+        if reviews.ValueKind != JsonValueKind.Array || reviews.GetArrayLength() > ReviewCountLimit {
             throw CliFailure("invalid_state", "Cannot read bounded PR reviews")
         }
 
-        let current = Dictionary[string, string]()
+        let current = map[string, string]{}
 
         for review in J.Items(reviews) {
             let reviewer = J.Text(J.Get(review, "user"), "login")
@@ -633,7 +641,7 @@ internal class ContributionStatus {
             rows.Add(map[string, Object?]{"reviewer": reviewer, "state": current[reviewer]})
         }
 
-        let full = reviews.GetArrayLength() == 30
+        let full = reviews.GetArrayLength() == ReviewCountLimit
         draft["reviews"] = rows
         draft["review_status"] = full ? "unknown": (
             current.ContainsValue("CHANGES_REQUESTED") ? "changes_requested": (
@@ -958,7 +966,7 @@ internal class ContributionStatus {
         Result["repo"] = Repo
         Result["remote_status"] = "unknown"
         Result["work"] = Work
-        Result["discovery_limit"] = 20
+        Result["discovery_limit"] = DiscoveryCountLimit
         Result["next"] = Next("owner", "Inspect unavailable remote records.")
 
         if !Observe(
@@ -974,7 +982,7 @@ internal class ContributionStatus {
 
                 Result["repository_status"] = "observed"
                 GratisRepo = GitHub.Api(
-                    "repos/" + Repo + "/contents/.github/tokate.json?ref=" + J.Text(Info, "default_branch"),
+                    "repos/" + Repo + "/contents/" + Policy.FilePath + "?ref=" + J.Text(Info, "default_branch"),
                     missing: true
                 )
                     .ValueKind == JsonValueKind.Undefined
@@ -993,7 +1001,7 @@ internal class ContributionStatus {
         )
 
         for request in Requests {
-            if displayed.Count == 20 {
+            if displayed.Count == DiscoveryCountLimit {
                 Result["requests_truncated"] = true
                 break
             }
@@ -1088,16 +1096,18 @@ internal class ContributionStatus {
                         "repos/" +
                             Repo +
                             "/issues?state=open&" +
-                            (GratisRepo ? "": "labels=tokate%3Aapproved&") +
-                            "sort=updated&direction=desc&per_page=20&page=1"
+                            (GratisRepo ? "": "labels=" + GitHub.EncodedApprovedLabel + "&") +
+                            "sort=updated&direction=desc&" +
+                            DiscoveryPageParameter +
+                            "&page=1"
                     )
 
-                    if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > 20 {
+                    if issues.ValueKind != JsonValueKind.Array || issues.GetArrayLength() > DiscoveryCountLimit {
                         throw CliFailure("invalid_state", "Cannot read bounded approved-work issues")
                     }
 
-                    Result["discovery_truncated"] = issues.GetArrayLength() == 20
-                    Truncated = Truncated || issues.GetArrayLength() == 20
+                    Result["discovery_truncated"] = issues.GetArrayLength() == DiscoveryCountLimit
+                    Truncated = Truncated || issues.GetArrayLength() == DiscoveryCountLimit
 
                     for task in J.Items(issues) {
                         if J.Get(task, "pull_request").ValueKind == JsonValueKind.Undefined && J.Text(
@@ -1122,7 +1132,10 @@ internal class ContributionStatus {
                 Result,
                 "access",
                 async () -> {
-                    let reference = GitHub.Api("repos/" + Repo + "/git/ref/heads/tokate/access", missing: true)
+                    let reference = GitHub.Api(
+                        "repos/" + Repo + "/git/ref/heads/" + AccessState.Reference,
+                        missing: true
+                    )
                     if J.Text(J.Get(reference, "object"), "sha") != Access?.Sha {
                         Result["access_status"] = "stale"
                         Result["requests_status"] = "stale"
@@ -1149,6 +1162,22 @@ internal class ContributionStatus {
     ]?.ToString() ?? "": ""
 
     shared {
+        private const DraftCountLimit int32 = 5
+
+        private let DraftPageParameter string = "per_page=" + DraftCountLimit.ToString()
+
+        private const CheckCountLimit int32 = 16
+
+        private const ReviewCountLimit int32 = 30
+
+        private let ReviewPageParameter string = "per_page=" + ReviewCountLimit.ToString()
+
+        private const DiscoveryCountLimit int32 = 20
+
+        private let DiscoveryPageParameter string = "per_page=" + DiscoveryCountLimit.ToString()
+
+        private const PresentationByteLimit int32 = 56000
+
         internal func Run(args Args) CliFailure? {
             let status = ContributionStatus()
 
@@ -1167,7 +1196,7 @@ internal class ContributionStatus {
             }
 
             status.Result["work_observed"] = status.Work.Count
-            let outcomes = Dictionary[string, string]()
+            let outcomes = map[string, string]{}
 
             for item in status.Work {
                 let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
@@ -1180,9 +1209,11 @@ internal class ContributionStatus {
                             outcomes[status.Text(draft, "pr")] = lifecycle == "merged" ? "merged": "closed"
                         }
 
-                        if draft.ContainsKey("checks") && draft["checks"] is List[Object]checks && checks.Count > 16 {
+                        if draft.ContainsKey("checks") &&
+                            draft["checks"] is List[Object]checks &&
+                            checks.Count > CheckCountLimit {
                             draft["checks_observed"] = checks.Count
-                            checks.RemoveRange(16, checks.Count - 16)
+                            checks.RemoveRange(CheckCountLimit, checks.Count - CheckCountLimit)
                             draft["checks_truncated"] = true
                             status.Truncated = true
                         }
@@ -1190,7 +1221,14 @@ internal class ContributionStatus {
                 }
             }
 
-            while System.Text.Encoding.UTF8.GetByteCount(J.Write(status.Result)) > 56000 && status.Work.Count > 0 {
+            while System
+                .Text
+                .Encoding
+                .UTF8
+                .GetByteCount(J.Write(status.Result)) > PresentationByteLimit &&
+                status
+                .Work
+                .Count > 0 {
                 status.Work.RemoveAt(status.Work.Count - 1)
                 status.Result["presentation_truncated"] = true
                 status.Truncated = true

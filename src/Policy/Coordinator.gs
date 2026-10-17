@@ -7,14 +7,20 @@ import System.Text.RegularExpressions
 
 internal class Coordinator {
     shared {
+        internal const EventByteLimit int32 = 1024 * 1024
+
+        private const RetainedOutcomeCount int32 = 31
+
+        private const StateReadAttemptLimit int32 = 5
+
         private func ApproveLabel(repo string, event JsonElement) {
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
 
-            if J.Text(event, "action") != "labeled" || J.Text(J.Get(event, "label"), "name") != "tokate:approved" ||
+            if J.Text(event, "action") != "labeled" || J.Text(J.Get(event, "label"), "name") != GitHub.ApprovedLabel ||
                 J
                 .Get(eventIssue, "pull_request").ValueKind != JsonValueKind.Undefined {
-                throw Exception("Expected an issues labeled tokate:approved event for an issue")
+                throw Exception("Expected an issues labeled " + GitHub.ApprovedLabel + " event for an issue")
             }
 
             if !RepositoryIdentity.SameRepo(J.Text(eventRepository, "full_name"), repo) {
@@ -56,13 +62,15 @@ internal class Coordinator {
             let level = J.Text(permission, "permission")
             if level != "write" && level != "maintain" && level != "admin" {
                 GitHub.Api(
-                    "repos/" + repo + "/issues/" + number.ToString() + "/labels/tokate%3Aapproved",
+                    "repos/" + repo + "/issues/" + number.ToString() + "/labels/" + GitHub.EncodedApprovedLabel,
                     method: "DELETE"
                 )
                 GitHub.Api(
                     "repos/" + repo + "/issues/" + number.ToString() + "/comments",
                     map[string, Object?]{
-                        "body": "The tokate:approved label was removed. Approval requires repository write, maintain or admin permission."
+                        "body": "The " +
+                            GitHub.ApprovedLabel +
+                            " label was removed. Approval requires repository write, maintain or admin permission."
                     }
                 )
                 Output.Sink.Message("Approval label removed because the sender lacks repository write permission.")
@@ -76,14 +84,18 @@ internal class Coordinator {
             let args = Args([]string{"approve", repo + "#" + number.ToString(), "--non-interactive"})
             let state = CoordinationState.Load(repo, number, true)
             let previous = state.Approval
-            let active = previous != nil && !state.Revoked ? previous: nil
-            if active != nil {
-                args.Values["--base-branch"] = active.BaseBranch
+            let active = state.Revoked ? nil: previous
+
+            if let current = active {
+                args.Values["--base-branch"] = current.BaseBranch
             }
+
             let approval = OwnerApproval.Capture(args, info, issue)
-            if active != nil {
-                approval.AllowedActorIds = active.AllowedActorIds
+
+            if let current = active {
+                approval.AllowedActorIds = current.AllowedActorIds
             }
+
             if active != nil &&
                 approval.PolicyHash == active.PolicyHash &&
                 approval.TemplateHash == active.TemplateHash &&
@@ -94,12 +106,12 @@ internal class Coordinator {
 
             approval.Nonce = Guid.NewGuid().ToString("N")
             CoordinationState.Approve(repo, number, approval)
-            Output.Sink.Message("Issue approved from the tokate:approved label.")
+            Output.Sink.Message("Issue approved from the " + GitHub.ApprovedLabel + " label.")
         }
 
         internal func Run(args Args) ValueTuple[JsonElement, string] {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), 1024 * 1024)
+            let event = RequestData.FileData(args.Need("event"), EventByteLimit)
             if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
                 ApproveLabel(repo, event)
                 return ValueTuple[JsonElement, string](JsonElement{}, "")
@@ -140,7 +152,7 @@ internal class Coordinator {
                 throw Exception(failure)
             }
 
-            if !J.Text(eventComment, "body").StartsWith("/tokate ", StringComparison.Ordinal) || J.Get(
+            if !J.Text(eventComment, "body").StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) || J.Get(
                 eventIssue,
                 "pull_request"
             )
@@ -181,7 +193,7 @@ internal class Coordinator {
             }
 
             let text = J.Text(canonical, "body")
-            if !text.StartsWith("/tokate ", StringComparison.Ordinal) {
+            if !text.StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) {
                 throw Exception("Canonical comment is not a request")
             }
 
@@ -208,15 +220,14 @@ internal class Coordinator {
 
             let action = declaration.Action
             let record = action == "release" ? JsonElement{}: state.Check(repo, number, donor, actor)
-            var outcome CoordinationState.ResultRecord
             let originalExpiry = state.Lease?.Expires ?? 0
 
-            if action == "claim" || LeaseLifecycle.Transition(action) {
-                outcome = LeaseLifecycle.Apply(state, request, actor, donor, J.Get(record, "policy"))
+            let outcome = if action == "claim" || LeaseLifecycle.Transition(action) {
+                LeaseLifecycle.Apply(state, request, actor, donor, J.Get(record, "policy"))
             } else if action == "amend" {
-                outcome = Amend(repo, number, state, record, request, actor, donor)
+                Amend(repo, number, state, record, request, actor, donor)
             } else {
-                outcome = Publish(repo, number, state, record, request, actor, donor)
+                Publish(repo, number, state, record, request, actor, donor)
             }
 
             if action == "publish" || action == "amend" {
@@ -226,7 +237,7 @@ internal class Coordinator {
 
             let retained = List[CoordinationState.ReplayRecord]()
 
-            for i in Math.Max(0, outcomes.Count - 31) ... outcomes.Count {
+            for i in Math.Max(0, outcomes.Count - RetainedOutcomeCount) ... outcomes.Count {
                 retained.Add(outcomes[i])
             }
 
@@ -283,7 +294,7 @@ internal class Coordinator {
             ValidateDiff(repo, record, metadata)
 
             let reservation = state.Lease?.Reservation ?? ""
-            if publication.Branch != "tokate/v2-" + reservation {
+            if publication.Branch != GitHub.ContributionBranchPrefix + reservation {
                 throw Exception("Publication must use this reservation's branch")
             }
 
@@ -298,7 +309,13 @@ internal class Coordinator {
                 RepositoryIdentity.PositiveId(actor)
             )
             let pull = PublicationPull(repo, metadata, actor, record)
-            let body = PrBody.Coordinated(record, metadata, donor, receipt, "<!-- tokate-v2:" + reservation + " -->")
+            let body = PrBody.Coordinated(
+                record,
+                metadata,
+                donor,
+                receipt,
+                RequestData.OwnershipMarkerPrefix + reservation + " -->"
+            )
             let title = (publication.Incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title")
 
             if J.Text(pull, "body") != body || J.Text(pull, "title") != title {
@@ -414,10 +431,10 @@ internal class Coordinator {
 
             let live = CoordinationState.Load(repo, number)
             if live.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(live, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(live, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, live, request, actor, donor, recorded)
                 }
+
                 throw CliFailure("stale_approval", "Coordination changed before reservation update")
             }
             let previous = live.Sha
@@ -447,8 +464,7 @@ internal class Coordinator {
                 )
             } catch (error Exception) {
                 let inspected = CoordinationState.Load(repo, number)
-                let recorded = RequestMetadata.Recorded(inspected, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(inspected, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, inspected, request, actor, donor, recorded)
                 }
 
@@ -460,7 +476,7 @@ internal class Coordinator {
             }
 
             var acquired = CoordinationState.Load(repo, number)
-            for attempt in 0 ... 5 {
+            for attempt in 0 ... StateReadAttemptLimit {
                 if acquired.Sha != previous {
                     break
                 }
@@ -470,10 +486,10 @@ internal class Coordinator {
             }
 
             if acquired.Sha != state.Sha {
-                let recorded = RequestMetadata.Recorded(acquired, RepositoryIdentity.PositiveId(actor), request)
-                if recorded != nil {
+                if let recorded = RequestMetadata.Recorded(acquired, RepositoryIdentity.PositiveId(actor), request) {
                     return Replay(repo, number, acquired, request, actor, donor, recorded)
                 }
+
                 throw CliFailure(
                     "stale_approval",
                     "Coordination changed after reservation update; inspect current state"
@@ -628,7 +644,7 @@ internal class Coordinator {
             let branch = amendmentMetadata.Branch
 
             let run = Data{
-                Version: 2,
+                Version: Data.FormatVersion,
                 Repo: repo,
                 Id: reservation?.Reservation ?? "",
                 HeadRepo: amendmentMetadata.Fork,
@@ -687,7 +703,7 @@ internal class Coordinator {
                 throw Exception(failure)
             }
 
-            let expectedBranch = "tokate/v2-" + (reservation?.Reservation ?? "")
+            let expectedBranch = GitHub.ContributionBranchPrefix + (reservation?.Reservation ?? "")
             if branch != originalMetadata.Branch || branch != expectedBranch {
                 throw Exception(failure)
             }

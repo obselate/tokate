@@ -71,6 +71,12 @@ internal open class OutputSink {
 
 internal class Output {
     shared {
+        internal const PendingExitCode int32 = 8
+
+        internal const RowCountLimit int32 = 64
+
+        private const ProseCharacterLimit int32 = 2048
+
         internal var Sink OutputSink
 
         internal func Clean(value string) string {
@@ -105,13 +111,16 @@ internal class Output {
         }
 
         internal func Prose(value string, ref truncated bool) string {
-            if value.Length <= 2048 {
+            if value.Length <= ProseCharacterLimit {
                 return value
             }
 
             truncated = true
 
-            return value.Substring(0, Char.IsHighSurrogate(value[2047]) ? 2047: 2048)
+            return value.Substring(
+                0,
+                Char.IsHighSurrogate(value[ProseCharacterLimit - 1]) ? ProseCharacterLimit - 1: ProseCharacterLimit
+            )
         }
     }
 }

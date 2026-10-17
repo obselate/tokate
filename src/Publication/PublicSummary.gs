@@ -8,17 +8,42 @@ import System.Text.RegularExpressions
 
 internal class PublicSummary {
     shared {
-        internal let Artifact string = "tokate-public-summary.json"
-        private let Unavailable string = "Change summary unavailable for this candidate; review the diff."
-        private let Section string = "\nVerification:\n"
-        private let CiNote string = "- GitHub CI: not assessed here; missing or pending checks are not success."
-        private let Missing string = "PR report has no change summary for this candidate. Supply a current public summary and republish."
-        private let Incomplete string = "PR report omits the public change or verification report region. Restore the Tokate report before acceptance."
-        private let Altered string = "PR report differs from the authoritative public summary for this exact candidate. Restore it or amend with a current summary."
-        internal let RestrictedTextPattern string = "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|\\bsk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
+        internal const Artifact string = "tokate-public-summary.json"
+
+        private const Unavailable string = "Change summary unavailable for this candidate; review the diff."
+
+        private const Section string = "\nVerification:\n"
+
+        private const CiNote string = "- GitHub CI: not assessed here; missing or pending checks are not success."
+
+        private const Missing string = "PR report has no change summary for this candidate. Supply a current public summary and republish."
+
+        private const Incomplete string = "PR report omits the public change or verification report region. Restore the Tokate report before acceptance."
+
+        private const Altered string = "PR report differs from the authoritative public summary for this exact candidate. Restore it or amend with a current summary."
+
+        internal const RestrictedTextPattern string = "(?i)(https?:|www\\.|\\b[A-Z]:|gh[pousr]_|github_pat_|\\bsk-|bearer|password|api[ _-]?key|credential|secret|tokate-receipt|tokate-report|localhost:|[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+|[a-z]+://|generated a patch|implemented acceptance criteria)"
+
+        private const UnboundByteLimit int32 = 4046
+
+        private const FileByteLimit int32 = 4096
+
+        private const LimitationCountLimit int32 = 4
+
+        private const ItemCountLimit int32 = 8
+
+        private const ItemCharacterMinimum int32 = 3
+
+        private const ItemCharacterLimit int32 = 200
+
+        private const CountScale int32 = 1000
+
+        private const CountRoundingThreshold float64 = 999.5
+
+        private const CountPrecisionThreshold int32 = 100
 
         internal func Validate(value JsonElement, head string = "") {
-            let limit = J.Get(value, "head").ValueKind == JsonValueKind.Undefined ? 4046: 4096
+            let limit = J.Get(value, "head").ValueKind == JsonValueKind.Undefined ? UnboundByteLimit: FileByteLimit
 
             RequestData.Parse(J.Write(value), limit)
             RequestData.Keys(value, "head,changes,verification,limitations")
@@ -34,7 +59,9 @@ internal class PublicSummary {
             for key in[]string{"changes", "verification", "limitations"} {
                 let list = J.Get(value, key)
 
-                if list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > (key == "limitations" ? 4: 8) ||
+                if list.ValueKind != JsonValueKind.Array || list.GetArrayLength() > (
+                    key == "limitations" ? LimitationCountLimit: ItemCountLimit
+                ) ||
                     (key == "changes" && list.GetArrayLength() == 0) {
                     throw CliFailure(
                         "invalid_state",
@@ -69,8 +96,12 @@ internal class PublicSummary {
             }
         }
 
-        private func Safe(text string) bool -> text.Length >= 3 && text.Length <= 200 && text == text.Trim() &&
-            Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(text, RestrictedTextPattern)
+        private func Safe(text string) bool -> text.Length >= ItemCharacterMinimum &&
+            text.Length <= ItemCharacterLimit &&
+            text == text.Trim() && Regex.IsMatch(text, "^[A-Za-z0-9 .,;:!?()'+_=-]+$") && !Regex.IsMatch(
+            text,
+            RestrictedTextPattern
+        )
 
         internal func FileSummary(path string, head string) JsonElement {
             try {
@@ -84,11 +115,11 @@ internal class PublicSummary {
 
                 let size = FileInfo(path).Length
 
-                if size < 1 || size > 4096 {
+                if size < 1 || size > FileByteLimit {
                     throw CliFailure("invalid_state", "Public summary must contain 1 to 4096 bytes")
                 }
 
-                let value = RequestData.FileData(path, 4096)
+                let value = RequestData.FileData(path, FileByteLimit)
 
                 Validate(value, head)
 
@@ -234,13 +265,11 @@ internal class PublicSummary {
         }
 
         internal func Report(summary JsonElement, observed string) string {
-            var result = ""
-
-            if summary.ValueKind == JsonValueKind.Undefined {
-                result = "- " + Unavailable + "\n"
+            var result = if summary.ValueKind == JsonValueKind.Undefined {
+                "- " + Unavailable + "\n"
             } else {
                 Validate(summary)
-                result = Changes(summary)
+                Changes(summary)
             }
 
             result += Section + "\n- " + observed + "\n"
@@ -265,11 +294,16 @@ internal class PublicSummary {
         }
 
         internal func Duration(seconds int64) string {
-            let parts = []int64{seconds / 86400, seconds / 3600 % 24, seconds / 60 % 60, seconds % 60}
+            let parts = []int64{
+                seconds / RuntimeBudget.SecondsPerDay,
+                seconds / RuntimeBudget.SecondsPerHour % 24,
+                seconds / RuntimeBudget.SecondsPerMinute % RuntimeBudget.MinutesPerHour,
+                seconds % RuntimeBudget.SecondsPerMinute
+            }
             var result = ""
 
-            for i in 0 ... 4 {
-                if result != "" || parts[i] > 0 || i == 3 {
+            for i in 0 ... parts.Length {
+                if result != "" || parts[i] > 0 || i == parts.Length - 1 {
                     result += parts[i].ToString() + "dhms".Substring(i, 1) + " "
                 }
             }
@@ -278,19 +312,19 @@ internal class PublicSummary {
         }
 
         internal func Count(value int64) string {
-            if value < 1000 {
+            if value < CountScale {
                 return value.ToString()
             }
 
-            var scaled = value / 1000.0
+            var scaled = value / float64(CountScale)
             var unit int32
 
-            while scaled >= 999.5 && unit < 2 {
-                scaled /= 1000
+            while scaled >= CountRoundingThreshold && unit < 2 {
+                scaled /= CountScale
                 unit += 1
             }
 
-            return scaled.ToString(scaled < 100 ? "0.#": "0") + "KMB".Substring(unit, 1)
+            return scaled.ToString(scaled < CountPrecisionThreshold ? "0.#": "0") + "KMB".Substring(unit, 1)
         }
 
         internal func Usage(value JsonElement) string {

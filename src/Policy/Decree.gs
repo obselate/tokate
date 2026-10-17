@@ -6,6 +6,10 @@ import System.Text.Json
 
 internal class Decree {
     shared {
+        private const SourceByteLimit int32 = 65536
+
+        private const LfsPointerPrefix string = "version https://git-lfs.github.com/spec/v1"
+
         internal func HasSnapshot(approval JsonElement) bool -> approval.ValueKind == JsonValueKind.Object &&
             OwnerApproval
             .Record
@@ -48,7 +52,8 @@ internal class Decree {
             }
 
             let mode = J.Text(entry, "mode")
-            if (mode != "100644" && mode != "100755") || J.Text(entry, "type") != "blob" {
+            if (mode != GitHub.RegularFileMode && mode != GitHub.ExecutableFileMode) || J.Text(entry, "type") != GitHub
+                .BlobType {
                 throw Exception(
                     "DECREE.md must be a regular Git blob (100644 or 100755); links, directories and submodules are unsupported"
                 )
@@ -58,7 +63,7 @@ internal class Decree {
             var size int32
             if sourceSize.ValueKind != JsonValueKind.Number || !sourceSize.TryGetInt32(out size) ||
                 size < 0 ||
-                size > 65536 {
+                size > SourceByteLimit {
                 throw Exception("DECREE.md must be at most 64 KiB of source bytes")
             }
 
@@ -113,11 +118,11 @@ internal class Decree {
                 throw Exception("DECREE.md must be strict UTF-8")
             }
 
-            if size > 65536 || text.Contains('\0') {
+            if size > SourceByteLimit || text.Contains('\0') {
                 throw Exception("DECREE.md must be at most 64 KiB of UTF-8 without NUL")
             }
 
-            if text.TrimStart('\uFEFF').StartsWith("version https://git-lfs.github.com/spec/v1") {
+            if text.TrimStart('\uFEFF').StartsWith(LfsPointerPrefix) {
                 throw Exception("DECREE.md Git LFS pointers are unsupported")
             }
         }

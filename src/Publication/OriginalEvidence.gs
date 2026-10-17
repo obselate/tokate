@@ -20,7 +20,7 @@ internal class OriginalEvidence {
 
         internal func CopyFile(source string, target string) {
             try {
-                let descriptor = EvidenceOpen(source, 131072 | 2048)
+                let descriptor = EvidenceOpen(source, LocalPaths.OpenNoFollow | LocalPaths.OpenNonBlocking)
 
                 if descriptor < 0 {
                     throw CliFailure("command_failed", "Cannot safely capture original evidence: " + source)
@@ -50,7 +50,7 @@ internal class OriginalEvidence {
         }
 
         private func Inventory(directory string) Dictionary[string, Object?] {
-            let files = Dictionary[string, Object?]()
+            let files = map[string, Object?]{}
 
             for path in Directory.EnumerateFileSystemEntries(directory) {
                 if FileInfo(path).LinkTarget != nil {

@@ -52,7 +52,7 @@ internal class OwnerHealth {
         Read(
             "coordinator",
             async () -> {
-                let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", revision, missing: true)
+                let yaml = GitHub.FileAt(repo, CoordinatorSetup.WorkflowPath, revision, missing: true)
                 pin = CoordinatorSetup.Pin(yaml)
                 let pinnedVersion = pin == "" || pin == "v0" ? "": PinnedVersion(pin)
                 let configured = pin != ""
@@ -78,14 +78,13 @@ internal class OwnerHealth {
                 )
             }
         )
-        let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
         if J.Bool(J.Get(info, "permissions"), "admin") {
             InspectActions(repo, pin)
             Read(
                 "event_policy",
                 async () -> {
-                    CoordinatorSetup.EventPolicy(repo, ".github/workflows/tokate-coordinator.yml")
+                    CoordinatorSetup.EventPolicy(repo, CoordinatorSetup.WorkflowPath)
                     Add("event_policy", "ok", "No blocking Actions event policy found.")
                 }
             )
@@ -104,7 +103,7 @@ internal class OwnerHealth {
                             (create ? "yes.": "no.") +
                             (
                             !create ? " In " +
-                                settings +
+                                ActionsSettingsLocation +
                                 " > Workflow permissions, enable Allow GitHub Actions to create and approve pull requests.": ""
                         ),
                         J.Select(permissions, "default_workflow_permissions,can_approve_pull_request_reviews"),
@@ -124,7 +123,7 @@ internal class OwnerHealth {
         Read(
             "policy",
             async () -> {
-                let text = GitHub.FileAt(repo, ".github/tokate.json", revision, missing: true)
+                let text = GitHub.FileAt(repo, Policy.FilePath, revision, missing: true)
                 try {
                     let policy = Policy(text)
                     Parsed = policy
@@ -189,7 +188,11 @@ internal class OwnerHealth {
                     let issues = GitHub.Api(
                         "repos/" +
                             repo +
-                            "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" +
+                            "/issues?state=open&labels=" +
+                            GitHub.EncodedApprovedLabel +
+                            "&" +
+                            GitHub.PageSizeParameter +
+                            "&page=" +
                             page.ToString()
                     )
                     if issues.ValueKind != JsonValueKind.Array {
@@ -217,7 +220,7 @@ internal class OwnerHealth {
                             )
                         }
                     }
-                    if issues.GetArrayLength() < 100 {
+                    if issues.GetArrayLength() < GitHub.PageSize {
                         Add(
                             "approvals",
                             stale == 0 ? "ok": "problem",
@@ -271,7 +274,6 @@ internal class OwnerHealth {
     }
 
     private func InspectActions(repo string, pin string) {
-        let settings = "Settings > Actions > General"
         let openSettings = []string{"gh", "browse", "--repo", repo, "settings/actions"}
         Read(
             "actions",
@@ -287,7 +289,7 @@ internal class OwnerHealth {
                         ", allowed_actions " +
                         allowed +
                         "." +
-                        (enabled ? "": " Enable Actions in " + settings + " > Actions permissions."),
+                        (enabled ? "": " Enable Actions in " + ActionsSettingsLocation + " > Actions permissions."),
                     J.Select(permissions, "enabled,allowed_actions"),
                     enabled ? []string{}: openSettings
                 )
@@ -306,7 +308,7 @@ internal class OwnerHealth {
                     pin == "" ? "Pinned workflow is unknown. Repair the coordinator entry before checking its allowlist.": "Pinned shared workflow " +
                         (
                         permitted ? "permitted.": "blocked. In " +
-                            settings +
+                            ActionsSettingsLocation +
                             " > Actions permissions, allow obselate/tokate/.github/workflows/tokate-shared.yml@" +
                             pin +
                             "."
@@ -323,6 +325,8 @@ internal class OwnerHealth {
     }
 
     shared {
+        private const ActionsSettingsLocation string = "Settings > Actions > General"
+
         private func PinnedVersion(pin string) string ->
         GitHub.FileAt("obselate/tokate", "VERSION", pin).Trim()
 
@@ -341,7 +345,7 @@ internal class OwnerHealth {
                     args.Get("run") != "" ? Data.Load(Path.GetFullPath(args.Need("run"))).Repo:
                     args.Get("repo") != "" ? args.Need("repo"): RepositoryInput.Local()
                 )
-                let yaml = GitHub.FileAt(repo, ".github/workflows/tokate-coordinator.yml", missing: true)
+                let yaml = GitHub.FileAt(repo, CoordinatorSetup.WorkflowPath, missing: true)
                 let pin = CoordinatorSetup.Pin(yaml)
                 if pin == "" || pin == "v0" {
                     return

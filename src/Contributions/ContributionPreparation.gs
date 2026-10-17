@@ -8,6 +8,8 @@ import System.Text.Json
 
 internal class ContributionPreparation {
     shared {
+        internal const GratisBranchPrefix string = "tokate/gratis-"
+
         private func Prepare(
             args Args,
             repo string,
@@ -79,7 +81,10 @@ internal class ContributionPreparation {
             let donor = RepositoryIdentity.Login(J.Text(viewer, "login"))
             let policy = Policy(J.Write(J.Get(record, "policy")))
 
-            var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(args.Need("tools"), 8192)
+            var tools = args.Get("tools") == "" ? JsonElement{}: RequestData.FileData(
+                args.Need("tools"),
+                RequestData.RequestByteLimit
+            )
             var selection = JsonElement{}
 
             if tools.ValueKind != JsonValueKind.Undefined {
@@ -122,7 +127,7 @@ internal class ContributionPreparation {
             }
 
             let run = Data{
-                Version: 2,
+                Version: Data.FormatVersion,
                 Repo: repo,
                 Issue: issue,
                 Donor: donor,
@@ -213,7 +218,7 @@ internal class ContributionPreparation {
             run.Id = reservation?.Reservation ?? ""
             run.StateSha = state.Sha
             run.Attempt = reservation?.Attempt ?? ""
-            run.Branch = "tokate/v2-" + run.Id
+            run.Branch = GitHub.ContributionBranchPrefix + run.Id
         }
 
         internal func Acquire(args Args, gratis JsonElement = default(JsonElement)) string {
@@ -236,7 +241,7 @@ internal class ContributionPreparation {
                 let id = Guid.NewGuid().ToString("N")
                 run.Id = id
                 run.Attempt = id
-                run.Branch = "tokate/gratis-" + id
+                run.Branch = GratisBranchPrefix + id
                 let directory = Allocate(RunStorage.Store(args), run, id)
                 WorkspacePreparation.Select(run, args.Get("fork"))
                 Create(directory)
@@ -337,7 +342,7 @@ internal class ContributionPreparation {
             let request = run.ClaimRequest
             let declaration = RequestMetadata.Request(request)
 
-            if run.Version != 2 ||
+            if run.Version != Data.FormatVersion ||
                 run.State != "claim_pending" ||
                 (run.Source != "tokate" && run.Source != "external") ||
                 declaration.Action != "claim" ||
@@ -446,7 +451,9 @@ internal class ContributionPreparation {
 
             Submission.Request(repo, issue, request, Path.Combine(directory, "claim.posting.json"), J.Get(viewer, "id"))
 
-            ApiTransport.BeginDeadline(Output.Sink.Donating ? args.Number("seconds"): 30)
+            ApiTransport.BeginDeadline(
+                Output.Sink.Donating ? args.Number("seconds"): ApiTransport.DefaultDeadlineSeconds
+            )
 
             var accepted CoordinationState? = nil
 

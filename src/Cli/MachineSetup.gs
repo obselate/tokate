@@ -10,6 +10,16 @@ func SetupUserId() uint32;
 
 internal class MachineSetup {
     shared {
+        private const DownloadConnectTimeoutSeconds string = "15"
+
+        private const DownloadTimeoutSeconds string = "180"
+
+        private const DownloadByteLimit string = "536870912"
+
+        private const DownloadProcessTimeoutSeconds int32 = 190
+
+        private const CodexInstallerUrl string = "https://chatgpt.com/codex/install.sh"
+
         internal func NixManaged() bool {
             let executable = Environment.ProcessPath ?? ""
             return executable != "" && NixRuntime.Root(LocalPaths.CanonicalPath(executable)) != ""
@@ -376,20 +386,20 @@ internal class MachineSetup {
                 []string{
                     "-qfsSL",
                     "--proto",
-                    "=https",
+                    GitHub.CurlHttpsOnly,
                     "--proto-redir",
-                    "=https",
+                    GitHub.CurlHttpsOnly,
                     "--connect-timeout",
-                    "15",
+                    DownloadConnectTimeoutSeconds,
                     "--max-time",
-                    "180",
+                    DownloadTimeoutSeconds,
                     "--max-filesize",
-                    "536870912",
+                    DownloadByteLimit,
                     "--output",
                     path,
                     url
                 },
-                seconds: 190
+                seconds: DownloadProcessTimeoutSeconds
             )
         }
 
@@ -402,7 +412,7 @@ internal class MachineSetup {
 
             let script = Path.Combine(temporary, "codex-install.sh")
 
-            Download("https://chatgpt.com/codex/install.sh", script)
+            Download(CodexInstallerUrl, script)
 
             let code = Installation.Execute(
                 LocalPaths.NeedSystemTool("env"),

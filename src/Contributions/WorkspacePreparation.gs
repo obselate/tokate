@@ -8,6 +8,14 @@ import System.Text.Json
 
 internal class WorkspacePreparation {
     shared {
+        private const ForkDiscoveryTimeoutSeconds int32 = 60
+
+        private const ForkDiscoveryPageCountLimit int32 = 3
+
+        private const RemoteReadAttemptLimit int32 = 5
+
+        private const RemoteReadDelaySeconds float64 = 1.0
+
         private func Identity(run Data) string -> J.Hash(
             J.Write(
                 map[string, Object?]{
@@ -28,13 +36,10 @@ internal class WorkspacePreparation {
             )
         )
 
-        private func Identified(run Data) bool {
-            let identity = run.PreparationIdentity
-            return identity == BoundIdentity(run)
-        }
+        private func Identified(run Data) bool -> run.PreparationIdentity == BoundIdentity(run)
 
         internal func CheckIdentity(run Data) {
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure(
                     "invalid_state",
                     "Saved preparation identity changed; import provenance cannot be removed or rebound"
@@ -78,7 +83,7 @@ internal class WorkspacePreparation {
             }
 
             run.RequestedFork = fork
-            run.PreparationVersion = 1
+            run.PreparationVersion = Data.PreparationFormatVersion
             run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
@@ -114,7 +119,7 @@ internal class WorkspacePreparation {
 
         internal func Promote(directory string, run Data, approvedBase string) {
             let pending = Data.Load(directory)
-            if pending.Version != 2 ||
+            if pending.Version != Data.FormatVersion ||
                 pending.State != "claim_pending" ||
                 pending.HasId ||
                 pending.HasAttempt ||
@@ -136,7 +141,7 @@ internal class WorkspacePreparation {
                 }
             }
 
-            run.PreparationVersion = 1
+            run.PreparationVersion = Data.PreparationFormatVersion
             run.PreparationIdentity = BoundIdentity(run)
             run.Transition("preparing")
 
@@ -158,7 +163,7 @@ internal class WorkspacePreparation {
             let savedState = run.State
             let failure = "work --run requires recorded pre-inference preparation for this contribution; old runs and coding cannot be adopted"
 
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure("invalid_state", failure)
             }
 
@@ -227,9 +232,11 @@ internal class WorkspacePreparation {
                 )
                 Output.Sink.Step(
                     "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
-                        "' push https://github.com/" +
+                        "' push " +
+                        GitHub.WebUrl +
                         run.HeadRepo +
-                        ".git HEAD:refs/heads/" +
+                        ".git HEAD:" +
+                        GitHub.HeadsRefPrefix +
                         run.Branch
                 )
             }
@@ -276,14 +283,17 @@ internal class WorkspacePreparation {
             }
 
             if head == "" {
-                ApiTransport.BeginDeadline(60)
+                ApiTransport.BeginDeadline(ForkDiscoveryTimeoutSeconds)
                 try {
                     let candidates = List[string]()
                     var complete bool
 
-                    for page in 1 ... 4 {
+                    for page in 1 ... ForkDiscoveryPageCountLimit + 1 {
                         let items = GitHub.Api(
-                            "user/repos?visibility=public&affiliation=owner&per_page=100&page=" + page.ToString()
+                            "user/repos?visibility=public&affiliation=owner&" +
+                                GitHub.PageSizeParameter +
+                                "&page=" +
+                                page.ToString()
                         )
 
                         if items.ValueKind != JsonValueKind.Array {
@@ -325,7 +335,7 @@ internal class WorkspacePreparation {
                             }
                         }
 
-                        if pageItems.Count < 100 {
+                        if pageItems.Count < GitHub.PageSize {
                             complete = true
                             break
                         }
@@ -394,10 +404,10 @@ internal class WorkspacePreparation {
                 }
             }
 
-            for read in 0 ... 5 {
+            for read in 0 ... RemoteReadAttemptLimit {
                 if read > 0 {
                     select {
-                        case <- after(TimeSpan.FromSeconds(1.0)) { }
+                        case <- after(TimeSpan.FromSeconds(RemoteReadDelaySeconds)) { }
                     }
                     info = GitHub.Api("repos/" + head, missing: true)
                 }
@@ -509,14 +519,14 @@ internal class WorkspacePreparation {
                 try {
                     GitHub.Api(
                         "repos/" + run.HeadRepo + "/git/refs",
-                        map[string, Object?]{"ref": "refs/heads/" + run.Branch, "sha": run.Base}
+                        map[string, Object?]{"ref": GitHub.HeadsRefPrefix + run.Branch, "sha": run.Base}
                     )
                 } catch (error CliFailure) {
                     run.BranchCreationError = error.Message
                     run.Save(directory)
                 }
 
-                for attempt in 0 ... 5 {
+                for attempt in 0 ... RemoteReadAttemptLimit {
                     if Reference(run).ValueKind != JsonValueKind.Undefined {
                         break
                     }
@@ -575,7 +585,7 @@ internal class WorkspacePreparation {
         }
 
         internal func Source(checkout string, run Data) {
-            if run.PreparationVersion != 1 || !Identified(run) {
+            if run.PreparationVersion != Data.PreparationFormatVersion || !Identified(run) {
                 throw CliFailure("invalid_state", "Unsupported preparation identity; source is preserved")
             }
 
@@ -711,7 +721,7 @@ internal class WorkspacePreparation {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Repo + ".git",
+                    GitHub.WebUrl + run.Repo + ".git",
                     RepositoryIdentity.CommitSha(run.Base)
                 )
 

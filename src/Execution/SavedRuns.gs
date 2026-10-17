@@ -16,6 +16,10 @@ internal class SavedRun(location string, value JsonElement, current bool, run Da
     internal var Number int32 = RunStorage.Number(location, RunStorage.Prefix(run.Repo, run.Issue))
     internal var Outcome string = ""
 
+    shared {
+        private const MinutesPerDay int32 = 1440
+    }
+
     internal prop Issue int32 -> Run.Issue
 
     internal prop Name string -> Run.Repo + "#" + Issue.ToString() + "-" + Number.ToString()
@@ -54,8 +58,9 @@ internal class SavedRun(location string, value JsonElement, current bool, run Da
 
     internal func Age() string {
         let minutes = Math.Max(0, Convert.ToInt32(Math.Floor((DateTime.UtcNow - Modified).TotalMinutes)))
-        return minutes < 60 ? minutes.ToString() + "m": minutes < 1440 ? (minutes / 60).ToString() + "h":
-        (minutes / 1440).ToString() + "d"
+        return minutes < RuntimeBudget.MinutesPerHour ? minutes.ToString() +
+            "m": minutes < MinutesPerDay ? (minutes / RuntimeBudget.MinutesPerHour).ToString() + "h":
+        (minutes / MinutesPerDay).ToString() + "d"
     }
 
     internal func Matches(repo string, issue int32) bool -> Issue == issue && String.Equals(
@@ -89,6 +94,16 @@ internal class SavedRuns {
     internal var Truncated bool
 
     shared {
+        internal const SummaryCountLimit int32 = 128
+
+        private const MetadataCharacterLimit int32 = 256
+
+        private const RecentCountLimit int32 = 16
+
+        private const OutcomePullCountLimit int32 = 100
+
+        private const OutcomeDeadlineSeconds int32 = 10
+
         internal func Summary(
             rows List[SavedRun],
             skipped int32,
@@ -98,7 +113,7 @@ internal class SavedRuns {
             let items = List[Object?]()
 
             for row in rows {
-                if items.Count == 128 {
+                if items.Count == SummaryCountLimit {
                     break
                 }
 
@@ -114,8 +129,8 @@ internal class SavedRuns {
         }
 
         internal func Recent(rows List[SavedRun]) List[SavedRun] -> rows.GetRange(
-            Math.Max(0, rows.Count - 16),
-            Math.Min(16, rows.Count)
+            Math.Max(0, rows.Count - RecentCountLimit),
+            Math.Min(RecentCountLimit, rows.Count)
         )
 
         internal func Pick(rows List[SavedRun]) SavedRun? {
@@ -124,7 +139,7 @@ internal class SavedRuns {
         }
 
         internal func Outcomes(rows List[SavedRun]) {
-            let pulls = rows.Where(row -> row.Run.Pr > 0 && !row.Finished).Take(100).ToList()
+            let pulls = rows.Where(row -> row.Run.Pr > 0 && !row.Finished).Take(OutcomePullCountLimit).ToList()
 
             if pulls.Count == 0 {
                 return
@@ -138,7 +153,7 @@ internal class SavedRuns {
                 query += "{pullRequest(number:" + pulls[i].Run.Pr.ToString() + "){state}}"
             }
 
-            ApiTransport.BeginDeadline(10)
+            ApiTransport.BeginDeadline(OutcomeDeadlineSeconds)
             try {
                 let data = J.Get(GitHub.Api("graphql", map[string, Object?]{"query": "query{" + query + "}"}), "data")
 
@@ -178,14 +193,17 @@ internal class SavedRuns {
                     try {
                         RunStorage.ControlPaths(directory)
                         reason = "Missing, invalid or oversized run metadata."
-                        let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
+                        let value = RequestData.FileData(
+                            Path.Combine(directory, "run.json"),
+                            RunStorage.RunFileByteLimit
+                        )
 
                         reason = "Invalid repository or excessive saved metadata."
                         let run = Data.Parse(value)
                         RepositoryIdentity.Repo(run.Repo)
 
                         for text in[]string{run.Id, run.Repo, run.Donor, run.Model, run.State} {
-                            if text.Length > 256 {
+                            if text.Length > MetadataCharacterLimit {
                                 throw ExecutionFailure.Create(
                                     "invalid_state",
                                     "Saved contribution metadata is too long"
@@ -215,7 +233,7 @@ internal class SavedRuns {
                         error is JsonException {
                         Skipped++
 
-                        if SkippedEntries.Count < 128 {
+                        if SkippedEntries.Count < SummaryCountLimit {
                             SkippedEntries.Add(map[string, Object?]{"run": directory, "reason": reason})
                         } else {
                             Truncated = true
@@ -227,7 +245,7 @@ internal class SavedRuns {
                 error is UnauthorizedAccessException {
                 Skipped++
 
-                if SkippedEntries.Count < 128 {
+                if SkippedEntries.Count < SummaryCountLimit {
                     SkippedEntries.Add(map[string, Object?]{"run": root, "reason": "Unsafe or unreadable run storage."})
                 } else {
                     Truncated = true

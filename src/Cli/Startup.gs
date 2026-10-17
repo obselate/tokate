@@ -8,12 +8,18 @@ import System.Text.Json
 
 internal class Startup {
     shared {
+        private const AuthenticationTimeoutSeconds int32 = 10
+
+        private const CannotExecuteExitCode int32 = 126
+
+        private const CommandNotFoundExitCode int32 = 127
+
         internal func Gate(args Args, runtime JsonElement) Object {
             let model = args.Need("model")
             let effort = args.Need("effort")
             let path = args.Get(
                 "policy",
-                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
+                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), Policy.FilePath)
             )
             var text string
             var policy Policy
@@ -264,15 +270,15 @@ internal class Startup {
                     let result = Commands.Run(
                         executable,
                         []string{tool.Name == "socat" ? "-V": "--version"},
-                        seconds: 30,
+                        seconds: Commands.VersionTimeoutSeconds,
                         harness: Harness.Find(tool.Name) != nil
                     )
 
                     if result.Code != 0 || result.Truncated || result.ReadFailed {
                         tool.Status = "failed"
                         tool.Detail = (
-                            result.Code == 126 ||
-                                result.Code == 127 ? "Tool could not start.": "Tool did not complete its version check successfully."
+                            result.Code == CannotExecuteExitCode ||
+                                result.Code == CommandNotFoundExitCode ? "Tool could not start.": "Tool did not complete its version check successfully."
                         ) +
                             " Repair or reinstall it. " +
                             tool.Hint
@@ -395,9 +401,9 @@ internal class Startup {
                             "--jq",
                             ".id",
                             "--hostname",
-                            "github.com"
+                            GitHub.Hostname
                         },
-                        seconds: 10,
+                        seconds: AuthenticationTimeoutSeconds,
                         harness: codex,
                         github: !codex
                     )
@@ -407,7 +413,7 @@ internal class Startup {
                     if result.Truncated || result.ReadFailed {
                         check.Status = "failed"
                         check.Detail = "Authentication status did not complete reliably. " + check.Hint
-                    } else if result.Code == 126 || result.Code == 127 {
+                    } else if result.Code == CannotExecuteExitCode || result.Code == CommandNotFoundExitCode {
                         check.Status = "failed"
                         check.Detail = "Authentication status tool could not start. Repair or reinstall " + name + "."
                     } else if result.Code != 0 ||
@@ -423,7 +429,7 @@ internal class Startup {
                                 "auth",
                                 "login",
                                 "--hostname",
-                                "github.com"
+                                GitHub.Hostname
                             }
                         )
                     } else {
@@ -459,7 +465,7 @@ internal class Startup {
                 Terminal.Message(error.Message, error: true)
             }
 
-            var selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
+            let selected = options.Get("set-default") == "true" ? options.Get("harness"): ""
             if selected != "" {
                 var choice ToolCheck? = nil
 

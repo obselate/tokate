@@ -130,6 +130,8 @@ internal class OwnerApproval {
     }
 
     shared {
+        internal const FormatVersion int64 = 2
+
         internal func Approve(args Args) {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
             let number = args.Number("issue")
@@ -142,17 +144,17 @@ internal class OwnerApproval {
             }
             let approval = Capture(args, info, issue)
             let firstApproval = !Output.Sink.Enabled && GitHub.Api(
-                "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
+                "repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix
             )
                 .GetArrayLength() == 0
 
-            let label = GitHub.Api("repos/" + repo + "/labels/tokate%3Aapproved", missing: true)
+            let label = GitHub.Api("repos/" + repo + "/labels/" + GitHub.EncodedApprovedLabel, missing: true)
 
             if label.ValueKind == JsonValueKind.Undefined {
                 GitHub.Api(
                     "repos/" + repo + "/labels",
                     map[string, Object?]{
-                        "name": "tokate:approved",
+                        "name": GitHub.ApprovedLabel,
                         "color": "0e8a16",
                         "description": "Approved for donated AI usage"
                     }
@@ -165,11 +167,11 @@ internal class OwnerApproval {
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
-                map[string, Object?]{"labels": []string{"tokate:approved"}}
+                map[string, Object?]{"labels": []string{GitHub.ApprovedLabel}}
             )
 
             Output.Sink.Message(
-                "Approved https://github.com/" + repo + "/issues/" + number.ToString() +
+                "Approved " + GitHub.WebUrl + repo + "/issues/" + number.ToString() +
                     ". Donors start with: tokate work " +
                     repo +
                     "#" +
@@ -222,7 +224,7 @@ internal class OwnerApproval {
             )
 
             return Record{
-                Version: 2,
+                Version: FormatVersion,
                 Repo: repo,
                 RepoId: RepositoryIdentity.PositiveId(J.Get(info, "id")),
                 Issue: J.Number(issue, "number"),
@@ -256,7 +258,9 @@ internal class OwnerApproval {
             }
 
             GitHub.Api(
-                "repos/" + repo + "/issues/" + args.Number("issue").ToString() + "/labels/tokate%3Aapproved",
+                "repos/" + repo + "/issues/" + args.Number("issue").ToString() +
+                    "/labels/" +
+                    GitHub.EncodedApprovedLabel,
                 method: "DELETE",
                 missing: true
             )

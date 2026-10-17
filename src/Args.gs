@@ -6,7 +6,7 @@ import System.Text.Json
 import System.Text.RegularExpressions
 
 internal class Args {
-    internal let Values Dictionary[string, string] = Dictionary[string, string]()
+    internal let Values Dictionary[string, string] = map[string, string]{}
     internal let Words List[string] = List[string]()
     internal var Command string = "help"
     internal var Help bool = false
@@ -65,7 +65,7 @@ internal class Args {
             throw Exception("Invalid positive number: " + Args.Label(key))
         }
 
-        if (key == "seconds" || key == "timeout") && number > 86400 {
+        if (key == "seconds" || key == "timeout") && number > RuntimeBudget.MaxBudgetSeconds {
             throw Exception("Use at most 24h: " + Args.Label(key == "seconds" && Command == "init" ? "max-time": key))
         }
 

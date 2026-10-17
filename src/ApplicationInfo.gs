@@ -10,11 +10,8 @@ internal class ApplicationInfo {
 
         internal func Resource(name string) string {
             let assembly = Assembly.GetExecutingAssembly()
-            using let stream = assembly.GetManifestResourceStream("Tokate.templates." + name)
-
-            if stream == nil {
+            using let stream = assembly.GetManifestResourceStream("Tokate.templates." + name) ??
                 throw Exception("Missing embedded template " + name)
-            }
 
             using let reader = StreamReader(stream)
 

@@ -9,7 +9,33 @@ import System.Text.RegularExpressions
 
 internal class RequestData {
     shared {
-        internal let ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
+        internal const RequestByteLimit int32 = 8192
+
+        internal const CorrectionToolsByteLimit int32 = 4096
+
+        internal const CommentPrefix string = "/tokate "
+
+        internal const OwnershipMarkerPrefix string = "<!-- tokate-v2:"
+
+        internal const ObservedVerification string = "tokate-observed-locally-exact-commit"
+
+        internal const ReportedVerification string = "donor-reported-pass"
+
+        internal const ReceiptByteLimit int32 = 1024 * 1024
+
+        internal const Sha256HexLength int32 = 64
+
+        internal const Sha256HexDigitsPattern string = "[0-9a-f]{64}"
+
+        internal const Sha256HexPattern string = "^" + Sha256HexDigitsPattern + "$"
+
+        internal const ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
+
+        private const JsonDepthLimit int32 = 32
+
+        internal const CopyBufferByteSize int32 = 8192
+
+        private const TokenPattern string = "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
 
         internal func Same(left JsonElement, right JsonElement) bool {
             if left.ValueKind == JsonValueKind.Undefined || right.ValueKind == JsonValueKind.Undefined {
@@ -19,13 +45,13 @@ internal class RequestData {
             return RequestData.Canonical(left) == RequestData.Canonical(right)
         }
 
-        internal func Parse(text string, limit int32 = 8192) JsonElement {
+        internal func Parse(text string, limit int32) JsonElement {
             if Encoding.UTF8.GetByteCount(text) > limit {
                 throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
             }
 
             try {
-                using let document = JsonDocument.Parse(text, JsonDocumentOptions{MaxDepth: 32})
+                using let document = JsonDocument.Parse(text, JsonDocumentOptions{MaxDepth: JsonDepthLimit})
                 let value = document.RootElement.Clone()
                 Unique(value)
                 return value
@@ -38,7 +64,7 @@ internal class RequestData {
             try {
                 using let file = File.OpenRead(path)
                 using let bytes = MemoryStream()
-                let buffer = [8192]byte
+                let buffer = [CopyBufferByteSize]byte
                 var count int32
 
                 while (
@@ -133,7 +159,7 @@ internal class RequestData {
         }
 
         internal func Token(value string, message string = "Invalid tool identifier") string {
-            if !Regex.IsMatch(value, "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$") {
+            if !Regex.IsMatch(value, TokenPattern) {
                 throw CliFailure("invalid_state", message)
             }
 
@@ -145,7 +171,7 @@ internal class RequestData {
                 return "unknown"
             }
 
-            let pattern = model ? RequestData.ModelPattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$"
+            let pattern = model ? RequestData.ModelPattern: TokenPattern
 
             if !Regex.IsMatch(text, pattern) || text.Contains("://") || Regex.IsMatch(
                 text,

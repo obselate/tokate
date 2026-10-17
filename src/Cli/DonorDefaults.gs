@@ -8,6 +8,10 @@ import System.Text.RegularExpressions
 
 internal class DonorDefaults {
     shared {
+        private const ProfileByteLimit int32 = 16 * 1024
+
+        private const ProfileCountLimit int32 = 128
+
         internal func NormalizePair(args Args) {
             if args.Command == "defaults" && args.Subject == "set" && args.Get("harness") == "" && args.Get(
                 "provider"
@@ -98,7 +102,7 @@ internal class DonorDefaults {
                 let path = Location(profile, directory)
 
                 if File.Exists(path) {
-                    value = RequestData.FileData(path, 16 * 1024)
+                    value = RequestData.FileData(path, ProfileByteLimit)
                     break
                 }
             }
@@ -331,7 +335,7 @@ internal class DonorDefaults {
                 }
             }
 
-            let value = RequestData.Parse(J.Write(choice), 16 * 1024)
+            let value = RequestData.Parse(J.Write(choice), ProfileByteLimit)
 
             Write(value, profile)
 
@@ -348,7 +352,7 @@ internal class DonorDefaults {
                     for path in Directory.EnumerateFiles(directory, "*.json") {
                         scanned++
 
-                        if scanned > 128 {
+                        if scanned > ProfileCountLimit {
                             throw Exception("Donor profile list exceeds 128 entries")
                         }
 

@@ -9,6 +9,8 @@ import System.Text.Json
 
 internal class Gratis {
     shared {
+        private const ContextByteLimit int32 = 65536
+
         internal func PolicyFor(args Args) Policy {
             DonorDefaults.NormalizePair(args)
             let policy = map[string, Object?]{}
@@ -17,7 +19,7 @@ internal class Gratis {
                 policy[field.Name] = field.Value.Clone()
             }
 
-            policy["max_seconds"] = 86400
+            policy["max_seconds"] = RuntimeBudget.MaxBudgetSeconds
             policy["verification"] = []Object{}
             policy["required_checks"] = []Object{}
             policy["allowed_tools"] = []Object{
@@ -96,25 +98,25 @@ internal class Gratis {
             let original = J.Parse(J.Write(pulls))
             let bounded = pulls.Cast[Dictionary[string, Object?]]().ToList()
             record["snapshot"] = bounded
-            if Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 {
+            if Encoding.UTF8.GetByteCount(J.Write(record)) > ContextByteLimit {
                 for item in bounded {
                     item["body"] = ""
                 }
             }
-            while Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 && bounded.Count > 0 {
+            while Encoding.UTF8.GetByteCount(J.Write(record)) > ContextByteLimit && bounded.Count > 0 {
                 bounded.RemoveAt(bounded.Count - 1)
             }
             if record.ContainsKey("issue") {
                 let issue = J.Select(J.Parse(J.Write(record["issue"])), "number,title,body")
                 record["issue"] = issue
                 var body = issue.GetValueOrDefault("body")?.ToString() ?? ""
-                while Encoding.UTF8.GetByteCount(J.Write(record)) > 65536 && body != "" {
+                while Encoding.UTF8.GetByteCount(J.Write(record)) > ContextByteLimit && body != "" {
                     body = body.Substring(0, body.Length / 2)
                     issue["body"] = body
                 }
             }
             Publication.Require(
-                Encoding.UTF8.GetByteCount(J.Write(record)) <= 65536,
+                Encoding.UTF8.GetByteCount(J.Write(record)) <= ContextByteLimit,
                 "Guidance and PR snapshot exceed 64 KiB"
             )
             record["pulls"] = original

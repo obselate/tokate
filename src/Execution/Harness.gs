@@ -68,6 +68,8 @@ internal class Harness(
     internal let Config string = config
 
     shared {
+        private const PiInstallerUrl string = "https://pi.dev/install.sh"
+
         internal let Table Dictionary[string, Harness] = map[string, Harness]{
             "codex": Harness(
                 "Codex",
@@ -98,7 +100,7 @@ internal class Harness(
                 tools: []string{"/bin/bash"},
                 catalog: true,
                 nix: "github:earendil-works/pi/stable",
-                installer: "https://pi.dev/install.sh"
+                installer: PiInstallerUrl
             ),
             "claude": Harness(
                 "Claude Code",

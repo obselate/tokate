@@ -7,6 +7,10 @@ import System.Text.Json
 
 internal class Publication {
     shared {
+        internal const HistoryPageCountLimit int32 = 20
+
+        private const DiscussionCategoriesQuery string = "query($$owner:String!,$$name:String!){repository(owner:$$owner,name:$$name){id discussionCategories(first:100){nodes{id name} pageInfo{hasNextPage}}}}"
+
         internal func Query(repo string, query string, variables Dictionary[string, Object?]? = nil) JsonElement {
             let input = variables ?? map[string, Object?]{}
             input["owner"] = repo.Split('/')[0]
@@ -32,20 +36,22 @@ internal class Publication {
                 "-c",
                 "credential.helper=!gh auth git-credential",
                 "push",
-                "https://github.com/" + run.HeadRepo + ".git",
-                commit + ":refs/heads/" + run.Branch
+                GitHub.WebUrl + run.HeadRepo + ".git",
+                commit + ":" + GitHub.HeadsRefPrefix + run.Branch
             )
         }
 
         internal func Pulls(run Data) List[JsonElement] {
             let pulls = List[JsonElement]()
 
-            for page in 1 ... 21 {
+            for page in 1 ... HistoryPageCountLimit + 1 {
                 let response = GitHub.Api(
                     "repos/" + RepositoryIdentity.Repo(run.Repo) + "/pulls?state=all&head=" + Uri.EscapeDataString(
                         run.Donor + ":" + run.Branch
                     ) +
-                        "&per_page=100&page=" +
+                        "&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
 
@@ -59,7 +65,7 @@ internal class Publication {
                 let rows = J.Items(response)
                 pulls.AddRange(rows)
 
-                if rows.Count < 100 {
+                if rows.Count < GitHub.PageSize {
                     return pulls
                 }
             }
@@ -91,16 +97,16 @@ internal class Publication {
             if newIntent {
                 return
             }
-            let marker = "<!-- tokate-v2:" + run.Id + " -->"
+            let marker = RequestData.OwnershipMarkerPrefix + run.Id + " -->"
             let body = J.Text(pull, "body")
             let receipt = ContributionReceipt.Record.Parse(
-                RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+                RequestData.Parse(PrBody.ReceiptText(body, failure, failure), RequestData.RequestByteLimit)
             )
             let expected = ContributionReceipt.Record.Parse(expectedReceipt)
             if !RepositoryIdentity.SameRepo(receipt.Repo, expected.Repo) {
                 throw CliFailure("invalid_state", failure)
             }
-            let comparable = Dictionary[string, Object?]()
+            let comparable = map[string, Object?]{}
             for field in receipt.ToJson().EnumerateObject() {
                 comparable[field.Name] = field.Name == "repo" ? expected.Repo: field.Value
             }
@@ -153,7 +159,7 @@ internal class Publication {
                 declaration.Metadata,
                 run.Donor,
                 receipt,
-                "<!-- tokate-v2:" + run.Id + " -->"
+                RequestData.OwnershipMarkerPrefix + run.Id + " -->"
             )
             RepositoryAccess.ValidateFork(run.Repo, publication.Fork, publication.Branch, publication.Head, run.DonorId)
             let expected = receipt.ToJson()
@@ -231,18 +237,21 @@ internal class Publication {
             let summary = head == "" ? run.PublicSummary: PublicSummary.ForHead(run, head)
             PublicSummary.Attach(receipt, summary)
 
-            let attribution = "Donated with [Tokate](https://github.com/obselate/tokate) by @" +
+            let attribution = "Donated with [Tokate](" +
+                GitHub.WebUrl +
+                "obselate/tokate) by @" +
                 donor +
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
             let receiptText = J.Write(receipt)
-            let marker = "<!-- tokate-receipt:" + receiptText + " -->"
+            let marker = PrBody.ReceiptPrefix + receiptText + PrBody.ReceiptSuffix
             let report = PrBody.Report(PrBody.PublicReport(J.Parse(receiptText)))
             let body = (run.Issue > 0 ? "Fixes #" + run.Issue.ToString() + "\n\n": "") +
                 report +
                 "\n\n" +
                 attribution +
-                "\n\n<!-- tokate-v2:" +
+                "\n\n" +
+                RequestData.OwnershipMarkerPrefix +
                 id +
                 " -->\n" +
                 marker
@@ -315,10 +324,7 @@ internal class Publication {
             try {
                 Require(!run.DiscussionAttempted, "Discussion publication was already attempted")
 
-                let result = Query(
-                    repoName,
-                    "query($$owner:String!,$$name:String!){repository(owner:$$owner,name:$$name){id discussionCategories(first:100){nodes{id name} pageInfo{hasNextPage}}}}"
-                )
+                let result = Query(repoName, DiscussionCategoriesQuery)
                 let repo = J.Get(result, "repository")
                 var category string = ""
 

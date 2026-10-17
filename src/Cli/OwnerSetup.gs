@@ -8,6 +8,10 @@ import System.Text.RegularExpressions
 
 internal class OwnerSetup {
     shared {
+        private const DefaultBudgetSeconds int32 = 3600
+
+        private const SetupBranchName string = "tokate-setup"
+
         internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
@@ -38,7 +42,7 @@ internal class OwnerSetup {
 
         private func Tools(requested string) Object {
             if requested.TrimStart().StartsWith("[", StringComparison.Ordinal) {
-                return RequestData.Parse(requested)
+                return RequestData.Parse(requested, RequestData.RequestByteLimit)
             }
 
             let tools = List[Object]()
@@ -62,16 +66,16 @@ internal class OwnerSetup {
             let fields = map[string, Object?]{}
 
             if upstream != "" {
-                let value = RequestData.Parse(upstream, 1024 * 1024)
+                let value = RequestData.Parse(upstream, Policy.FileByteLimit)
                 for field in value.EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
             } else {
-                fields["version"] = 3
+                fields["version"] = Policy.FormatVersion
                 fields["approval_scope"] = "task"
                 fields["eligibility"] = "trusted"
                 fields["allowed_tools"] = Tools("codex,claude,pi")
-                fields["max_seconds"] = 3600
+                fields["max_seconds"] = DefaultBudgetSeconds
             }
 
             return fields
@@ -101,7 +105,7 @@ internal class OwnerSetup {
                 } else if key == "seconds" || key == "reservation-seconds" {
                     fields[field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
-                    fields[field] = RequestData.Parse(answer)
+                    fields[field] = RequestData.Parse(answer, RequestData.RequestByteLimit)
                 } else {
                     fields[field] = answer
                 }
@@ -119,7 +123,7 @@ internal class OwnerSetup {
 
             let main = J.Text(info, "default_branch")
             let head = GitHub.Branch(repo, main)
-            let upstream = GitHub.FileAt(repo, ".github/tokate.json", head, missing: true)
+            let upstream = GitHub.FileAt(repo, Policy.FilePath, head, missing: true)
             let fields = Fields(upstream)
             let existing Policy? = upstream == "" ? nil: Policy(J.Write(fields))
 
@@ -130,7 +134,7 @@ internal class OwnerSetup {
                 policy.Value
             ) ? upstream: Pretty(policy.Value)
 
-            let path = ".github/workflows/tokate-coordinator.yml"
+            let path = CoordinatorSetup.WorkflowPath
             let current = GitHub.FileAt(repo, path, head, missing: true)
             let generated = CoordinatorSetup.Resolve(args.Get("pin") == "true")
             let pin = CoordinatorSetup.Pin(generated)
@@ -157,11 +161,11 @@ internal class OwnerSetup {
             CoordinatorSetup.EventPolicy(repo, path)
             let files = SetupFiles(text, upstream, workflow, current, path)
 
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate-setup", missing: true)
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + SetupBranchName, missing: true)
             let setup = J.Text(J.Get(reference, "object"), "sha")
             let pulls = GitHub.Api(
                 "repos/" + repo + "/pulls?state=open&per_page=1&head=" + Uri.EscapeDataString(
-                    repo.Split('/')[0] + ":tokate-setup"
+                    repo.Split('/')[0] + ":" + SetupBranchName
                 )
             )
             var pull = pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() > 0 ? J.Text(
@@ -171,7 +175,7 @@ internal class OwnerSetup {
             let rebuild = files.Count > 0 && !Prepared(repo, setup, head, files)
 
             if rebuild && text != upstream {
-                Change(changes, ".github/tokate.json", upstream, text)
+                Change(changes, Policy.FilePath, upstream, text)
             }
 
             if rebuild && workflow != current {
@@ -179,7 +183,7 @@ internal class OwnerSetup {
 
                 if oldPin != "" {
                     Console.Error.WriteLine(
-                        "Compare shared workflows: https://github.com/obselate/tokate/compare/" + oldPin + "..." + pin
+                        "Compare shared workflows: " + GitHub.WebUrl + "obselate/tokate/compare/" + oldPin + "..." + pin
                     )
                 }
             }
@@ -285,16 +289,23 @@ internal class OwnerSetup {
             if text != upstream {
                 files.Add(
                     map[string, Object?]{
-                        "path": ".github/tokate.json",
-                        "mode": "100644",
-                        "type": "blob",
+                        "path": Policy.FilePath,
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
                         "content": text
                     }
                 )
             }
 
             if workflow != current {
-                files.Add(map[string, Object?]{"path": path, "mode": "100644", "type": "blob", "content": workflow})
+                files.Add(
+                    map[string, Object?]{
+                        "path": path,
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": workflow
+                    }
+                )
             }
 
             return files
@@ -311,14 +322,14 @@ internal class OwnerSetup {
             if rebuild {
                 Change(
                     changes,
-                    "Branch tokate-setup",
+                    "Branch " + SetupBranchName,
                     setup,
                     "new commit on " + main + " at " + head + " with the files above"
                 )
             }
 
             if createPull {
-                Change(changes, "Setup PR", "", "Set up Tokate, from tokate-setup into " + main)
+                Change(changes, "Setup PR", "", "Set up Tokate, from " + SetupBranchName + " into " + main)
             }
         }
 
@@ -348,7 +359,11 @@ internal class OwnerSetup {
 
             PublicOutput.ResultData = result
             Terminal.Message(
-                "Tokate keeps its state in the tokate/access and tokate/contributions/N branches. Do not delete them or open pull requests from them.",
+                "Tokate keeps its state in the " +
+                    AccessState.Reference +
+                    " and " +
+                    GitHub.ContributionStateRefPrefix +
+                    "N branches. Do not delete them or open pull requests from them.",
                 "cyan",
                 true
             )
@@ -425,31 +440,29 @@ internal class OwnerSetup {
             if setup == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": "refs/heads/tokate-setup", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + SetupBranchName, "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/refs/heads/tokate-setup",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + SetupBranchName,
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
             }
         }
 
-        private func CreatePull(repo string, main string) string {
-            return J.Text(
-                GitHub.Api(
-                    "repos/" + repo + "/pulls",
-                    map[string, Object?]{
-                        "title": "Set up Tokate",
-                        "head": repo.Split('/')[0] + ":tokate-setup",
-                        "base": main,
-                        "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
-                    }
-                ),
-                "html_url"
-            )
-        }
+        private func CreatePull(repo string, main string) string -> J.Text(
+            GitHub.Api(
+                "repos/" + repo + "/pulls",
+                map[string, Object?]{
+                    "title": "Set up Tokate",
+                    "head": repo.Split('/')[0] + ":" + SetupBranchName,
+                    "base": main,
+                    "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
+                }
+            ),
+            "html_url"
+        )
 
         private func Prepared(repo string, setup string, head string, files List[Object]) bool {
             if setup == "" {
@@ -480,7 +493,14 @@ internal class OwnerSetup {
             var page = 1
             while true {
                 let issues = GitHub.Api(
-                    "repos/" + repo + "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" + page.ToString()
+                    "repos/" +
+                        repo +
+                        "/issues?state=open&labels=" +
+                        GitHub.EncodedApprovedLabel +
+                        "&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
+                        page.ToString()
                 )
                 if issues.ValueKind != JsonValueKind.Array {
                     throw Exception("Cannot list approved issues before policy setup")
@@ -499,7 +519,7 @@ internal class OwnerSetup {
                     }
                 }
 
-                if issues.GetArrayLength() < 100 {
+                if issues.GetArrayLength() < GitHub.PageSize {
                     break
                 }
 

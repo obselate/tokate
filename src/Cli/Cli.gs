@@ -116,9 +116,17 @@ internal class CliCommand(header string, usage string, options string, summary s
 
 internal class Cli {
     shared {
+        private const SuggestionDistanceLimit int32 = 3
+
+        private const HelpIndent string = "    "
+
+        private const HelpMarginWidth int32 = 2
+
+        private const CommandColumnWidth int32 = 10
+
         internal let Options[]CliOption = []string{
             "claude-profile DIR: Existing Claude configuration directory; defaults to your normal Claude profile",
-            "policy FILE: Repository policy; default: .github/tokate.json in the selected checkout",
+            "policy FILE: Repository policy; default: " + Policy.FilePath + " in the selected checkout",
             "set-default: Save the installed harness named with --harness as the default",
             "trust: Request trusted donor access instead of access to one issue",
             "auth: Explicitly check tool-owned authentication status; never print credential values",
@@ -400,7 +408,7 @@ internal class Cli {
             }
 
             var nearest = ""
-            var distance int32 = 3
+            var distance = SuggestionDistanceLimit
 
             for command in Commands {
                 if command.Group != "internal" && Distance(name, command.Name) < distance {
@@ -419,30 +427,22 @@ internal class Cli {
 
         private func Distance(a string, b string) int32 {
             let row = [b.Length + 1]int32
-            var j int32 = 0
 
-            while j <= b.Length {
+            for j in 0 ... row.Length {
                 row[j] = j
-                j++
             }
 
-            var i int32 = 1
-
-            while i <= a.Length {
+            for i in 1 ... a.Length + 1 {
                 var previous = row[0]
 
                 row[0] = i
-                j = 1
 
-                while j <= b.Length {
+                for j in 1 ... b.Length + 1 {
                     let current = row[j]
 
                     row[j] = Math.Min(Math.Min(row[j], row[j - 1]) + 1, previous + (a[i - 1] == b[j - 1]? 0: 1))
                     previous = current
-                    j++
                 }
-
-                i++
             }
 
             return row[b.Length]
@@ -560,7 +560,9 @@ internal class Cli {
             let match = Regex.Match(value, "^([0-9]{1,7})([smhd])\\z")
             let unit = match.Groups[2].Value
             let seconds = !match.Success ? 0: Int64.Parse(match.Groups[1].Value) *
-            (unit == "s" ? 1: unit == "m" ? 60: unit == "h" ? 3600: 86400)
+            (
+                unit == "s" ? 1: unit == "m" ? RuntimeBudget.SecondsPerMinute: unit == "h" ? RuntimeBudget.SecondsPerHour: RuntimeBudget.SecondsPerDay
+            )
 
             if seconds < 1 || seconds > Int32.MaxValue {
                 throw Exception("Use a time such as 90s, 30m or 2h: --" + name)
@@ -726,14 +728,14 @@ internal class Cli {
         private func OptionHelp(text StringBuilder, label string, description string, width int32) {
             text.AppendLine("  " + label)
 
-            var line = "    "
+            var line = HelpIndent
             for word in description.Split(' ', StringSplitOptions.RemoveEmptyEntries) {
-                if line.Length > 4 && line.Length + word.Length + 1 > width - 2 {
+                if line.Length > HelpIndent.Length && line.Length + word.Length + 1 > width - HelpMarginWidth {
                     text.AppendLine(line)
-                    line = "    "
+                    line = HelpIndent
                 }
 
-                line += (line.Length == 4 ? "": " ") + word
+                line += (line.Length == HelpIndent.Length ? "": " ") + word
             }
 
             text.AppendLine(line)
@@ -758,10 +760,10 @@ internal class Cli {
                             continue
                         }
 
-                        if width < 80 {
+                        if width < Terminal.MinimumInteractiveWidth {
                             OptionHelp(text, command.Name, command.Brief, width)
                         } else {
-                            text.AppendLine("  " + command.Name.PadRight(10) + command.Brief)
+                            text.AppendLine("  " + command.Name.PadRight(CommandColumnWidth) + command.Brief)
                         }
                     }
                 }

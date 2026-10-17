@@ -64,13 +64,9 @@ internal class ContributionHandoff {
         }
 
         internal func Read(state CoordinationState, actor JsonElement, record JsonElement, number int32) JsonElement {
-            var prior = state
-
-            if RepositoryIdentity.PositiveId(state.Identity?.ActorJson ?? default(JsonElement)) == RepositoryIdentity
-                .PositiveId(actor) {
-                let predecessor = state.Identity?.Predecessor
-                prior = CoordinationState.At(state.Repo, state.Issue, predecessor?.Revision ?? "")
-            }
+            let prior = RepositoryIdentity.PositiveId(state.Identity?.ActorJson ?? default(JsonElement)) ==
+            RepositoryIdentity.PositiveId(actor) ?
+            CoordinationState.At(state.Repo, state.Issue, state.Identity?.Predecessor?.Revision ?? ""): state
 
             let source = Source(prior)
             let parsed = HandoffRequestMetadata.Parse(source)
@@ -153,7 +149,7 @@ internal class ContributionHandoff {
         }
 
         internal func Candidate(source HandoffRequestMetadata?, fork string, head string) {
-            if source != nil {
+            if let source = source {
                 GitHubPathEvidence.Ancestor(source.Fork, source.Head, fork, head)
             }
         }
@@ -227,7 +223,7 @@ internal class ContributionHandoff {
                 "--no-tags",
                 "--no-recurse-submodules",
                 "--",
-                "https://github.com/" + parsed.Fork + ".git",
+                GitHub.WebUrl + parsed.Fork + ".git",
                 parsed.Head
             )
 

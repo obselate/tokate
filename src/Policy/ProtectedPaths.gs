@@ -7,6 +7,16 @@ import System.Text.Json
 
 internal class ProtectedPaths {
     shared {
+        private const PathCountLimit int32 = 64
+
+        private const PathCharacterLimit int32 = 512
+
+        internal const InventoryPathCountLimit int32 = 100000
+
+        private const DiffPathEntryLimit int32 = InventoryPathCountLimit + 1
+
+        private const ProtectedRelation int32 = 2
+
         private let Utf8 UTF8Encoding = UTF8Encoding(false, true)
 
         internal func Validate(paths JsonElement) {
@@ -14,7 +24,7 @@ internal class ProtectedPaths {
                 return
             }
 
-            if paths.ValueKind != JsonValueKind.Array || paths.GetArrayLength() > 64 {
+            if paths.ValueKind != JsonValueKind.Array || paths.GetArrayLength() > PathCountLimit {
                 throw Exception("protected_paths must be an array of at most 64 literal repository paths")
             }
 
@@ -24,7 +34,7 @@ internal class ProtectedPaths {
                 }
 
                 let path = entry.GetString() ?? ""
-                if path.Length == 0 || path.Length > 512 || path.Contains('\\') ||
+                if path.Length == 0 || path.Length > PathCharacterLimit || path.Contains('\\') ||
                     (path.Length >= 3 && Char.IsAsciiLetter(path[0]) && path[1] == ':' && path[2] == '/') {
                     throw Exception("Invalid protected_paths entry")
                 }
@@ -84,7 +94,7 @@ internal class ProtectedPaths {
                 ".github/tokate",
                 StringComparison.Ordinal
             ) {
-                return 2
+                return ProtectedRelation
             }
 
             var ancestor = path == ".github"
@@ -92,7 +102,7 @@ internal class ProtectedPaths {
 
             for name in configured {
                 if Matches(name, path) {
-                    return 2
+                    return ProtectedRelation
                 }
 
                 if name.StartsWith(prefix, StringComparison.Ordinal) {
@@ -108,9 +118,16 @@ internal class ProtectedPaths {
             RepositoryIdentity.CommitSha(sha)
 
             if !(
-                (mode == "040000" && type == "tree") ||
-                    ((mode == "100644" || mode == "100755" || mode == "120000") && type == "blob") ||
-                    (mode == "160000" && type == "commit")
+                (mode == GitHub.TreeMode && type == GitHub.TreeType) ||
+                    (
+                    (
+                        mode == GitHub.RegularFileMode ||
+                            mode == GitHub.ExecutableFileMode ||
+                            mode == GitHub.SymbolicLinkMode
+                    ) &&
+                        type == GitHub.BlobType
+                ) ||
+                    (mode == GitHub.SubmoduleMode && type == GitHub.CommitType)
             ) ||
                 !entries.TryAdd(path, mode + " " + type + " " + sha) {
                 throw Exception("Incomplete, duplicate or invalid protected tree evidence")
@@ -118,7 +135,7 @@ internal class ProtectedPaths {
         }
 
         internal func CompleteTree(entries Dictionary[string, string]) {
-            if entries.Count > 100000 {
+            if entries.Count > InventoryPathCountLimit {
                 throw Exception("Protected tree exceeds bounded evidence")
             }
 
@@ -131,7 +148,7 @@ internal class ProtectedPaths {
                     var value string
 
                     if !entries.TryGetValue(path, out value) || !value.StartsWith(
-                        "040000 tree ",
+                        GitHub.TreeMode + " " + GitHub.TreeType + " ",
                         StringComparison.Ordinal
                     ) {
                         throw Exception("Missing protected tree ancestor evidence")
@@ -207,7 +224,7 @@ internal class ProtectedPaths {
             }
 
             let paths = output.Split('\0')
-            if paths.Length > 100001 {
+            if paths.Length > DiffPathEntryLimit {
                 throw Exception("Contribution exceeds the bounded Git path diff")
             }
 

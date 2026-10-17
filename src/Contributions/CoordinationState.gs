@@ -544,7 +544,12 @@ internal class CoordinationState {
             "repos/" + repo + "/git/trees",
             map[string, Object?]{
                 "tree": []Object{
-                    map[string, Object?]{"path": "state.json", "mode": "100644", "type": "blob", "content": ToText()}
+                    map[string, Object?]{
+                        "path": "state.json",
+                        "mode": GitHub.RegularFileMode,
+                        "type": GitHub.BlobType,
+                        "content": ToText()
+                    }
                 }
             },
             expires: expires
@@ -566,14 +571,14 @@ internal class CoordinationState {
         if Sha == "" {
             GitHub.Api(
                 "repos/" + repo + "/git/refs",
-                map[string, Object?]{"ref": "refs/heads/" + Ref(issue), "sha": next},
+                map[string, Object?]{"ref": GitHub.HeadsRefPrefix + Ref(issue), "sha": next},
                 expires: expires
             )
         } else {
-            for attempt in 0 ... 2 {
+            for attempt in 0 ... RefUpdateAttemptLimit {
                 try {
                     GitHub.Api(
-                        "repos/" + repo + "/git/refs/heads/" + Ref(issue),
+                        "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + Ref(issue),
                         map[string, Object?]{"sha": next, "force": false},
                         "PATCH",
                         expires: expires
@@ -591,7 +596,8 @@ internal class CoordinationState {
                         )
                     }
 
-                    if error.HttpStatus < 500 || error.HttpStatus > 599 {
+                    if error.HttpStatus < ApiResponse.ServerErrorStatusMinimum ||
+                        error.HttpStatus > ApiResponse.ServerErrorStatusMaximum {
                         throw error
                     }
 
@@ -673,6 +679,8 @@ internal class CoordinationState {
         private const StateByteLimit int32 = 1024 * 1024
         private const InvalidStateMessage string = "Invalid version-2 coordination state"
 
+        private const RefUpdateAttemptLimit int32 = 2
+
         internal func ApprovalFailure(repo string, issue int32, reason string) CliFailure {
             let task = repo + "#" + issue.ToString()
             return CliFailure(
@@ -682,7 +690,7 @@ internal class CoordinationState {
             )
         }
 
-        internal func Ref(issue int32) string -> "tokate/contributions/" + issue.ToString()
+        internal func Ref(issue int32) string -> GitHub.ContributionStateRefPrefix + issue.ToString()
 
         internal func Load(repo string, issue int32, missing bool = false) CoordinationState {
             let result = CoordinationState()
