@@ -180,11 +180,7 @@ internal class HarnessRunner {
                             coding,
                             RuntimeBudget(timer, totalSeconds)
                         )
-                        var activity Action[string]? = nil
-
-                        if Output.Sink.Active() {
-                            activity = adapter.Activity
-                        }
+                        let activity Action[string]? = Output.Sink.Active() ? adapter.Activity: nil
 
                         let prompt = TaskContext.Build(checkout, run, record, coding)
 

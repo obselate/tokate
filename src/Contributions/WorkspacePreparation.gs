@@ -36,10 +36,7 @@ internal class WorkspacePreparation {
             )
         )
 
-        private func Identified(run Data) bool {
-            let identity = run.PreparationIdentity
-            return identity == BoundIdentity(run)
-        }
+        private func Identified(run Data) bool -> run.PreparationIdentity == BoundIdentity(run)
 
         internal func CheckIdentity(run Data) {
             if run.PreparationVersion != 1 || !Identified(run) {

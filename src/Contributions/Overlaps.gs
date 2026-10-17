@@ -213,7 +213,7 @@ internal class Overlaps {
             issue int32,
             evidence Dictionary[string, Object?]? = nil
         ) Dictionary[string, Object?] {
-            let facts = evidence ?? Dictionary[string, Object?]()
+            let facts = evidence ?? map[string, Object?]{}
             let remaining = Remaining
 
             try {

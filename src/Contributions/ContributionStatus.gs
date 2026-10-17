@@ -620,7 +620,7 @@ internal class ContributionStatus {
             throw CliFailure("invalid_state", "Cannot read bounded PR reviews")
         }
 
-        let current = Dictionary[string, string]()
+        let current = map[string, string]{}
 
         for review in J.Items(reviews) {
             let reviewer = J.Text(J.Get(review, "user"), "login")
@@ -1190,7 +1190,7 @@ internal class ContributionStatus {
             }
 
             status.Result["work_observed"] = status.Work.Count
-            let outcomes = Dictionary[string, string]()
+            let outcomes = map[string, string]{}
 
             for item in status.Work {
                 let row = item as Dictionary[string, Object?] ?? throw Exception("Invalid status row")
