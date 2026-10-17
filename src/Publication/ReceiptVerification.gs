@@ -70,7 +70,8 @@ internal class ReceiptVerification {
             VerifyPendingPublication(repo, number, pull, receipt, state, value, contribution)
 
             let metadata = J.Get(contribution, "metadata")
-            let handoff = J.Get(metadata, "handoff")
+            let publication = PublicationRequestMetadata.Parse(metadata)
+            let handoff = publication.Handoff
 
             ContributionHandoff.Declaration(handoff)
 
@@ -81,7 +82,10 @@ internal class ReceiptVerification {
             ContributionHandoff.Authority(state, handoff)
 
             let current = CoordinationState.Current(value)
-            let incomplete = current.GetRawText() == contribution.GetRawText() && RequestMetadata.Incomplete(metadata)
+            let incomplete = current.GetRawText() == contribution.GetRawText() && RequestMetadata.Incomplete(
+                publication.HasIncomplete,
+                publication.Incomplete
+            )
 
             if receipt.Incomplete.ValueKind != (incomplete ? JsonValueKind.True: JsonValueKind.Undefined) {
                 throw CliFailure("stale_approval", "Receipt completion state differs from the current contribution")
@@ -91,7 +95,7 @@ internal class ReceiptVerification {
             let exactHead = J.Text(outcome, "head")
 
             if paths {
-                ContributionHandoff.Candidate(handoff, J.Text(metadata, "fork"), exactHead)
+                ContributionHandoff.Candidate(handoff, publication.Fork, exactHead)
             }
 
             let donor = RepositoryIdentity.Login(receipt.Donor)
@@ -240,6 +244,7 @@ internal class ReceiptVerification {
             donor string,
             record JsonElement
         ) Policy {
+            let publication = PublicationRequestMetadata.Parse(metadata)
             let approval = J.Get(record, "approval")
             let reservation = J.Get(value, "reservation")
             let head = J.Get(pull, "head")
@@ -247,8 +252,8 @@ internal class ReceiptVerification {
             let base = J.Get(pull, "base")
             let approvalId = J.Text(value, "approval_id")
             let reservationId = J.Text(reservation, "reservation")
-            let branch = J.Text(metadata, "branch")
-            let fork = J.Text(metadata, "fork")
+            let branch = publication.Branch
+            let fork = publication.Fork
             let target = OwnerApproval.Record.Parse(approval).BaseBranch
             let failure = "PR receipt lacks current exact-commit coordination authority"
             let receiptApproval = receipt.Approval
@@ -290,21 +295,9 @@ internal class ReceiptVerification {
                 throw CliFailure("stale_approval", "Receipt donor differs from the canonical contribution actor")
             }
 
-            RepositoryAccess.ValidateFork(
-                repo,
-                J.Parse(
-                    J.Write(
-                        map[string, Object?]{
-                            "fork": J.Text(metadata, "fork"),
-                            "branch": J.Text(metadata, "branch"),
-                            "head": physicalHead
-                        }
-                    )
-                ),
-                J.Get(contribution, "actor")
-            )
+            RepositoryAccess.ValidateFork(repo, fork, branch, physicalHead, J.Get(contribution, "actor"))
 
-            policy.ValidateTools(J.Get(metadata, "tools"), J.Text(metadata, "source"))
+            policy.ValidateTools(publication.Tools, publication.SourceKind)
             AttemptContinuation.Declaration(metadata)
 
             return policy
@@ -316,23 +309,24 @@ internal class ReceiptVerification {
             authenticated CoordinationState,
             pull JsonElement
         ) {
+            let publication = PublicationRequestMetadata.Parse(metadata)
             let attempt = receipt.Attempt.ValueKind == JsonValueKind.String ? receipt.Attempt.GetString() ?? "": ""
 
-            if !RequestData.Same(receipt.Predecessor, J.Get(metadata, "predecessor")) || !RequestData.Same(
+            if !RequestData.Same(receipt.Predecessor, publication.Predecessor) || !RequestData.Same(
                 receipt.ImportManifestSha256,
-                J.Get(metadata, "import_manifest_sha256")
+                publication.ImportManifestValue
             ) ||
-                !RequestData.Same(receipt.RequestedModel, J.Get(metadata, "requested_model")) || !RequestData.Same(
+                !RequestData.Same(receipt.RequestedModel, publication.RequestedModelValue) || !RequestData.Same(
                 receipt.ReportedModel,
-                J.Get(metadata, "reported_model")
+                publication.ReportedModelValue
             ) {
                 throw CliFailure("stale_approval", "Continuation receipt differs from authoritative import provenance")
             }
 
-            let prior = J.Get(metadata, "predecessor")
+            let prior = publication.Predecessor
 
             if prior.ValueKind != JsonValueKind.Undefined {
-                if attempt != J.Text(metadata, "attempt") {
+                if attempt != publication.Attempt {
                     throw CliFailure("stale_approval", "Continuation receipt lost its destination attempt fence")
                 }
 
@@ -411,9 +405,10 @@ internal class ReceiptVerification {
             amendment JsonElement,
             paths bool
         ) Data {
+            let publication = PublicationRequestMetadata.Parse(metadata)
             let reservation = J.Get(value, "reservation")
             let approval = J.Get(record, "approval")
-            let fork = J.Text(metadata, "fork")
+            let fork = publication.Fork
 
             let baseline = J.Text(amendment, "base") == "" ? J.Text(reservation, "base"): J.Text(amendment, "base")
 
@@ -428,23 +423,16 @@ internal class ReceiptVerification {
 
             let correction = receipt.Correction
 
-            if !RequestData.Same(correction, J.Get(metadata, "correction")) {
+            if !RequestData.Same(correction, publication.Correction) {
                 throw CliFailure("stale_approval", "Correction receipt differs from authoritative publication metadata")
             }
 
             if correction.ValueKind != JsonValueKind.Undefined {
-                RequestMetadata.Correction(correction, J.Text(metadata, "head"), J.Get(record, "policy"))
+                RequestMetadata.Correction(correction, publication.Head, J.Get(record, "policy"))
             }
 
             if paths {
-                GitHubPathEvidence.Check(
-                    repo,
-                    J.Get(record, "policy"),
-                    approval,
-                    baseline,
-                    J.Text(metadata, "fork"),
-                    exactHead
-                )
+                GitHubPathEvidence.Check(repo, J.Get(record, "policy"), approval, baseline, publication.Fork, exactHead)
             }
 
             AccessState.Check(repo, receipt.Issue, approval, J.Get(contribution, "actor"), J.Get(record, "policy"))
@@ -458,7 +446,7 @@ internal class ReceiptVerification {
             run.Fields["pr_url"] = J.Text(pull, "html_url")
             run.Fields["policy"] = J.Get(record, "policy")
             let authority = J.Get(current, "summary").ValueKind == JsonValueKind.Undefined ?
-            J.Get(metadata, "summary"): J.Get(current, "summary")
+            publication.Summary: J.Get(current, "summary")
 
             if current.GetRawText() == contribution.GetRawText() {
                 run.Fields["public_report"] = PrBody.PublicReport(metadata).Trim()

@@ -7,29 +7,29 @@ internal class ContributionHandoff {
     shared {
         internal func Has(run Data) bool -> J.Get(run.Element(), "handoff").ValueKind != JsonValueKind.Undefined
 
-        internal func StartHead(run Data) string -> Has(run) ? J.Text(
-            J.Get(run.Element(), "handoff"),
-            "head"
-        ): run.Text("base")
+        internal func StartHead(run Data) string -> Has(run) ? HandoffRequestMetadata.Parse(
+            J.Get(run.Element(), "handoff")
+        )
+            .Head: run.Text("base")
 
         internal func Declaration(value JsonElement) {
             if value.ValueKind == JsonValueKind.Undefined {
                 return
             }
 
-            RequestData.Keys(value, "revision,pr,head,fork,donor,actor,id")
-            RepositoryIdentity.CommitSha(J.Text(value, "revision"))
-            RepositoryIdentity.CommitSha(J.Text(value, "head"))
-            RepositoryIdentity.Repo(J.Text(value, "fork"))
-            RepositoryIdentity.Login(J.Text(value, "donor"))
-            RepositoryIdentity.PositiveId(J.Get(value, "actor"))
+            let parsed = HandoffRequestMetadata.Parse(value)
+            RepositoryIdentity.CommitSha(parsed.Revision)
+            RepositoryIdentity.CommitSha(parsed.Head)
+            RepositoryIdentity.Repo(parsed.Fork)
+            RepositoryIdentity.Login(parsed.Donor)
+            RepositoryIdentity.PositiveId(parsed.Actor)
 
-            if J.Number(value, "pr") < 1 {
+            if parsed.Pr < 1 {
                 throw CliFailure("invalid_state", "Handoff needs the prior pull request")
             }
 
             var id Guid
-            if !Guid.TryParseExact(J.Text(value, "id"), "D", out id) || id.ToString("D") != J.Text(value, "id") {
+            if !Guid.TryParseExact(parsed.Id, "D", out id) || id.ToString("D") != parsed.Id {
                 throw CliFailure("invalid_state", "Handoff needs the prior contribution identity")
             }
         }
@@ -47,13 +47,14 @@ internal class ContributionHandoff {
                 throw CliFailure("invalid_state", "Handoff requires published progress from the prior donor")
             }
 
+            let publication = PublicationRequestMetadata.Parse(J.Get(original, "metadata"))
             let source = J.Parse(
                 J.Write(
                     map[string, Object?]{
                         "revision": state.Sha,
                         "pr": J.Number(J.Get(current, "outcome"), "pr"),
                         "head": CoordinationState.Head(value),
-                        "fork": J.Text(J.Get(original, "metadata"), "fork"),
+                        "fork": publication.Fork,
                         "donor": J.Text(original, "donor"),
                         "actor": actor,
                         "id": J.Text(identity, "id")
@@ -82,13 +83,12 @@ internal class ContributionHandoff {
             }
 
             let source = Source(prior)
+            let parsed = HandoffRequestMetadata.Parse(source)
 
-            if J.Number(source, "pr") != number || RepositoryIdentity.PositiveId(
-                J.Get(source, "actor")
-            ) == RepositoryIdentity.PositiveId(actor) || J.Text(prior.Value(), "approval_id") != J.Text(
-                value,
-                "approval_id"
-            ) {
+            if parsed.Pr != number || RepositoryIdentity.PositiveId(parsed.Actor) == RepositoryIdentity.PositiveId(
+                actor
+            ) ||
+                J.Text(prior.Value(), "approval_id") != J.Text(value, "approval_id") {
                 throw CliFailure(
                     "invalid_state",
                     "Handoff requires another donor's published contribution under the same approval; use amend --resume for your own work"
@@ -105,7 +105,7 @@ internal class ContributionHandoff {
                 .ValueKind == JsonValueKind.String ||
                 (J.Text(pull, "state") != "open" && J.Text(pull, "state") != "closed") ||
                 !RepositoryIdentity
-                .SameRepo(J.Text(J.Get(J.Get(pull, "head"), "repo"), "full_name"), J.Text(source, "fork")) {
+                .SameRepo(J.Text(J.Get(J.Get(pull, "head"), "repo"), "full_name"), parsed.Fork) {
                 throw CliFailure("invalid_state", "Prior pull request no longer identifies unmerged donor work")
             }
 
@@ -113,9 +113,9 @@ internal class ContributionHandoff {
 
             RepositoryAccess.ValidateRepository(
                 repo,
-                J.Text(source, "fork"),
-                J.Get(source, "actor"),
-                GitHub.Api("repos/" + J.Text(source, "fork")),
+                parsed.Fork,
+                parsed.Actor,
+                GitHub.Api("repos/" + parsed.Fork),
                 push: false,
                 upstream: GitHub.Api("repos/" + repo)
             )
@@ -125,8 +125,8 @@ internal class ContributionHandoff {
                 J.Get(record, "policy"),
                 J.Get(record, "approval"),
                 OwnerApproval.Record.Parse(J.Get(record, "approval")).Base,
-                J.Text(source, "fork"),
-                J.Text(source, "head")
+                parsed.Fork,
+                parsed.Head
             )
 
             return source
@@ -138,26 +138,22 @@ internal class ContributionHandoff {
             }
 
             Declaration(source)
+            let parsed = HandoffRequestMetadata.Parse(source)
 
             let value = state.Value()
             let identity = J.Get(value, "identity")
             let predecessor = J.Get(identity, "predecessor")
 
-            if J.Text(predecessor, "revision") != J.Text(source, "revision") || J.Text(predecessor, "id") != J.Text(
-                source,
-                "id"
-            ) ||
+            if J.Text(predecessor, "revision") != parsed.Revision || J.Text(predecessor, "id") != parsed.Id ||
                 RepositoryIdentity.PositiveId(J.Get(predecessor, "actor")) != RepositoryIdentity.PositiveId(
-                J.Get(source, "actor")
+                parsed.Actor
             ) ||
-                RepositoryIdentity.PositiveId(J.Get(identity, "actor")) == RepositoryIdentity.PositiveId(
-                J.Get(source, "actor")
-            ) {
+                RepositoryIdentity.PositiveId(J.Get(identity, "actor")) == RepositoryIdentity.PositiveId(parsed.Actor) {
                 throw CliFailure("stale_approval", "Handoff differs from the authoritative donor takeover")
             }
 
             let repo = J.Text(value, "repo")
-            let prior = CoordinationState.At(repo, J.Number(value, "issue"), J.Text(source, "revision"))
+            let prior = CoordinationState.At(repo, J.Number(value, "issue"), parsed.Revision)
 
             if J.Text(prior.Value(), "approval_id") != J.Text(value, "approval_id") || !RequestData.Same(
                 Source(prior),
@@ -172,30 +168,32 @@ internal class ContributionHandoff {
         internal func Candidate(source JsonElement, fork string, head string) {
             if source.ValueKind != JsonValueKind.Undefined {
                 Declaration(source)
-                GitHubPathEvidence.Ancestor(J.Text(source, "fork"), J.Text(source, "head"), fork, head)
+                let parsed = HandoffRequestMetadata.Parse(source)
+                GitHubPathEvidence.Ancestor(parsed.Fork, parsed.Head, fork, head)
             }
         }
 
         internal func Supersede(state CoordinationState, request JsonElement) {
             let contribution = J.Get(state.Value(), "contribution")
-            let source = J.Get(J.Get(contribution, "metadata"), "handoff")
+            let metadata = J.Get(contribution, "metadata")
+            let source = metadata.ValueKind == JsonValueKind.Object ?
+            PublicationRequestMetadata.Parse(metadata).Handoff: JsonElement{}
 
-            if source.ValueKind == JsonValueKind.Undefined || J.Text(contribution, "request") != J.Text(
-                request,
-                "uuid"
-            ) {
+            if source.ValueKind == JsonValueKind.Undefined || J.Text(contribution, "request") != CoordinatorRequest
+                .Parse(request).Uuid {
                 return
             }
 
             Authority(state, source)
+            let parsed = HandoffRequestMetadata.Parse(source)
 
             let number = J.Number(J.Get(contribution, "outcome"), "pr")
             let repo = J.Text(state.Value(), "repo")
-            let path = "repos/" + repo + "/pulls/" + J.Number(source, "pr").ToString()
+            let path = "repos/" + repo + "/pulls/" + parsed.Pr.ToString()
 
             let pull = GitHub.Api(path)
 
-            if number < 1 || number == J.Number(source, "pr") || J.Number(pull, "number") != J.Number(source, "pr") ||
+            if number < 1 || number == parsed.Pr || J.Number(pull, "number") != parsed.Pr ||
                 !RepositoryIdentity
                 .SameRepo(J.Text(J.Get(J.Get(pull, "base"), "repo"), "full_name"), repo) {
                 throw CliFailure("invalid_state", "Cannot link the superseded contribution")
@@ -222,9 +220,10 @@ internal class ContributionHandoff {
                 return
             }
 
+            let parsed = HandoffRequestMetadata.Parse(source)
             let head = Commands.Git(checkout, "rev-parse", "HEAD")
 
-            if head == J.Text(source, "head") {
+            if head == parsed.Head {
                 return
             }
 
@@ -239,11 +238,33 @@ internal class ContributionHandoff {
                 "--no-tags",
                 "--no-recurse-submodules",
                 "--",
-                "https://github.com/" + J.Text(source, "fork") + ".git",
-                J.Text(source, "head")
+                "https://github.com/" + parsed.Fork + ".git",
+                parsed.Head
             )
 
-            Commands.Git(checkout, "merge", "--quiet", "--ff-only", "--no-edit", J.Text(source, "head"))
+            Commands.Git(checkout, "merge", "--quiet", "--ff-only", "--no-edit", parsed.Head)
+        }
+    }
+}
+
+internal class HandoffRequestMetadata(value JsonElement) {
+    private let Source JsonElement = value
+    internal let Revision string = JsonFields.String(value, "Handoff request metadata", "revision")
+    internal let Pr int32 = JsonFields.Int32(value, "Handoff request metadata", "pr")
+    internal let Head string = JsonFields.String(value, "Handoff request metadata", "head")
+    internal let Fork string = JsonFields.String(value, "Handoff request metadata", "fork")
+    internal let Donor string = JsonFields.String(value, "Handoff request metadata", "donor")
+    internal let ActorId int64 = JsonFields.Int64(value, "Handoff request metadata", "actor")
+    internal let Actor JsonElement = J.Get(value, "actor")
+    internal let Id string = JsonFields.String(value, "Handoff request metadata", "id")
+
+    internal func Write(writer Utf8JsonWriter) -> Source.WriteTo(writer)
+
+    shared {
+        internal func Parse(value JsonElement) HandoffRequestMetadata {
+            RequestData.Keys(value, "revision,pr,head,fork,donor,actor,id")
+
+            return HandoffRequestMetadata(value)
         }
     }
 }

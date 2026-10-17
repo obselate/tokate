@@ -294,19 +294,13 @@ internal class PublicSummary {
         }
 
         internal func Usage(value JsonElement) string {
-            let counts = List[string]()
+            let usage = UsageReport.Parse(value)
 
-            for key in[]string{"input_tokens", "output_tokens", "cached_input_tokens"} {
-                var count int64
-                let item = J.Get(value, key)
-
-                counts.Add(
-                    item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 ?
-                    Count(count): "unknown"
-                )
-            }
-
-            return String.Join(" | ", counts)
+            return (usage.InputTokens >= 0 ? Count(usage.InputTokens): "unknown") +
+                " | " +
+                (usage.OutputTokens >= 0 ? Count(usage.OutputTokens): "unknown") +
+                " | " +
+                (usage.CachedInputTokens >= 0 ? Count(usage.CachedInputTokens): "unknown")
         }
 
         internal func Tools(tools JsonElement, label string) string {
@@ -320,32 +314,67 @@ internal class PublicSummary {
             }
 
             for tool in J.Items(tools) {
-                let cells = List[string]()
-
-                for key in[]string{"harness", "provider", "model", "effort"} {
-                    let token = J.Text(tool, key)
-                    cells.Add(RequestData.Identifier(token, model: key == "model"))
-                }
+                let declaration = ToolDeclaration.Parse(tool)
+                let harness = RequestData.Identifier(declaration.Harness)
+                let provider = RequestData.Identifier(declaration.Provider)
+                let model = RequestData.ModelIdentifier(declaration.Model)
+                let effort = RequestData.Identifier(declaration.Effort)
 
                 result += "\n| " +
-                    cells[0] +
+                    harness +
                     " / " +
-                    cells[1] +
+                    provider +
                     " | " +
-                    cells[2] +
+                    model +
                     " / " +
-                    cells[3] +
+                    effort +
                     " | " +
-                    (
-                    J.Get(tool, "coding_seconds").ValueKind == JsonValueKind.Number ?
-                    Duration(J.Number(tool, "coding_seconds")): "unknown"
-                ) +
+                    (declaration.CodingSeconds != nil ? Duration(declaration.CodingSeconds ?? 0): "unknown") +
                     " | " +
-                    Usage(J.Get(tool, "usage")) +
+                    Usage(declaration.Usage) +
                     " |"
             }
 
             return result
+        }
+    }
+}
+
+internal class UsageReport(inputTokens int64, cachedInputTokens int64, outputTokens int64) {
+    internal let InputTokens int64 = inputTokens
+    internal let CachedInputTokens int64 = cachedInputTokens
+    internal let OutputTokens int64 = outputTokens
+
+    shared {
+        internal func Parse(value JsonElement) UsageReport {
+            var input int64 = -1
+            var cached int64 = -1
+            var output int64 = -1
+
+            if value.ValueKind == JsonValueKind.Object {
+                for field in value.EnumerateObject() {
+                    var count int64
+
+                    if field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt64(out count) ||
+                        count < 0 {
+                        count = -1
+                    }
+
+                    switch field.Name {
+                        case "input_tokens" {
+                            input = count
+                        }
+                        case "cached_input_tokens" {
+                            cached = count
+                        }
+                        case "output_tokens" {
+                            output = count
+                        }
+                    }
+                }
+            }
+
+            return UsageReport(input, cached, output)
         }
     }
 }

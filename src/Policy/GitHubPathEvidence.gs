@@ -56,14 +56,15 @@ internal class GitHubPathEvidence {
         }
 
         internal func Amendment(repo string, record JsonElement, metadata JsonElement) {
+            let amendment = AmendmentRequestMetadata.Parse(metadata)
             let approval = J.Get(record, "approval")
-            let baseline = J.Text(metadata, "base") == "" ? J.Text(record, "base"): J.Text(metadata, "base")
+            let baseline = amendment.Base == "" ? J.Text(record, "base"): amendment.Base
             if baseline != J.Text(record, "base") {
                 Target(repo, approval, baseline)
-                Ancestor(repo, baseline, J.Text(metadata, "fork"), J.Text(metadata, "head"))
+                Ancestor(repo, baseline, amendment.Fork, amendment.Head)
             }
-            Ancestor(repo, J.Text(metadata, "previous"), J.Text(metadata, "fork"), J.Text(metadata, "head"))
-            Check(repo, J.Get(record, "policy"), approval, baseline, J.Text(metadata, "fork"), J.Text(metadata, "head"))
+            Ancestor(repo, amendment.Previous, amendment.Fork, amendment.Head)
+            Check(repo, J.Get(record, "policy"), approval, baseline, amendment.Fork, amendment.Head)
         }
 
         internal func CleanMerges(repo string, fork string, approval JsonElement, receipt string, head string) {

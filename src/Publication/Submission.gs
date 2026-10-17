@@ -170,6 +170,7 @@ internal class Submission {
 
         internal func Comment(repo string, issue int32, actor JsonElement, request JsonElement) JsonElement {
             RepositoryIdentity.PositiveId(actor)
+            let declaration = CoordinatorRequest.Parse(request)
 
             var count int32
             var found JsonElement
@@ -195,14 +196,16 @@ internal class Submission {
                     }
 
                     var candidate JsonElement
+                    var candidateId string
 
                     try {
                         candidate = RequestMetadata.CommentData(body)
+                        candidateId = CoordinatorRequest.Parse(candidate).Uuid
                     } catch (error CliFailure) {
                         continue
                     }
 
-                    if J.Text(candidate, "uuid") != J.Text(request, "uuid") {
+                    if candidateId != declaration.Uuid {
                         continue
                     }
 
@@ -269,7 +272,7 @@ internal class Submission {
                 return nil
             }
             let request = claim ? J.Get(run.Element(), "claim_request"): RequestData.FileData(path, 8192)
-            let key = run.Text("repo") + ":" + J.Text(request, "uuid")
+            let key = run.Text("repo") + ":" + CoordinatorRequest.Parse(request).Uuid
             var guidance Dictionary[string, Object?]?
             if WorkflowGuidance.TryGetValue(key, out guidance) {
                 return guidance
@@ -368,7 +371,7 @@ internal class Submission {
             journal string,
             expectedActor JsonElement? = nil
         ) {
-            RequestMetadata.Request(value)
+            let declaration = RequestMetadata.Request(value)
 
             let info = GitHub.Api("repos/" + RepositoryIdentity.Repo(requestRepo))
             let repo = RepositoryIdentity.Repo(J.Text(info, "full_name"))
@@ -420,7 +423,7 @@ internal class Submission {
 
             let state = CoordinationState.Load(repo, issue)
 
-            if J.Text(value, "action") != "release" {
+            if declaration.Action != "release" {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
@@ -443,25 +446,27 @@ internal class Submission {
                 )
             }
 
-            if state.Sha != J.Text(value, "expected") || J.Text(state.Value(), "approval_id") != J.Text(
-                value,
-                "approval"
-            ) {
+            if state.Sha != declaration.Expected || J.Text(state.Value(), "approval_id") != declaration.Approval {
                 throw CliFailure("stale_approval", "Stale state or approval; no request posted")
             }
 
-            if J.Text(value, "action") != "release" {
+            if declaration.Action != "release" {
                 state.Check(repo, issue, RepositoryIdentity.Login(J.Text(viewer, "login")), actor)
             }
 
             var expires int64
 
-            if J.Text(value, "action") != "claim" {
-                if LeaseLifecycle.Transition(J.Text(value, "action")) {
+            if declaration.Action != "claim" {
+                if LeaseLifecycle.Transition(declaration.Action) {
                     LeaseLifecycle.Owner(state, actor)
                 } else {
                     state.Reservation(actor)
-                    LeaseLifecycle.Fence(state, J.Text(J.Get(value, "metadata"), "attempt"))
+                    LeaseLifecycle.Fence(
+                        state,
+                        declaration.Action == "publish" ?
+                        PublicationRequestMetadata.Parse(declaration.Metadata).Attempt:
+                        AmendmentRequestMetadata.Parse(declaration.Metadata).Attempt
+                    )
                 }
 
                 expires = CoordinationState.Unix(J.Get(state.Value(), "reservation"), "expires")
@@ -578,19 +583,15 @@ internal class Submission {
                 summary = PublicSummary.ForHead(current, current.Text("commit"))
             }
 
-            return J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "uuid": correction?.Text("publication_uuid") ?? run.Text("publication_uuid"),
-                        "expected": run.Text("publication_expected") == "" ? run.Text("state_sha"): run.Text(
-                            "publication_expected"
-                        ),
-                        "approval": run.Text("approval"),
-                        "action": "publish",
-                        "metadata": PublicSummary.Attach(metadata, summary)
-                    }
-                )
+            let request = CoordinatorRequest(
+                correction?.Text("publication_uuid") ?? run.Text("publication_uuid"),
+                run.Text("publication_expected") == "" ? run.Text("state_sha"): run.Text("publication_expected"),
+                run.Text("approval"),
+                "publish",
+                J.Parse(J.Write(PublicSummary.Attach(metadata, summary)))
             )
+
+            return J.Parse(request.ToJson())
         }
 
         internal func Submit(args Args, directory string, run Data) {
@@ -671,10 +672,11 @@ internal class Submission {
             }
 
             let request = Publication.Prepare(run, record, PublicationRequest(run))
-            run.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
+            let declaration = CoordinatorRequest.Parse(request)
+            run.Fields["publication_pr"] = PublicationRequestMetadata.Parse(declaration.Metadata).Pr
             run.Save(directory)
 
-            File.WriteAllText(path, J.Write(request) + "\n")
+            File.WriteAllText(path, declaration.ToJson() + "\n")
 
             Request(Args([]string{"request", run.Text("repo") + "#" + run.Number("issue").ToString(), "--file", path}))
         }

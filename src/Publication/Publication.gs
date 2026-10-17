@@ -149,6 +149,8 @@ internal class Publication {
         }
 
         internal func Prepare(run Data, record JsonElement, request JsonElement, newIntent bool = false) JsonElement {
+            let declaration = CoordinatorRequest.Parse(request)
+            let publication = PublicationRequestMetadata.Parse(declaration.Metadata)
             let receipt = ContributionReceipt.Publication(
                 run.Text("repo"),
                 run.Number("issue"),
@@ -158,14 +160,16 @@ internal class Publication {
             )
             let body = PrBody.Coordinated(
                 record,
-                J.Get(request, "metadata"),
+                declaration.Metadata,
                 run.Text("donor"),
                 receipt,
                 "<!-- tokate-v2:" + run.Text("id") + " -->"
             )
             RepositoryAccess.ValidateFork(
                 run.Text("repo"),
-                J.Get(request, "metadata"),
+                publication.Fork,
+                publication.Branch,
+                publication.Head,
                 J.Get(run.Element(), "donor_id")
             )
             let expected = receipt.ToJson()
@@ -175,10 +179,7 @@ internal class Publication {
                     "repos/" + run.Text("repo") + "/pulls",
                     PullRequest(
                         run,
-                        (RequestMetadata.Incomplete(J.Get(request, "metadata")) ? "Incomplete: ": "") + J.Text(
-                            J.Get(record, "issue"),
-                            "title"
-                        ),
+                        (publication.Incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title"),
                         body,
                         true,
                         Policy(J.Write(J.Get(record, "policy"))).MaintainerEdits
@@ -194,14 +195,15 @@ internal class Publication {
                 )
                 Match(run, pull, expected)
             }
-            let metadata = Dictionary[string, Object?]()
-            for field in J.Get(request, "metadata").EnumerateObject() {
-                metadata[field.Name] = field.Value
-            }
-            metadata["pr"] = J.Number(pull, "number")
-            let fields = J.Select(request, "uuid,expected,approval,action")
-            fields["metadata"] = metadata
-            return J.Parse(J.Write(fields))
+            let updated = CoordinatorRequest(
+                declaration.Uuid,
+                declaration.Expected,
+                declaration.Approval,
+                declaration.Action,
+                publication.WithPr(J.Number(pull, "number"))
+            )
+
+            return J.Parse(updated.ToJson())
         }
 
         internal func SavePr(directory string, run Data, pull JsonElement) {

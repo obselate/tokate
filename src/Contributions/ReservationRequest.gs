@@ -19,12 +19,12 @@ internal class ReservationRequest {
             var actions[]string
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestMetadata.Request(request)
-                if !LeaseLifecycle.Transition(J.Text(request, "action")) {
+                let declaration = RequestMetadata.Request(request)
+                if !LeaseLifecycle.Transition(declaration.Action) {
                     throw CliFailure("invalid_state", "Invalid saved reservation request")
                 }
 
-                actions = []string{J.Text(request, "action")}
+                actions = []string{declaration.Action}
             } else {
                 if J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
                     throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
@@ -50,6 +50,7 @@ internal class ReservationRequest {
         }
 
         private func Result(directory string, run Data, state CoordinationState, request JsonElement) int32 {
+            let declaration = CoordinatorRequest.Parse(request)
             let outcome = RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
             let pending = outcome.ValueKind == JsonValueKind.Undefined
 
@@ -57,7 +58,7 @@ internal class ReservationRequest {
                 .Sink
                 .ResultData = map[string, Object?]{
                 "run_directory": directory,
-                "operation": J.Text(request, "action"),
+                "operation": declaration.Action,
                 "pending": pending,
                 "state_sha": state.Sha,
                 "reservation": J.Get(state.Value(), "reservation"),
@@ -65,14 +66,14 @@ internal class ReservationRequest {
             }
 
             if pending {
-                Output.Sink.Actions.Add([]string{"tokate", J.Text(request, "action"), "--run", directory, "--json"})
+                Output.Sink.Actions.Add([]string{"tokate", declaration.Action, "--run", directory, "--json"})
                 Output.Sink.Message("Reservation request pending. Saved work: " + directory)
                 return 8
             }
 
             run.Fields.Remove("reservation_request")
             run.Save(directory)
-            Output.Sink.Message("Reservation " + J.Text(request, "action") + " accepted. Saved work: " + directory)
+            Output.Sink.Message("Reservation " + declaration.Action + " accepted. Saved work: " + directory)
 
             return 0
         }
@@ -100,10 +101,10 @@ internal class ReservationRequest {
             var request = J.Get(run.Element(), "reservation_request")
 
             if request.ValueKind != JsonValueKind.Undefined {
-                RequestMetadata.Request(request)
+                let declaration = RequestMetadata.Request(request)
                 let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
 
-                if outcome.ValueKind == JsonValueKind.Undefined && J.Text(request, "action") != action {
+                if outcome.ValueKind == JsonValueKind.Undefined && declaration.Action != action {
                     throw CliFailure(
                         "invalid_state",
                         "A different reservation request is pending; inspect its outcome before another action"
@@ -112,17 +113,16 @@ internal class ReservationRequest {
 
                 if outcome.ValueKind != JsonValueKind.Undefined {
                     let result = Result(directory, run, state, request)
-                    if J.Text(request, "action") == action {
+                    if declaration.Action == action {
                         return result
                     }
 
                     request = JsonElement{}
                 }
 
-                if outcome.ValueKind == JsonValueKind.Undefined && action == "release" && J.Text(
-                    request,
-                    "expected"
-                ) != state.Sha {
+                if outcome.ValueKind == JsonValueKind.Undefined &&
+                    action == "release" &&
+                    declaration.Expected != state.Sha {
                     request = JsonElement{}
                     run.Fields.Remove("reservation_request")
                     run.Save(directory)
@@ -151,27 +151,23 @@ internal class ReservationRequest {
                     throw CliFailure("invalid_state", "Reservation state does not permit this operation")
                 }
 
-                request = J.Parse(
-                    J.Write(
-                        map[string, Object?]{
-                            "uuid": Guid.NewGuid().ToString("D"),
-                            "expected": state.Sha,
-                            "approval": J.Text(value, "approval_id"),
-                            "action": action,
-                            "metadata": map[string, Object?]{}
-                        }
-                    )
+                let pendingRequest = CoordinatorRequest(
+                    Guid.NewGuid().ToString("D"),
+                    state.Sha,
+                    J.Text(value, "approval_id"),
+                    action,
+                    J.Parse("{}")
                 )
+                request = J.Parse(pendingRequest.ToJson())
 
                 run.Fields["reservation_request"] = request
                 run.Save(directory)
             }
 
+            let declaration = CoordinatorRequest.Parse(request)
             var id Guid
 
-            if !Guid.TryParseExact(J.Text(request, "uuid"), "D", out id) || !LeaseLifecycle.Transition(
-                J.Text(request, "action")
-            ) {
+            if !Guid.TryParseExact(declaration.Uuid, "D", out id) || !LeaseLifecycle.Transition(declaration.Action) {
                 throw CliFailure("invalid_state", "Invalid saved reservation request")
             }
 

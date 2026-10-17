@@ -323,13 +323,15 @@ internal class Admission {
 
             if contribution.ValueKind == JsonValueKind.Object {
                 let metadata = J.Get(contribution, "metadata")
+                let publication = PublicationRequestMetadata.Parse(metadata)
                 RepositoryIdentity.PositiveId(J.Get(outcome, "pr"))
                 RepositoryIdentity.CommitSha(J.Text(outcome, "head"))
-                RepositoryIdentity.Branch(J.Text(metadata, "branch"))
-                RepositoryIdentity.Repo(J.Text(metadata, "fork"))
+                RepositoryIdentity.Branch(publication.Branch)
+                RepositoryIdentity.Repo(publication.Fork)
 
-                if J.Number(outcome, "pr") != J.Number(pull, "number") || J.Text(metadata, "branch") != branch ||
-                    !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), fork) {
+                if J.Number(outcome, "pr") != J.Number(pull, "number") ||
+                    publication.Branch != branch ||
+                    !RepositoryIdentity.SameRepo(publication.Fork, fork) {
                     return JsonElement{}
                 }
 

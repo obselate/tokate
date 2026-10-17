@@ -95,6 +95,7 @@ internal class Amendment {
             }
 
             let metadata = J.Get(original, "metadata")
+            let publication = PublicationRequestMetadata.Parse(metadata)
             let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
             let actor = J.Get(viewer, "id").ToString()
             let originalActor = J.Get(original, "actor").ToString()
@@ -110,14 +111,14 @@ internal class Amendment {
             let failure = "Published contribution authority changed"
             if J.Text(value, "approval_id") != run.Text("approval") || reservationId != run.Text("id") ||
                 originalActor != actor ||
-                !RepositoryIdentity.SameRepo(J.Text(metadata, "fork"), run.Text("head_repo")) || J.Text(
-                metadata,
+                !RepositoryIdentity.SameRepo(publication.Fork, run.Text("head_repo")) || publication.Branch != run.Text(
                 "branch"
-            ) != run.Text("branch") || run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text(
+            ) ||
+                run.Text("branch") != "tokate/v2-" + run.Text("id") || run.Text("base") != J.Text(
+                reservation,
                 "base"
-            ) != J.Text(reservation, "base") || run.Text("base_branch") != approval.BaseBranch || run.Text(
-                "policy_hash"
-            ) != approval.PolicyHash {
+            ) ||
+                run.Text("base_branch") != approval.BaseBranch || run.Text("policy_hash") != approval.PolicyHash {
                 throw CliFailure("stale_approval", failure)
             }
 
@@ -155,15 +156,9 @@ internal class Amendment {
 
             RepositoryAccess.ValidateFork(
                 run.Text("repo"),
-                J.Parse(
-                    J.Write(
-                        map[string, Object?]{
-                            "fork": run.Text("head_repo"),
-                            "branch": run.Text("branch"),
-                            "head": remoteHead
-                        }
-                    )
-                ),
+                run.Text("head_repo"),
+                run.Text("branch"),
+                remoteHead,
                 J.Get(viewer, "id")
             )
 
@@ -196,7 +191,7 @@ internal class Amendment {
                     "expected"
                 ) != amendment?.Text("expected") || J.Get(original, "actor").ToString() != J.Get(viewer, "id")
                     .ToString() || !RequestData.Same(request, Submission.PublicationRequest(run, amendment)) ||
-                    !RequestData.Same(J.Get(original, "metadata"), J.Get(request, "metadata")) ||
+                    !RequestData.Same(J.Get(original, "metadata"), CoordinatorRequest.Parse(request).Metadata) ||
                     outcome.ValueKind != JsonValueKind.Object ||
                     !RequestData
                     .Same(outcome, J.Get(original, "outcome")) {
@@ -902,7 +897,7 @@ internal class Amendment {
             GitHubPathEvidence.Amendment(
                 run.Text("repo"),
                 record,
-                J.Get(amendment.Element(), "request").GetProperty("metadata")
+                CoordinatorRequest.Parse(J.Get(amendment.Element(), "request")).Metadata
             )
 
             Authority(run, amendment, directory: directory)
@@ -917,7 +912,7 @@ internal class Amendment {
             let request = J.Get(amendment.Element(), "request")
             let path = Path.Combine(location, "request.json")
 
-            File.WriteAllText(path, J.Write(request) + "\n")
+            File.WriteAllText(path, CoordinatorRequest.Parse(request).ToJson() + "\n")
 
             if amendment.Text("state") != "requested" {
                 Submission.Request(
@@ -998,13 +993,14 @@ internal class Amendment {
                 metadata["base"] = amendment.Text("base")
             }
 
-            amendment.Fields["request"] = map[string, Object?]{
-                "uuid": amendment.Text("id"),
-                "expected": amendment.Text("expected"),
-                "approval": run.Text("approval"),
-                "action": "amend",
-                "metadata": metadata
-            }
+            let request = CoordinatorRequest(
+                amendment.Text("id"),
+                amendment.Text("expected"),
+                run.Text("approval"),
+                "amend",
+                J.Parse(J.Write(metadata))
+            )
+            amendment.Fields["request"] = J.Parse(request.ToJson())
 
             amendment.Transition("publishing")
 
@@ -1216,10 +1212,11 @@ internal class Amendment {
             let latest = Authority(run, change, directory: directory)
             Access(run, record, true)
             let request = Publication.Prepare(run, record, J.Get(intent, "request"), newIntent: unrecorded)
-            change.Fields["publication_pr"] = J.Number(J.Get(request, "metadata"), "pr")
+            let declaration = CoordinatorRequest.Parse(request)
+            change.Fields["publication_pr"] = PublicationRequestMetadata.Parse(declaration.Metadata).Pr
             change.Fields["publication"] = map[string, Object?]{"stage": stage, "request": request}
             Save(directory, change)
-            Preview(path, J.Write(request) + "\n")
+            Preview(path, declaration.ToJson() + "\n")
             SetStage(directory, change, "request_pending")
             Submission.WriteRequest(
                 run.Text("repo"),

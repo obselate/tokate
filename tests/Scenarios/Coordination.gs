@@ -1421,6 +1421,18 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let prohibited = request.DeepClone()
         prohibited["uuid,expected"] = JsonValue.Create("untrusted synthetic value")
         Coordinate(Event(prohibited), 1)
+        let missing = request.DeepClone()
+        missing.AsObject().Remove("expected")
+        let missingField = Coordinate(Event(missing), 1)
+        Check.Contains(missingField.Error, "Coordinator request")
+        Check.Contains(missingField.Error, "\"expected\"")
+
+        let wrong = request.DeepClone()
+        wrong["metadata"] = JsonValue.Create("not an object")
+        let wrongType = Coordinate(Event(wrong), 1)
+        Check.Contains(wrongType.Error, "Coordinator request")
+        Check.Contains(wrongType.Error, "\"metadata\"")
+
         Check.That(State()["state"]?["reservation"] == nil, "Invalid event changed authority")
         Flow.NoInference()
     }

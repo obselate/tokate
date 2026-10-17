@@ -52,6 +52,13 @@ internal class CommandTrafficChecks {
             let request = flow.ClaimRequest()
             flow.Flow.ResetTraffic()
             Budgets(flow.Flow, Request(flow, request), 21, 1, 1)
+            let payload = "{\"action\":\"claim\",\"approval\":\"" + Check.Text(request["approval"]) +
+                "\",\"expected\":\"" +
+                Check.Text(request["expected"]) + "\",\"metadata\":{},\"uuid\":\"" + Check.Text(request["uuid"]) + "\"}"
+            Check.Contains(
+                Check.Text(flow.Flow.State["posted_request"]?["body"]),
+                "\n```json\n" + payload + "\n```\n</details>"
+            )
             Check.That(
                 File.GetUnixFileMode(Path.Combine(flow.Flow.Temp.Root, "request-input.json.posting.json")) ==
                 (UnixFileMode.UserRead | UnixFileMode.UserWrite),

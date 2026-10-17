@@ -70,28 +70,33 @@ internal class PrBody {
         }
 
         internal func PublicReport(metadata JsonElement, original JsonElement = default(JsonElement)) string {
-            let summary = J.Get(metadata, "summary")
+            let declaration = ContributionReportData.Parse(metadata)
+            let summary = declaration.Summary
             if summary.ValueKind != JsonValueKind.Undefined {
-                PublicSummary.Validate(summary, J.Text(metadata, "head"))
+                PublicSummary.Validate(summary, declaration.Head)
             }
 
-            let gratis = J.Text(metadata, "mode") == "gratis"
-            let amendment = J.Text(metadata, "previous") != ""
+            let gratis = declaration.Mode == "gratis"
+            let amendment = declaration.Previous != ""
             let verification = gratis ? "Tokate ran no repository checks. Checks below are donor-reported.":
             amendment ? "Donor-reported: all original owner checks passed locally; coordinator did not observe execution.":
             RequestMetadata.Incomplete(
-                metadata
+                declaration.HasIncomplete,
+                declaration.Incomplete
             ) ? "Incomplete draft: independent owner verification has not passed. This work is not ready for acceptance.":
             "Donor-reported: original owner checks passed locally on this candidate; coordinator did not observe execution."
             var report = PublicSummary.Report(summary, verification)
             if amendment {
-                report += "\n\n- Review amendment: " + J.Text(metadata, "previous") + " → " + J.Text(metadata, "head") +
+                report += "\n\n- Review amendment: " +
+                    declaration.Previous +
+                    " → " +
+                    declaration.Head +
                     "; separate " +
                     J
                     .Number(metadata, "seconds").ToString() +
                     " second verification budget; no inference launched by amend.\n" +
                     "- Original execution and usage cover original work only." +
-                    PublicSummary.Tools(J.Get(metadata, "tools"), "Amendment donor-reported tools")
+                    PublicSummary.Tools(declaration.Tools, "Amendment donor-reported tools")
             }
             let provenance = amendment ? original: metadata
             return report +
@@ -99,49 +104,60 @@ internal class PrBody {
         }
 
         internal func OriginalProvenance(metadata JsonElement) string {
+            let publication = PublicationRequestMetadata.Parse(metadata)
             var report = "\n\n- Original source: " +
-                (J.Text(metadata, "source") == "tokate" ? "managed Tokate": "external") +
+                (publication.SourceKind == "tokate" ? "managed Tokate": "external") +
                 "; coding execution and usage are donor-reported to the coordinator." +
-                PublicSummary.Tools(J.Get(metadata, "tools"), "Original donor-reported tools")
+                PublicSummary.Tools(publication.Tools, "Original donor-reported tools")
 
-            let correction = J.Get(metadata, "correction")
+            let correction = publication.Correction
 
             if correction.ValueKind != JsonValueKind.Undefined {
-                report += "\n\n- Correction: separate " + J.Number(correction, "seconds").ToString() +
+                let provenance = CorrectionRequestMetadata.Parse(correction)
+                report += "\n\n- Correction: separate " + provenance.Seconds.ToString() +
                     " second verification budget; original declarations cover only the original completed turn." +
-                    PublicSummary.Tools(J.Get(correction, "tools"), "Donor-reported correction tools")
+                    PublicSummary.Tools(provenance.Tools, "Donor-reported correction tools")
             }
 
-            let prior = J.Get(metadata, "predecessor")
-            let handoff = J.Get(metadata, "handoff")
+            let prior = publication.Predecessor
+            let handoff = publication.Handoff
 
             if handoff.ValueKind != JsonValueKind.Undefined {
                 ContributionHandoff.Declaration(handoff)
+                let predecessor = HandoffRequestMetadata.Parse(handoff)
 
-                report += "\n\n- Supersedes #" + J.Number(handoff, "pr").ToString() + " from @" + J.Text(
-                    handoff,
-                    "donor"
-                ) +
+                report += "\n\n- Supersedes #" + predecessor.Pr.ToString() +
+                    " from @" +
+                    predecessor.Donor +
                     ". Preserves the original commits from " +
-                    J.Text(handoff, "head") +
+                    predecessor.Head +
                     ". The repository owner may close the prior draft after reviewing this successor. Its discussion is preserved."
             }
 
             return report + (prior.ValueKind == JsonValueKind.Undefined ? "": "\n\n" + ContinuationReport(prior).Trim())
         }
 
-        internal func ContinuationReport(
-            prior JsonElement
-        ) string -> "Fresh attempt seeded from unpublished interrupted attempt " +
-            J.Text(prior, "attempt") + " under predecessor approval " + J.Text(prior, "approval") +
-            ". Preserved origin state: " +
-            J.Text(prior, "state") + "; failure: " + J.Text(prior, "failure_reason") +
-            ". Prior donor-reported tool: " +
-            J.Text(prior, "harness") + "/" + J.Text(prior, "provider") + ", " + J.Text(prior, "model") + " / " + J.Text(
-            prior,
-            "effort"
-        ) +
-            ". The predecessor is not retroactively successful. Missing prior usage, reports and verification are not reconstructed. Usage and checks below describe the new attempt; all checks cover the complete final diff from the original approved base.\n\n"
+        internal func ContinuationReport(prior JsonElement) string {
+            let predecessor = ContinuationPredecessor.Parse(prior)
+
+            return "Fresh attempt seeded from unpublished interrupted attempt " +
+                predecessor.Attempt +
+                " under predecessor approval " +
+                predecessor.Approval +
+                ". Preserved origin state: " +
+                predecessor.State +
+                "; failure: " +
+                predecessor.FailureReason +
+                ". Prior donor-reported tool: " +
+                predecessor.Harness +
+                "/" +
+                predecessor.Provider +
+                ", " +
+                predecessor.Model +
+                " / " +
+                predecessor.Effort +
+                ". The predecessor is not retroactively successful. Missing prior usage, reports and verification are not reconstructed. Usage and checks below describe the new attempt; all checks cover the complete final diff from the original approved base.\n\n"
+        }
 
         internal func Receipt(body string) ContributionReceipt.Record -> ContributionReceipt.Record.Parse(
             RequestData.Parse(ReceiptText(body))
@@ -221,6 +237,33 @@ internal class PrBody {
                 receiptStart,
                 "<!-- tokate-receipt:" + ContributionReceipt.Record.Parse(receipt).ToText() + " -->"
             )
+        }
+    }
+}
+
+internal class ContributionReportData(value JsonElement, seconds int32) {
+    internal let Summary JsonElement = J.Get(value, "summary")
+    internal let Head string = J.Get(value, "head").ValueKind == JsonValueKind.String ?
+    JsonFields.String(value, "Contribution report", "head"): ""
+    internal let Mode string = J.Get(value, "mode").ValueKind == JsonValueKind.String ?
+    JsonFields.String(value, "Contribution report", "mode"): ""
+    internal let Previous string = J.Get(value, "previous").ValueKind == JsonValueKind.String ?
+    JsonFields.String(value, "Contribution report", "previous"): ""
+    internal let Seconds int32 = seconds
+    internal let Tools JsonElement = J.Get(value, "tools")
+    internal let HasIncomplete bool = J.Get(value, "incomplete").ValueKind != JsonValueKind.Undefined
+    internal let Incomplete bool = J.Get(value, "incomplete").ValueKind == JsonValueKind.True
+
+    shared {
+        internal func Parse(value JsonElement) ContributionReportData {
+            let number = J.Get(value, "seconds")
+            var seconds int32
+
+            if number.ValueKind != JsonValueKind.Number || !number.TryGetInt32(out seconds) {
+                seconds = 0
+            }
+
+            return ContributionReportData(value, seconds)
         }
     }
 }

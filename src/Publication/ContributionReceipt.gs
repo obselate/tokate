@@ -78,25 +78,44 @@ internal class ContributionReceipt {
             reservation string,
             donor string
         ) Record {
-            let metadata = J.Get(request, "metadata")
+            let declaration = CoordinatorRequest.Parse(request)
+            let metadata = declaration.Metadata
+            let publication = PublicationRequestMetadata.Parse(metadata)
             let receipt = Coordinated(
                 repo,
                 issue,
-                J.Text(request, "approval"),
-                J.Text(request, "expected"),
+                declaration.Approval,
+                declaration.Expected,
                 reservation,
                 donor,
-                J.Text(metadata, "head")
+                publication.Head
             )
-            Models(receipt, metadata)
-            for field in[]string{"correction", "handoff", "incomplete"} {
-                let value = J.Get(metadata, field)
-                if value.ValueKind != JsonValueKind.Undefined {
-                    receipt[field] = value
-                }
+            Models(receipt, publication)
+
+            if publication.Correction.ValueKind != JsonValueKind.Undefined {
+                receipt["correction"] = publication.Correction
             }
+
+            if publication.Handoff.ValueKind != JsonValueKind.Undefined {
+                receipt["handoff"] = publication.Handoff
+            }
+
+            if publication.HasIncomplete {
+                receipt["incomplete"] = publication.Incomplete
+            }
+
             AttemptContinuation.Keep(receipt, metadata)
             return Record.Parse(J.Parse(J.Write(receipt)))
+        }
+
+        internal func Models(fields Dictionary[string, Object?], metadata PublicationRequestMetadata) {
+            if metadata.HasRequestedModel {
+                fields["requested_model"] = metadata.RequestedModel
+            }
+
+            if metadata.HasReportedModel {
+                fields["reported_model"] = metadata.ReportedModel
+            }
         }
 
         internal func Models(fields Dictionary[string, Object?], value JsonElement) {
@@ -120,15 +139,20 @@ internal class ContributionReceipt {
                 J.Text(original, "donor"),
                 J.Text(J.Get(current, "outcome"), "head")
             )
-            Models(fields, J.Get(original, "metadata"))
-            let correction = J.Get(J.Get(original, "metadata"), "correction")
-            let handoff = J.Get(J.Get(original, "metadata"), "handoff")
+            let metadata = J.Get(original, "metadata")
+            let publication = PublicationRequestMetadata.Parse(metadata)
+            Models(fields, publication)
+            let correction = publication.Correction
+            let handoff = publication.Handoff
 
             if handoff.ValueKind != JsonValueKind.Undefined {
                 fields["handoff"] = handoff
             }
 
-            if J.Count(J.Get(state, "amendments")) == 0 && RequestMetadata.Incomplete(J.Get(original, "metadata")) {
+            if J.Count(J.Get(state, "amendments")) == 0 && RequestMetadata.Incomplete(
+                publication.HasIncomplete,
+                publication.Incomplete
+            ) {
                 fields["incomplete"] = true
             }
 
