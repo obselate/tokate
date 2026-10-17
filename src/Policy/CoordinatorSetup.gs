@@ -17,11 +17,13 @@ internal class ActionsAllowlist {
 internal class CoordinatorSetup {
     shared {
         internal func EventPolicy(repo string, workflow string) bool {
-            let policies = GitHub.Api("repos/" + repo + "/actions/policies?has_parents=true&per_page=100")
+            let policies = GitHub.Api(
+                "repos/" + repo + "/actions/policies?has_parents=true&" + GitHub.PageSizeParameter
+            )
             let rows = J.Get(policies, "policies")
 
             if rows.ValueKind != JsonValueKind.Array || J.Number(policies, "total_count") != rows.GetArrayLength() ||
-                rows.GetArrayLength() > 100 {
+                rows.GetArrayLength() > GitHub.PageSize {
                 throw Exception(
                     "Cannot inspect all applicable Actions policies; owner setup requires a complete policy read"
                 )
@@ -35,7 +37,7 @@ internal class CoordinatorSetup {
                 let self = J.Text(J.Get(J.Get(row, "_links"), "self"), "href")
 
                 if self != "" {
-                    let prefix = "https://api.github.com/"
+                    let prefix = GitHub.ApiUrl
                     if !self.StartsWith(prefix, StringComparison.Ordinal) {
                         throw Exception("Invalid applicable Actions policy location")
                     }
@@ -330,7 +332,7 @@ internal class CoordinatorSetup {
                 throw Exception("Release is missing a bounded uploaded archive or checksum asset")
             }
 
-            return "https://api.github.com/repos/obselate/tokate/releases/assets/" + id.ToString()
+            return GitHub.ApiUrl + "repos/obselate/tokate/releases/assets/" + id.ToString()
         }
 
         private func Download(url string, path string) -> Commands.Checked(

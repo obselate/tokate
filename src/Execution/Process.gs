@@ -193,6 +193,16 @@ internal class RuntimeBudget {
     Commands.GitOutput(Commands.GitResult(checkout, args, budget: this))
 
     shared {
+        internal const MaxBudgetSeconds int32 = 86400
+
+        internal const SecondsPerDay int32 = 86400
+
+        internal const SecondsPerHour int32 = 3600
+
+        internal const SecondsPerMinute int32 = 60
+
+        internal const MinutesPerHour int32 = 60
+
         internal func ReadSeconds(args Args) int32 -> args.Get("unlimited") == "true" ?
         args.Number("verification-reserve"): args.Number("seconds")
 
@@ -259,6 +269,8 @@ internal class RuntimeBudget {
 
 internal class Commands {
     shared {
+        internal const VersionTimeoutSeconds int32 = 30
+
         internal func InterruptedResult(error Exception) CommandResult? -> switch error {
             case interrupted is CommandInterrupted: interrupted.Result
             case interrupted is CommandInputInterrupted: interrupted.Result

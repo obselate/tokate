@@ -265,7 +265,12 @@ internal class PublicSummary {
         }
 
         internal func Duration(seconds int64) string {
-            let parts = []int64{seconds / 86400, seconds / 3600 % 24, seconds / 60 % 60, seconds % 60}
+            let parts = []int64{
+                seconds / RuntimeBudget.SecondsPerDay,
+                seconds / RuntimeBudget.SecondsPerHour % 24,
+                seconds / RuntimeBudget.SecondsPerMinute % RuntimeBudget.MinutesPerHour,
+                seconds % RuntimeBudget.SecondsPerMinute
+            }
             var result = ""
 
             for i in 0 ... 4 {

@@ -175,6 +175,8 @@ internal class ApiDeadlineException : Exception {
 
 internal class ApiTransport {
     shared {
+        internal const DefaultDeadlineSeconds int32 = 30
+
         internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator. After fixing the cause, the owner reruns the failed coordinator workflow run in Actions. Each event processes only its triggering comment. Recorded UUIDs replay their outcome."
 
         private let Cache Dictionary[string, ApiCache] = Dictionary[string, ApiCache]()

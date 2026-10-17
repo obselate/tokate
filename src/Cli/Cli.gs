@@ -118,7 +118,7 @@ internal class Cli {
     shared {
         internal let Options[]CliOption = []string{
             "claude-profile DIR: Existing Claude configuration directory; defaults to your normal Claude profile",
-            "policy FILE: Repository policy; default: .github/tokate.json in the selected checkout",
+            "policy FILE: Repository policy; default: " + Policy.FilePath + " in the selected checkout",
             "set-default: Save the installed harness named with --harness as the default",
             "trust: Request trusted donor access instead of access to one issue",
             "auth: Explicitly check tool-owned authentication status; never print credential values",
@@ -560,7 +560,9 @@ internal class Cli {
             let match = Regex.Match(value, "^([0-9]{1,7})([smhd])\\z")
             let unit = match.Groups[2].Value
             let seconds = !match.Success ? 0: Int64.Parse(match.Groups[1].Value) *
-            (unit == "s" ? 1: unit == "m" ? 60: unit == "h" ? 3600: 86400)
+            (
+                unit == "s" ? 1: unit == "m" ? RuntimeBudget.SecondsPerMinute: unit == "h" ? RuntimeBudget.SecondsPerHour: RuntimeBudget.SecondsPerDay
+            )
 
             if seconds < 1 || seconds > Int32.MaxValue {
                 throw Exception("Use a time such as 90s, 30m or 2h: --" + name)

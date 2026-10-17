@@ -55,7 +55,9 @@ internal class TaskContext {
             "## Owner instructions (DECREE.md)\nProvenance: approved snapshot\nDECREE.md is absent.\n"
 
             return "# Tokate donation\n\n" +
-                "This session is a Tokate donation. Tokate (https://github.com/obselate/tokate) started you\nto make one change to " +
+                "This session is a Tokate donation. Tokate (" +
+                GitHub.WebUrl +
+                "obselate/tokate) started you\nto make one change to " +
                 run.Repo +
                 (gratis ? " for a task without owner approval": " for issue #" + run.Issue.ToString()) +
                 " for the donor " +

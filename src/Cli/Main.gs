@@ -511,9 +511,12 @@ private func SubmitCommand(options Args) int32? {
             return 8
         }
     } else {
-        let request = run.Pr == 0 ? RequestData.FileData(Path.Combine(directory, "request.json"), 8192):
+        let request = run.Pr == 0 ? RequestData.FileData(
+            Path.Combine(directory, "request.json"),
+            RequestData.RequestByteLimit
+        ):
         JsonElement{}
-        ApiTransport.BeginDeadline(Donate.Active ? run.Seconds: 30)
+        ApiTransport.BeginDeadline(Donate.Active ? run.Seconds: ApiTransport.DefaultDeadlineSeconds)
         try {
             while run.Pr == 0 {
                 Submission.FailedWorkflow(directory, run)
@@ -550,7 +553,7 @@ private func WorkCommand(options Args) int32? {
         options.Command == "work" && options.Get("run") == "" &&
             (
             options.Get("review") == "true" || options.Get("prompt") != "" || options.Get("total") != "" || GitHub.Api(
-                "repos/" + options.Need("repo") + "/contents/.github/tokate.json",
+                "repos/" + options.Need("repo") + "/contents/" + Policy.FilePath,
                 missing: true
             )
                 .ValueKind == JsonValueKind.Undefined

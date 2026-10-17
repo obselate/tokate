@@ -104,7 +104,9 @@ internal class Donate {
                     "repos/" +
                         repo +
                         "/issues?state=open&labels=tokate%3Aapproved" +
-                        "&sort=created&direction=asc&per_page=100&page=" +
+                        "&sort=created&direction=asc&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
                 for issue in issues.EnumerateArray() {
@@ -114,7 +116,7 @@ internal class Donate {
                     }
                     return number
                 }
-                if issues.GetArrayLength() < 100 {
+                if issues.GetArrayLength() < GitHub.PageSize {
                     return 0
                 }
                 page++
@@ -152,7 +154,7 @@ internal class Donate {
                     task["discussion_error"] = error.Message
                 }
                 if !unclaimed && gratis.ValueKind == JsonValueKind.Undefined {
-                    ApiTransport.BeginDeadline(30)
+                    ApiTransport.BeginDeadline(ApiTransport.DefaultDeadlineSeconds)
                     try {
                         while ReservationRequest.Run(Args([]string{"release", "--run", directory})) == 8 {
                             ApiTransport.PollWait("repos/" + options.Need("repo") + "/actions/")
@@ -189,7 +191,7 @@ internal class Donate {
             let info = GitHub.Api("repos/" + repo)
             let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
             let policyFile = GitHub.Api(
-                "repos/" + repo + "/contents/.github/tokate.json?ref=" + revision,
+                "repos/" + repo + "/contents/" + Policy.FilePath + "?ref=" + revision,
                 missing: true
             )
             let gratis = policyFile.ValueKind == JsonValueKind.Undefined

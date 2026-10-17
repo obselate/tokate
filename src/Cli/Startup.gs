@@ -13,7 +13,7 @@ internal class Startup {
             let effort = args.Need("effort")
             let path = args.Get(
                 "policy",
-                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), ".github/tokate.json")
+                Path.Combine(args.Get("path", Directory.GetCurrentDirectory()), Policy.FilePath)
             )
             var text string
             var policy Policy
@@ -264,7 +264,7 @@ internal class Startup {
                     let result = Commands.Run(
                         executable,
                         []string{tool.Name == "socat" ? "-V": "--version"},
-                        seconds: 30,
+                        seconds: Commands.VersionTimeoutSeconds,
                         harness: Harness.Find(tool.Name) != nil
                     )
 

@@ -166,7 +166,7 @@ internal class ContinuationImport {
         }
 
         private func Root(directory string) SafeFileHandle {
-            let descriptor = OpenAt(-100, Path.GetFullPath(directory), 589824, resolve: 4)
+            let descriptor = OpenAt(LocalPaths.CurrentWorkingDirectory, Path.GetFullPath(directory), 589824, resolve: 4)
 
             if descriptor < 0 {
                 throw CliFailure(
@@ -183,7 +183,7 @@ internal class ContinuationImport {
 
             try {
                 if ContinuationStat(handle.DangerousGetHandle().ToInt32(), stat) != 0 ||
-                    (Marshal.ReadInt32(stat, 24) & 61440) != 32768 ||
+                    (Marshal.ReadInt32(stat, 24) & LocalPaths.FileTypeMask) != LocalPaths.RegularFileType ||
                     Marshal.ReadInt64(stat, 16) != 1 {
                     throw CliFailure("invalid_state", "Continuation requires regular files without links: " + path)
                 }
@@ -243,7 +243,7 @@ internal class ContinuationImport {
 
         internal func Metadata(directory string) string {
             try {
-                return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", 1024 * 1024))
+                return UTF8Encoding(false, true).GetString(Bytes(directory, "run.json", RunStorage.RunFileByteLimit))
             } catch (error DecoderFallbackException) {
                 throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }

@@ -68,7 +68,7 @@ internal class OmpRuntime {
                     )
                 }
 
-                let result = Native(binary, []string{"--version"}, 30, budget)
+                let result = Native(binary, []string{"--version"}, Commands.VersionTimeoutSeconds, budget)
                 let version = Regex.Match(
                     result.Output.Trim(),
                     "^omp/([0-9]+\\.[0-9]+\\.[0-9]+[A-Za-z0-9.+-]{0,40})\\z"

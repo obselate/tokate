@@ -38,7 +38,10 @@ internal class ExternalContribution {
 
         private func Failed(directory string, run Data, policy JsonElement) {
             let failure = "External correction requires a recorded independent verification failure"
-            let descriptor = EvidenceOpen(Path.Combine(directory, "verification.json"), 131072 | 2048 | 524288)
+            let descriptor = EvidenceOpen(
+                Path.Combine(directory, "verification.json"),
+                LocalPaths.OpenNoFollow | LocalPaths.OpenNonBlocking | LocalPaths.OpenCloseOnExec
+            )
             if descriptor < 0 {
                 throw ExecutionFailure.Create("invalid_state", failure)
             }
@@ -251,7 +254,7 @@ internal class ExternalContribution {
                 Failed(directory, run, J.Get(record, "policy"))
                 args.Need("seconds")
                 seconds = args.Number("seconds")
-                tools = RequestData.FileData(args.Need("tools"), 4096)
+                tools = RequestData.FileData(args.Need("tools"), RequestData.CorrectionToolsByteLimit)
                 RequestMetadata.Tools(tools)
 
                 let policy = Policy(J.Write(J.Get(record, "policy")))
@@ -467,7 +470,7 @@ internal class ExternalContribution {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.HeadRepo + ".git",
+                    GitHub.WebUrl + run.HeadRepo + ".git",
                     commit
                 )
                 Commands.Git(
@@ -477,7 +480,7 @@ internal class ExternalContribution {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Repo + ".git",
+                    GitHub.WebUrl + run.Repo + ".git",
                     run.Base
                 )
                 Commands.Git(checkout, "checkout", "--quiet", "--detach", commit)

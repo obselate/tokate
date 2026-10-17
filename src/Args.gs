@@ -65,7 +65,7 @@ internal class Args {
             throw Exception("Invalid positive number: " + Args.Label(key))
         }
 
-        if (key == "seconds" || key == "timeout") && number > 86400 {
+        if (key == "seconds" || key == "timeout") && number > RuntimeBudget.MaxBudgetSeconds {
             throw Exception("Use at most 24h: " + Args.Label(key == "seconds" && Command == "init" ? "max-time": key))
         }
 

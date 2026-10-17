@@ -491,19 +491,21 @@ internal class Checks {
         }
 
         private func ReadApprovals(run Data, checkHead string, awaiting List[Object], observation ChecksObservation) {
-            for page in 1 ... 11 {
+            for page in 1 ... GitHub.PageCountLimit + 1 {
                 let response = GitHub.Api(
                     "repos/" +
                         run.Repo +
                         "/actions/runs?head_sha=" +
                         checkHead +
-                        "&status=action_required&per_page=100&page=" +
+                        "&status=action_required&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
 
                 let workflows = J.Get(response, "workflow_runs")
 
-                if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > 100 {
+                if workflows.ValueKind != JsonValueKind.Array || workflows.GetArrayLength() > GitHub.PageSize {
                     throw CliFailure("command_failed", "Cannot read workflow runs awaiting approval")
                 }
 
@@ -524,11 +526,11 @@ internal class Checks {
                     }
                 }
 
-                if workflows.GetArrayLength() < 100 {
+                if workflows.GetArrayLength() < GitHub.PageSize {
                     break
                 }
 
-                if page == 10 {
+                if page == GitHub.PageCountLimit {
                     throw CliFailure("command_failed", "Workflow approval inspection exceeded its bounded history")
                 }
             }

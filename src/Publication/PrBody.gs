@@ -171,7 +171,7 @@ internal class PrBody {
         }
 
         internal func Receipt(body string) ContributionReceipt.Record -> ContributionReceipt.Record.Parse(
-            RequestData.Parse(ReceiptText(body))
+            RequestData.Parse(ReceiptText(body), RequestData.RequestByteLimit)
         )
 
         internal func ReceiptText(

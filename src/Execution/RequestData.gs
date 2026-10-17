@@ -9,6 +9,20 @@ import System.Text.RegularExpressions
 
 internal class RequestData {
     shared {
+        internal const RequestByteLimit int32 = 8192
+
+        internal const CorrectionToolsByteLimit int32 = 4096
+
+        internal const CommentPrefix string = "/tokate "
+
+        internal const OwnershipMarkerPrefix string = "<!-- tokate-v2:"
+
+        internal const ObservedVerification string = "tokate-observed-locally-exact-commit"
+
+        internal const ReportedVerification string = "donor-reported-pass"
+
+        internal const ReceiptByteLimit int32 = 1024 * 1024
+
         internal let ModelPattern string = "^(?=.{1,256}\\z)~?[A-Za-z0-9][A-Za-z0-9._:/-]*\\z"
 
         internal func Same(left JsonElement, right JsonElement) bool {
@@ -19,7 +33,7 @@ internal class RequestData {
             return RequestData.Canonical(left) == RequestData.Canonical(right)
         }
 
-        internal func Parse(text string, limit int32 = 8192) JsonElement {
+        internal func Parse(text string, limit int32) JsonElement {
             if Encoding.UTF8.GetByteCount(text) > limit {
                 throw CliFailure("invalid_state", "Coordination data exceeds its byte limit")
             }

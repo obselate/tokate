@@ -160,7 +160,11 @@ internal class Submission {
 
             for page in 1 ... 21 {
                 let response = GitHub.Api(
-                    "repos/" + repo + "/issues/" + issue.ToString() + "/comments?per_page=100&page=" + page.ToString()
+                    "repos/" + repo + "/issues/" + issue.ToString() +
+                        "/comments?" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
+                        page.ToString()
                 )
 
                 if response.ValueKind != JsonValueKind.Array {
@@ -174,7 +178,7 @@ internal class Submission {
 
                     let body = J.Text(row, "body")
 
-                    if !body.StartsWith("/tokate ", StringComparison.Ordinal) {
+                    if !body.StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) {
                         continue
                     }
 
@@ -222,7 +226,7 @@ internal class Submission {
                     found = canonical
                 }
 
-                if response.GetArrayLength() < 100 {
+                if response.GetArrayLength() < GitHub.PageSize {
                     if count > 1 {
                         throw CliFailure("invalid_state", "Ambiguous duplicate request comments")
                     }
@@ -254,7 +258,7 @@ internal class Submission {
             if run.Pr != 0 || (!claim && (run.PublicationUuid == "" || !File.Exists(path))) {
                 return nil
             }
-            let request = claim ? run.ClaimRequest: RequestData.FileData(path, 8192)
+            let request = claim ? run.ClaimRequest: RequestData.FileData(path, RequestData.RequestByteLimit)
             let key = run.Repo + ":" + CoordinatorRequest.Parse(request).Uuid
             var guidance Dictionary[string, Object?]?
             if WorkflowGuidance.TryGetValue(key, out guidance) {
@@ -293,11 +297,14 @@ internal class Submission {
                     message = "Tokate workflow failed."
                     let checks = GitHub.Api(
                         repo + "/check-suites/" + J.Get(earliest, "check_suite_id").ToString() +
-                            "/check-runs?per_page=100"
+                            "/check-runs?" +
+                            GitHub.PageSizeParameter
                     )
                     for check in J.Items(J.Get(checks, "check_runs")) {
                         let annotations = GitHub.Api(
-                            repo + "/check-runs/" + J.Get(check, "id").ToString() + "/annotations?per_page=100"
+                            repo + "/check-runs/" + J.Get(check, "id").ToString() +
+                                "/annotations?" +
+                                GitHub.PageSizeParameter
                         )
                         for annotation in J.Items(annotations) {
                             if J.Text(annotation, "annotation_level") == "failure" {
@@ -339,7 +346,7 @@ internal class Submission {
         internal func Request(args Args) {
             try {
                 let path = Path.GetFullPath(args.Need("file"))
-                let value = RequestData.FileData(path, 8192)
+                let value = RequestData.FileData(path, RequestData.RequestByteLimit)
 
                 Request(args.Need("repo"), args.Number("issue"), value, path + ".posting.json")
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
@@ -536,7 +543,7 @@ internal class Submission {
                 "verification": RequestMetadata.Incomplete(
                     run.HasIncomplete,
                     run.Incomplete
-                ) ? "not-passed": "donor-reported-pass"
+                ) ? "not-passed": RequestData.ReportedVerification
             }
             let pr = correction?.PublicationPr ?? run.PublicationPr
             if pr > 0 {
@@ -742,7 +749,7 @@ internal class Submission {
 
         private func RestorePublication(directory string, run Data, path string) bool {
             if run.PublicationUuid != "" && File.Exists(path) {
-                let saved = RequestData.FileData(path, 8192)
+                let saved = RequestData.FileData(path, RequestData.RequestByteLimit)
                 let expected = PublicationRequest(run)
 
                 if RequestData.Canonical(saved) != RequestData.Canonical(expected) {

@@ -97,9 +97,9 @@ internal class CodexRuntime {
         private func FileKind(path string, kind int32) {
             let status = [256]byte
 
-            if RuntimeMetadataStat(-100, path, 256, 1, status) != 0 ||
+            if RuntimeMetadataStat(LocalPaths.CurrentWorkingDirectory, path, 256, 1, status) != 0 ||
                 (BitConverter.ToUInt32(status, 0) & 1) == 0 ||
-                (BitConverter.ToUInt16(status, 28) & 61440) != kind {
+                (BitConverter.ToUInt16(status, 28) & LocalPaths.FileTypeMask) != kind {
                 throw ExecutionFailure.Create(
                     "verification_failed",
                     "Managed runtime requires regular files and unlinked metadata directories"
@@ -109,7 +109,7 @@ internal class CodexRuntime {
 
         private func Metadata(path string) JsonElement {
             var current = path
-            var kind int32 = 32768
+            var kind int32 = LocalPaths.RegularFileType
 
             while current != "" {
                 FileKind(current, kind)
@@ -117,7 +117,10 @@ internal class CodexRuntime {
                 kind = 16384
             }
 
-            let descriptor = RuntimeMetadataOpen(path, 131072 | 2048 | 524288)
+            let descriptor = RuntimeMetadataOpen(
+                path,
+                LocalPaths.OpenNoFollow | LocalPaths.OpenNonBlocking | LocalPaths.OpenCloseOnExec
+            )
             if descriptor < 0 {
                 throw ExecutionFailure.Create("verification_failed", "Cannot safely open package metadata")
             }
@@ -138,7 +141,7 @@ internal class CodexRuntime {
         }
 
         internal func Native(path string) bool {
-            FileKind(path, 32768)
+            FileKind(path, LocalPaths.RegularFileType)
             using let file = File.OpenRead(path)
             let header = [20]byte
 

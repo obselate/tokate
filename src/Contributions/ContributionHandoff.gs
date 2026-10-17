@@ -227,7 +227,7 @@ internal class ContributionHandoff {
                 "--no-tags",
                 "--no-recurse-submodules",
                 "--",
-                "https://github.com/" + parsed.Fork + ".git",
+                GitHub.WebUrl + parsed.Fork + ".git",
                 parsed.Head
             )
 

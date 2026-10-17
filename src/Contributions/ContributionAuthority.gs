@@ -19,7 +19,7 @@ internal class ContributionAuthority {
                 if RepositoryIdentity.SameRepo(repo, run.HeadRepo) || !RepositoryIdentity.SameDonor(viewer, run) ||
                     GitHub
                     .Api(
-                    "repos/" + repo + "/contents/.github/tokate.json?ref=" + Uri.EscapeDataString(run.BaseBranch),
+                    "repos/" + repo + "/contents/" + Policy.FilePath + "?ref=" + Uri.EscapeDataString(run.BaseBranch),
                     missing: true
                 )
                     .ValueKind != JsonValueKind.Undefined {
@@ -64,7 +64,7 @@ internal class ContributionAuthority {
 
                 if run.Base != (reservation?.Base ?? "") ||
                     run.PolicyHash != approval.PolicyHash ||
-                    run.Branch != "tokate/v2-" +
+                    run.Branch != GitHub.ContributionBranchPrefix +
                     run.Id ||
                     run.BaseBranch != approval.BaseBranch {
                     throw CliFailure("stale_approval", "Saved run differs from reservation and approval")

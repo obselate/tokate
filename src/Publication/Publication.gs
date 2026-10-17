@@ -32,8 +32,8 @@ internal class Publication {
                 "-c",
                 "credential.helper=!gh auth git-credential",
                 "push",
-                "https://github.com/" + run.HeadRepo + ".git",
-                commit + ":refs/heads/" + run.Branch
+                GitHub.WebUrl + run.HeadRepo + ".git",
+                commit + ":" + GitHub.HeadsRefPrefix + run.Branch
             )
         }
 
@@ -45,7 +45,9 @@ internal class Publication {
                     "repos/" + RepositoryIdentity.Repo(run.Repo) + "/pulls?state=all&head=" + Uri.EscapeDataString(
                         run.Donor + ":" + run.Branch
                     ) +
-                        "&per_page=100&page=" +
+                        "&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
                         page.ToString()
                 )
 
@@ -59,7 +61,7 @@ internal class Publication {
                 let rows = J.Items(response)
                 pulls.AddRange(rows)
 
-                if rows.Count < 100 {
+                if rows.Count < GitHub.PageSize {
                     return pulls
                 }
             }
@@ -91,10 +93,10 @@ internal class Publication {
             if newIntent {
                 return
             }
-            let marker = "<!-- tokate-v2:" + run.Id + " -->"
+            let marker = RequestData.OwnershipMarkerPrefix + run.Id + " -->"
             let body = J.Text(pull, "body")
             let receipt = ContributionReceipt.Record.Parse(
-                RequestData.Parse(PrBody.ReceiptText(body, failure, failure))
+                RequestData.Parse(PrBody.ReceiptText(body, failure, failure), RequestData.RequestByteLimit)
             )
             let expected = ContributionReceipt.Record.Parse(expectedReceipt)
             if !RepositoryIdentity.SameRepo(receipt.Repo, expected.Repo) {
@@ -153,7 +155,7 @@ internal class Publication {
                 declaration.Metadata,
                 run.Donor,
                 receipt,
-                "<!-- tokate-v2:" + run.Id + " -->"
+                RequestData.OwnershipMarkerPrefix + run.Id + " -->"
             )
             RepositoryAccess.ValidateFork(run.Repo, publication.Fork, publication.Branch, publication.Head, run.DonorId)
             let expected = receipt.ToJson()
@@ -231,7 +233,9 @@ internal class Publication {
             let summary = head == "" ? run.PublicSummary: PublicSummary.ForHead(run, head)
             PublicSummary.Attach(receipt, summary)
 
-            let attribution = "Donated with [Tokate](https://github.com/obselate/tokate) by @" +
+            let attribution = "Donated with [Tokate](" +
+                GitHub.WebUrl +
+                "obselate/tokate) by @" +
                 donor +
                 ". No owner approved the task. Tokate ran no repository checks. Repository CI still applies." +
                 PublicSummary.Tools(J.Parse(J.Write([]Object{tool})), "Donor-reported tools")
@@ -242,7 +246,8 @@ internal class Publication {
                 report +
                 "\n\n" +
                 attribution +
-                "\n\n<!-- tokate-v2:" +
+                "\n\n" +
+                RequestData.OwnershipMarkerPrefix +
                 id +
                 " -->\n" +
                 marker

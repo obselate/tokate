@@ -327,15 +327,19 @@ internal class ClaudeCode {
             let metadata = [256]byte
 
             if full == profile || full.StartsWith(profile + "/") ||
-                RuntimeMetadataStat(-100, full, 256, 1, metadata) != 0 ||
-                (BitConverter.ToUInt16(metadata, 28) & 61440) != 32768 {
+                RuntimeMetadataStat(LocalPaths.CurrentWorkingDirectory, full, 256, 1, metadata) != 0 ||
+                (BitConverter.ToUInt16(metadata, 28) & LocalPaths.FileTypeMask) != LocalPaths
+                .RegularFileType {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "Claude native report must be a regular unlinked file outside the native-login profile."
                 )
             }
 
-            let descriptor = RuntimeMetadataOpen(full, 131072 | 2048 | 524288)
+            let descriptor = RuntimeMetadataOpen(
+                full,
+                LocalPaths.OpenNoFollow | LocalPaths.OpenNonBlocking | LocalPaths.OpenCloseOnExec
+            )
             if descriptor < 0 {
                 throw ExecutionFailure.Create("invalid_state", "Cannot safely open Claude native report.")
             }

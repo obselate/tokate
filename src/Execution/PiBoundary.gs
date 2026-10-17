@@ -158,7 +158,7 @@ internal class PiBoundary {
         }
 
         private func Version(root string, node string, arguments[]string, budget RuntimeBudget?) string {
-            let result = Commands.Run(node, arguments, root, seconds: 30, budget: budget)
+            let result = Commands.Run(node, arguments, root, seconds: Commands.VersionTimeoutSeconds, budget: budget)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw LinuxSandbox.ProbeFailure(result, "Pi CLI or Node readiness check failed; no inference started")
             }
