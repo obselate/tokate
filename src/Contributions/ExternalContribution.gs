@@ -255,7 +255,7 @@ internal class ExternalContribution {
             args Args,
             commit string,
             retry bool
-        ) ValueTuple[int32, JsonElement, string] {
+        ) ValueTuple[int32, string] {
             var seconds = run.Number("seconds")
             var tools = J.Get(run.Element(), "tools")
             var history = ""
@@ -283,12 +283,13 @@ internal class ExternalContribution {
                 history = History(directory, run, commit)
             }
 
-            let metadata = J.Parse(
-                J.Write(
-                    map[string, Object?]{"fork": run.Text("head_repo"), "branch": run.Text("branch"), "head": commit}
-                )
+            RepositoryAccess.ValidateFork(
+                run.Text("repo"),
+                run.Text("head_repo"),
+                run.Text("branch"),
+                commit,
+                J.Get(run.Element(), "donor_id")
             )
-            RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
 
             let checkout = Path.Combine(directory, "checkout")
             if retry {
@@ -327,7 +328,7 @@ internal class ExternalContribution {
                 )
             }
 
-            return (seconds, metadata, checkout)
+            return (seconds, checkout)
         }
 
         private func VerifyExternal(
@@ -337,8 +338,7 @@ internal class ExternalContribution {
             checkout string,
             commit string,
             seconds int32,
-            retry bool,
-            metadata JsonElement
+            retry bool
         ) {
             let timer = Stopwatch.StartNew()
             run.Transition("verifying")
@@ -408,7 +408,13 @@ internal class ExternalContribution {
                 ContributionAuthority.Recheck(run)
 
                 if retry {
-                    RepositoryAccess.ValidateFork(run.Text("repo"), metadata, J.Get(run.Element(), "donor_id"))
+                    RepositoryAccess.ValidateFork(
+                        run.Text("repo"),
+                        run.Text("head_repo"),
+                        run.Text("branch"),
+                        commit,
+                        J.Get(run.Element(), "donor_id")
+                    )
                     Unpublished(directory, run)
                     History(directory, run, "")
                 }
@@ -472,8 +478,7 @@ internal class ExternalContribution {
 
                 let prepared = PrepareCheckout(directory, run, record, args, commit, retry)
                 let seconds = prepared.Item1
-                let metadata = prepared.Item2
-                let checkout = prepared.Item3
+                let checkout = prepared.Item2
 
                 if summary.ValueKind != JsonValueKind.Undefined {
                     run.Fields["public_summary"] = summary
@@ -527,7 +532,7 @@ internal class ExternalContribution {
                     throw ExecutionFailure.From(error, Output.Sink.FailureCode)
                 }
 
-                VerifyExternal(directory, run, record, checkout, commit, seconds, retry, metadata)
+                VerifyExternal(directory, run, record, checkout, commit, seconds, retry)
 
                 Output.Sink.Message(
                     "Exact external commit passed independent verification. Use " + Output.Sink.Command(

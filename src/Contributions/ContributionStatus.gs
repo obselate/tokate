@@ -284,7 +284,9 @@ internal class ContributionStatus {
         drafts List[Object]
     ) {
         let value = state.Value()
-        let handoff = J.Get(J.Get(J.Get(value, "contribution"), "metadata"), "handoff")
+        let metadata = J.Get(J.Get(value, "contribution"), "metadata")
+        let handoff = metadata.ValueKind == JsonValueKind.Object ?
+        PublicationRequestMetadata.Parse(metadata).Handoff: JsonElement{}
 
         if handoff.ValueKind == JsonValueKind.Object {
             row["handoff"] = handoff
@@ -487,10 +489,11 @@ internal class ContributionStatus {
         let current = CoordinationState.Current(value)
         let outcome = J.Get(current, "outcome")
         let metadata = J.Get(contribution, "metadata")
+        let publication = PublicationRequestMetadata.Parse(metadata)
         let donor = RepositoryIdentity.Login(J.Text(contribution, "donor"))
         let actor = RepositoryIdentity.PositiveId(J.Get(contribution, "actor"))
-        let branch = RepositoryIdentity.Branch(J.Text(metadata, "branch"))
-        let repository = RepositoryIdentity.Repo(J.Text(metadata, "fork"))
+        let branch = RepositoryIdentity.Branch(publication.Branch)
+        let repository = RepositoryIdentity.Repo(publication.Fork)
 
         if J.Number(outcome, "pr") != J.Number(pull, "number") || J.Text(outcome, "head") != J.Text(head, "sha") ||
             J.Number(J.Get(contribution, "outcome"), "pr") != J.Number(pull, "number") || RepositoryIdentity.PositiveId(
@@ -500,7 +503,7 @@ internal class ContributionStatus {
             receipt,
             ContributionReceipt.FromState(value)
         ) ||
-            J.Text(metadata, "head") != J.Text(J.Get(contribution, "outcome"), "head") {
+            publication.Head != J.Text(J.Get(contribution, "outcome"), "head") {
             return false
         }
 

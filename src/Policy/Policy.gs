@@ -370,11 +370,12 @@ internal class Policy {
         }
 
         for tool in declarations {
+            let declaration = ToolDeclaration.Parse(tool)
             Validate(
-                J.Text(tool, "harness"),
-                J.Text(tool, "provider"),
-                J.Text(tool, "model"),
-                J.Text(tool, "effort"),
+                declaration.Harness,
+                declaration.Provider,
+                declaration.Model,
+                declaration.Effort,
                 1,
                 source == "external"
             )

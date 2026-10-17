@@ -296,24 +296,21 @@ internal class ContributionPreparation {
                 Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
             }
 
-            let request = J.Parse(
-                J.Write(
-                    map[string, Object?]{
-                        "uuid": Guid.NewGuid().ToString("D"),
-                        "expected": state.Sha,
-                        "approval": run.Text("approval"),
-                        "action": "claim",
-                        "metadata": map[string, Object?]{}
-                    }
-                )
+            let pendingRequest = CoordinatorRequest(
+                Guid.NewGuid().ToString("D"),
+                state.Sha,
+                run.Text("approval"),
+                "claim",
+                J.Parse("{}")
             )
+            let request = J.Parse(pendingRequest.ToJson())
 
-            RequestMetadata.Request(request)
+            let declaration = RequestMetadata.Request(request)
 
             run.Fields["claim_request"] = request
             run.Fields["requested_fork"] = args.Get("fork")
 
-            let directory = Allocate(RunStorage.Store(args), run, J.Text(request, "uuid"))
+            let directory = Allocate(RunStorage.Store(args), run, declaration.Uuid)
             Create(directory)
             using let lease = RunStorage.Lease(directory)
 
@@ -340,20 +337,21 @@ internal class ContributionPreparation {
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
             let request = J.Get(run.Element(), "claim_request")
-            RequestMetadata.Request(request)
+            let declaration = RequestMetadata.Request(request)
 
             if run.Number("version") != 2 || run.Text("state") != "claim_pending" ||
                 (run.Text("source") != "tokate" && run.Text("source") != "external") ||
-                J.Text(request, "action") != "claim" || !RepositoryIdentity.SameDonor(viewer, run) ||
+                declaration.Action != "claim" ||
+                !RepositoryIdentity.SameDonor(viewer, run) || run.Fields.ContainsKey("id") || run.Fields.ContainsKey(
+                "attempt"
+            ) ||
                 run
                 .Fields
-                .ContainsKey("id") || run.Fields.ContainsKey("attempt") || run.Fields.ContainsKey(
-                "preparation_identity"
-            ) {
+                .ContainsKey("preparation_identity") {
                 throw CliFailure("invalid_state", "Invalid saved pending claim; no authority was acquired")
             }
 
-            if J.Text(request, "approval") != run.Text("approval") || J.Text(state.Value(), "approval_id") != run.Text(
+            if declaration.Approval != run.Text("approval") || J.Text(state.Value(), "approval_id") != run.Text(
                 "approval"
             ) {
                 throw CliFailure("stale_approval", "Pending claim approval changed; original work is preserved")
@@ -405,7 +403,7 @@ internal class ContributionPreparation {
 
         private func Accepted(run Data, viewer JsonElement, state CoordinationState, outcome JsonElement) {
             let request = J.Get(run.Element(), "claim_request")
-            let uuid = J.Text(request, "uuid")
+            let uuid = CoordinatorRequest.Parse(request).Uuid
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
 
@@ -439,6 +437,7 @@ internal class ContributionPreparation {
             let repo = RepositoryIdentity.Repo(run.Text("repo"))
             let issue = run.Number("issue")
             let request = J.Get(run.Element(), "claim_request")
+            let declaration = CoordinatorRequest.Parse(request)
 
             if !RepositoryIdentity.SameDonor(viewer, run) {
                 throw CliFailure(
@@ -489,7 +488,7 @@ internal class ContributionPreparation {
                         break
                     }
 
-                    if state.Sha != J.Text(request, "expected") {
+                    if state.Sha != declaration.Expected {
                         throw CliFailure(
                             "invalid_state",
                             "Coordination changed without this exact claim outcome; authority is unknown. Inspect the saved run and current coordination. No new request was posted."

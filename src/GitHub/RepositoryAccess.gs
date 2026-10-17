@@ -5,8 +5,14 @@ import System.Text.Json
 
 internal class RepositoryAccess {
     shared {
-        internal func ValidateFork(repo string, metadata JsonElement, actor JsonElement) JsonElement {
-            let fork = RepositoryIdentity.Repo(J.Text(metadata, "fork"))
+        internal func ValidateFork(
+            repo string,
+            forkRepo string,
+            branch string,
+            head string,
+            actor JsonElement
+        ) JsonElement {
+            let fork = RepositoryIdentity.Repo(forkRepo)
             let info = GitHub.Api("repos/" + fork)
 
             RepositoryAccess.ValidateRepository(
@@ -18,13 +24,15 @@ internal class RepositoryAccess {
                 upstream: GitHub.Api("repos/" + repo)
             )
 
-            let reference = GitHub.Api("repos/" + fork + "/git/ref/heads/" + J.Text(metadata, "branch"))
-            if J.Text(J.Get(reference, "object"), "sha") != J.Text(metadata, "head") {
+            let reference = GitHub.Api("repos/" + fork + "/git/ref/heads/" + branch)
+            if J.Text(J.Get(reference, "object"), "sha") != head {
                 throw Exception(
                     "Fork branch does not point to the exact declared commit. Push it with: git push https://github.com/" +
                         fork +
                         ".git " +
-                        J.Text(metadata, "head") + ":refs/heads/" + J.Text(metadata, "branch")
+                        head +
+                        ":refs/heads/" +
+                        branch
                 )
             }
 

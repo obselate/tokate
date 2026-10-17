@@ -86,8 +86,9 @@ internal class LeaseLifecycle {
         ) Object {
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
-            let action = J.Text(request, "action")
-            let uuid = J.Text(request, "uuid")
+            let declaration = CoordinatorRequest.Parse(request)
+            let action = declaration.Action
+            let uuid = declaration.Uuid
             let now = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
             let duration = J.Get(policy, "reservation_seconds").ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
                 policy,
