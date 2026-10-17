@@ -283,24 +283,24 @@ internal class PiHarness {
         }
 
         internal func ValidateSaved(run Data) {
-            PiBoundary.Endpoint(run.Text("pi_endpoint"))
+            PiBoundary.Endpoint(run.PiEndpoint)
 
             let args = Args([]string{"work", "--harness", "pi"})
-            args.Values["--pi-root"] = run.Text("pi_root")
-            args.Values["--node"] = run.Text("pi_node")
-            args.Values["--harness-path"] = run.Text("harness_path")
+            args.Values["--pi-root"] = run.PiRoot
+            args.Values["--node"] = run.PiNode
+            args.Values["--harness-path"] = run.HarnessPath
 
             Runtime(args)
-            if args.Need("pi-root") != run.Text("pi_root") || args.Need("node") != run.Text("pi_node") {
+            if args.Need("pi-root") != run.PiRoot || args.Need("node") != run.PiNode {
                 throw ExecutionFailure.Create("invalid_state", "Saved pi runtime changed; no substitution")
             }
         }
 
         internal func BeforeRun(run Data, coding RuntimeBudget) {
-            run.Fields["failure_stage"] = "endpoint_check"
-            run.Fields["failure_reason"] = "endpoint_unavailable"
-            let endpoint = PiBoundary.Endpoint(run.Text("pi_endpoint"))
-            run.Fields["endpoint_catalog"] = PiCatalog.Read(run.Text("pi_node"), run.Text("model"), endpoint, coding)
+            run.FailureStage = "endpoint_check"
+            run.FailureReason = "endpoint_unavailable"
+            let endpoint = PiBoundary.Endpoint(run.PiEndpoint)
+            run.EndpointCatalog = PiCatalog.Read(run.PiNode, run.Model, endpoint, coding)
         }
 
         internal func Prepare(
@@ -309,35 +309,32 @@ internal class PiHarness {
             record JsonElement,
             coding RuntimeBudget,
             models Func[string, string, string, List[string]?]
-        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
-            let runtime = PiBoundary.Probe(run.Text("pi_root"), run.Text("pi_node"), coding)
-            let endpoint = PiBoundary.Endpoint(run.Text("pi_endpoint"))
-            let limits = PiBoundary.ModelSettings(
-                run.Text("pi_root"),
-                run.Text("pi_node"),
-                run.Text("model"),
-                endpoint,
-                coding
-            )
-            PiBoundary.CheckEffort(limits, run.Text("effort"))
+        ) ValueTuple[[]string, Action[Data]?] {
+            let runtime = PiBoundary.Probe(run.PiRoot, run.PiNode, coding)
+            let endpoint = PiBoundary.Endpoint(run.PiEndpoint)
+            let limits = PiBoundary.ModelSettings(run.PiRoot, run.PiNode, run.Model, endpoint, coding)
+            PiBoundary.CheckEffort(limits, run.Effort)
 
-            let args = PiBoundary.Cli(run.Text("harness_path"), run.Text("pi_node"))
+            let args = PiBoundary.Cli(run.HarnessPath, run.PiNode)
             args.AddRange([]string{"--mode", "json", "--provider", J.Text(limits, "provider")})
-            args.AddRange([]string{"--model", run.Text("model")})
-            args.AddRange([]string{"--thinking", run.Text("effort") == "absent" ? "off": run.Text("effort")})
+            args.AddRange([]string{"--model", run.Model})
+            args.AddRange([]string{"--thinking", run.Effort == "absent" ? "off": run.Effort})
             let invocation = map[string, Object?]{
                 "harness": "pi",
                 "sdk_version": J.Text(runtime, "version"),
                 "node_version": J.Text(runtime, "node"),
                 "provider": J.Text(limits, "provider"),
-                "model": run.Text("model"),
-                "effort": run.Text("effort"),
+                "model": run.Model,
+                "effort": run.Effort,
                 "context_window": J.Number(limits, "contextWindow"),
                 "max_tokens": J.Number(limits, "maxTokens")
             }
-            return ValueTuple[[]string, Dictionary[string, Object?]?](
+            return ValueTuple[[]string, Action[Data]?](
                 args.ToArray(),
-                map[string, Object?]{"pi_version": J.Text(runtime, "version"), "observed_invocation": invocation}
+                saved -> {
+                    saved.PiVersion = J.Text(runtime, "version")
+                    saved.ObservedInvocation = J.Parse(J.Write(invocation))
+                }
             )
         }
 
@@ -356,12 +353,10 @@ internal class PiHarness {
             }
             let evidence = SessionEvidence.Completed(
                 result.Output,
-                run.Text("model"),
-                J.Text(J.Get(run.Element(), "observed_invocation"), "provider")
+                run.Model,
+                J.Text(run.ObservedInvocation, "provider")
             )
-            run.Fields[
-                "usage_provenance"
-            ] = "harness-reported; server identity, resources and billing are not independently proven"
+            run.UsageProvenance = "harness-reported; server identity, resources and billing are not independently proven"
             return evidence
         }
     }

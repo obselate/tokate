@@ -108,9 +108,9 @@ internal class RunStorage {
             roots.Add(root)
 
             for row in SavedRuns(roots.ToArray()).Rows {
-                if row.Text("attempt") == id || J.Text(J.Get(row.Value, "claim_request"), "uuid") == id {
+                if row.Run.Attempt == id || J.Text(row.Run.ClaimRequest, "uuid") == id {
                     Output.Sink.RunDirectory = row.Location
-                    if stopped(Data.From(row.Value)) {
+                    if stopped(row.Run) {
                         throw ExecutionFailure.Create(
                             "invalid_state",
                             "Saved contribution already exists: " + row.Location + ". Run " + Output.Sink.Command(
@@ -219,7 +219,7 @@ internal class RunStorage {
                 "retained_bytes": retainedBytes,
                 "checkout_bytes": checkoutBytes,
                 "measurement": "Regular-file bytes; symlinks are not followed; shared/reflink blocks are not deduplicated.",
-                "next_safe_cleanup": run.Text("state") == "published" || run.Text("state") == "generated" ?
+                "next_safe_cleanup": run.State == "published" || run.State == "generated" ?
                 "Keep this run for amendment and recovery. Once the work is accepted and evidence is backed up, explicitly delete only this run directory; later amendment will no longer be available. Do not delete ignored or untracked files.":
                 "Keep the checkout and evidence for completion or no-inference recovery. Do not delete ignored or untracked files to reclaim space."
             }

@@ -178,7 +178,7 @@ internal class Verification {
         }
 
         internal func Results(run Data, verification JsonElement) int32 {
-            let checks = J.Items(J.Get(run.Element(), "verification"))
+            let checks = J.Items(run.Verification)
             let commands = J.Items(verification)
 
             if checks.Count == 0 || checks.Count != commands.Count {

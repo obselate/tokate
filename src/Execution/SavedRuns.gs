@@ -6,36 +6,32 @@ import System.IO
 import System.Linq
 import System.Text.Json
 
-internal class SavedRun(location string, value JsonElement, current bool) {
+internal class SavedRun(location string, value JsonElement, current bool, run Data) {
     internal let Location string = location
     internal let Value JsonElement = value
+    internal let Run Data = run
     internal let Current bool = current
     internal let Created DateTime = Directory.GetCreationTimeUtc(location)
     internal let Modified DateTime = File.GetLastWriteTimeUtc(Path.Combine(location, "run.json"))
-    internal var Number int32 = RunStorage.Number(
-        location,
-        RunStorage.Prefix(J.Text(value, "repo"), J.Number(value, "issue"))
-    )
+    internal var Number int32 = RunStorage.Number(location, RunStorage.Prefix(run.Repo, run.Issue))
     internal var Outcome string = ""
 
-    internal prop Issue int32 -> J.Number(Value, "issue")
+    internal prop Issue int32 -> Run.Issue
 
-    internal prop Name string -> Text("repo") + "#" + Issue.ToString() + "-" + Number.ToString()
+    internal prop Name string -> Run.Repo + "#" + Issue.ToString() + "-" + Number.ToString()
 
-    internal prop State string -> Outcome == "" ? Text("state"): Outcome
+    internal prop State string -> Outcome == "" ? Run.State: Outcome
 
     internal prop Finished bool -> Outcome != "" || Array.IndexOf(
         []string{"failed", "refused", "skipped"},
-        Text("state")
+        Run.State
     ) >= 0
 
     internal prop Next string -> Outcome != "" ||
-        Busy() ? "": (Text("state") == "claim_pending" || Text("state") == "claimed") &&
-        Text("source") == "tokate" ? "work":
-    J.Number(Value, "pr") > 0 ? "checks":
-    Text("state") == "generated" || Text("state") == "incomplete_generated" ? "submit": ""
-
-    internal func Text(key string) string -> J.Text(Value, key)
+        Busy() ? "": (Run.State == "claim_pending" || Run.State == "claimed") &&
+        Run.Source == "tokate" ? "work":
+    Run.Pr > 0 ? "checks":
+    Run.State == "generated" || Run.State == "incomplete_generated" ? "submit": ""
 
     internal func Busy() bool {
         if !File.Exists(Path.Combine(Location, ".lock")) {
@@ -50,8 +46,8 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         }
     }
 
-    internal func Pull(repo string, pr int32) bool -> J.Number(Value, "pr") == pr && String.Equals(
-        Text("repo"),
+    internal func Pull(repo string, pr int32) bool -> Run.Pr == pr && String.Equals(
+        Run.Repo,
         repo,
         StringComparison.OrdinalIgnoreCase
     )
@@ -63,7 +59,7 @@ internal class SavedRun(location string, value JsonElement, current bool) {
     }
 
     internal func Matches(repo string, issue int32) bool -> Issue == issue && String.Equals(
-        Text("repo"),
+        Run.Repo,
         repo,
         StringComparison.OrdinalIgnoreCase
     )
@@ -72,14 +68,14 @@ internal class SavedRun(location string, value JsonElement, current bool) {
         "run": Location,
         "name": Name,
         "storage": Current ? "current": "previous",
-        "id": Text("id"),
-        "repo": Text("repo"),
+        "id": Run.Id,
+        "repo": Run.Repo,
         "issue": Issue,
         "number": Number,
-        "donor": Text("donor"),
-        "model": Text("model"),
-        "state": Text("state"),
-        "pr": J.Number(Value, "pr"),
+        "donor": Run.Donor,
+        "model": Run.Model,
+        "state": Run.State,
+        "pr": Run.Pr,
         "outcome": Outcome,
         "finished": Finished,
         "modified": Modified.ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -123,12 +119,12 @@ internal class SavedRuns {
         )
 
         internal func Pick(rows List[SavedRun]) SavedRun? {
-            let active = rows.FindAll(row -> row.Text("state") != "failed")
+            let active = rows.FindAll(row -> row.Run.State != "failed")
             return active.Count > 1 ? nil: active.Count == 1 ? active[0]: rows.Count > 0 ? rows[rows.Count - 1]: nil
         }
 
         internal func Outcomes(rows List[SavedRun]) {
-            let pulls = rows.Where(row -> J.Number(row.Value, "pr") > 0 && !row.Finished).Take(100).ToList()
+            let pulls = rows.Where(row -> row.Run.Pr > 0 && !row.Finished).Take(100).ToList()
 
             if pulls.Count == 0 {
                 return
@@ -137,9 +133,9 @@ internal class SavedRuns {
             var query = ""
 
             for i in 0 ... pulls.Count {
-                let repo = pulls[i].Text("repo").Split('/')
+                let repo = pulls[i].Run.Repo.Split('/')
                 query += "p" + i.ToString() + ":repository(owner:\"" + repo[0] + "\",name:\"" + repo[1] + "\")"
-                query += "{pullRequest(number:" + J.Number(pulls[i].Value, "pr").ToString() + "){state}}"
+                query += "{pullRequest(number:" + pulls[i].Run.Pr.ToString() + "){state}}"
             }
 
             ApiTransport.BeginDeadline(10)
@@ -185,10 +181,11 @@ internal class SavedRuns {
                         let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
 
                         reason = "Invalid repository or excessive saved metadata."
-                        RepositoryIdentity.Repo(J.Text(value, "repo"))
+                        let run = Data.Parse(value)
+                        RepositoryIdentity.Repo(run.Repo)
 
-                        for key in[]string{"id", "repo", "donor", "model", "state"} {
-                            if J.Text(value, key).Length > 256 {
+                        for text in[]string{run.Id, run.Repo, run.Donor, run.Model, run.State} {
+                            if text.Length > 256 {
                                 throw ExecutionFailure.Create(
                                     "invalid_state",
                                     "Saved contribution metadata is too long"
@@ -196,13 +193,8 @@ internal class SavedRuns {
                             }
                         }
 
-                        if Data.InvalidField(value) != "" {
-                            reason = "Unsupported version or incomplete saved contribution."
-                            throw ExecutionFailure.Create(
-                                "invalid_state",
-                                "Unsupported or incomplete saved contribution"
-                            )
-                        }
+                        reason = "Unsupported version or incomplete saved contribution."
+                        Data.ValidateRequired(value)
 
                         reason = "Cannot load this run. Inspect it with tokate status --run " + directory + "."
                         let correction = Path.Combine(directory, "correction.json")
@@ -211,7 +203,7 @@ internal class SavedRuns {
                             Data.LegacyCorrection(correction)
                         }
 
-                        let row = SavedRun(directory, value, root == RunStorage.Root())
+                        let row = SavedRun(directory, value, root == RunStorage.Root(), run)
                         Rows.Add(row)
 
                         if row.Number == 0 {
@@ -247,7 +239,7 @@ internal class SavedRuns {
             var number int32 = 1
 
             for other in legacy {
-                if other.Matches(row.Text("repo"), row.Issue) &&
+                if other.Matches(row.Run.Repo, row.Issue) &&
                     (
                     other.Created < row.Created ||
                         (other.Created == row.Created && String.CompareOrdinal(other.Location, row.Location) < 0)
@@ -260,10 +252,10 @@ internal class SavedRuns {
         }
 
         Rows.Sort(
-            (a, b) -> !a.Matches(b.Text("repo"), b.Issue) ?
+            (a, b) -> !a.Matches(b.Run.Repo, b.Issue) ?
             StringComparer.OrdinalIgnoreCase.Compare(
-                a.Text("repo") + "#" + a.Issue.ToString("D10"),
-                b.Text("repo") + "#" + b.Issue.ToString("D10")
+                a.Run.Repo + "#" + a.Issue.ToString("D10"),
+                b.Run.Repo + "#" + b.Issue.ToString("D10")
             ): a.Number != b.Number ? a
                 .Number
                 .CompareTo(b.Number): String.CompareOrdinal(a.Location, b.Location)

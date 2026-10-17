@@ -33,9 +33,7 @@ internal class ClaudeHarness {
         }
 
         internal func ValidateSaved(run Data) {
-            if !Path.IsPathFullyQualified(run.Text("claude_profile")) || !Path.IsPathFullyQualified(
-                run.Text("harness_path")
-            ) {
+            if !Path.IsPathFullyQualified(run.ClaudeProfile) || !Path.IsPathFullyQualified(run.HarnessPath) {
                 throw ExecutionFailure.Create(
                     "invalid_state",
                     "Saved Claude run requires its original native-login profile and executable"
@@ -70,37 +68,34 @@ internal class ClaudeHarness {
             record JsonElement,
             coding RuntimeBudget,
             models Func[string, string, string, List[string]?]
-        ) ValueTuple[[]string, Dictionary[string, Object?]?] {
+        ) ValueTuple[[]string, Action[Data]?] {
             let options = Args([]string{"work", "--harness", "claude"})
-            options.Values["--harness-path"] = run.Text("harness_path")
-            options.Values["--claude-profile"] = run.Text("claude_profile")
+            options.Values["--harness-path"] = run.HarnessPath
+            options.Values["--claude-profile"] = run.ClaudeProfile
             let runtime = ClaudeCode.Runtime(options, coding)
-            if options.Need("harness-path") != run.Text("harness_path") || options.Need("claude-profile") != run.Text(
-                "claude_profile"
-            ) {
+            if options.Need("harness-path") != run.HarnessPath || options.Need("claude-profile") != run.ClaudeProfile {
                 throw ExecutionFailure.Create("invalid_state", "Saved Claude runtime changed; no substitution")
             }
 
             let checkout = Path.Combine(directory, "checkout")
-            let args = List[string](ClaudeCode.Command(run.Text("harness_path"), run.Text("claude_profile"), checkout))
+            let args = List[string](ClaudeCode.Command(run.HarnessPath, run.ClaudeProfile, checkout))
             let allowedModels = models("claude", "anthropic", ClaudeCode.ModelPattern)
-            let invocation = ClaudeCode.Invocation(
-                run.Text("model"),
-                run.Text("effort"),
-                run.Text("claude_profile"),
-                allowedModels
-            )
+            let invocation = ClaudeCode.Invocation(run.Model, run.Effort, run.ClaudeProfile, allowedModels)
             args.AddRange(invocation)
-            run.Fields["claude_version"] = J.Text(runtime, "version")
-            run.Fields["observed_invocation"] = map[string, Object?]{
-                "harness": "claude",
-                "provider": "anthropic",
-                "version": J.Text(runtime, "version"),
-                "model": run.Text("model"),
-                "effort": run.Text("effort"),
-                "arguments": invocation
-            }
-            return ValueTuple[[]string, Dictionary[string, Object?]?](args.ToArray(), nil)
+            run.ClaudeVersion = J.Text(runtime, "version")
+            run.ObservedInvocation = J.Parse(
+                J.Write(
+                    map[string, Object?]{
+                        "harness": "claude",
+                        "provider": "anthropic",
+                        "version": J.Text(runtime, "version"),
+                        "model": run.Model,
+                        "effort": run.Effort,
+                        "arguments": invocation
+                    }
+                )
+            )
+            return ValueTuple[[]string, Action[Data]?](args.ToArray(), nil)
         }
 
         internal func Read(
@@ -111,7 +106,7 @@ internal class ClaudeHarness {
             allowsModel Func[string, bool]
         ) Evidence {
             let evidence = Evidence()
-            let reports = ClaudeCode.Reports(result.Output, run.Text("model"), run.Text("effort"), evidence)
+            let reports = ClaudeCode.Reports(result.Output, run.Model, run.Effort, evidence)
             if result.Code != 0 || result.Truncated || result.ReadFailed {
                 throw ExecutionFailure.Create(
                     "inference_failed",
@@ -144,10 +139,8 @@ internal class ClaudeHarness {
             if J.Get(reports, "model").ValueKind == JsonValueKind.String {
                 evidence.Model = J.Text(reports, "model")
             }
-            run.Fields["native_reports"] = reports
-            run.Fields[
-                "usage_provenance"
-            ] = "harness-reported; remote identity and billing are not independently proven"
+            run.NativeReports = reports
+            run.UsageProvenance = "harness-reported; remote identity and billing are not independently proven"
             return evidence
         }
     }
