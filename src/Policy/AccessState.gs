@@ -52,6 +52,10 @@ internal class AccessState {
             return ""
         }
 
+        if approval.ValueKind == JsonValueKind.Undefined {
+            return "Missing donor trust and issue approval access."
+        }
+
         for allowed in OwnerApproval.Record.Parse(approval).AllowedActorIds {
             if allowed == actor {
                 return ""
