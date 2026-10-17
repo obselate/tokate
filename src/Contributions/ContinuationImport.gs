@@ -30,6 +30,8 @@ func ContinuationRenameAt(source int32, sourcePath string, target int32, targetP
 
 internal class ContinuationImport {
     shared {
+        private const ManifestVersion int32 = 1
+
         private const CaptureByteLimit int32 = 32 * 1024 * 1024
 
         private const ManifestByteLimit int32 = 48 * 1024 * 1024
@@ -678,7 +680,7 @@ internal class ContinuationImport {
             let path = Path.Combine(directory, "continuation.json")
             let manifest = J.Write(
                 map[string, Object?]{
-                    "version": 1,
+                    "version": ManifestVersion,
                     "source_metadata": sourceText,
                     "evidence": evidence,
                     "predecessor": AttemptContinuation.Provenance(source),
@@ -733,7 +735,7 @@ internal class ContinuationImport {
                 throw CliFailure("invalid_state", error.Message, summary: CliFailure.Message("invalid_state"))
             }
 
-            if J.Number(manifest, "version") != 1 || !RequestData.Same(
+            if J.Number(manifest, "version") != ManifestVersion || !RequestData.Same(
                 J.Get(manifest, "predecessor"),
                 run.Continuation
             ) {

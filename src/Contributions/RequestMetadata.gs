@@ -15,6 +15,8 @@ internal class RequestMetadata {
 
         private const CodingTimeLimitSeconds int32 = RuntimeBudget.SecondsPerDay * 365
 
+        private const ContributionBranchPattern string = "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$"
+
         internal func Comment(request JsonElement) string {
             let parsed = Request(request)
 
@@ -240,7 +242,7 @@ internal class RequestMetadata {
             RepositoryIdentity.Repo(parsed.Fork)
             RepositoryIdentity.CommitSha(parsed.Head)
 
-            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, ContributionBranchPattern) ||
                 (parsed.SourceKind != "external" && parsed.SourceKind != "tokate") ||
                 parsed.Verification != (
                 Incomplete(parsed.HasIncomplete, parsed.Incomplete) ? "not-passed": RequestData.ReportedVerification
@@ -298,7 +300,7 @@ internal class RequestMetadata {
                 RepositoryIdentity.CommitSha(parsed.Base)
             }
 
-            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, ContributionBranchPattern) ||
                 parsed.Pr < 1 ||
                 parsed.Seconds < 1 ||
                 parsed.Verification != RequestData.ReportedVerification {

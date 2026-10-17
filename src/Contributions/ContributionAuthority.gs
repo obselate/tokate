@@ -29,7 +29,7 @@ internal class ContributionAuthority {
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
                 if run.Base != approval.Base ||
                     run.BaseBranch != approval.BaseBranch ||
-                    run.Branch != "tokate/gratis-" +
+                    run.Branch != ContributionPreparation.GratisBranchPrefix +
                     run.Id {
                     throw CliFailure("invalid_state", "Saved gratis task changed")
                 }
