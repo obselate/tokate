@@ -11,6 +11,7 @@ internal class VerificationChecks {
     shared {
         internal func All(binary string) {
             Layouts(binary)
+            Records(binary)
         }
 
         private func Layouts(binary string) {
@@ -71,6 +72,65 @@ internal class VerificationChecks {
                 flow.NoPr()
             }
             Console.WriteLine("PASS CLI recovery rejects linked checkout/Git metadata and shared Git storage")
+        }
+
+        private func Records(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            let run = flow.Claim()
+            flow.Call([]string{"work", "--yes", "--run", run})
+            let path = Path.Combine(run, "run.json")
+            let saved = Check.Json(File.ReadAllText(path))
+            let results = saved["verification"]?.AsArray() ?? throw Exception("Missing verification results")
+            let check = results[0] ?? throw Exception("Missing verification result")
+            let original = check.DeepClone()
+            let expected = Check.Map(
+                "command",
+                check["command"]?.DeepClone(),
+                "state",
+                "completed",
+                "output_file",
+                Check.Text(check["output_file"]),
+                "error_file",
+                Check.Text(check["error_file"]),
+                "exit_code",
+                0,
+                "output",
+                Check.Text(check["output"]),
+                "error",
+                Check.Text(check["error"]),
+                "output_truncated",
+                false,
+                "error_truncated",
+                false
+            )
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "verification.json")) == "[" + expected.ToJsonString() + "]",
+                "Verification result bytes changed"
+            )
+
+            check.AsObject().Remove("command")
+            File.WriteAllText(path, saved.ToJsonString())
+            let missing = flow.Call([]string{"status", "--run", run, "--json"}, 1)
+            let missingResult = Check.Envelope(missing, "status", "error", "invalid_state")
+            Check.Contains(Check.Text(missingResult["error"]?["message"]), "Verification result: field \"command\"")
+
+            results[0] = original.DeepClone()
+            let completed = results[0] ?? throw Exception("Missing completed verification")
+            completed.AsObject().Remove("exit_code")
+            File.WriteAllText(path, saved.ToJsonString())
+            let incomplete = flow.Call([]string{"status", "--run", run, "--json"}, 1)
+            let incompleteResult = Check.Envelope(incomplete, "status", "error", "invalid_state")
+            Check.Contains(
+                Check.Text(incompleteResult["error"]?["message"]),
+                "Verification result: field \"exit_code\""
+            )
+
+            results[0] = original.DeepClone()
+            File.WriteAllText(path, saved.ToJsonString())
+            Check.Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+            Console.WriteLine("PASS saved verification requires named command and completed exit code fields")
         }
     }
 }

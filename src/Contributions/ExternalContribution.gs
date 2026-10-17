@@ -70,25 +70,21 @@ internal class ExternalContribution {
             }
 
             for index in 0 ... checks.Count {
-                let check = checks[index]
-                if !RequestData.Same(J.Get(check, "command"), commands[index]) {
+                let check = Verification.Result.Parse(checks[index])
+                if !RequestData.Same(check.Command, commands[index]) {
                     throw ExecutionFailure.Create("invalid_state", failure)
                 }
 
-                let state = J.Text(check, "state")
-                let code = J.Get(check, "exit_code")
-                if state == "completed" && code.ValueKind == JsonValueKind.Number && code.GetInt32() == 0 {
+                let state = check.State
+                let code = check.ExitCode
+                if state == "completed" && code == 0 {
                     continue
                 }
 
                 if index == checks.Count - 1 &&
                     (
-                    (state == "completed" && code.ValueKind == JsonValueKind.Number && code.GetInt32() != 0) ||
-                        (
-                        (state == "failed" || state == "interrupted") &&
-                            code.ValueKind == JsonValueKind.Undefined &&
-                            J.Text(check, "failure") != ""
-                    )
+                    (state == "completed" && code != nil && code != 0) ||
+                        ((state == "failed" || state == "interrupted") && code == nil && (check.Failure ?? "") != "")
                 ) {
                     return
                 }
