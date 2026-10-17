@@ -19,6 +19,12 @@ internal class Donate {
 
         private const StopMarkerPollIntervalMilliseconds int32 = 1000
 
+        private const StateDirectoryName string = "donations"
+
+        private const SessionFileName string = "session.json"
+
+        private const StopMarkerFileName string = "stop"
+
         internal var Active bool
         private func Running(directory string) bool {
             try {
@@ -85,21 +91,21 @@ internal class Donate {
 
         internal func Stop(options Args) int32 {
             let repo = options.Need("repo")
-            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            let directory = Path.Combine(LocalPaths.StateDirectory(), StateDirectoryName, repo.ToLowerInvariant())
             Terminal.Message("Stop donating to " + repo + " after the current task.", error: true)
             if !OwnerSetup.Confirm(options, "Stop donating?") {
                 throw CliFailure("confirmation_required", "Donation stop requires --yes. Nothing changed.")
             }
             Directory.CreateDirectory(directory)
             if Running(directory) {
-                File.WriteAllText(Path.Combine(directory, "stop"), "stop\n")
+                File.WriteAllText(Path.Combine(directory, StopMarkerFileName), "stop\n")
                 while Running(directory) {
                     Thread.Sleep(StopPollIntervalMilliseconds)
                 }
             } else {
                 Terminal.Message("No donation is running for " + repo + ".")
             }
-            let path = Path.Combine(directory, "session.json")
+            let path = Path.Combine(directory, SessionFileName)
             PublicOutput.ResultData = map[string, Object?]{"repo": repo}
             if File.Exists(path) {
                 Report(Data.ReadElement(path))
@@ -196,7 +202,7 @@ internal class Donate {
                     issues.Add(Int32.Parse(number))
                 }
             }
-            let directory = Path.Combine(LocalPaths.StateDirectory(), "donations", repo.ToLowerInvariant())
+            let directory = Path.Combine(LocalPaths.StateDirectory(), StateDirectoryName, repo.ToLowerInvariant())
             let total = options.Get("total") == "" ? Double.PositiveInfinity: Convert.ToDouble(options.Number("total"))
             let info = GitHub.Api("repos/" + repo)
             let revision = GitHub.Branch(repo, J.Text(info, "default_branch"))
@@ -293,7 +299,7 @@ internal class Donate {
             seconds int32
         ) int32 {
             let repo = options.Need("repo")
-            let marker = Path.Combine(directory, "stop")
+            let marker = Path.Combine(directory, StopMarkerFileName)
 
             options.Values["--yes"] = "true"
             Directory.CreateDirectory(directory)
@@ -308,7 +314,7 @@ internal class Donate {
             var consecutive int32
             var first bool = true
             let session = map[string, Object?]{"repo": repo, "tasks": tasks, "reason": "stopped"}
-            let sessionPath = Path.Combine(directory, "session.json")
+            let sessionPath = Path.Combine(directory, SessionFileName)
             WriteSession(session, sessionPath)
             Active = true
             try {

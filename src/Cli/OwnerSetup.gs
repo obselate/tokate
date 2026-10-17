@@ -12,6 +12,8 @@ internal class OwnerSetup {
 
         internal const CoordinatorWorkflowPath string = ".github/workflows/tokate-coordinator.yml"
 
+        private const SetupBranchName string = "tokate-setup"
+
         internal func Unattended(args Args) bool -> PublicOutput.Enabled || args.Get("json") == "true" || args.Get(
             "non-interactive"
         ) == "true" ||
@@ -161,11 +163,11 @@ internal class OwnerSetup {
             CoordinatorSetup.EventPolicy(repo, path)
             let files = SetupFiles(text, upstream, workflow, current, path)
 
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/tokate-setup", missing: true)
+            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + SetupBranchName, missing: true)
             let setup = J.Text(J.Get(reference, "object"), "sha")
             let pulls = GitHub.Api(
                 "repos/" + repo + "/pulls?state=open&per_page=1&head=" + Uri.EscapeDataString(
-                    repo.Split('/')[0] + ":tokate-setup"
+                    repo.Split('/')[0] + ":" + SetupBranchName
                 )
             )
             var pull = pulls.ValueKind == JsonValueKind.Array && pulls.GetArrayLength() > 0 ? J.Text(
@@ -310,14 +312,14 @@ internal class OwnerSetup {
             if rebuild {
                 Change(
                     changes,
-                    "Branch tokate-setup",
+                    "Branch " + SetupBranchName,
                     setup,
                     "new commit on " + main + " at " + head + " with the files above"
                 )
             }
 
             if createPull {
-                Change(changes, "Setup PR", "", "Set up Tokate, from tokate-setup into " + main)
+                Change(changes, "Setup PR", "", "Set up Tokate, from " + SetupBranchName + " into " + main)
             }
         }
 
@@ -426,11 +428,11 @@ internal class OwnerSetup {
             if setup == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + "tokate-setup", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + SetupBranchName, "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + "tokate-setup",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + SetupBranchName,
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
@@ -442,7 +444,7 @@ internal class OwnerSetup {
                 "repos/" + repo + "/pulls",
                 map[string, Object?]{
                     "title": "Set up Tokate",
-                    "head": repo.Split('/')[0] + ":tokate-setup",
+                    "head": repo.Split('/')[0] + ":" + SetupBranchName,
                     "base": main,
                     "body": "Tokate owner setup: policy and coordinator workflow. Merge to finish setup."
                 }
