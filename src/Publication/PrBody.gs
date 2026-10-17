@@ -12,7 +12,7 @@ internal class PrBody {
             record JsonElement,
             metadata JsonElement,
             donor string,
-            receipt Object,
+            receipt ContributionReceipt.Record,
             marker string
         ) string {
             let values = Dictionary[string, string]()
@@ -25,7 +25,7 @@ internal class PrBody {
             values["base"] = J.Text(record, "base")
             values["policy"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).PolicyHash
             values["usage"] = "per-tool donor declaration; not independently attested"
-            values["receipt"] = marker + "\n<!-- tokate-receipt:" + J.Write(receipt) + " -->"
+            values["receipt"] = marker + "\n<!-- tokate-receipt:" + receipt.ToText() + " -->"
 
             return PrBody.Render(J.Text(record, "template"), values, J.Get(record, "policy"))
         }
@@ -143,7 +143,9 @@ internal class PrBody {
         ) +
             ". The predecessor is not retroactively successful. Missing prior usage, reports and verification are not reconstructed. Usage and checks below describe the new attempt; all checks cover the complete final diff from the original approved base.\n\n"
 
-        internal func Receipt(body string) JsonElement -> RequestData.Parse(ReceiptText(body))
+        internal func Receipt(body string) ContributionReceipt.Record -> ContributionReceipt.Record.Parse(
+            RequestData.Parse(ReceiptText(body))
+        )
 
         internal func ReceiptText(
             body string,
@@ -192,7 +194,9 @@ internal class PrBody {
             return body.Substring(start, end - start).Trim()
         }
 
-        internal func Owned(body string) string -> ReportText(body) + "\n" + RequestData.Canonical(Receipt(body))
+        internal func Owned(body string) string -> ReportText(body) + "\n" + RequestData.Canonical(
+            Receipt(body).ToJson()
+        )
 
         internal func ReplaceBody(body string, report string, receipt JsonElement) string {
             let prefix = "<!-- tokate-report:start -->"
@@ -215,7 +219,7 @@ internal class PrBody {
 
             return updated.Remove(receiptStart, receiptEnd + 4 - receiptStart).Insert(
                 receiptStart,
-                "<!-- tokate-receipt:" + J.Write(receipt) + " -->"
+                "<!-- tokate-receipt:" + ContributionReceipt.Record.Parse(receipt).ToText() + " -->"
             )
         }
     }

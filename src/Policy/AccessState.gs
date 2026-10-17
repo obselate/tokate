@@ -604,20 +604,20 @@ internal class AccessState {
                         let headOwner = J.Get(J.Get(J.Get(pull, "head"), "repo"), "owner")
                         let donorId = RepositoryIdentity.PositiveId(J.Get(headOwner, "id"))
                         let donorLogin = RepositoryIdentity.Login(J.Text(headOwner, "login"))
-                        if !RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) || !String.Equals(
-                            J.Text(receipt, "donor"),
+                        if !RepositoryIdentity.SameRepo(receipt.Repo, repo) || !String.Equals(
+                            receipt.Donor,
                             donorLogin,
                             StringComparison.OrdinalIgnoreCase
                         ) ||
                             (actor != 0 && donorId != actor) ||
-                            (args.Get("issue") != "" && J.Number(receipt, "issue") != args.Number("issue")) {
+                            (args.Get("issue") != "" && receipt.Issue != args.Number("issue")) {
                             continue
                         }
 
                         history.Add(
                             map[string, Object?]{
                                 "pr": J.Number(pull, "number"),
-                                "issue": J.Number(receipt, "issue"),
+                                "issue": receipt.Issue,
                                 "donor": donorLogin,
                                 "state": J.Text(pull, "state"),
                                 "merged": J.Get(pull, "merged_at").ValueKind == JsonValueKind.String,

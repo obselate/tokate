@@ -144,8 +144,8 @@ internal class Admission {
 
             try {
                 let receipt = PrBody.Receipt(body)
-                if RepositoryIdentity.SameRepo(J.Text(receipt, "repo"), repo) && J.Number(receipt, "issue") > 0 {
-                    issues.Add(J.Number(receipt, "issue"))
+                if RepositoryIdentity.SameRepo(receipt.Repo, repo) && receipt.Issue > 0 {
+                    issues.Add(receipt.Issue)
                 }
             } catch { }
 

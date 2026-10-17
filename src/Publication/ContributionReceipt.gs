@@ -1,9 +1,50 @@
 package Tokate
 
 import System.Collections.Generic
+import System.IO
+import System.Text
 import System.Text.Json
 
 internal class ContributionReceipt {
+    internal class Record(value JsonElement) {
+        private let source JsonElement = value
+        internal let Version int32 = JsonFields.Int32(value, "PR receipt", "version")
+        internal let Repo string = JsonFields.String(value, "PR receipt", "repo")
+        internal let Issue int32 = JsonFields.Int32(value, "PR receipt", "issue")
+        internal let Approval string = JsonFields.String(value, "PR receipt", "approval")
+        internal let Expected string = JsonFields.String(value, "PR receipt", "expected")
+        internal let Reservation string = JsonFields.String(value, "PR receipt", "reservation")
+        internal let Donor string = JsonFields.String(value, "PR receipt", "donor")
+        internal let Head string = JsonFields.String(value, "PR receipt", "head")
+        internal let RequestedModel JsonElement = J.Get(value, "requested_model")
+        internal let ReportedModel JsonElement = J.Get(value, "reported_model")
+        internal let Correction JsonElement = J.Get(value, "correction")
+        internal let Handoff JsonElement = J.Get(value, "handoff")
+        internal let Incomplete JsonElement = J.Get(value, "incomplete")
+        internal let Predecessor JsonElement = J.Get(value, "predecessor")
+        internal let ImportManifestSha256 JsonElement = J.Get(value, "import_manifest_sha256")
+        internal let Attempt JsonElement = J.Get(value, "attempt")
+        internal let Amendment JsonElement = J.Get(value, "amendment")
+
+        internal func Write(writer Utf8JsonWriter) -> source.WriteTo(writer)
+
+        internal func ToJson() JsonElement -> source
+
+        internal func ToText() string {
+            using let bytes = MemoryStream()
+            using let writer = Utf8JsonWriter(bytes)
+
+            Write(writer)
+            writer.Flush()
+
+            return Encoding.UTF8.GetString(bytes.ToArray())
+        }
+
+        shared {
+            internal func Parse(value JsonElement) Record -> Record(value)
+        }
+    }
+
     shared {
         internal func Coordinated(
             repo string,
@@ -30,7 +71,7 @@ internal class ContributionReceipt {
             request JsonElement,
             reservation string,
             donor string
-        ) Dictionary[string, Object?] {
+        ) Record {
             let metadata = J.Get(request, "metadata")
             let receipt = Coordinated(
                 repo,
@@ -49,7 +90,7 @@ internal class ContributionReceipt {
                 }
             }
             AttemptContinuation.Keep(receipt, metadata)
-            return receipt
+            return Record.Parse(J.Parse(J.Write(receipt)))
         }
 
         internal func Models(fields Dictionary[string, Object?], value JsonElement) {

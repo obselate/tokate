@@ -664,6 +664,28 @@ internal partial class CoordinationFlow : CoordinationFixture {
         }
         Flow.DiffFault("diff_fault", "")
         Flow.Receipt("owner/project#10", owner: true)
+        Flow.Reload()
+        let publishedPull = Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+        let publishedBody = Check.Text(publishedPull["body"])
+        let receiptPrefix = "<!-- tokate-receipt:"
+        let receiptStart = publishedBody.IndexOf(receiptPrefix, StringComparison.Ordinal) + receiptPrefix.Length
+        let receiptEnd = publishedBody.IndexOf(" -->", receiptStart, StringComparison.Ordinal)
+        let receiptText = publishedBody.Substring(receiptStart, receiptEnd - receiptStart)
+        let missingIssue = Check.Json(receiptText)
+        missingIssue.AsObject().Remove("issue")
+        publishedPull["body"] = JsonValue.Create(
+            publishedBody.Remove(receiptStart, receiptText.Length).Insert(receiptStart, missingIssue.ToJsonString())
+        )
+        Flow.Save()
+        let refusedReceipt = Flow.Call([]string{"checks", "owner/project#10", "--json"}, 1, owner: true)
+        Check.Contains(refusedReceipt.Output, "invalid_state")
+        Check.Contains(refusedReceipt.Output, "PR receipt: field")
+        Check.Contains(refusedReceipt.Output, "issue")
+        Flow.Reload()
+        let restoredPull = Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+        restoredPull["body"] = JsonValue.Create(publishedBody)
+        Flow.Save()
+
         let checkout = Path.Combine(Flow.Temp.Root, "donor-work")
         let marker = Path.Combine(checkout, "receipt-code-ran")
         File.WriteAllText(Path.Combine(checkout, "scripts/verify.sh"), "touch '" + marker + "'\nexit 0\n")
