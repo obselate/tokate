@@ -142,8 +142,7 @@ internal class OriginalEvidence {
                 let seal = map[string, Object?]{"manifest_sha256": J.Hash(manifest)}
                 let sealPath = Path.Combine(directory, "seal.json")
 
-                File.WriteAllText(sealPath + ".tmp", J.Write(seal) + "\n")
-                File.Move(sealPath + ".tmp", sealPath, true)
+                Data.WriteText(sealPath, J.Write(seal) + "\n")
             } catch (error Exception) when error is IOException ||
                 error is UnauthorizedAccessException ||
                 error is JsonException {
@@ -342,14 +341,7 @@ internal class OriginalEvidence {
                         "candidate_provenance": "Available staged/unstaged/untracked evidence captured at preparation; original model provenance is unproven. Missing original artifacts are not reconstructed."
                     }
                     let capturePath = Path.Combine(temporary, "capture.json")
-                    try {
-                        File.WriteAllText(capturePath + ".tmp", J.Write(capture) + "\n")
-                        File.Move(capturePath + ".tmp", capturePath, true)
-                    } catch (error IOException) {
-                        throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-                    } catch (error UnauthorizedAccessException) {
-                        throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-                    }
+                    Data.WriteText(capturePath, J.Write(capture) + "\n")
                 }
 
                 OriginalEvidence.Seal(temporary)

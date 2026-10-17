@@ -519,8 +519,6 @@ internal class Data {
         set -> Put("seconds", value)
     }
 
-    internal prop SecondsSha256 string -> Text("seconds_sha256")
-
     internal prop Selection JsonElement {
         get -> Element("selection")
         set -> Put("selection", value)
@@ -650,10 +648,6 @@ internal class Data {
 
     internal prop HasBase bool -> Stored.ContainsKey("base")
 
-    internal prop HasClaudeVersion bool -> Stored.ContainsKey("claude_version")
-
-    internal prop HasCodexVersion bool -> Stored.ContainsKey("codex_version")
-
     internal prop HasCommit bool -> Stored.ContainsKey("commit")
 
     internal prop HasContinuationManifestSha256 bool -> Stored.ContainsKey("continuation_manifest_sha256")
@@ -667,10 +661,6 @@ internal class Data {
     internal prop HasId bool -> Stored.ContainsKey("id")
 
     internal prop HasIncomplete bool -> Stored.ContainsKey("incomplete")
-
-    internal prop HasOmpVersion bool -> Stored.ContainsKey("omp_version")
-
-    internal prop HasPiVersion bool -> Stored.ContainsKey("pi_version")
 
     internal prop HasPreparationHeadId bool -> Stored.ContainsKey("preparation_head_id")
 
@@ -796,21 +786,9 @@ internal class Data {
         default: false
     }
 
-    internal func HarnessVersion(name string) string -> switch name {
-        case "codex": CodexVersion
-        case "pi": PiVersion
-        case "claude": ClaudeVersion
-        case "omp": OmpVersion
-        default: ""
-    }
+    internal func HarnessVersion(name string) string -> Text(name + "_version")
 
-    internal func HasHarnessVersion(name string) bool -> switch name {
-        case "codex": HasCodexVersion
-        case "pi": HasPiVersion
-        case "claude": HasClaudeVersion
-        case "omp": HasOmpVersion
-        default: false
-    }
+    internal func HasHarnessVersion(name string) bool -> Stored.ContainsKey(name + "_version")
 
     internal func Element() JsonElement -> J.Parse(ToJson())
 
@@ -855,18 +833,20 @@ internal class Data {
         Write(Path.Combine(directory, "run.json"))
     }
 
-    internal func Write(path string) {
-        try {
-            File.WriteAllText(path + ".tmp", ToJson() + "\n")
-            File.Move(path + ".tmp", path, true)
-        } catch (error IOException) {
-            throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-        } catch (error UnauthorizedAccessException) {
-            throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-        }
-    }
+    internal func Write(path string) -> WriteText(path, ToJson() + "\n")
 
     shared {
+        internal func WriteText(path string, text string) {
+            try {
+                File.WriteAllText(path + ".tmp", text)
+                File.Move(path + ".tmp", path, true)
+            } catch (error IOException) {
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
+            } catch (error UnauthorizedAccessException) {
+                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
+            }
+        }
+
         private const FormatName string = "Saved run"
 
         internal func Load(directory string, amendment bool = false) Data {
@@ -881,20 +861,25 @@ internal class Data {
         }
 
         internal func ValidateRequired(value JsonElement, format string = "Saved run") {
-            if JsonFields.Int32(value, format, "version") != 2 {
+            let version = J.Get(value, "version")
+            var number int32
+            if version.ValueKind != JsonValueKind.Number || !version.TryGetInt32(out number) || number != 2 {
                 throw InvalidRequired(format, "version")
             }
 
-            if JsonFields.String(value, format, "repo") == "" {
+            let repo = J.Get(value, "repo")
+            if repo.ValueKind != JsonValueKind.String || String.IsNullOrEmpty(repo.GetString()) {
                 throw InvalidRequired(format, "repo")
             }
 
-            let issue = JsonFields.Int32(value, format, "issue")
-            if issue < 1 && !(issue == 0 && J.Get(value, "gratis").ValueKind == JsonValueKind.True) {
+            let issue = J.Get(value, "issue")
+            if issue.ValueKind != JsonValueKind.Number || !issue.TryGetInt32(out number) ||
+                (number < 1 && !(number == 0 && J.Get(value, "gratis").ValueKind == JsonValueKind.True)) {
                 throw InvalidRequired(format, "issue")
             }
 
-            if JsonFields.String(value, format, "state") == "" {
+            let state = J.Get(value, "state")
+            if state.ValueKind != JsonValueKind.String || String.IsNullOrEmpty(state.GetString()) {
                 throw InvalidRequired(format, "state")
             }
         }

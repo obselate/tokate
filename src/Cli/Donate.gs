@@ -68,16 +68,10 @@ internal class Donate {
             }
         }
 
-        private func WriteSession(session Dictionary[string, Object?], path string) {
-            try {
-                File.WriteAllText(path + ".tmp", J.Write(session) + "\n")
-                File.Move(path + ".tmp", path, true)
-            } catch (error IOException) {
-                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-            } catch (error UnauthorizedAccessException) {
-                throw CliFailure("command_failed", error.Message, summary: CliFailure.Message("command_failed"))
-            }
-        }
+        private func WriteSession(session Dictionary[string, Object?], path string) -> Data.WriteText(
+            path,
+            J.Write(session) + "\n"
+        )
 
         internal func Stop(options Args) int32 {
             let repo = options.Need("repo")

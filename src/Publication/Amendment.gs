@@ -119,7 +119,6 @@ internal class Amendment {
             if amendment != nil && state.Sha != amendment.Expected {
                 let current = state.Current()
                 let outcome = current?.Outcome
-                let saved = amendment.Element()
                 let stale = "Amendment has stale coordination revision"
                 if (current?.Request ?? "") != amendment.Id ||
                     (current?.Expected ?? "") != amendment.Expected ||
@@ -128,13 +127,11 @@ internal class Amendment {
                     (current?.ActorValue() ?? default(JsonElement)).ToString() != actor {
                     throw CliFailure("stale_approval", stale)
                 }
-                if (current?.Previous ?? "") != J.Text(saved, "previous") || (current?.Seconds ?? 0) != J.Number(
-                    saved,
-                    "seconds"
-                ) ||
-                    !RequestData.Same(current?.Tools ?? default(JsonElement), J.Get(saved, "tools")) ||
-                    (current?.Base ?? "") != J.Text(saved, "base") ||
-                    (current?.HasBase ?? false) != (J.Get(saved, "base").ValueKind != JsonValueKind.Undefined) {
+                if (current?.Previous ?? "") != amendment.Previous ||
+                    (current?.Seconds ?? 0) != amendment.Seconds ||
+                    !RequestData.Same(current?.Tools ?? default(JsonElement), amendment.Tools) ||
+                    (current?.Base ?? "") != amendment.Base ||
+                    (current?.HasBase ?? false) != amendment.HasBase {
                     throw CliFailure("stale_approval", stale)
                 }
 
@@ -643,7 +640,7 @@ internal class Amendment {
                         J.Get(change.Element(), key == "summary" ? "public_summary": key),
                         input
                     )
-                    let hash = key == "tools" ? change.ToolsSha256: key == "summary" ? change.SummarySha256: change.SecondsSha256
+                    let hash = key == "tools" ? change.ToolsSha256: key == "summary" ? change.SummarySha256: ""
                     if !same ||
                         (
                         hash != "" && args.Get(key) != "" && hash != Convert.ToHexString(
