@@ -136,7 +136,7 @@ internal class Contribution {
                 if !run.Flag("gratis") {
                     using let workspace = VerificationWorkspace.Create(checkout, total)
 
-                    for command in J.Items(J.Get(J.Get(record, "policy"), "verification")) {
+                    for command in J.Items(Policy.Parse(J.Get(record, "policy")).Verification) {
                         total.Remaining()
                         run.Fields["verification"] = verification
                         run.Save(directory)

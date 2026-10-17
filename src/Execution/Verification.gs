@@ -177,9 +177,9 @@ internal class Verification {
             }
         }
 
-        internal func Results(run Data, record JsonElement) int32 {
+        internal func Results(run Data, verification JsonElement) int32 {
             let checks = J.Items(J.Get(run.Element(), "verification"))
-            let commands = J.Items(J.Get(J.Get(record, "policy"), "verification"))
+            let commands = J.Items(verification)
 
             if checks.Count == 0 || checks.Count != commands.Count {
                 throw ExecutionFailure.Create("verification_failed", "Missing independent verification results")

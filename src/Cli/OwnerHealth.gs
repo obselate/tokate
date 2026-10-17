@@ -128,7 +128,7 @@ internal class OwnerHealth {
                 try {
                     let policy = Policy(text)
                     Parsed = policy
-                    let policyVersion = J.Number(policy.Value, "version").ToString()
+                    let policyVersion = policy.Version.ToString()
                     Add("policy", "ok", "Version " + policyVersion + ", eligibility " + policy.Eligibility + ".")
                 } catch (error Exception) {
                     let command = []string{"tokate", "init", repo}

@@ -63,7 +63,7 @@ internal class PrBody {
         }
 
         internal func Render(template string, values Dictionary[string, string], policy JsonElement) string {
-            values["pr_text"] = J.Text(policy, "pr_text")
+            values["pr_text"] = Policy.Parse(policy).PrText
             let text = template +
                 (values["pr_text"] != "" && !template.Contains("{{pr_text}}") ? "\n\n{{pr_text}}\n": "")
             return Regex.Replace(text, "\\{\\{([a-z_]+)\\}\\}", (match Match) -> values[match.Groups[1].Value])

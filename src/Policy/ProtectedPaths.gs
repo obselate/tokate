@@ -66,7 +66,7 @@ internal class ProtectedPaths {
                 throw Exception("Contribution changes protected owner configuration: " + J.Write(path))
             }
 
-            for entry in J.Items(J.Get(policy, "protected_paths")) {
+            for entry in J.Items(Policy.Parse(policy).ProtectedPaths) {
                 if Matches(entry.GetString() ?? "", path) {
                     throw Exception("Contribution changes protected owner path: " + J.Write(path))
                 }

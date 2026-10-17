@@ -2,6 +2,7 @@ package Tokate
 
 import System
 import System.Collections.Generic
+import System.IO
 import System.Linq
 import System.Text
 import System.Text.Json
@@ -14,17 +15,53 @@ internal class Policy {
     internal var Eligibility string = ""
     internal var TaskFields JsonElement
     internal var MaintainerEdits bool = true
+    internal var MaxSeconds int32
+    internal var Version int64
+    internal var TargetBranch string = ""
+    internal var PrText string = ""
+    internal var ReservationSeconds int32
+    internal var Verification JsonElement
+    internal var RequiredChecks JsonElement
+    internal var ProtectedPaths JsonElement
+    internal var AllowUnlimited bool
+    internal var CloseMessage string = ""
+    internal var ApprovalScope string = ""
+    internal let AllowedTools List[AllowedTool] = List[AllowedTool]()
 
     internal init(text string) {
-        Value = J.Parse(text)
-        let version = J.Number(Value, "version")
+        Value = RequestData.Parse(text, 1024 * 1024)
+        Configure()
+    }
 
-        if version != 3 {
+    internal init(value JsonElement) {
+        Value = value
+        Configure()
+    }
+
+    private func Configure() {
+        Version = JsonFields.Int64(Value, "Policy", "version")
+
+        if Version != 3 {
             throw Exception("Policy requires version 3")
         }
 
+        TargetBranch = JsonFields.OptionalString(Value, "Policy", "target_branch", "")
+        PrText = JsonFields.OptionalString(Value, "Policy", "pr_text", "")
+        CloseMessage = JsonFields.OptionalString(
+            Value,
+            "Policy",
+            "close_message",
+            "This pull request lacks current owner authorization. Please request owner approval."
+        )
+        Verification = OptionalArray("verification")
+        RequiredChecks = OptionalArray("required_checks")
+        ProtectedPaths = OptionalArray("protected_paths")
+        AllowUnlimited = JsonFields.OptionalBool(Value, "Policy", "allow_unlimited", false)
+        MaintainerEdits = JsonFields.OptionalBool(Value, "Policy", "maintainer_edits", true)
+        ApprovalScope = JsonFields.String(Value, "Policy", "approval_scope")
+
         ValidateTextFields()
-        ProtectedPaths.Validate(J.Get(Value, "protected_paths"))
+        Tokate.ProtectedPaths.Validate(ProtectedPaths)
 
         var eligibilityFields int32
         var scopeFields int32
@@ -39,53 +76,26 @@ internal class Policy {
             }
         }
 
-        RequestData.Parse(text, 1024 * 1024)
-        Eligibility = J.Text(Value, "eligibility")
+        RequestData.Parse(J.Write(Value), 1024 * 1024)
+        Eligibility = JsonFields.String(Value, "Policy", "eligibility")
         let eligible = Eligibility == "open" || Eligibility == "trusted"
 
-        if eligibilityFields != 1 || scopeFields != 1 || J.Text(Value, "approval_scope") != "task" || !eligible {
+        if eligibilityFields != 1 || scopeFields != 1 || ApprovalScope != "task" || !eligible {
             throw Exception("Policy requires approval_scope task and eligibility trusted or open")
         }
 
-        if J.Get(Value, "models").ValueKind != JsonValueKind.Undefined || J.Get(Value, "model_policy")
-            .ValueKind != JsonValueKind
-            .Undefined {
+        var obsolete JsonElement
+        if Value.TryGetProperty("models", out obsolete) || Value.TryGetProperty("model_policy", out obsolete) {
             throw Exception("Version 3 uses models inside allowed_tools, without top-level models or model_policy")
         }
 
-        let maxSeconds = J.Number(Value, "max_seconds")
+        MaxSeconds = JsonFields.Int32(Value, "Policy", "max_seconds")
 
-        if maxSeconds < 1 || maxSeconds > 86400 {
+        if MaxSeconds < 1 || MaxSeconds > 86400 {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
 
-        let unlimited = J.Get(Value, "allow_unlimited").ValueKind
-
-        if unlimited != JsonValueKind.Undefined && unlimited != JsonValueKind.True && unlimited != JsonValueKind.False {
-            throw Exception("allow_unlimited must be boolean")
-        }
-
-        if unlimited != JsonValueKind.Undefined {
-            RequestData.Parse(text, 1024 * 1024)
-        }
-
-        let edits = J.Get(Value, "maintainer_edits")
-        if edits.ValueKind != JsonValueKind.Undefined &&
-            edits.ValueKind != JsonValueKind.True &&
-            edits.ValueKind != JsonValueKind.False {
-            throw Exception("maintainer_edits must be boolean")
-        }
-
-        MaintainerEdits = edits.ValueKind != JsonValueKind.False
-
-        for key in[]string{"verification", "required_checks"} {
-            let kind = J.Get(Value, key).ValueKind
-            if kind != JsonValueKind.Undefined && kind != JsonValueKind.Array {
-                throw Exception(key + " must be an array")
-            }
-        }
-
-        let commands = J.Items(J.Get(Value, "verification"))
+        let commands = J.Items(Verification)
 
         for command in commands {
             let words = J.Items(command)
@@ -100,7 +110,7 @@ internal class Policy {
             }
         }
 
-        let checks = J.Items(J.Get(Value, "required_checks"))
+        let checks = J.Items(RequiredChecks)
 
         for check in checks {
             if check.ValueKind != JsonValueKind.String || String.IsNullOrWhiteSpace(check.GetString()) {
@@ -108,32 +118,45 @@ internal class Policy {
             }
         }
 
-        let reservation = J.Get(Value, "reservation_seconds")
-        if reservation.ValueKind != JsonValueKind.Undefined &&
-            (J.Number(Value, "reservation_seconds") < 300 || J.Number(Value, "reservation_seconds") > 604800) {
+        let reservation = JsonFields.OptionalInt64(Value, "Policy", "reservation_seconds", 86400)
+        if reservation < 300 || reservation > 604800 {
             throw Exception("reservation_seconds must be from 300 to 604800 (default 86400)")
         }
 
+        ReservationSeconds = int32(reservation)
+
         ValidateAllowedTools()
 
-        let task = map[string, Object?]{
-            "verification": commands,
-            "required_checks": checks,
-            "protected_paths": J.Items(J.Get(Value, "protected_paths")),
-            "allowed_tools": Tools,
-            "max_seconds": maxSeconds,
-            "allow_unlimited": J.Bool(Value, "allow_unlimited"),
-            "reservation_seconds": reservation.ValueKind == JsonValueKind.Undefined ? 86400: J.Number(
-                Value,
-                "reservation_seconds"
-            )
+        using let bytes = MemoryStream()
+        using let writer = Utf8JsonWriter(bytes)
+        writer.WriteStartObject()
+        for field in[]string{"verification", "required_checks", "protected_paths"} {
+            writer.WriteStartArray(field)
+            let items = field == "verification" ? commands: field == "required_checks" ? checks: J.Items(ProtectedPaths)
+            for item in items {
+                item.WriteTo(writer)
+            }
+            writer.WriteEndArray()
         }
+        writer.WritePropertyName("allowed_tools")
+        Tools.WriteTo(writer)
+        writer.WriteNumber("max_seconds", MaxSeconds)
+        writer.WriteBoolean("allow_unlimited", AllowUnlimited)
+        writer.WriteNumber("reservation_seconds", ReservationSeconds)
 
-        if edits.ValueKind != JsonValueKind.Undefined {
-            task["maintainer_edits"] = MaintainerEdits
+        var edits JsonElement
+        if Value.TryGetProperty("maintainer_edits", out edits) {
+            writer.WriteBoolean("maintainer_edits", MaintainerEdits)
         }
-        TaskFields = J.Parse(J.Write(task))
+        writer.WriteEndObject()
+        writer.Flush()
+        TaskFields = J.Parse(Encoding.UTF8.GetString(bytes.ToArray()))
         Digest = J.Hash(RequestData.Canonical(TaskFields))
+    }
+
+    private func OptionalArray(field string) JsonElement {
+        var item JsonElement
+        return Value.TryGetProperty(field, out item) ? JsonFields.Array(Value, "Policy", field): JsonElement{}
     }
 
     private func ValidateTextFields() {
@@ -150,13 +173,12 @@ internal class Policy {
                 throw Exception("Duplicate policy field " + key)
             }
 
-            let item = J.Get(Value, key)
-            if item.ValueKind != JsonValueKind.Undefined {
-                if item.ValueKind != JsonValueKind.String || Encoding.UTF8.GetByteCount(item.GetString() ?? "") > 4096 {
+            var item JsonElement
+            if Value.TryGetProperty(key, out item) {
+                let text = JsonFields.String(Value, "Policy", key)
+                if Encoding.UTF8.GetByteCount(text) > 4096 {
                     throw Exception(key + " must be bounded plain text")
                 }
-
-                let text = item.GetString() ?? ""
 
                 for c in text {
                     if c == '\0' || (Char.IsControl(c) && c != '\n' && c != '\r' && c != '\t') {
@@ -176,83 +198,52 @@ internal class Policy {
     }
 
     private func ValidateAllowedTools() {
-        let allowedTools = J.Items(J.Get(Value, "allowed_tools"))
+        Tools = JsonFields.Array(Value, "Policy", "allowed_tools")
+        let allowedTools = J.Items(Tools)
         if allowedTools.Count == 0 {
             throw Exception("Policy requires allowed_tools harness/provider pairs")
         }
 
         let pairs = HashSet[string](StringComparer.Ordinal)
 
-        for tool in allowedTools {
-            if J.Text(tool, "harness") == "" || J.Text(tool, "provider") == "" {
+        for value in allowedTools {
+            let tool = AllowedTool.Parse(value)
+            AllowedTools.Add(tool)
+            if tool.Harness == "" || tool.Provider == "" {
                 throw Exception("Each allowed tool needs harness and provider")
             }
 
-            if !pairs.Add(J.Text(tool, "harness") + "/" + J.Text(tool, "provider")) {
+            if !pairs.Add(tool.Harness + "/" + tool.Provider) {
                 throw Exception("Duplicate allowed tool harness/provider pair")
             }
 
-            let models = J.Get(tool, "models")
-            if models.ValueKind != JsonValueKind.Undefined {
-                ValidateModels(models)
+            if tool.Harness == "command" {
+                CommandHarness.Validate(tool.Command, tool.Output, tool.Models != nil)
             }
-
-            if J.Text(tool, "harness") == "command" {
-                CommandHarness.Validate(tool)
-            }
-        }
-
-        Tools = J.Get(Value, "allowed_tools")
-    }
-
-    private func ValidateModels(models JsonElement) {
-        if models.ValueKind != JsonValueKind.Object {
-            throw Exception("Policy models must map model names to effort arrays")
-        }
-
-        var count int32
-        for model in models.EnumerateObject() {
-            if !Regex.IsMatch(model.Name, RequestData.ModelPattern) {
-                throw Exception("Invalid model name")
-            }
-
-            let efforts = J.Items(model.Value)
-            if efforts.Count == 0 {
-                throw Exception("Each model needs allowed efforts")
-            }
-
-            for effort in efforts {
-                if effort.ValueKind != JsonValueKind.String || !ValidEffort(effort.GetString() ?? "") {
-                    throw Exception("Invalid reasoning effort")
-                }
-            }
-
-            count++
-        }
-
-        if count == 0 {
-            throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
     }
 
-    internal func Tool(harness string, provider string) JsonElement -> J.Items(Tools).Find(
-        tool -> J.Text(tool, "harness") == harness && J.Text(tool, "provider") == provider
+    internal func Tool(harness string, provider string) AllowedTool? -> AllowedTools.Find(
+        tool -> tool.Harness == harness && tool.Provider == provider
     )
 
-    internal func Adapter(harness string, provider string) Harness? -> harness == "command" ?
-    CommandHarness.Adapter(Tool(harness, provider)): Harness.Find(harness)
+    internal func Adapter(harness string, provider string) Harness? {
+        if harness == "command" {
+            if let tool = Tool(harness, provider) {
+                return CommandHarness.Adapter(tool.Command, tool.Output)
+            }
+        }
 
-    internal func ToolModels(harness string, provider string) JsonElement -> J.Get(Tool(harness, provider), "models")
+        return Harness.Find(harness)
+    }
 
-    internal func Unrestricted(harness string, provider string) bool -> AllowsTool(harness, provider) && ToolModels(
+    internal func ToolModels(harness string, provider string) Dictionary[string, List[string]]? -> Tool(
         harness,
         provider
-    ).ValueKind == JsonValueKind.Undefined
+    )?.Models
 
-    private func ValidEffort(effort string) bool -> Array.IndexOf(
-        "off minimal low medium high xhigh max ultra unknown absent".Split(' '),
-        effort
-    ) >= 0
+    internal func Unrestricted(harness string, provider string) bool -> AllowsTool(harness, provider) &&
+        ToolModels(harness, provider) == nil
 
     internal func Allows(harness string, provider string, model string, effort string) bool {
         try {
@@ -278,13 +269,7 @@ internal class Policy {
         }
 
         let entries = ToolModels(harness, provider)
-        return entries.ValueKind == JsonValueKind.Object ?
-        entries
-            .EnumerateObject()
-            .Where(entry -> Regex.IsMatch(entry.Name, pattern))
-            .Select(entry -> entry.Name)
-            .ToList():
-        List[string]()
+        return entries?.Keys.Where(entry -> Regex.IsMatch(entry, pattern)).ToList() ?? List[string]()
     }
 
     internal func Validate(
@@ -329,20 +314,22 @@ internal class Policy {
             }
         }
 
-        let efforts = J.Items(J.Get(ToolModels(harness, provider), model))
-        if !Unrestricted(harness, provider) && !efforts.Exists(item -> modelOnly || item.GetString() == effort) {
-            throw Exception("Model/effort pair is not allowed by the repository policy. No inference started.")
+        if let models = ToolModels(harness, provider) {
+            var efforts List[string]
+            if !models.TryGetValue(model, out efforts) || !efforts.Exists(item -> modelOnly || item == effort) {
+                throw Exception("Model/effort pair is not allowed by the repository policy. No inference started.")
+            }
         }
 
         ValidateBudget(seconds)
     }
 
     internal func ValidateBudget(seconds int32, unlimited bool = false) {
-        if unlimited && !J.Bool(Value, "allow_unlimited") {
+        if unlimited && !AllowUnlimited {
             throw Exception("Repository policy does not allow unlimited coding")
         }
 
-        let maximum = J.Number(Value, "max_seconds")
+        let maximum = MaxSeconds
         if seconds < 1 || seconds > maximum {
             throw CliFailure(
                 "invalid_arguments",
@@ -381,28 +368,87 @@ internal class Policy {
         }
     }
 
-    internal func Providers(harness string) List[string] -> J
-        .Items(Tools)
-        .Where(tool -> J.Text(tool, "harness") == harness)
-        .Select(tool -> J.Text(tool, "provider"))
+    internal func Providers(harness string) List[string] -> AllowedTools
+        .Where(tool -> tool.Harness == harness)
+        .Select(tool -> tool.Provider)
         .Distinct(StringComparer.Ordinal)
         .ToList()
 
-    internal func AllowsTool(harness string, provider string) bool -> Tool(
-        harness,
-        provider
-    ).ValueKind == JsonValueKind.Object
+    internal func AllowsTool(harness string, provider string) bool -> Tool(harness, provider) != nil
 
     shared {
-        internal func CloseMessage(value JsonElement) string -> J.Get(value, "close_message")
-            .ValueKind == JsonValueKind.Undefined ?
-        "This pull request lacks current owner authorization. Please request owner approval.": J.Text(
-            value,
-            "close_message"
-        )
+        private func ValidEffort(effort string) bool -> Array.IndexOf(
+            "off minimal low medium high xhigh max ultra unknown absent".Split(' '),
+            effort
+        ) >= 0
 
         internal func Load(repo string, revision string) Policy -> Policy(
             GitHub.FileAt(repo, ".github/tokate.json", revision)
         )
+
+        internal func Parse(value JsonElement) Policy -> Policy(value)
+    }
+
+    internal class AllowedTool(
+        harness string,
+        provider string,
+        models Dictionary[string, List[string]]?,
+        command JsonElement,
+        output string
+    ) {
+        internal let Harness string = harness
+        internal let Provider string = provider
+        internal let Models Dictionary[string, List[string]]? = models
+        internal let Command JsonElement = command
+        internal let Output string = output
+
+        shared {
+            internal func Parse(value JsonElement) AllowedTool {
+                let harness = JsonFields.String(value, "Policy allowed tool", "harness")
+                let provider = JsonFields.String(value, "Policy allowed tool", "provider")
+                var models JsonElement
+                value.TryGetProperty("models", out models)
+                var command JsonElement
+                value.TryGetProperty("command", out command)
+                let output = JsonFields.OptionalString(value, "Policy allowed tool", "output", "")
+
+                return AllowedTool(harness, provider, ParseModels(models), command, output)
+            }
+
+            private func ParseModels(value JsonElement) Dictionary[string, List[string]]? {
+                if value.ValueKind == JsonValueKind.Undefined {
+                    return nil
+                }
+                if value.ValueKind != JsonValueKind.Object {
+                    throw Exception("Policy models must map model names to effort arrays")
+                }
+
+                let models = map[string, List[string]]{}
+                for model in value.EnumerateObject() {
+                    if !Regex.IsMatch(model.Name, RequestData.ModelPattern) {
+                        throw Exception("Invalid model name")
+                    }
+
+                    let values = JsonFields.Array(value, "Policy models", model.Name)
+                    if values.GetArrayLength() == 0 {
+                        throw Exception("Each model needs allowed efforts")
+                    }
+                    let efforts = List[string](values.GetArrayLength())
+                    for effort in values.EnumerateArray() {
+                        if effort.ValueKind != JsonValueKind.String || !ValidEffort(effort.GetString() ?? "") {
+                            throw Exception("Invalid reasoning effort")
+                        }
+                        efforts.Add(effort.GetString() ?? "")
+                    }
+                    models.Add(model.Name, efforts)
+                }
+
+                if models.Count == 0 {
+                    throw Exception("Set models and a max_seconds limit from 1 to 86400")
+                }
+
+                return models
+            }
+        }
     }
 }

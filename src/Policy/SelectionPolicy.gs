@@ -44,16 +44,16 @@ internal class SelectionPolicy {
         private func Eligible(args Args, policy Policy) string {
             let groups = List[string]()
 
-            for tool in J.Items(policy.Tools) {
-                let models = J.Get(tool, "models")
+            for tool in policy.AllowedTools {
+                let models = tool.Models
                 let pairs = List[string]()
 
-                if J.Text(tool, "harness") == "codex" {
+                if tool.Harness == "codex" {
                     pairs.AddRange(CodexChoices(CodexRuntime.Capabilities(args.Get("harness-path")), policy))
-                } else if models.ValueKind == JsonValueKind.Object {
-                    for model in models.EnumerateObject() {
-                        for effort in J.Items(model.Value) {
-                            pairs.Add(model.Name + " / " + effort.GetString())
+                } else if let entries = models {
+                    for model in entries {
+                        for effort in model.Value {
+                            pairs.Add(model.Key + " / " + effort)
                         }
                     }
                 } else {
@@ -61,9 +61,7 @@ internal class SelectionPolicy {
                 }
 
                 groups.Add(
-                    J.Text(tool, "harness") + "/" + J.Text(tool, "provider") +
-                        ": " +
-                        (pairs.Count == 0 ? "none": String.Join(", ", pairs))
+                    tool.Harness + "/" + tool.Provider + ": " + (pairs.Count == 0 ? "none": String.Join(", ", pairs))
                 )
             }
 

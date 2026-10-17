@@ -222,7 +222,7 @@ internal class Donate {
             if gratis {
                 Gratis.Context(context, List[Object]())
             }
-            let maximum = gratis ? 3600: Math.Min(3600, J.Number(policy.Value, "max_seconds"))
+            let maximum = gratis ? 3600: Math.Min(3600, policy.MaxSeconds)
             let seconds = options.Get("seconds") == "" ? maximum: options.Number("seconds")
             options.Values["--seconds"] = seconds.ToString()
             policy.ValidateBudget(seconds, false)

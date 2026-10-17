@@ -560,7 +560,7 @@ internal class Checks {
             }
 
             let required = List[Object]()
-            let names = J.Items(J.Get(J.Get(run.Element(), "policy"), "required_checks"))
+            let names = J.Items(Policy.Parse(J.Get(run.Element(), "policy")).RequiredChecks)
 
             for name in names {
                 var found bool
