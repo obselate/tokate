@@ -136,10 +136,7 @@ internal class PrBody {
             let prior = publication.Predecessor
             let handoff = publication.Handoff
 
-            if handoff.ValueKind != JsonValueKind.Undefined {
-                ContributionHandoff.Declaration(handoff)
-                let predecessor = HandoffRequestMetadata.Parse(handoff)
-
+            if let predecessor = ContributionHandoff.Declaration(handoff) {
                 report += "\n\n- Supersedes #" + predecessor.Pr.ToString() +
                     " from @" +
                     predecessor.Donor +

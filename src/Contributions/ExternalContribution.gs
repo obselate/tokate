@@ -468,7 +468,11 @@ internal class ExternalContribution {
                 }
 
                 let commit = RepositoryIdentity.CommitSha(args.Need("commit"))
-                ContributionHandoff.Candidate(J.Get(run.Element(), "handoff"), run.Text("head_repo"), commit)
+                ContributionHandoff.Candidate(
+                    ContributionHandoff.Declaration(J.Get(run.Element(), "handoff")),
+                    run.Text("head_repo"),
+                    commit
+                )
                 let summary = PublicSummary.FileSummary(args.Get("summary"), commit)
 
                 let prepared = PrepareCheckout(directory, run, record, args, commit, retry)

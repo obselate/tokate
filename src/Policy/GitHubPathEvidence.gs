@@ -55,8 +55,7 @@ internal class GitHubPathEvidence {
             return baseline
         }
 
-        internal func Amendment(repo string, record JsonElement, metadata JsonElement) {
-            let amendment = AmendmentRequestMetadata.Parse(metadata)
+        internal func Amendment(repo string, record JsonElement, amendment AmendmentRequestMetadata) {
             let approval = J.Get(record, "approval")
             let baseline = amendment.Base == "" ? J.Text(record, "base"): amendment.Base
             if baseline != J.Text(record, "base") {

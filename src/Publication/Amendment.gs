@@ -884,7 +884,7 @@ internal class Amendment {
             GitHubPathEvidence.Amendment(
                 run.Text("repo"),
                 record,
-                CoordinatorRequest.Parse(J.Get(amendment.Element(), "request")).Metadata
+                AmendmentRequestMetadata.Parse(CoordinatorRequest.Parse(J.Get(amendment.Element(), "request")).Metadata)
             )
 
             Authority(run, amendment, directory: directory)

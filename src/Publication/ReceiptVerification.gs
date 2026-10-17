@@ -72,13 +72,13 @@ internal class ReceiptVerification {
             let publication = PublicationRequestMetadata.Parse(metadata)
             let handoff = publication.Handoff
 
-            ContributionHandoff.Declaration(handoff)
+            let parsedHandoff = ContributionHandoff.Declaration(handoff)
 
             if !RequestData.Same(receipt.Handoff, handoff) {
                 throw CliFailure("stale_approval", "Receipt handoff differs from the authoritative source")
             }
 
-            ContributionHandoff.Authority(state, handoff)
+            ContributionHandoff.Authority(state, parsedHandoff)
 
             let current = state.Current()
             let incomplete = (current?.Value() ?? default(JsonElement)).GetRawText() == (
@@ -93,7 +93,7 @@ internal class ReceiptVerification {
             let exactHead = outcome?.Head ?? ""
 
             if paths {
-                ContributionHandoff.Candidate(handoff, publication.Fork, exactHead)
+                ContributionHandoff.Candidate(parsedHandoff, publication.Fork, exactHead)
             }
 
             let donor = RepositoryIdentity.Login(receipt.Donor)
@@ -221,7 +221,9 @@ internal class ReceiptVerification {
             LeaseLifecycle.Fence(
                 authenticated,
                 (current?.Metadata ?? default(JsonElement)).ValueKind == JsonValueKind.Object ?
-                J.Text(current?.Metadata ?? default(JsonElement), "attempt"): current?.Attempt ?? ""
+                PublicationRequestMetadata.Parse(current?.Metadata ?? default(JsonElement))
+                    .Attempt: current?.Attempt ??
+                    ""
             )
 
             let stateCommit = GitHub.Api("repos/" + repo + "/git/commits/" + authenticated.Sha)
@@ -306,7 +308,7 @@ internal class ReceiptVerification {
             )
 
             policy.ValidateTools(publication.Tools, publication.SourceKind)
-            AttemptContinuation.Declaration(metadata)
+            AttemptContinuation.Declaration(publication)
 
             return policy
         }

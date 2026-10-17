@@ -93,17 +93,13 @@ internal class RequestMetadata {
                 }
 
                 if parsed.Usage.ValueKind != JsonValueKind.Undefined && parsed.Usage.ValueKind != JsonValueKind.Null {
-                    RequestUsage.Parse(parsed.Usage)
+                    RequestUsage.Validate(parsed.Usage)
                 }
             }
         }
 
         internal func Correction(value JsonElement, head string, policy JsonElement) {
             let parsed = CorrectionRequestMetadata.Parse(value)
-
-            if System.Text.Encoding.UTF8.GetByteCount(RequestData.Canonical(value)) > 6144 {
-                throw CliFailure("invalid_state", "Correction provenance exceeds its byte limit")
-            }
 
             var uuid Guid
             if !Guid.TryParseExact(parsed.Uuid, "D", out uuid) || uuid.ToString("D") != parsed.Uuid ||
@@ -264,7 +260,7 @@ internal class RequestMetadata {
             }
 
             ContributionHandoff.Declaration(parsed.Handoff)
-            AttemptContinuation.Declaration(metadata)
+            AttemptContinuation.Declaration(parsed)
 
             if parsed.Correction.ValueKind != JsonValueKind.Undefined {
                 if parsed.Incomplete {
@@ -347,15 +343,7 @@ internal class CoordinatorRequest(
         writer.WriteString("approval", Approval)
         writer.WriteString("action", Action)
         writer.WritePropertyName("metadata")
-
-        if Action == "publish" {
-            PublicationRequestMetadata.Parse(Metadata).Write(writer)
-        } else if Action == "amend" {
-            AmendmentRequestMetadata.Parse(Metadata).Write(writer)
-        } else {
-            Metadata.WriteTo(writer)
-        }
-
+        Metadata.WriteTo(writer)
         writer.WriteEndObject()
     }
 
@@ -379,22 +367,20 @@ internal class CoordinatorRequest(
 
 internal class PublicationRequestMetadata(value JsonElement, pr int32) {
     private let Source JsonElement = value
-    internal let Fork string = JsonFields.String(value, "Publication request metadata", "fork")
-    internal let Branch string = JsonFields.String(value, "Publication request metadata", "branch")
-    internal let Head string = JsonFields.String(value, "Publication request metadata", "head")
+    internal let Fork string = J.Text(value, "fork")
+    internal let Branch string = J.Text(value, "branch")
+    internal let Head string = J.Text(value, "head")
     internal let Pr int32 = pr
     internal let PrValue JsonElement = J.Get(value, "pr")
-    internal let SourceKind string = JsonFields.String(value, "Publication request metadata", "source")
-    internal let Tools JsonElement = JsonFields.Array(value, "Publication request metadata", "tools")
-    internal let Verification string = JsonFields.String(value, "Publication request metadata", "verification")
+    internal let SourceKind string = J.Text(value, "source")
+    internal let Tools JsonElement = J.Get(value, "tools")
+    internal let Verification string = J.Text(value, "verification")
     internal let Correction JsonElement = J.Get(value, "correction")
     internal let Summary JsonElement = J.Get(value, "summary")
     internal let Attempt string = J.Get(value, "attempt").ValueKind == JsonValueKind.String ?
     JsonFields.String(value, "Publication request metadata", "attempt"): ""
     internal let Predecessor JsonElement = J.Get(value, "predecessor")
-    internal let ImportManifestSha256 string = J.Get(value, "import_manifest_sha256")
-        .ValueKind == JsonValueKind.String ?
-    JsonFields.String(value, "Publication request metadata", "import_manifest_sha256"): ""
+    internal let HasImportManifest bool = J.Get(value, "import_manifest_sha256").ValueKind != JsonValueKind.Undefined
     internal let Incomplete bool = J.Get(value, "incomplete").ValueKind == JsonValueKind.True
     internal let HasIncomplete bool = J.Get(value, "incomplete").ValueKind != JsonValueKind.Undefined
     internal let Handoff JsonElement = J.Get(value, "handoff")
@@ -421,30 +407,6 @@ internal class PublicationRequestMetadata(value JsonElement, pr int32) {
         J.Get(value, "reported_model").ValueKind == JsonValueKind.String ?
         JsonFields.String(value, "Publication request metadata", "reported_model"): ""
     ) as string?
-
-    internal func Write(writer Utf8JsonWriter) {
-        writer.WriteStartObject()
-
-        for field in Source.EnumerateObject() {
-            if field.Name == "tools" {
-                writer.WritePropertyName(field.Name)
-                ToolDeclaration.WriteAll(writer, field.Value)
-            } else if field.Name == "correction" {
-                writer.WritePropertyName(field.Name)
-                CorrectionRequestMetadata.Parse(field.Value).Write(writer)
-            } else if field.Name == "handoff" {
-                writer.WritePropertyName(field.Name)
-                HandoffRequestMetadata.Parse(field.Value).Write(writer)
-            } else if field.Name == "predecessor" {
-                writer.WritePropertyName(field.Name)
-                ContinuationPredecessor.Parse(field.Value).Write(writer)
-            } else {
-                field.WriteTo(writer)
-            }
-        }
-
-        writer.WriteEndObject()
-    }
 
     internal func WithPr(pr int32) JsonElement {
         using let bytes = MemoryStream()
@@ -492,13 +454,13 @@ internal class PublicationRequestMetadata(value JsonElement, pr int32) {
 }
 
 internal class AmendmentRequestMetadata(value JsonElement) {
-    private let Source JsonElement = value
     internal let Fork string = JsonFields.String(value, "Amendment request metadata", "fork")
     internal let Branch string = JsonFields.String(value, "Amendment request metadata", "branch")
     internal let Previous string = JsonFields.String(value, "Amendment request metadata", "previous")
     internal let Head string = JsonFields.String(value, "Amendment request metadata", "head")
     internal let Pr int32 = JsonFields.Int32(value, "Amendment request metadata", "pr")
     internal let Seconds int32 = JsonFields.Int32(value, "Amendment request metadata", "seconds")
+    internal let PrValue JsonElement = J.Get(value, "pr")
     internal let Tools JsonElement = JsonFields.Array(value, "Amendment request metadata", "tools")
     internal let Verification string = JsonFields.String(value, "Amendment request metadata", "verification")
     internal let Base string = J.Get(value, "base").ValueKind == JsonValueKind.String ?
@@ -508,24 +470,14 @@ internal class AmendmentRequestMetadata(value JsonElement) {
     internal let Attempt string = J.Get(value, "attempt").ValueKind == JsonValueKind.String ?
     JsonFields.String(value, "Amendment request metadata", "attempt"): ""
 
-    internal func Write(writer Utf8JsonWriter) {
-        writer.WriteStartObject()
-
-        for field in Source.EnumerateObject() {
-            if field.Name == "tools" {
-                writer.WritePropertyName(field.Name)
-                ToolDeclaration.WriteAll(writer, field.Value)
-            } else {
-                field.WriteTo(writer)
-            }
-        }
-
-        writer.WriteEndObject()
-    }
-
     shared {
         internal func Parse(value JsonElement) AmendmentRequestMetadata {
             RequestData.Keys(value, "fork,branch,previous,head,pr,seconds,tools,verification,base,summary,attempt")
+
+            if J.Get(value, "tools").ValueKind != JsonValueKind.Undefined && J.Get(value, "tools")
+                .ValueKind != JsonValueKind.Array {
+                throw CliFailure("invalid_state", "Amendment tools must be an array")
+            }
 
             return AmendmentRequestMetadata(value)
         }
@@ -533,7 +485,6 @@ internal class AmendmentRequestMetadata(value JsonElement) {
 }
 
 internal class CorrectionRequestMetadata(value JsonElement) {
-    private let Source JsonElement = value
     internal let Uuid string = JsonFields.String(value, "Correction request metadata", "uuid")
     internal let Head string = JsonFields.String(value, "Correction request metadata", "head")
     internal let Tree string = JsonFields.String(value, "Correction request metadata", "tree")
@@ -542,24 +493,18 @@ internal class CorrectionRequestMetadata(value JsonElement) {
     internal let Tools JsonElement = JsonFields.Array(value, "Correction request metadata", "tools")
     internal let Verification string = JsonFields.String(value, "Correction request metadata", "verification")
 
-    internal func Write(writer Utf8JsonWriter) {
-        writer.WriteStartObject()
-
-        for field in Source.EnumerateObject() {
-            if field.Name == "tools" {
-                writer.WritePropertyName(field.Name)
-                ToolDeclaration.WriteAll(writer, field.Value)
-            } else {
-                field.WriteTo(writer)
-            }
-        }
-
-        writer.WriteEndObject()
-    }
-
     shared {
         internal func Parse(value JsonElement) CorrectionRequestMetadata {
             RequestData.Keys(value, "uuid,head,tree,patch_sha256,seconds,tools,verification")
+
+            if Encoding.UTF8.GetByteCount(RequestData.Canonical(value)) > 6144 {
+                throw CliFailure("invalid_state", "Correction provenance exceeds its byte limit")
+            }
+
+            if J.Get(value, "tools").ValueKind != JsonValueKind.Undefined && J.Get(value, "tools")
+                .ValueKind != JsonValueKind.Array {
+                throw CliFailure("invalid_state", "Correction tools must be an array; [] declares manual editing")
+            }
 
             return CorrectionRequestMetadata(value)
         }

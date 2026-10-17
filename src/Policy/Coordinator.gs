@@ -257,9 +257,10 @@ internal class Coordinator {
                 throw Exception("Contribution already published; use the recorded outcome or fresh owner approval")
             }
 
-            ContributionHandoff.Authority(state, publication.Handoff)
-            ContributionHandoff.Candidate(publication.Handoff, publication.Fork, publication.Head)
-            AttemptContinuation.Declaration(metadata)
+            let handoff = ContributionHandoff.Declaration(publication.Handoff)
+            ContributionHandoff.Authority(state, handoff)
+            ContributionHandoff.Candidate(handoff, publication.Fork, publication.Head)
+            AttemptContinuation.Declaration(publication)
 
             if publication.Predecessor.ValueKind != JsonValueKind.Undefined {
                 AttemptContinuation.Authority(state, publication.Predecessor)
@@ -390,7 +391,7 @@ internal class Coordinator {
 
             if action == "amend" {
                 Revalidate(repo, number, state, actor, donor)
-                GitHubPathEvidence.Amendment(repo, record, declaration.Metadata)
+                GitHubPathEvidence.Amendment(repo, record, AmendmentRequestMetadata.Parse(declaration.Metadata))
             }
 
             let live = CoordinationState.Load(repo, number)
@@ -492,11 +493,12 @@ internal class Coordinator {
             donor string
         ) CoordinationState
             .ResultRecord {
-            ValidateAmendment(repo, state, record, request, actor)
-            let current = state.Current()
+            state.Reservation(actor)
             let declaration = CoordinatorRequest.Parse(request)
             let metadata = declaration.Metadata
             let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
+            ValidateAmendment(repo, state, record, amendmentMetadata, actor)
+            let current = state.Current()
             let old = state.Contribution?.Metadata ?? default(JsonElement)
             let reservation = state.Lease
             let prepared = PrepareAmendment(repo, record, reservation, declaration, amendmentMetadata)
@@ -545,7 +547,7 @@ internal class Coordinator {
 
                 let updated = PrBody.ReplaceBody(body, report, receipt)
                 Revalidate(repo, number, state, actor, donor)
-                GitHubPathEvidence.Amendment(repo, record, metadata)
+                GitHubPathEvidence.Amendment(repo, record, amendmentMetadata)
                 RepositoryAccess.ValidateFork(
                     repo,
                     amendmentMetadata.Fork,
@@ -580,7 +582,7 @@ internal class Coordinator {
             }
 
             Revalidate(repo, number, state, actor, donor)
-            GitHubPathEvidence.Amendment(repo, record, metadata)
+            GitHubPathEvidence.Amendment(repo, record, amendmentMetadata)
             RepositoryAccess.ValidateFork(
                 repo,
                 amendmentMetadata.Fork,
@@ -595,7 +597,7 @@ internal class Coordinator {
                 throw Exception("Physical PR receipt changed; amendment has no coordination authority")
             }
 
-            return RecordAmendment(state, request, actor, donor, run, latest, retainedHistory)
+            return RecordAmendment(state, declaration, amendmentMetadata, actor, donor, run, latest, retainedHistory)
         }
 
         private func PrepareAmendment(
@@ -636,13 +638,9 @@ internal class Coordinator {
             repo string,
             state CoordinationState,
             record JsonElement,
-            request JsonElement,
+            amendmentMetadata AmendmentRequestMetadata,
             actor JsonElement
         ) {
-            state.Reservation(actor)
-            let declaration = CoordinatorRequest.Parse(request)
-            let metadata = declaration.Metadata
-            let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
             LeaseLifecycle.Fence(state, amendmentMetadata.Attempt)
             let original = state.Contribution
             let current = state.Current()
@@ -681,12 +679,13 @@ internal class Coordinator {
                 amendmentMetadata.Head,
                 actor
             )
-            GitHubPathEvidence.Amendment(repo, record, metadata)
+            GitHubPathEvidence.Amendment(repo, record, amendmentMetadata)
         }
 
         private func RecordAmendment(
             state CoordinationState,
-            request JsonElement,
+            declaration CoordinatorRequest,
+            amendmentMetadata AmendmentRequestMetadata,
             actor JsonElement,
             donor string,
             run Data,
@@ -694,13 +693,10 @@ internal class Coordinator {
             retainedHistory List[CoordinationState.PublicationRecord]
         ) CoordinationState
             .ResultRecord {
-            let declaration = CoordinatorRequest.Parse(request)
-            let metadata = declaration.Metadata
-            let amendmentMetadata = AmendmentRequestMetadata.Parse(metadata)
             let outcome = CoordinationState
                 .ResultRecord{
                 Pr: amendmentMetadata.Pr,
-                PrJson: J.Get(metadata, "pr"),
+                PrJson: amendmentMetadata.PrValue,
                 Url: J.Text(latest, "html_url"),
                 Head: amendmentMetadata.Head,
                 Reservation: run.Text("id")

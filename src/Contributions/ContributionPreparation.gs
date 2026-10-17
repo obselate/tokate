@@ -422,7 +422,7 @@ internal class ContributionPreparation {
             state.Reservation(J.Get(viewer, "id"))
             LeaseLifecycle.Fence(state, uuid)
             CheckPending(run, viewer, state)
-            ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))
+            ContributionHandoff.Authority(state, ContributionHandoff.Declaration(J.Get(run.Element(), "handoff")))
 
             if state.Contribution != nil {
                 throw CliFailure("invalid_state", "Published work is preserved; this claim cannot prepare new coding")

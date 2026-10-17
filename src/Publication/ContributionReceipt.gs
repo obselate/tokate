@@ -104,7 +104,7 @@ internal class ContributionReceipt {
                 receipt["incomplete"] = publication.Incomplete
             }
 
-            AttemptContinuation.Keep(receipt, metadata)
+            AttemptContinuation.Keep(receipt, publication)
             return Record.Parse(J.Parse(J.Write(receipt)))
         }
 
@@ -156,7 +156,7 @@ internal class ContributionReceipt {
                 fields["incomplete"] = true
             }
 
-            AttemptContinuation.Keep(fields, original?.Metadata ?? default(JsonElement))
+            AttemptContinuation.Keep(fields, publication)
 
             if correction.ValueKind != JsonValueKind.Undefined {
                 fields["correction"] = correction

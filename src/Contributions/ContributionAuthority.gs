@@ -63,7 +63,7 @@ internal class ContributionAuthority {
                 }
 
                 record = state.Check(repo, run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
-                ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))
+                ContributionHandoff.Authority(state, ContributionHandoff.Declaration(J.Get(run.Element(), "handoff")))
 
                 let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 

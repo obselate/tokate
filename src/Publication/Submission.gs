@@ -200,7 +200,7 @@ internal class Submission {
 
                     try {
                         candidate = RequestMetadata.CommentData(body)
-                        candidateId = CoordinatorRequest.Parse(candidate).Uuid
+                        candidateId = J.Text(candidate, "uuid")
                     } catch (error CliFailure) {
                         continue
                     }
@@ -568,7 +568,7 @@ internal class Submission {
             }
 
             if AttemptContinuation.Has(run) {
-                AttemptContinuation.Keep(metadata, AttemptContinuation.Metadata(run))
+                AttemptContinuation.Keep(metadata, PublicationRequestMetadata.Parse(AttemptContinuation.Metadata(run)))
             }
 
             if correction != nil {

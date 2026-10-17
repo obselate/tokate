@@ -162,7 +162,6 @@ internal class RequestData {
 }
 
 internal class ToolDeclaration(
-    source JsonElement,
     harness string,
     provider string,
     model string,
@@ -171,7 +170,6 @@ internal class ToolDeclaration(
     invalidCodingTime bool,
     usage JsonElement
 ) {
-    private let Source JsonElement = source
     internal let Harness string = harness
     internal let Provider string = provider
     internal let Model string = model
@@ -180,32 +178,7 @@ internal class ToolDeclaration(
     internal let InvalidCodingTime bool = invalidCodingTime
     internal let Usage JsonElement = usage
 
-    internal func Write(writer Utf8JsonWriter) {
-        writer.WriteStartObject()
-
-        for field in Source.EnumerateObject() {
-            if field.Name == "usage" && field.Value.ValueKind != JsonValueKind.Null {
-                writer.WritePropertyName(field.Name)
-                RequestUsage.Parse(field.Value).Write(writer)
-            } else {
-                field.WriteTo(writer)
-            }
-        }
-
-        writer.WriteEndObject()
-    }
-
     shared {
-        internal func WriteAll(writer Utf8JsonWriter, value JsonElement) {
-            writer.WriteStartArray()
-
-            for item in value.EnumerateArray() {
-                Parse(item).Write(writer)
-            }
-
-            writer.WriteEndArray()
-        }
-
         internal func Parse(value JsonElement) ToolDeclaration {
             RequestData.Keys(value, "harness,provider,model,effort,usage,coding_seconds")
 
@@ -216,7 +189,6 @@ internal class ToolDeclaration(
             let codingSeconds int64? = present && valid ? seconds as int64?: nil
 
             return ToolDeclaration(
-                value,
                 JsonFields.String(value, "Request tool", "harness"),
                 JsonFields.String(value, "Request tool", "provider"),
                 JsonFields.String(value, "Request tool", "model"),
@@ -229,20 +201,10 @@ internal class ToolDeclaration(
     }
 }
 
-internal class RequestUsage(source JsonElement, inputTokens int64, cachedInputTokens int64, outputTokens int64) {
-    private let Source JsonElement = source
-    internal let InputTokens int64 = inputTokens
-    internal let CachedInputTokens int64 = cachedInputTokens
-    internal let OutputTokens int64 = outputTokens
-
-    internal func Write(writer Utf8JsonWriter) -> Source.WriteTo(writer)
-
+internal class RequestUsage {
     shared {
-        internal func Parse(value JsonElement) RequestUsage {
+        internal func Validate(value JsonElement) {
             RequestData.Keys(value, "input_tokens,cached_input_tokens,output_tokens")
-            var input int64 = -1
-            var cached int64 = -1
-            var output int64 = -1
 
             for field in value.EnumerateObject() {
                 var count int64
@@ -250,21 +212,7 @@ internal class RequestUsage(source JsonElement, inputTokens int64, cachedInputTo
                 if field.Value.ValueKind != JsonValueKind.Number || !field.Value.TryGetInt64(out count) || count < 0 {
                     throw CliFailure("invalid_state", "Usage must be a nonnegative donor-reported count")
                 }
-
-                switch field.Name {
-                    case "input_tokens" {
-                        input = count
-                    }
-                    case "cached_input_tokens" {
-                        cached = count
-                    }
-                    default {
-                        output = count
-                    }
-                }
             }
-
-            return RequestUsage(value, input, cached, output)
         }
     }
 }

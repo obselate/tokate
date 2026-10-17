@@ -166,7 +166,7 @@ internal class AttemptContinuation {
 
             let declared = J.Items(tools)
 
-            if parsed.Version != 2 || parsed.Attempt == attempt || !Regex.IsMatch(parsed.Approval, "^[0-9a-f]{64}$") ||
+            if parsed.Attempt == attempt || !Regex.IsMatch(parsed.Approval, "^[0-9a-f]{64}$") ||
                 (parsed.State != "failed" && parsed.State != "running") ||
                 declared.Count != 1 ||
                 !Harness.Resumes(parsed.Harness, parsed.Provider) || Array.IndexOf(
@@ -183,16 +183,39 @@ internal class AttemptContinuation {
                 parsed.Effort != tool.Effort {
                 throw CliFailure("invalid_state", "Continuation cannot change its predecessor tool selection")
             }
+
+            if parsed.Version != 2 {
+                throw CliFailure("invalid_state", "Invalid stopped managed v2 predecessor or destination attempt")
+            }
         }
 
-        internal func Declaration(metadata JsonElement) ContinuationRequestMetadata? {
-            let parsed = ContinuationRequestMetadata.Parse(metadata)
-            guard let declaration = parsed else {
+        internal func Declaration(metadata JsonElement) PublicationRequestMetadata? {
+            if J.Get(metadata, "predecessor").ValueKind == JsonValueKind.Undefined && J.Get(
+                metadata,
+                "import_manifest_sha256"
+            )
+                .ValueKind == JsonValueKind.Undefined {
                 return nil
             }
 
-            if declaration.SourceKind != "tokate" || !Regex.IsMatch(
-                declaration.ImportManifestSha256,
+            return Declaration(PublicationRequestMetadata.Parse(metadata))
+        }
+
+        internal func Declaration(declaration PublicationRequestMetadata) PublicationRequestMetadata? {
+            if declaration.Predecessor.ValueKind == JsonValueKind.Undefined && !declaration.HasImportManifest {
+                return nil
+            }
+
+            if declaration.Predecessor.ValueKind != JsonValueKind.Object {
+                throw CliFailure(
+                    "invalid_state",
+                    "Continuation request metadata: field \"predecessor\" is missing or not an object"
+                )
+            }
+
+            let manifest = declaration.ImportManifestValue
+            if declaration.SourceKind != "tokate" || manifest.ValueKind != JsonValueKind.String || !Regex.IsMatch(
+                manifest.GetString() ?? "",
                 "^[0-9a-f]{64}$"
             ) {
                 throw CliFailure("invalid_state", "Continuation requires managed source and bound import evidence")
@@ -297,10 +320,10 @@ internal class AttemptContinuation {
             )
         )
 
-        internal func Keep(fields Dictionary[string, Object?], metadata JsonElement) {
+        internal func Keep(fields Dictionary[string, Object?], metadata PublicationRequestMetadata) {
             if let declaration = Declaration(metadata) {
                 fields["predecessor"] = declaration.Predecessor
-                fields["import_manifest_sha256"] = declaration.ImportManifestSha256
+                fields["import_manifest_sha256"] = declaration.ImportManifestValue
                 fields["attempt"] = declaration.Attempt
             }
         }
@@ -432,70 +455,29 @@ internal class AttemptContinuation {
 }
 
 internal class ContinuationPredecessor(value JsonElement) {
-    private let Source JsonElement = value
-    internal let Version int32 = JsonFields.Int32(value, "Continuation predecessor", "version")
-    internal let Id string = JsonFields.String(value, "Continuation predecessor", "id")
-    internal let Attempt string = JsonFields.String(value, "Continuation predecessor", "attempt")
-    internal let StateSha string = JsonFields.String(value, "Continuation predecessor", "state_sha")
-    internal let Approval string = JsonFields.String(value, "Continuation predecessor", "approval")
-    internal let Base string = JsonFields.String(value, "Continuation predecessor", "base")
-    internal let RepoId int64 = JsonFields.Int64(value, "Continuation predecessor", "repo_id")
-    internal let DonorId int64 = JsonFields.Int64(value, "Continuation predecessor", "donor_id")
+    internal let Version int32 = J.Number(value, "version")
+    internal let Id string = J.Text(value, "id")
+    internal let Attempt string = J.Text(value, "attempt")
+    internal let StateSha string = J.Text(value, "state_sha")
+    internal let Approval string = J.Text(value, "approval")
+    internal let Base string = J.Text(value, "base")
     internal let Repository JsonElement = J.Get(value, "repo_id")
     internal let Donor JsonElement = J.Get(value, "donor_id")
-    internal let State string = JsonFields.String(value, "Continuation predecessor", "state")
-    internal let FailureReason string = JsonFields.String(value, "Continuation predecessor", "failure_reason")
-    internal let Harness string = JsonFields.String(value, "Continuation predecessor", "harness")
-    internal let Provider string = JsonFields.String(value, "Continuation predecessor", "provider")
-    internal let Model string = JsonFields.String(value, "Continuation predecessor", "model")
-    internal let Effort string = JsonFields.String(value, "Continuation predecessor", "effort")
-
-    internal func Write(writer Utf8JsonWriter) -> Source.WriteTo(writer)
+    internal let State string = J.Text(value, "state")
+    internal let FailureReason string = J.Text(value, "failure_reason")
+    internal let Harness string = J.Text(value, "harness")
+    internal let Provider string = J.Text(value, "provider")
+    internal let Model string = J.Text(value, "model")
+    internal let Effort string = J.Text(value, "effort")
 
     shared {
         internal func Parse(value JsonElement) ContinuationPredecessor {
-            if J.Number(value, "version") != 2 {
-                throw CliFailure("invalid_state", "Invalid stopped managed v2 predecessor or destination attempt")
-            }
-
             RequestData.Keys(
                 value,
                 "version,id,attempt,state_sha,approval,base,repo_id,donor_id,state,failure_reason,harness,provider,model,effort"
             )
 
             return ContinuationPredecessor(value)
-        }
-    }
-}
-
-internal class ContinuationRequestMetadata(value JsonElement) {
-    internal let SourceKind string = JsonFields.String(value, "Continuation request metadata", "source")
-    internal let Attempt string = JsonFields.String(value, "Continuation request metadata", "attempt")
-    internal let Tools JsonElement = JsonFields.Array(value, "Continuation request metadata", "tools")
-    internal let ImportManifestSha256 string = JsonFields.String(
-        value,
-        "Continuation request metadata",
-        "import_manifest_sha256"
-    )
-    internal let Predecessor JsonElement = J.Get(value, "predecessor")
-
-    shared {
-        internal func Parse(value JsonElement) ContinuationRequestMetadata? {
-            let predecessor = J.Get(value, "predecessor")
-
-            if predecessor.ValueKind == JsonValueKind.Undefined && J.Get(value, "import_manifest_sha256")
-                .ValueKind == JsonValueKind.Undefined {
-                return nil
-            }
-
-            if predecessor.ValueKind != JsonValueKind.Object {
-                throw CliFailure(
-                    "invalid_state",
-                    "Continuation request metadata: field \"predecessor\" is missing or not an object"
-                )
-            }
-
-            return ContinuationRequestMetadata(value)
         }
     }
 }
