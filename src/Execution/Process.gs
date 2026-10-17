@@ -320,10 +320,10 @@ internal class Commands {
         ) {
             let result = CommandOutput()
             let text = StringBuilder()
-            var lines CommandLines? = nil
-
-            if let observer = observe {
-                lines = CommandLines(observer)
+            let lines CommandLines? = if observe == nil {
+                nil
+            } else {
+                CommandLines(observe)
             }
 
             try {
@@ -334,8 +334,8 @@ internal class Commands {
                     true
                 )
 
-                if writer != nil {
-                    writer.AutoFlush = true
+                if let activeWriter = writer {
+                    activeWriter.AutoFlush = true
                 }
 
                 let buffer = [StreamBufferSize]char
@@ -398,8 +398,8 @@ internal class Commands {
             var failure Exception? = nil
 
             try {
-                if input != nil {
-                    writer.Write(input)
+                if let text = input {
+                    writer.Write(text)
                 }
             } catch (error IOException) {
                 failure = error
@@ -407,9 +407,7 @@ internal class Commands {
                 try {
                     writer.Close()
                 } catch (error IOException) {
-                    if failure == nil {
-                        failure = error
-                    }
+                    failure ??= error
                 }
             }
 

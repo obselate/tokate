@@ -147,7 +147,7 @@ internal class ApiResponse {
         return reason
     }
 
-    internal func Delay(rateLimited bool) double {
+    internal func Delay(rateLimited bool) float64 {
         let now = DateTimeOffset.UtcNow
         var date DateTimeOffset
         let server = DateTimeOffset.TryParse(
@@ -206,7 +206,7 @@ internal class ApiTransport {
 
         internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator. After fixing the cause, the owner reruns the failed coordinator workflow run in Actions. Each event processes only its triggering comment. Recorded UUIDs replay their outcome."
 
-        private let Cache Dictionary[string, ApiCache] = Dictionary[string, ApiCache]()
+        private let Cache Dictionary[string, ApiCache] = map[string, ApiCache]{}
 
         private const CacheByteLimit int64 = 4 * 1024 * 1024
 
@@ -244,7 +244,7 @@ internal class ApiTransport {
 
         private var NextPoll double
 
-        private let Polls Dictionary[string, double] = Dictionary[string, double]()
+        private let Polls Dictionary[string, double] = map[string, double]{}
 
         private var NextRead double
 
@@ -317,7 +317,7 @@ internal class ApiTransport {
             "retry_attempts": Retries
         }
 
-        private func Wait(seconds double) {
+        private func Wait(seconds float64) {
             CheckDeadline()
 
             if seconds > 0 {
@@ -371,7 +371,7 @@ internal class ApiTransport {
             )
         }
 
-        private func Failure(status int32, read bool, delay double, body string = "") Exception {
+        private func Failure(status int32, read bool, delay float64, body string = "") Exception {
             let reason = status == 0 ? "transport failure or missing response status": "HTTP " + status.ToString()
             var message = "GitHub " + (read ? "read": "mutation") + " failed (" + reason + "). "
             if body != "" {
@@ -395,7 +395,7 @@ internal class ApiTransport {
             )
         }
 
-        private func RequestAllowance(timer Stopwatch, read bool, expires int64) double {
+        private func RequestAllowance(timer Stopwatch, read bool, expires int64) float64 {
             CheckDeadline()
 
             if Clock.Elapsed.TotalSeconds < NextRead {

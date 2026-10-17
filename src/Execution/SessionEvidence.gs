@@ -51,16 +51,16 @@ internal class SessionEvidence {
                     let message = J.Get(item, "message")
                     let role = J.Text(message, "role")
 
-                    var late = kind == "agent_start" || kind == "turn_start"
-                    if omp {
-                        late = late || kind.StartsWith("tool_execution_", StringComparison.Ordinal) ||
+                    let late = kind == "agent_start" || kind == "turn_start" || if omp {
+                        kind.StartsWith("tool_execution_", StringComparison.Ordinal) ||
                             (
                             (kind == "message_start" || kind == "message_update" || kind == "message_end") &&
                                 role != "custom"
                         )
                     } else {
-                        late = late || kind == "message_start" || kind == "message_end" || kind == "agent_settled"
+                        kind == "message_start" || kind == "message_end" || kind == "agent_settled"
                     }
+
                     if settled && late {
                         throw Invalid(
                             harness + " emitted events after its " + (omp ? "terminal result": "settled result")

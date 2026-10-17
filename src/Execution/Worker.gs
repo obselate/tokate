@@ -131,7 +131,7 @@ internal class Worker {
             try {
                 File.Delete(sentinel)
             } catch (error Exception) when error is IOException || error is UnauthorizedAccessException {
-                failure = failure ?? error
+                failure ??= error
             }
 
             if let error = failure {
