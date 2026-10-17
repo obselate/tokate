@@ -14,8 +14,8 @@ internal class ReservationRequest {
                 throw CliFailure("authentication_required", "Active GitHub account differs from the saved donor")
             }
 
-            let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
-            let request = J.Get(run.Element(), "reservation_request")
+            let state = CoordinationState.Load(run.Repo, run.Issue)
+            let request = run.ReservationRequest
             var actions[]string
 
             if request.ValueKind != JsonValueKind.Undefined {
@@ -26,7 +26,7 @@ internal class ReservationRequest {
 
                 actions = []string{declaration.Action}
             } else {
-                if J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
+                if J.Text(J.Get(state.Value(), "identity"), "id") != run.Id {
                     throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
                 }
 
@@ -51,7 +51,7 @@ internal class ReservationRequest {
 
         private func Result(directory string, run Data, state CoordinationState, request JsonElement) int32 {
             let declaration = CoordinatorRequest.Parse(request)
-            let outcome = RequestMetadata.Recorded(state.Value(), J.Get(run.Element(), "donor_id"), request)
+            let outcome = RequestMetadata.Recorded(state.Value(), run.DonorId, request)
             let pending = outcome.ValueKind == JsonValueKind.Undefined
 
             Output
@@ -71,7 +71,7 @@ internal class ReservationRequest {
                 return 8
             }
 
-            run.Fields.Remove("reservation_request")
+            run.ClearReservationRequest()
             run.Save(directory)
             Output.Sink.Message("Reservation " + declaration.Action + " accepted. Saved work: " + directory)
 
@@ -85,7 +85,7 @@ internal class ReservationRequest {
             Output.Sink.RunDirectory = directory
             let action = args.Command
 
-            if !LeaseLifecycle.Transition(action) || run.Number("version") != 2 || run.Text("id") == "" {
+            if !LeaseLifecycle.Transition(action) || run.Version != 2 || run.Id == "" {
                 throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")
             }
 
@@ -95,14 +95,18 @@ internal class ReservationRequest {
                 throw CliFailure("authentication_required", "Active GitHub account differs from the saved donor")
             }
 
-            let repo = run.Text("repo")
-            let issue = run.Number("issue")
+            let repo = run.Repo
+            let issue = run.Issue
             var state = CoordinationState.Load(repo, issue)
-            var request = J.Get(run.Element(), "reservation_request")
+            var request = run.ReservationRequest
 
             if request.ValueKind != JsonValueKind.Undefined {
                 let declaration = RequestMetadata.Request(request)
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(
+                    state.Value(),
+                    RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
+                    request
+                )
 
                 if outcome.ValueKind == JsonValueKind.Undefined && declaration.Action != action {
                     throw CliFailure(
@@ -124,14 +128,14 @@ internal class ReservationRequest {
                     action == "release" &&
                     declaration.Expected != state.Sha {
                     request = JsonElement{}
-                    run.Fields.Remove("reservation_request")
+                    run.ClearReservationRequest()
                     run.Save(directory)
                 }
             }
 
             let value = state.Value()
 
-            if J.Text(J.Get(value, "identity"), "id") != run.Text("id") {
+            if J.Text(J.Get(value, "identity"), "id") != run.Id {
                 throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
             }
 
@@ -139,8 +143,8 @@ internal class ReservationRequest {
 
             if request.ValueKind == JsonValueKind.Undefined {
                 if action != "release" {
-                    state.Check(repo, issue, run.Text("donor"), J.Get(viewer, "id"))
-                    if J.Text(value, "approval_id") != run.Text("approval") {
+                    state.Check(repo, issue, run.Donor, J.Get(viewer, "id"))
+                    if J.Text(value, "approval_id") != run.Approval {
                         throw CliFailure("stale_approval", "Saved contribution approval changed")
                     }
                 }
@@ -160,7 +164,7 @@ internal class ReservationRequest {
                 )
                 request = J.Parse(pendingRequest.ToJson())
 
-                run.Fields["reservation_request"] = request
+                run.ReservationRequest = request
                 run.Save(directory)
             }
 

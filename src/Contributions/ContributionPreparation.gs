@@ -25,26 +25,26 @@ internal class ContributionPreparation {
             let directory = Allocate(
                 args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
                 run,
-                run.Text("attempt")
+                run.Attempt
             )
 
             WorkspacePreparation.Select(run, args.Get("fork"))
 
             if args.Get("continue-from") != "" {
-                if run.Text("source") != "tokate" || run.Text("attempt") == "" {
+                if run.Source != "tokate" || run.Attempt == "" {
                     throw CliFailure("invalid_state", "Continuation requires a managed v2 fresh active attempt")
                 }
 
                 let sourceDirectory = LocalPaths.DirectoryPath(args.Need("continue-from"))
                 using let sourceLease = ContinuationImport.SourceLease(sourceDirectory)
                 let source = AttemptContinuation.Source(sourceDirectory, run, record)
-                run.Fields["continuation_source"] = sourceDirectory
-                run.Fields["continuation"] = AttemptContinuation.Provenance(source)
-                run.Fields["continuation_source_metadata_sha256"] = J.Hash(ContinuationImport.Metadata(sourceDirectory))
+                run.ContinuationSource = sourceDirectory
+                run.Continuation = AttemptContinuation.Provenance(source)
+                run.ContinuationSourceMetadataSha256 = J.Hash(ContinuationImport.Metadata(sourceDirectory))
             }
 
-            if run.Text("source") == "tokate" {
-                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
+            if run.Source == "tokate" {
+                Output.Sink.ConfirmSelection(args, run.Selection, run)
             }
 
             Create(directory)
@@ -56,7 +56,7 @@ internal class ContributionPreparation {
         }
 
         private func Complete(directory string, run Data) string {
-            if run.Text("source") == "tokate" {
+            if run.Source == "tokate" {
                 Output.Sink.Step(RuntimeBudget.Description(run))
             }
 
@@ -123,25 +123,23 @@ internal class ContributionPreparation {
                 )
             }
 
-            let run = Data(
-                map[string, Object?]{
-                    "version": 2,
-                    "repo": repo,
-                    "issue": issue,
-                    "donor": donor,
-                    "donor_id": J.Get(viewer, "id"),
-                    "head_repo": RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
-                    "approval": J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
-                    "base": approved.Base,
-                    "base_branch": approved.BaseBranch,
-                    "policy_hash": approved.PolicyHash,
-                    "source": source,
-                    "tools": tools
-                }
-            )
+            let run = Data{
+                Version: 2,
+                Repo: repo,
+                Issue: issue,
+                Donor: donor,
+                DonorId: RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
+                HeadRepo: RepositoryIdentity.Repo(args.Get("fork", donor + "/" + repo.Split('/')[1])),
+                Approval: J.Text(state?.Value() ?? default(JsonElement), "approval_id"),
+                Base: approved.Base,
+                BaseBranch: approved.BaseBranch,
+                PolicyHash: approved.PolicyHash,
+                Source: source,
+                Tools: tools
+            }
 
             if args.Get("from-pr") != "" {
-                run.Fields["handoff"] = ContributionHandoff.Read(
+                run.Handoff = ContributionHandoff.Read(
                     state ?? throw CliFailure("invalid_state", "Gratis work cannot adopt a contribution"),
                     J.Get(viewer, "id"),
                     record,
@@ -153,26 +151,26 @@ internal class ContributionPreparation {
 
             if source == "tokate" {
                 let declared = J.Items(tools)[0]
-                run.Fields["model"] = J.Text(declared, "model")
-                run.Fields["requested_model"] = J.Text(declared, "model")
-                run.Fields["reported_model"] = nil
-                run.Fields["effort"] = J.Text(declared, "effort")
-                run.Fields["harness"] = J.Text(selection, "harness")
-                run.Fields["provider"] = J.Text(selection, "provider")
-                run.Fields["selection"] = selection
+                run.Model = J.Text(declared, "model")
+                run.RequestedModel = J.Text(declared, "model")
+                run.ReportedModel = nil
+                run.Effort = J.Text(declared, "effort")
+                run.Harness = J.Text(selection, "harness")
+                run.Provider = J.Text(selection, "provider")
+                run.Selection = selection
 
                 if args.Get("harness-path") != "" {
-                    run.Fields["harness_path"] = LocalPaths.RuntimePath(args.Need("harness-path"))
+                    run.HarnessPath = LocalPaths.RuntimePath(args.Need("harness-path"))
                 }
 
                 if Harness.Owns(J.Text(selection, "harness"), "claude-profile") {
-                    run.Fields["claude_profile"] = args.Need("claude-profile")
+                    run.ClaudeProfile = args.Need("claude-profile")
                 }
 
                 if Harness.Owns(J.Text(selection, "harness"), "endpoint") {
-                    run.Fields["pi_endpoint"] = PiBoundary.Endpoint(args.Need("endpoint"))
-                    run.Fields["pi_root"] = args.Need("pi-root")
-                    run.Fields["pi_node"] = args.Need("node")
+                    run.PiEndpoint = PiBoundary.Endpoint(args.Need("endpoint"))
+                    run.PiRoot = args.Need("pi-root")
+                    run.PiNode = args.Need("node")
                 }
             }
 
@@ -186,29 +184,23 @@ internal class ContributionPreparation {
                 args.Need("seconds")
             }
 
-            run.Fields["seconds"] = RuntimeBudget.ReadSeconds(args)
+            run.Seconds = RuntimeBudget.ReadSeconds(args)
 
             if args.Get("unlimited") == "true" {
-                run.Fields["unlimited"] = true
+                run.Unlimited = true
             }
 
             if args.Get("verification-reserve") != "" {
-                run.Fields["verification_reserve"] = RuntimeBudget.Reserve(args, run.Number("seconds"))
+                run.VerificationReserve = RuntimeBudget.Reserve(args, run.Seconds)
             }
 
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Seconds, run.Unlimited)
         }
 
         private func Allocate(store string, run Data, id string) string {
-            let directory = RunStorage.Allocate(
-                store,
-                run.Text("repo"),
-                run.Number("issue"),
-                id,
-                AttemptContinuation.Stopped
-            )
+            let directory = RunStorage.Allocate(store, run.Repo, run.Issue, id, AttemptContinuation.Stopped)
             Output.Sink.RunDirectory = directory
-            run.Fields["name"] = Path.GetFileName(directory)
+            run.Name = Path.GetFileName(directory)
             return directory
         }
 
@@ -219,11 +211,11 @@ internal class ContributionPreparation {
 
         private func Bind(run Data, state CoordinationState) {
             let reservation = J.Get(state.Value(), "reservation")
-            run.Fields["base"] = RepositoryIdentity.CommitSha(J.Text(reservation, "base"))
-            run.Fields["id"] = J.Text(reservation, "reservation")
-            run.Fields["state_sha"] = state.Sha
-            run.Fields["attempt"] = J.Text(reservation, "attempt")
-            run.Fields["branch"] = "tokate/v2-" + run.Text("id")
+            run.Base = RepositoryIdentity.CommitSha(J.Text(reservation, "base"))
+            run.Id = J.Text(reservation, "reservation")
+            run.StateSha = state.Sha
+            run.Attempt = J.Text(reservation, "attempt")
+            run.Branch = "tokate/v2-" + run.Id
         }
 
         internal func Acquire(args Args, gratis JsonElement = default(JsonElement)) string {
@@ -232,15 +224,21 @@ internal class ContributionPreparation {
                 let repo = args.Need("repo")
                 let issue = J.Number(J.Get(gratis, "issue"), "number")
                 let run = Plan(args, repo, issue, viewer, nil, gratis, "tokate")
-                run.Fields["gratis"] = true
-                let context = Data.From(gratis)
-                context.Fields.Remove("pulls")
-                run.Fields["gratis_context"] = context.Element()
-                run.Fields["policy_hash"] = Policy(J.Write(J.Get(gratis, "policy"))).Digest
+                run.Gratis = true
+                let context = map[string, Object?]{}
+
+                for field in gratis.EnumerateObject() {
+                    if field.Name != "pulls" {
+                        context[field.Name] = field.Value
+                    }
+                }
+
+                run.GratisContext = J.Parse(J.Write(context))
+                run.PolicyHash = Policy(J.Write(J.Get(gratis, "policy"))).Digest
                 let id = Guid.NewGuid().ToString("N")
-                run.Fields["id"] = id
-                run.Fields["attempt"] = id
-                run.Fields["branch"] = "tokate/gratis-" + id
+                run.Id = id
+                run.Attempt = id
+                run.Branch = "tokate/gratis-" + id
                 let directory = Allocate(RunStorage.Store(args), run, id)
                 WorkspacePreparation.Select(run, args.Get("fork"))
                 Create(directory)
@@ -293,14 +291,14 @@ internal class ContributionPreparation {
 
             run.Transition("claim_pending")
 
-            if run.Text("source") != "external" {
-                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
+            if run.Source != "external" {
+                Output.Sink.ConfirmSelection(args, run.Selection, run)
             }
 
             let pendingRequest = CoordinatorRequest(
                 Guid.NewGuid().ToString("D"),
                 state.Sha,
-                run.Text("approval"),
+                run.Approval,
                 "claim",
                 J.Parse("{}")
             )
@@ -308,8 +306,8 @@ internal class ContributionPreparation {
 
             let declaration = RequestMetadata.Request(request)
 
-            run.Fields["claim_request"] = request
-            run.Fields["requested_fork"] = args.Get("fork")
+            run.ClaimRequest = request
+            run.RequestedFork = args.Get("fork")
 
             let directory = Allocate(RunStorage.Store(args), run, declaration.Uuid)
             Create(directory)
@@ -325,83 +323,80 @@ internal class ContributionPreparation {
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
 
-            if args.Command == "work" && run.Flag("preparation_complete") {
+            if args.Command == "work" && run.PreparationComplete {
                 return directory
             }
 
-            if run.Text("source") == "tokate" {
-                Output.Sink.ConfirmSelection(args, J.Get(run.Element(), "selection"), run)
+            if run.Source == "tokate" {
+                Output.Sink.ConfirmSelection(args, run.Selection, run)
             }
 
-            return run.Text("state") == "claim_pending" ? Pending(directory, run, args): Complete(directory, run)
+            return run.State == "claim_pending" ? Pending(directory, run, args): Complete(directory, run)
         }
 
         private func CheckPending(run Data, viewer JsonElement, state CoordinationState) {
-            let request = J.Get(run.Element(), "claim_request")
+            let request = run.ClaimRequest
             let declaration = RequestMetadata.Request(request)
 
-            if run.Number("version") != 2 || run.Text("state") != "claim_pending" ||
-                (run.Text("source") != "tokate" && run.Text("source") != "external") ||
+            if run.Version != 2 ||
+                run.State != "claim_pending" ||
+                (run.Source != "tokate" && run.Source != "external") ||
                 declaration.Action != "claim" ||
-                !RepositoryIdentity.SameDonor(viewer, run) || run.Fields.ContainsKey("id") || run.Fields.ContainsKey(
-                "attempt"
-            ) ||
-                run
-                .Fields
-                .ContainsKey("preparation_identity") {
+                !RepositoryIdentity.SameDonor(viewer, run) ||
+                run.HasId ||
+                run.HasAttempt ||
+                run.HasPreparationIdentity {
                 throw CliFailure("invalid_state", "Invalid saved pending claim; no authority was acquired")
             }
 
-            if declaration.Approval != run.Text("approval") || J.Text(state.Value(), "approval_id") != run.Text(
-                "approval"
-            ) {
+            if declaration.Approval != run.Approval || J.Text(state.Value(), "approval_id") != run.Approval {
                 throw CliFailure("stale_approval", "Pending claim approval changed; original work is preserved")
             }
 
-            let record = state.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
+            let record = state.Check(run.Repo, run.Issue, run.Donor, J.Get(viewer, "id"))
             let approval = OwnerApproval.Record.Parse(J.Get(record, "approval"))
 
-            if run.Text("base") != approval.Base || run.Text("base_branch") != approval.BaseBranch || run.Text(
-                "policy_hash"
-            ) != approval.PolicyHash {
+            if run.Base != approval.Base ||
+                run.BaseBranch != approval.BaseBranch ||
+                run.PolicyHash != approval.PolicyHash {
                 throw CliFailure("stale_approval", "Pending claim differs from current owner approval")
             }
 
             let policy = Policy(J.Write(J.Get(record, "policy")))
-            policy.Digest = run.Text("policy_hash")
+            policy.Digest = run.PolicyHash
 
-            let tools = J.Get(run.Element(), "tools")
+            let tools = run.Tools
 
             RequestMetadata.Tools(tools)
-            policy.ValidateTools(tools, run.Text("source"))
+            policy.ValidateTools(tools, run.Source)
 
-            if run.Text("source") == "tokate" &&
+            if run.Source == "tokate" &&
                 (
-                J.Get(run.Element(), "selection").ValueKind != JsonValueKind.Object || run.Text("harness") != J.Text(
+                run.Selection.ValueKind != JsonValueKind.Object || run.Harness != J.Text(
                     J.Items(tools)[0],
                     "harness"
                 ) ||
-                    run.Text("provider") != J.Text(J.Items(tools)[0], "provider") || run.Text("model") != J.Text(
+                    run.Provider != J.Text(J.Items(tools)[0], "provider") || run.Model != J.Text(
                     J.Items(tools)[0],
                     "model"
                 ) ||
-                    run.Text("effort") != J.Text(J.Items(tools)[0], "effort")
+                    run.Effort != J.Text(J.Items(tools)[0], "effort")
             ) {
                 throw CliFailure("invalid_state", "Pending claim selection differs from its declared tool")
             }
 
-            policy.ValidateBudget(run.Number("seconds"), run.Flag("unlimited"))
+            policy.ValidateBudget(run.Seconds, run.Unlimited)
             RuntimeBudget.Validate(run)
 
-            if run.Text("source") == "tokate" {
+            if run.Source == "tokate" {
                 SelectionPolicy.Revalidate(run, policy)
             }
 
-            Overlaps.RequireDependencies(run.Text("repo"), run.Number("issue"))
+            Overlaps.RequireDependencies(run.Repo, run.Issue)
         }
 
         private func Accepted(run Data, viewer JsonElement, state CoordinationState, outcome JsonElement) {
-            let request = J.Get(run.Element(), "claim_request")
+            let request = run.ClaimRequest
             let uuid = CoordinatorRequest.Parse(request).Uuid
             let value = state.Value()
             let reservation = J.Get(value, "reservation")
@@ -424,7 +419,7 @@ internal class ContributionPreparation {
             state.Reservation(J.Get(viewer, "id"))
             LeaseLifecycle.Fence(state, uuid)
             CheckPending(run, viewer, state)
-            ContributionHandoff.Authority(state, J.Get(run.Element(), "handoff"))
+            ContributionHandoff.Authority(state, run.Handoff)
 
             if J.Get(value, "contribution").ValueKind == JsonValueKind.Object {
                 throw CliFailure("invalid_state", "Published work is preserved; this claim cannot prepare new coding")
@@ -433,9 +428,9 @@ internal class ContributionPreparation {
 
         private func Pending(directory string, run Data, args Args) string {
             let viewer = GitHub.Api("user")
-            let repo = RepositoryIdentity.Repo(run.Text("repo"))
-            let issue = run.Number("issue")
-            let request = J.Get(run.Element(), "claim_request")
+            let repo = RepositoryIdentity.Repo(run.Repo)
+            let issue = run.Issue
+            let request = run.ClaimRequest
             let declaration = CoordinatorRequest.Parse(request)
 
             if !RepositoryIdentity.SameDonor(viewer, run) {
@@ -449,13 +444,7 @@ internal class ContributionPreparation {
                 CheckPending(run, viewer, CoordinationState.Load(repo, issue))
             }
 
-            Submission.Request(
-                repo,
-                issue,
-                request,
-                Path.Combine(directory, "claim.posting.json"),
-                J.Get(run.Element(), "donor_id")
-            )
+            Submission.Request(repo, issue, request, Path.Combine(directory, "claim.posting.json"), J.Get(viewer, "id"))
 
             ApiTransport.BeginDeadline(Output.Sink.Donating ? args.Number("seconds"): 30)
 
@@ -474,14 +463,18 @@ internal class ContributionPreparation {
                     }
                     let state = CoordinationState.Load(repo, issue)
 
-                    if J.Text(state.Value(), "approval_id") != run.Text("approval") {
+                    if J.Text(state.Value(), "approval_id") != run.Approval {
                         throw CliFailure(
                             "stale_approval",
                             "Pending claim approval changed; original request is preserved"
                         )
                     }
 
-                    let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                    let outcome = RequestMetadata.Recorded(
+                        state.Value(),
+                        RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
+                        request
+                    )
                     if outcome.ValueKind != JsonValueKind.Undefined {
                         accepted = state
                         break
@@ -501,12 +494,16 @@ internal class ContributionPreparation {
             }
 
             if let state = accepted {
-                let outcome = RequestMetadata.Recorded(state.Value(), J.Get(viewer, "id"), request)
+                let outcome = RequestMetadata.Recorded(
+                    state.Value(),
+                    RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
+                    request
+                )
                 Accepted(run, viewer, state, outcome)
 
                 Bind(run, state)
 
-                WorkspacePreparation.Select(run, run.Text("requested_fork"))
+                WorkspacePreparation.Select(run, run.RequestedFork)
                 WorkspacePreparation.Promote(
                     directory,
                     run,

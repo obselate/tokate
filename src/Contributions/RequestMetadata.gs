@@ -144,7 +144,7 @@ internal class RequestMetadata {
             }
         }
 
-        internal func Binding(actor JsonElement, request JsonElement) string {
+        internal func Binding(actor int64, request JsonElement) string {
             RepositoryIdentity.PositiveId(actor)
             let parsed = CoordinatorRequest.Parse(request)
 
@@ -171,7 +171,7 @@ internal class RequestMetadata {
             return incomplete
         }
 
-        internal func Recorded(state JsonElement, actor JsonElement, request JsonElement) JsonElement {
+        internal func Recorded(state JsonElement, actor int64, request JsonElement) JsonElement {
             let binding = Binding(actor, request)
             let parsed = CoordinatorRequest.Parse(request)
             var result JsonElement

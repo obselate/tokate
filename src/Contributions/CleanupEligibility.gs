@@ -14,7 +14,7 @@ internal class CleanupEligibility {
                     return "Run is in use."
                 }
 
-                let pr = J.Number(row.Value, "pr")
+                let pr = row.Run.Pr
 
                 if pr == 0 {
                     if Unpublished(row, "") {
@@ -26,7 +26,7 @@ internal class CleanupEligibility {
                     }
                 }
 
-                let repo = row.Text("repo")
+                let repo = row.Run.Repo
                 let issue = GitHub.Api("repos/" + repo + "/issues/" + row.Issue.ToString())
                 let state = J.Text(issue, "state")
 
@@ -83,11 +83,19 @@ internal class CleanupEligibility {
                 return true
             }
 
-            let commit = row.Text("commit")
+            let commit = row.Run.Commit
 
             if head == "" {
-                if commit != "" || row.Text("state") == "generated" || row.Text("state") == "incomplete_generated" ||
-                    J.Bool(row.Value, "turn_completed") {
+                if commit != "" ||
+                    row
+                    .Run
+                    .State == "generated" ||
+                    row
+                    .Run
+                    .State == "incomplete_generated" ||
+                    row
+                    .Run
+                    .TurnCompleted {
                     return true
                 }
             } else if commit == "" || commit != head {

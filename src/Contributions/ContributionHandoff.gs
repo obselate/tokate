@@ -5,12 +5,9 @@ import System.Text.Json
 
 internal class ContributionHandoff {
     shared {
-        internal func Has(run Data) bool -> J.Get(run.Element(), "handoff").ValueKind != JsonValueKind.Undefined
+        internal func Has(run Data) bool -> run.Handoff.ValueKind != JsonValueKind.Undefined
 
-        internal func StartHead(run Data) string -> Has(run) ? HandoffRequestMetadata.Parse(
-            J.Get(run.Element(), "handoff")
-        )
-            .Head: run.Text("base")
+        internal func StartHead(run Data) string -> Has(run) ? HandoffRequestMetadata.Parse(run.Handoff).Head: run.Base
 
         internal func Declaration(value JsonElement) {
             if value.ValueKind == JsonValueKind.Undefined {
@@ -114,7 +111,7 @@ internal class ContributionHandoff {
             RepositoryAccess.ValidateRepository(
                 repo,
                 parsed.Fork,
-                parsed.Actor,
+                RepositoryIdentity.PositiveId(parsed.Actor),
                 GitHub.Api("repos/" + parsed.Fork),
                 push: false,
                 upstream: GitHub.Api("repos/" + repo)
@@ -215,7 +212,7 @@ internal class ContributionHandoff {
         }
 
         internal func Import(checkout string, run Data) {
-            let source = J.Get(run.Element(), "handoff")
+            let source = run.Handoff
             if source.ValueKind == JsonValueKind.Undefined {
                 return
             }
@@ -227,7 +224,7 @@ internal class ContributionHandoff {
                 return
             }
 
-            if head != run.Text("base") {
+            if head != run.Base {
                 throw CliFailure("invalid_state", "Handoff checkout changed before import; saved work is preserved")
             }
 

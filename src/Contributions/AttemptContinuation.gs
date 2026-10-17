@@ -8,26 +8,27 @@ import System.Text.RegularExpressions
 
 internal class AttemptContinuation {
     shared {
-        internal func Has(run Data) bool -> run.Text("continuation_source") != ""
+        internal func Has(run Data) bool -> run.ContinuationSource != ""
 
-        internal func Stopped(run Data) bool -> Harness.Resumes(run.Text("harness"), run.Text("provider")) && run.Text(
-            "source"
-        ) == "tokate" &&
-            run.Text("state") == "failed" && run.Number("preparation_version") == 1 && run.Text(
-            "failure_stage"
-        ) == "inference" &&
-            !run.Flag("turn_completed") && run.Text("commit") == "" && run.Number("pr") == 0 &&
+        internal func Stopped(run Data) bool -> Harness.Resumes(run.Harness, run.Provider) &&
+            run.Source == "tokate" &&
+            run.State == "failed" &&
+            run.PreparationVersion == 1 &&
+            run.FailureStage == "inference" &&
+            !run.TurnCompleted &&
+            run.Commit == "" &&
+            run.Pr == 0 &&
             (
-            run.Text("failure_reason") == "inference_interrupted" || !run.Flag("unlimited") &&
+            run.FailureReason == "inference_interrupted" ||
+                !run.Unlimited &&
                 (
-                run.Text("error").StartsWith("Runtime limit reached", StringComparison.Ordinal) || run.Text(
-                    "error"
-                ) == "Runtime allowance exhausted"
+                run.Error.StartsWith("Runtime limit reached", StringComparison.Ordinal) ||
+                    run.Error == "Runtime allowance exhausted"
             )
         )
 
         internal func Next(directory string, run Data) Dictionary[string, Object?] {
-            let target = run.Text("repo") + "#" + run.Number("issue").ToString()
+            let target = run.Repo + "#" + run.Issue.ToString()
             let next = map[string, Object?]{
                 "role": "donor",
                 "action": "Read current authority before continuing the stopped run with a new time budget.",
@@ -35,23 +36,18 @@ internal class AttemptContinuation {
             }
 
             try {
-                let state = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+                let state = CoordinationState.Load(run.Repo, run.Issue)
                 let viewer = GitHub.Api("user")
-                let record = state.CheckApproval(run.Text("repo"), run.Number("issue"), quiet: true)
+                let record = state.CheckApproval(run.Repo, run.Issue, quiet: true)
                 LeaseLifecycle.Owner(state, J.Get(viewer, "id"))
 
-                if !RepositoryIdentity.SameDonor(viewer, run) || J.Text(state.Value(), "approval_id") != run.Text(
-                    "approval"
-                ) ||
-                    J.Text(J.Get(state.Value(), "identity"), "id") != run.Text("id") {
+                if !RepositoryIdentity.SameDonor(viewer, run) || J.Text(state.Value(), "approval_id") != run.Approval ||
+                    J.Text(J.Get(state.Value(), "identity"), "id") != run.Id {
                     return next
                 }
 
-                let seconds = Math.Min(run.Number("seconds") * 2, Policy.Parse(J.Get(record, "policy")).MaxSeconds)
-                let reserve = run.Number("verification_reserve") > 0 ? run.Number("verification_reserve"): Math.Max(
-                    1,
-                    seconds / 3
-                )
+                let seconds = Math.Min(run.Seconds * 2, Policy.Parse(J.Get(record, "policy")).MaxSeconds)
+                let reserve = run.VerificationReserve > 0 ? run.VerificationReserve: Math.Max(1, seconds / 3)
                 let command = List[string]{
                     "tokate",
                     "work",
@@ -63,22 +59,21 @@ internal class AttemptContinuation {
                     "--verify-time",
                     reserve.ToString() + "s",
                     "--fork",
-                    run.Text("head_repo")
+                    run.HeadRepo
                 }
 
-                for key in[]string{
-                    "harness",
-                    "provider",
-                    "model",
-                    "effort",
-                    "harness_path",
-                    "pi_endpoint",
-                    "pi_root",
-                    "pi_node"
+                for (option, value) in[]ValueTuple[string, string]{
+                    ValueTuple[string, string]("harness", run.Harness),
+                    ValueTuple[string, string]("provider", run.Provider),
+                    ValueTuple[string, string]("model", run.Model),
+                    ValueTuple[string, string]("effort", run.Effort),
+                    ValueTuple[string, string]("harness-path", run.HarnessPath),
+                    ValueTuple[string, string]("endpoint", run.PiEndpoint),
+                    ValueTuple[string, string]("pi-root", run.PiRoot),
+                    ValueTuple[string, string]("node", run.PiNode),
                 } {
-                    if run.Text(key) != "" {
-                        let option = key == "pi_endpoint" ? "endpoint": key == "pi_node" ? "node": key.Replace('_', '-')
-                        command.AddRange([]string{"--" + option, run.Text(key)})
+                    if value != "" {
+                        command.AddRange([]string{"--" + option, value})
                     }
                 }
 
@@ -88,7 +83,7 @@ internal class AttemptContinuation {
                     "action"
                 ] = "Review the new time budget, then work on a fresh attempt with the stopped run's partial changes."
                 let reservation = J.Get(state.Value(), "reservation")
-                if J.Text(reservation, "attempt") == run.Text("attempt") || J.Text(reservation, "status") == "paused" {
+                if J.Text(reservation, "attempt") == run.Attempt || J.Text(reservation, "status") == "paused" {
                     next["action"] = "First " +
                         (
                         J.Text(reservation, "status") == "paused" ? "":
@@ -131,8 +126,8 @@ internal class AttemptContinuation {
 
         internal func Location(directory string, run Data) {
             if AttemptContinuation.Has(run) && Path.GetFullPath(directory) != Path.Combine(
-                Path.GetDirectoryName(run.Text("continuation_source")) ?? "",
-                run.Text("name") == "" ? run.Text("attempt"): run.Text("name")
+                Path.GetDirectoryName(run.ContinuationSource) ?? "",
+                run.Name == "" ? run.Attempt: run.Name
             ) {
                 throw CliFailure(
                     "invalid_state",
@@ -147,8 +142,8 @@ internal class AttemptContinuation {
                 "id,attempt,state_sha,approval,base,state,failure_reason,harness,provider,model,effort"
             )
             prior["version"] = 2
-            prior["repo_id"] = J.Get(source.Element(), "preparation_repo_id")
-            prior["donor_id"] = J.Get(source.Element(), "donor_id")
+            prior["repo_id"] = source.PreparationRepoId
+            prior["donor_id"] = source.DonorId
 
             return J.Parse(J.Write(prior))
         }
@@ -269,26 +264,26 @@ internal class AttemptContinuation {
         }
 
         internal func Recheck(run Data, state CoordinationState) {
-            let prior = J.Get(run.Element(), "continuation")
+            let prior = run.Continuation
 
-            if !AttemptContinuation.Has(run) && prior.ValueKind == JsonValueKind.Undefined && !run.Fields.ContainsKey(
-                "continuation_manifest_sha256"
-            ) {
+            if !AttemptContinuation.Has(run) &&
+                prior.ValueKind == JsonValueKind.Undefined &&
+                !run.HasContinuationManifestSha256 {
                 return
             }
 
-            if !AttemptContinuation.Has(run) || run.Text("source") != "tokate" || !Regex.IsMatch(
-                run.Text("continuation_source_metadata_sha256"),
+            if !AttemptContinuation.Has(run) || run.Source != "tokate" || !Regex.IsMatch(
+                run.ContinuationSourceMetadataSha256,
                 "^[0-9a-f]{64}$"
             ) {
                 throw CliFailure("invalid_state", "Saved continuation lost its explicit import identity")
             }
 
             RuntimeBudget.Validate(run)
-            Predecessor(prior, run.Text("attempt"), J.Get(run.Element(), "tools"))
+            Predecessor(prior, run.Attempt, run.Tools)
             Authority(state, prior)
 
-            if run.Text("state") != "preparing" || run.Text("continuation_phase") != "" {
+            if run.State != "preparing" || run.ContinuationPhase != "" {
                 Declaration(Metadata(run))
             }
         }
@@ -296,11 +291,11 @@ internal class AttemptContinuation {
         internal func Metadata(run Data) JsonElement -> J.Parse(
             J.Write(
                 map[string, Object?]{
-                    "source": run.Text("source"),
-                    "tools": J.Get(run.Element(), "tools"),
-                    "attempt": run.Text("attempt"),
-                    "predecessor": J.Get(run.Element(), "continuation"),
-                    "import_manifest_sha256": run.Text("continuation_manifest_sha256")
+                    "source": run.Source,
+                    "tools": run.Tools,
+                    "attempt": run.Attempt,
+                    "predecessor": run.Continuation,
+                    "import_manifest_sha256": run.ContinuationManifestSha256
                 }
             )
         )
@@ -314,20 +309,21 @@ internal class AttemptContinuation {
         }
 
         internal func Source(directory string, run Data, record JsonElement) Data {
-            let source = Data.From(J.Parse(ContinuationImport.Metadata(directory)))
-            let state = source.Text("state")
+            let source = Data.Parse(J.Parse(ContinuationImport.Metadata(directory)))
+            let state = source.State
 
-            if source.Number("version") != 2 || source.Number("preparation_version") != 1 || source.Text(
-                "source"
-            ) != "tokate" ||
-                source.Flag("turn_completed") || (state != "failed" && state != "running") || source.Text(
-                "failure_stage"
-            ) != "inference" ||
-                Harness.Find(source.Text("harness")) == nil || source.Text(source.Text("harness") + "_version") == "" ||
-                source.Text("commit") != "" || source.Number("pr") != 0 || source.Text("pr_url") != "" || source.Text(
-                "publication_uuid"
-            ) != "" ||
-                source.Text("publication_expected") != "" {
+            if source.Version != 2 ||
+                source.PreparationVersion != 1 ||
+                source.Source != "tokate" ||
+                source.TurnCompleted ||
+                (state != "failed" && state != "running") ||
+                source.FailureStage != "inference" ||
+                Harness.Find(source.Harness) == nil || source.HarnessVersion(source.Harness) == "" ||
+                source.Commit != "" ||
+                source.Pr != 0 ||
+                source.PrUrl != "" ||
+                source.PublicationUuid != "" ||
+                source.PublicationExpected != "" {
                 throw CliFailure(
                     "invalid_state",
                     "Source must be stopped, unpublished managed v2 work with incomplete coding"
@@ -347,42 +343,41 @@ internal class AttemptContinuation {
             let viewer = GitHub.Api("user")
 
             if !RepositoryIdentity.SameDonor(viewer, source) || !RepositoryIdentity.SameDonor(viewer, run) ||
-                !RepositoryIdentity.SameRepo(source.Text("repo"), run.Text("repo")) || source.Number("issue") != run
-                .Number("issue") {
+                !RepositoryIdentity.SameRepo(source.Repo, run.Repo) || source.Issue != run.Issue {
                 throw CliFailure(
                     "invalid_state",
                     "Continuation source has a different numeric donor, repository or issue"
                 )
             }
 
-            for key in[]string{
-                "approval",
-                "base",
-                "base_branch",
-                "policy_hash",
-                "id",
-                "branch",
-                "harness",
-                "harness_path",
-                "provider",
-                "model",
-                "effort",
-                "pi_endpoint",
-                "pi_root",
-                "pi_node",
-                "claude_profile",
+            for (key, previous, current) in[]ValueTuple[string, string, string]{
+                ValueTuple[string, string, string]("approval", source.Approval, run.Approval),
+                ValueTuple[string, string, string]("base", source.Base, run.Base),
+                ValueTuple[string, string, string]("base_branch", source.BaseBranch, run.BaseBranch),
+                ValueTuple[string, string, string]("policy_hash", source.PolicyHash, run.PolicyHash),
+                ValueTuple[string, string, string]("id", source.Id, run.Id),
+                ValueTuple[string, string, string]("branch", source.Branch, run.Branch),
+                ValueTuple[string, string, string]("harness", source.Harness, run.Harness),
+                ValueTuple[string, string, string]("harness_path", source.HarnessPath, run.HarnessPath),
+                ValueTuple[string, string, string]("provider", source.Provider, run.Provider),
+                ValueTuple[string, string, string]("model", source.Model, run.Model),
+                ValueTuple[string, string, string]("effort", source.Effort, run.Effort),
+                ValueTuple[string, string, string]("pi_endpoint", source.PiEndpoint, run.PiEndpoint),
+                ValueTuple[string, string, string]("pi_root", source.PiRoot, run.PiRoot),
+                ValueTuple[string, string, string]("pi_node", source.PiNode, run.PiNode),
+                ValueTuple[string, string, string]("claude_profile", source.ClaudeProfile, run.ClaudeProfile),
             } {
-                if source.Text(key) != run.Text(key) {
+                if previous != current {
                     throw CliFailure("invalid_state", "Continuation changed predecessor binding or selection: " + key)
                 }
             }
 
-            let live = CoordinationState.Load(run.Text("repo"), run.Number("issue"))
+            let live = CoordinationState.Load(run.Repo, run.Issue)
 
             live.Reservation(J.Get(viewer, "id"))
-            LeaseLifecycle.Fence(live, run.Text("attempt"))
+            LeaseLifecycle.Fence(live, run.Attempt)
 
-            let checked = live.Check(run.Text("repo"), run.Number("issue"), run.Text("donor"), J.Get(viewer, "id"))
+            let checked = live.Check(run.Repo, run.Issue, run.Donor, J.Get(viewer, "id"))
 
             if !RequestData.Same(J.Get(checked, "approval"), J.Get(record, "approval")) || J.Get(
                 live.Value(),
@@ -392,7 +387,7 @@ internal class AttemptContinuation {
                 throw CliFailure("stale_approval", "Published or changed authority cannot be continued")
             }
 
-            Predecessor(Provenance(source), run.Text("attempt"), J.Get(run.Element(), "tools"))
+            Predecessor(Provenance(source), run.Attempt, run.Tools)
             Authority(live, Provenance(source))
 
             WorkspacePreparation.Source(Path.Combine(directory, "checkout"), source)
@@ -403,24 +398,24 @@ internal class AttemptContinuation {
         }
 
         private func CheckRepositories(source Data, run Data, viewer JsonElement) {
-            let upstream = GitHub.Api("repos/" + run.Text("repo"))
-            let head = GitHub.Api("repos/" + RepositoryIdentity.Repo(source.Text("head_repo")))
+            let upstream = GitHub.Api("repos/" + run.Repo)
+            let head = GitHub.Api("repos/" + RepositoryIdentity.Repo(source.HeadRepo))
             let repoId = RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
 
-            if repoId != RepositoryIdentity.PositiveId(J.Get(source.Element(), "preparation_repo_id")) ||
-                repoId != RepositoryIdentity.PositiveId(J.Get(run.Element(), "preparation_repo_id")) ||
-                RepositoryIdentity.PositiveId(J.Get(head, "id")) != RepositoryIdentity.PositiveId(
-                J.Get(source.Element(), "preparation_head_id")
-            ) ||
-                !RepositoryIdentity
-                .SameRepo(source.Text("head_repo"), run.Text("head_repo")) {
+            if repoId != RepositoryIdentity.PositiveId(source.PreparationRepoId) ||
+                repoId != RepositoryIdentity.PositiveId(run.PreparationRepoId) || RepositoryIdentity.PositiveId(
+                J.Get(head, "id")
+            ) != RepositoryIdentity.PositiveId(source.PreparationHeadId) || !RepositoryIdentity.SameRepo(
+                source.HeadRepo,
+                run.HeadRepo
+            ) {
                 throw CliFailure("stale_approval", "Continuation repository or fork identity changed")
             }
 
             RepositoryAccess.ValidateRepository(
-                source.Text("repo"),
-                source.Text("head_repo"),
-                J.Get(viewer, "id"),
+                source.Repo,
+                source.HeadRepo,
+                RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
                 head,
                 upstream: upstream
             )
@@ -430,10 +425,10 @@ internal class AttemptContinuation {
             }
 
             let reference = GitHub.Api(
-                "repos/" + source.Text("head_repo") + "/git/ref/heads/" + Uri.EscapeDataString(source.Text("branch"))
+                "repos/" + source.HeadRepo + "/git/ref/heads/" + Uri.EscapeDataString(source.Branch)
             )
 
-            if J.Text(J.Get(reference, "object"), "sha") != source.Text("base") {
+            if J.Text(J.Get(reference, "object"), "sha") != source.Base {
                 throw CliFailure(
                     "invalid_state",
                     "Source branch changed or publication is pending; source is preserved"
