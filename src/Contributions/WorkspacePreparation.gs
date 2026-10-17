@@ -227,9 +227,11 @@ internal class WorkspacePreparation {
                 )
                 Output.Sink.Step(
                     "Push it with: git -C '" + checkout.Replace("'", "'\"'\"'") +
-                        "' push https://github.com/" +
+                        "' push " +
+                        GitHub.WebUrl +
                         run.HeadRepo +
-                        ".git HEAD:refs/heads/" +
+                        ".git HEAD:" +
+                        GitHub.HeadsRefPrefix +
                         run.Branch
                 )
             }
@@ -283,7 +285,10 @@ internal class WorkspacePreparation {
 
                     for page in 1 ... 4 {
                         let items = GitHub.Api(
-                            "user/repos?visibility=public&affiliation=owner&per_page=100&page=" + page.ToString()
+                            "user/repos?visibility=public&affiliation=owner&" +
+                                GitHub.PageSizeParameter +
+                                "&page=" +
+                                page.ToString()
                         )
 
                         if items.ValueKind != JsonValueKind.Array {
@@ -325,7 +330,7 @@ internal class WorkspacePreparation {
                             }
                         }
 
-                        if pageItems.Count < 100 {
+                        if pageItems.Count < GitHub.PageSize {
                             complete = true
                             break
                         }
@@ -509,7 +514,7 @@ internal class WorkspacePreparation {
                 try {
                     GitHub.Api(
                         "repos/" + run.HeadRepo + "/git/refs",
-                        map[string, Object?]{"ref": "refs/heads/" + run.Branch, "sha": run.Base}
+                        map[string, Object?]{"ref": GitHub.HeadsRefPrefix + run.Branch, "sha": run.Base}
                     )
                 } catch (error CliFailure) {
                     run.BranchCreationError = error.Message
@@ -711,7 +716,7 @@ internal class WorkspacePreparation {
                     "--no-tags",
                     "--no-recurse-submodules",
                     "--",
-                    "https://github.com/" + run.Repo + ".git",
+                    GitHub.WebUrl + run.Repo + ".git",
                     RepositoryIdentity.CommitSha(run.Base)
                 )
 

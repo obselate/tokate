@@ -14,9 +14,9 @@ internal class RequestMetadata {
 
             let action = parsed.Action
             let payload = RequestData.Canonical(request).Replace("`", "\\u0060")
-            RequestData.Parse(payload)
+            RequestData.Parse(payload, RequestData.RequestByteLimit)
 
-            return "/tokate " +
+            return RequestData.CommentPrefix +
                 action +
                 "\n\n" +
                 "**Pending coordinator review.** Requested by the author of this comment.\n\n" +
@@ -28,13 +28,16 @@ internal class RequestMetadata {
         }
 
         internal func CommentData(body string) JsonElement {
-            if Encoding.UTF8.GetByteCount(body) > 9216 || !body.StartsWith("/tokate ", StringComparison.Ordinal) {
+            if Encoding.UTF8.GetByteCount(body) > 9216 || !body.StartsWith(
+                RequestData.CommentPrefix,
+                StringComparison.Ordinal
+            ) {
                 throw CliFailure("invalid_state", "Invalid or oversized coordination comment")
             }
 
             let text = body.Substring(8)
             if text.TrimStart().StartsWith("{", StringComparison.Ordinal) {
-                return RequestData.Parse(text)
+                return RequestData.Parse(text, RequestData.RequestByteLimit)
             }
 
             let marker = "\n```json\n"
@@ -46,7 +49,7 @@ internal class RequestMetadata {
             }
 
             let payload = body.Substring(start + marker.Length, body.Length - start - marker.Length - ending.Length)
-            let request = RequestData.Parse(payload)
+            let request = RequestData.Parse(payload, RequestData.RequestByteLimit)
 
             if body != Comment(request) {
                 throw CliFailure("invalid_state", "Coordination comment differs from its request")
@@ -88,7 +91,7 @@ internal class RequestMetadata {
 
                 let seconds = parsed.CodingSeconds ?? 0
 
-                if parsed.InvalidCodingTime || seconds < 0 || seconds > 86400 * 365 {
+                if parsed.InvalidCodingTime || seconds < 0 || seconds > RuntimeBudget.SecondsPerDay * 365 {
                     throw CliFailure("invalid_state", "Invalid donor-reported coding time")
                 }
 
@@ -106,8 +109,8 @@ internal class RequestMetadata {
                 parsed.Head != head ||
                 !Regex.IsMatch(parsed.PatchSha256, "^[0-9a-f]{64}$") ||
                 parsed.Seconds < 1 ||
-                parsed.Seconds > 86400 ||
-                parsed.Verification != "tokate-observed-locally-exact-commit" {
+                parsed.Seconds > RuntimeBudget.MaxBudgetSeconds ||
+                parsed.Verification != RequestData.ObservedVerification {
                 throw CliFailure("invalid_state", "Invalid bounded correction provenance")
             }
 
@@ -231,10 +234,10 @@ internal class RequestMetadata {
             RepositoryIdentity.Repo(parsed.Fork)
             RepositoryIdentity.CommitSha(parsed.Head)
 
-            if !Regex.IsMatch(parsed.Branch, "^tokate/v2-[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
                 (parsed.SourceKind != "external" && parsed.SourceKind != "tokate") ||
                 parsed.Verification != (
-                Incomplete(parsed.HasIncomplete, parsed.Incomplete) ? "not-passed": "donor-reported-pass"
+                Incomplete(parsed.HasIncomplete, parsed.Incomplete) ? "not-passed": RequestData.ReportedVerification
             ) {
                 throw CliFailure("invalid_state", "Invalid contribution declaration")
             }
@@ -289,10 +292,10 @@ internal class RequestMetadata {
                 RepositoryIdentity.CommitSha(parsed.Base)
             }
 
-            if !Regex.IsMatch(parsed.Branch, "^tokate/v2-[0-9a-f-]{36}$") ||
+            if !Regex.IsMatch(parsed.Branch, "^" + GitHub.ContributionBranchPrefix + "[0-9a-f-]{36}$") ||
                 parsed.Pr < 1 ||
                 parsed.Seconds < 1 ||
-                parsed.Verification != "donor-reported-pass" {
+                parsed.Verification != RequestData.ReportedVerification {
                 throw CliFailure("invalid_state", "Invalid amendment declaration")
             }
 

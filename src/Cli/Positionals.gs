@@ -42,7 +42,7 @@ internal class Positionals {
                 !uri.IsDefaultPort ||
                 uri.UserInfo != "" ||
                 !match.Success {
-                throw Exception("Use a GitHub " + key + " URL: https://github.com/OWNER/REPO/" + segment + "/N")
+                throw Exception("Use a GitHub " + key + " URL: " + GitHub.WebUrl + "OWNER/REPO/" + segment + "/N")
             }
 
             Repo(args, match.Groups[1].Value)

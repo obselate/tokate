@@ -14,8 +14,10 @@ internal class CommitChecks {
                 var page int32 = 1
                 var inspected int32
 
-                while page <= 10 {
-                    let response = GitHub.Api(prefix + "/" + kind + "?per_page=100&page=" + page.ToString())
+                while page <= GitHub.PageCountLimit {
+                    let response = GitHub.Api(
+                        prefix + "/" + kind + "?" + GitHub.PageSizeParameter + "&page=" + page.ToString()
+                    )
 
                     if kind == "status" && J.Get(response, "sha").ValueKind != JsonValueKind.Undefined && J.Text(
                         response,
@@ -31,7 +33,7 @@ internal class CommitChecks {
 
                     let count = items.GetArrayLength()
                     inspected += count
-                    if count > 100 {
+                    if count > GitHub.PageSize {
                         throw Exception("Cannot read complete commit checks")
                     }
 
@@ -39,7 +41,7 @@ internal class CommitChecks {
                         var total int32
                         if !J.Get(response, "total_count").TryGetInt32(out total) ||
                             total < inspected ||
-                            (count < 100 && total != inspected) {
+                            (count < GitHub.PageSize && total != inspected) {
                             throw Exception("Cannot read complete commit checks")
                         }
                     }
@@ -87,11 +89,11 @@ internal class CommitChecks {
                         )
                     }
 
-                    if count < 100 {
+                    if count < GitHub.PageSize {
                         break
                     }
 
-                    if page == 10 {
+                    if page == GitHub.PageCountLimit {
                         throw Exception("Commit check inspection exceeded its bounded history")
                     }
 

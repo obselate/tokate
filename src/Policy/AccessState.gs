@@ -110,11 +110,11 @@ internal class AccessState {
             if Sha == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": "refs/heads/tokate/access", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + "tokate/access", "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/refs/heads/tokate/access",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + "tokate/access",
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
@@ -352,8 +352,8 @@ internal class AccessState {
         private func Pages(path string) List[JsonElement] {
             let result = List[JsonElement]()
 
-            for page in 1 ... 11 {
-                let value = GitHub.Api(path + "per_page=100&page=" + page.ToString())
+            for page in 1 ... GitHub.PageCountLimit + 1 {
+                let value = GitHub.Api(path + GitHub.PageSizeParameter + "&page=" + page.ToString())
 
                 if value.ValueKind != JsonValueKind.Array {
                     throw Exception("Expected a paginated GitHub list")
@@ -362,7 +362,7 @@ internal class AccessState {
                 let rows = J.Items(value)
                 result.AddRange(rows)
 
-                if rows.Count < 100 {
+                if rows.Count < GitHub.PageSize {
                     return result
                 }
             }
@@ -483,12 +483,14 @@ internal class AccessState {
             let commentsPath = issue == 0 ? "/issues/comments?": "/issues/" + issue.ToString() + "/comments?"
             let seen = HashSet[string]()
             let approvals = Dictionary[int32, JsonElement]()
-            let limit = bounded ? 2: 10
+            let limit = bounded ? 2: GitHub.PageCountLimit
 
             for page in 1 ... limit + 1 {
-                let value = GitHub.Api("repos/" + repo + commentsPath + "per_page=100&page=" + page.ToString())
+                let value = GitHub.Api(
+                    "repos/" + repo + commentsPath + GitHub.PageSizeParameter + "&page=" + page.ToString()
+                )
 
-                if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 100 {
+                if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > GitHub.PageSize {
                     throw Exception("Expected a bounded paginated GitHub request list")
                 }
 
@@ -538,7 +540,7 @@ internal class AccessState {
                     }
                 }
 
-                if value.GetArrayLength() < 100 {
+                if value.GetArrayLength() < GitHub.PageSize {
                     return false
                 }
             }

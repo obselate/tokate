@@ -7,6 +7,24 @@ import System.Text.Json
 
 internal class GitHub {
     shared {
+        internal const WebUrl string = "https://github.com/"
+
+        internal const ApiUrl string = "https://api.github.com/"
+
+        internal const HeadsRefPrefix string = "refs/heads/"
+
+        internal const ContributionBranchPrefix string = "tokate/v2-"
+
+        internal const ContributionStateRefPrefix string = "tokate/contributions/"
+
+        internal const ApprovedLabel string = "tokate:approved"
+
+        internal const PageSize int32 = 100
+
+        internal const PageSizeParameter string = "per_page=100"
+
+        internal const PageCountLimit int32 = 10
+
         internal func Bot() Object -> map[string, Object?]{
             "name": "github-actions[bot]",
             "email": "41898282+github-actions[bot]@users.noreply.github.com"
@@ -89,7 +107,7 @@ internal class GitHub {
 
         internal func HasLabel(issue JsonElement) bool {
             for label in J.Items(J.Get(issue, "labels")) {
-                if J.Text(label, "name") == "tokate:approved" {
+                if J.Text(label, "name") == ApprovedLabel {
                     return true
                 }
             }

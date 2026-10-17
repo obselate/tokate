@@ -5,6 +5,18 @@ import System.IO
 
 internal class LocalPaths {
     shared {
+        internal const CurrentWorkingDirectory int32 = -100
+
+        internal const FileTypeMask int32 = 61440
+
+        internal const RegularFileType int32 = 32768
+
+        internal const OpenNoFollow int32 = 131072
+
+        internal const OpenNonBlocking int32 = 2048
+
+        internal const OpenCloseOnExec int32 = 524288
+
         internal func Musl() bool -> File.Exists("/lib/ld-musl-x86_64.so.1")
 
         internal func RuntimePath(value string) string {

@@ -11,10 +11,10 @@ internal class Coordinator {
             let eventIssue = J.Get(event, "issue")
             let eventRepository = J.Get(event, "repository")
 
-            if J.Text(event, "action") != "labeled" || J.Text(J.Get(event, "label"), "name") != "tokate:approved" ||
+            if J.Text(event, "action") != "labeled" || J.Text(J.Get(event, "label"), "name") != GitHub.ApprovedLabel ||
                 J
                 .Get(eventIssue, "pull_request").ValueKind != JsonValueKind.Undefined {
-                throw Exception("Expected an issues labeled tokate:approved event for an issue")
+                throw Exception("Expected an issues labeled " + GitHub.ApprovedLabel + " event for an issue")
             }
 
             if !RepositoryIdentity.SameRepo(J.Text(eventRepository, "full_name"), repo) {
@@ -62,7 +62,9 @@ internal class Coordinator {
                 GitHub.Api(
                     "repos/" + repo + "/issues/" + number.ToString() + "/comments",
                     map[string, Object?]{
-                        "body": "The tokate:approved label was removed. Approval requires repository write, maintain or admin permission."
+                        "body": "The " +
+                            GitHub.ApprovedLabel +
+                            " label was removed. Approval requires repository write, maintain or admin permission."
                     }
                 )
                 Output.Sink.Message("Approval label removed because the sender lacks repository write permission.")
@@ -94,7 +96,7 @@ internal class Coordinator {
 
             approval.Nonce = Guid.NewGuid().ToString("N")
             CoordinationState.Approve(repo, number, approval)
-            Output.Sink.Message("Issue approved from the tokate:approved label.")
+            Output.Sink.Message("Issue approved from the " + GitHub.ApprovedLabel + " label.")
         }
 
         internal func Run(args Args) ValueTuple[JsonElement, string] {
@@ -140,7 +142,7 @@ internal class Coordinator {
                 throw Exception(failure)
             }
 
-            if !J.Text(eventComment, "body").StartsWith("/tokate ", StringComparison.Ordinal) || J.Get(
+            if !J.Text(eventComment, "body").StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) || J.Get(
                 eventIssue,
                 "pull_request"
             )
@@ -181,7 +183,7 @@ internal class Coordinator {
             }
 
             let text = J.Text(canonical, "body")
-            if !text.StartsWith("/tokate ", StringComparison.Ordinal) {
+            if !text.StartsWith(RequestData.CommentPrefix, StringComparison.Ordinal) {
                 throw Exception("Canonical comment is not a request")
             }
 
@@ -283,7 +285,7 @@ internal class Coordinator {
             ValidateDiff(repo, record, metadata)
 
             let reservation = state.Lease?.Reservation ?? ""
-            if publication.Branch != "tokate/v2-" + reservation {
+            if publication.Branch != GitHub.ContributionBranchPrefix + reservation {
                 throw Exception("Publication must use this reservation's branch")
             }
 
@@ -298,7 +300,13 @@ internal class Coordinator {
                 RepositoryIdentity.PositiveId(actor)
             )
             let pull = PublicationPull(repo, metadata, actor, record)
-            let body = PrBody.Coordinated(record, metadata, donor, receipt, "<!-- tokate-v2:" + reservation + " -->")
+            let body = PrBody.Coordinated(
+                record,
+                metadata,
+                donor,
+                receipt,
+                RequestData.OwnershipMarkerPrefix + reservation + " -->"
+            )
             let title = (publication.Incomplete ? "Incomplete: ": "") + J.Text(J.Get(record, "issue"), "title")
 
             if J.Text(pull, "body") != body || J.Text(pull, "title") != title {
@@ -687,7 +695,7 @@ internal class Coordinator {
                 throw Exception(failure)
             }
 
-            let expectedBranch = "tokate/v2-" + (reservation?.Reservation ?? "")
+            let expectedBranch = GitHub.ContributionBranchPrefix + (reservation?.Reservation ?? "")
             if branch != originalMetadata.Branch || branch != expectedBranch {
                 throw Exception(failure)
             }

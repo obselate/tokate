@@ -29,7 +29,7 @@ internal class Policy {
     internal let AllowedTools List[AllowedTool] = List[AllowedTool]()
 
     internal init(text string) {
-        Value = RequestData.Parse(text, 1024 * 1024)
+        Value = RequestData.Parse(text, FileByteLimit)
         Configure()
     }
 
@@ -76,7 +76,7 @@ internal class Policy {
             }
         }
 
-        RequestData.Parse(J.Write(Value), 1024 * 1024)
+        RequestData.Parse(J.Write(Value), FileByteLimit)
         Eligibility = JsonFields.String(Value, "Policy", "eligibility")
         let eligible = Eligibility == "open" || Eligibility == "trusted"
 
@@ -91,7 +91,7 @@ internal class Policy {
 
         MaxSeconds = JsonFields.Int32(Value, "Policy", "max_seconds")
 
-        if MaxSeconds < 1 || MaxSeconds > 86400 {
+        if MaxSeconds < 1 || MaxSeconds > RuntimeBudget.MaxBudgetSeconds {
             throw Exception("Set models and a max_seconds limit from 1 to 86400")
         }
 
@@ -378,14 +378,16 @@ internal class Policy {
     internal func AllowsTool(harness string, provider string) bool -> Tool(harness, provider) != nil
 
     shared {
+        internal const FileByteLimit int32 = 1024 * 1024
+
+        internal const FilePath string = ".github/tokate.json"
+
         private func ValidEffort(effort string) bool -> Array.IndexOf(
             "off minimal low medium high xhigh max ultra unknown absent".Split(' '),
             effort
         ) >= 0
 
-        internal func Load(repo string, revision string) Policy -> Policy(
-            GitHub.FileAt(repo, ".github/tokate.json", revision)
-        )
+        internal func Load(repo string, revision string) Policy -> Policy(GitHub.FileAt(repo, FilePath, revision))
 
         internal func Parse(value JsonElement) Policy -> Policy(value)
     }

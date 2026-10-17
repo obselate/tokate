@@ -309,7 +309,7 @@ internal class RunReference {
                 let data = SavedRuns.Summary(shown, saved.Skipped, saved.Truncated, saved.SkippedEntries)
                 data["hidden"] = hidden
                 PublicOutput.ResultData = data
-                PublicOutput.Truncated = saved.Truncated || shown.Count > 128
+                PublicOutput.Truncated = saved.Truncated || shown.Count > SavedRuns.SummaryCountLimit
                 return
             }
 

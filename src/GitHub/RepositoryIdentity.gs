@@ -33,7 +33,7 @@ internal class RepositoryIdentity {
         String.Equals(left, right, StringComparison.OrdinalIgnoreCase)
 
         internal func IsIssueUrl(value string, repo string, number int32) bool {
-            let prefix = "https://api.github.com/repos/"
+            let prefix = GitHub.ApiUrl + "repos/"
             let suffix = "/issues/" + number.ToString()
 
             if value.Length <= prefix.Length + suffix.Length || !value.StartsWith(prefix, StringComparison.Ordinal) ||

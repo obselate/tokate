@@ -124,7 +124,7 @@ internal class OwnerHealth {
         Read(
             "policy",
             async () -> {
-                let text = GitHub.FileAt(repo, ".github/tokate.json", revision, missing: true)
+                let text = GitHub.FileAt(repo, Policy.FilePath, revision, missing: true)
                 try {
                     let policy = Policy(text)
                     Parsed = policy
@@ -189,7 +189,9 @@ internal class OwnerHealth {
                     let issues = GitHub.Api(
                         "repos/" +
                             repo +
-                            "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" +
+                            "/issues?state=open&labels=tokate%3Aapproved&" +
+                            GitHub.PageSizeParameter +
+                            "&page=" +
                             page.ToString()
                     )
                     if issues.ValueKind != JsonValueKind.Array {
@@ -217,7 +219,7 @@ internal class OwnerHealth {
                             )
                         }
                     }
-                    if issues.GetArrayLength() < 100 {
+                    if issues.GetArrayLength() < GitHub.PageSize {
                         Add(
                             "approvals",
                             stale == 0 ? "ok": "problem",

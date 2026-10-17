@@ -89,7 +89,7 @@ internal class GitHubPathEvidence {
                         "--no-tags",
                         "--no-recurse-submodules",
                         "--",
-                        "https://github.com/" + RepositoryIdentity.Repo(fork) + ".git",
+                        GitHub.WebUrl + RepositoryIdentity.Repo(fork) + ".git",
                         RepositoryIdentity.CommitSha(head)
                     }
                 )

@@ -17,7 +17,7 @@ internal class Gratis {
                 policy[field.Name] = field.Value.Clone()
             }
 
-            policy["max_seconds"] = 86400
+            policy["max_seconds"] = RuntimeBudget.MaxBudgetSeconds
             policy["verification"] = []Object{}
             policy["required_checks"] = []Object{}
             policy["allowed_tools"] = []Object{

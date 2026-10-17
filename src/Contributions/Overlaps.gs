@@ -112,14 +112,16 @@ internal class Overlaps {
             var count int32
 
             try {
-                for page in 1 ... 11 {
+                for page in 1 ... GitHub.PageCountLimit + 1 {
                     let value = GitHub.Api(
                         "repos/" + repo + "/issues/" + issue.ToString() +
-                            "/dependencies/blocked_by?per_page=100&page=" +
+                            "/dependencies/blocked_by?" +
+                            GitHub.PageSizeParameter +
+                            "&page=" +
                             page.ToString()
                     )
 
-                    if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > 100 {
+                    if value.ValueKind != JsonValueKind.Array || value.GetArrayLength() > GitHub.PageSize {
                         throw CliFailure("invalid_state", "Incomplete native dependency evidence")
                     }
 
@@ -177,7 +179,7 @@ internal class Overlaps {
                         facts["dependency_gate"] = blocked ? "blocked": "unknown"
                     }
 
-                    if value.GetArrayLength() < 100 {
+                    if value.GetArrayLength() < GitHub.PageSize {
                         complete = valid
                         break
                     }

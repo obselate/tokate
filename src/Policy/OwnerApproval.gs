@@ -142,7 +142,7 @@ internal class OwnerApproval {
             }
             let approval = Capture(args, info, issue)
             let firstApproval = !Output.Sink.Enabled && GitHub.Api(
-                "repos/" + repo + "/git/matching-refs/heads/tokate/contributions/"
+                "repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix
             )
                 .GetArrayLength() == 0
 
@@ -152,7 +152,7 @@ internal class OwnerApproval {
                 GitHub.Api(
                     "repos/" + repo + "/labels",
                     map[string, Object?]{
-                        "name": "tokate:approved",
+                        "name": GitHub.ApprovedLabel,
                         "color": "0e8a16",
                         "description": "Approved for donated AI usage"
                     }
@@ -165,11 +165,11 @@ internal class OwnerApproval {
 
             GitHub.Api(
                 "repos/" + repo + "/issues/" + number.ToString() + "/labels",
-                map[string, Object?]{"labels": []string{"tokate:approved"}}
+                map[string, Object?]{"labels": []string{GitHub.ApprovedLabel}}
             )
 
             Output.Sink.Message(
-                "Approved https://github.com/" + repo + "/issues/" + number.ToString() +
+                "Approved " + GitHub.WebUrl + repo + "/issues/" + number.ToString() +
                     ". Donors start with: tokate work " +
                     repo +
                     "#" +

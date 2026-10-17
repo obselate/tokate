@@ -54,7 +54,8 @@ internal class SavedRun(location string, value JsonElement, current bool, run Da
 
     internal func Age() string {
         let minutes = Math.Max(0, Convert.ToInt32(Math.Floor((DateTime.UtcNow - Modified).TotalMinutes)))
-        return minutes < 60 ? minutes.ToString() + "m": minutes < 1440 ? (minutes / 60).ToString() + "h":
+        return minutes < RuntimeBudget.MinutesPerHour ? minutes.ToString() +
+            "m": minutes < 1440 ? (minutes / RuntimeBudget.MinutesPerHour).ToString() + "h":
         (minutes / 1440).ToString() + "d"
     }
 
@@ -89,6 +90,8 @@ internal class SavedRuns {
     internal var Truncated bool
 
     shared {
+        internal const SummaryCountLimit int32 = 128
+
         internal func Summary(
             rows List[SavedRun],
             skipped int32,
@@ -98,7 +101,7 @@ internal class SavedRuns {
             let items = List[Object?]()
 
             for row in rows {
-                if items.Count == 128 {
+                if items.Count == SummaryCountLimit {
                     break
                 }
 
@@ -178,7 +181,10 @@ internal class SavedRuns {
                     try {
                         RunStorage.ControlPaths(directory)
                         reason = "Missing, invalid or oversized run metadata."
-                        let value = RequestData.FileData(Path.Combine(directory, "run.json"), 1024 * 1024)
+                        let value = RequestData.FileData(
+                            Path.Combine(directory, "run.json"),
+                            RunStorage.RunFileByteLimit
+                        )
 
                         reason = "Invalid repository or excessive saved metadata."
                         let run = Data.Parse(value)
@@ -215,7 +221,7 @@ internal class SavedRuns {
                         error is JsonException {
                         Skipped++
 
-                        if SkippedEntries.Count < 128 {
+                        if SkippedEntries.Count < SummaryCountLimit {
                             SkippedEntries.Add(map[string, Object?]{"run": directory, "reason": reason})
                         } else {
                             Truncated = true
@@ -227,7 +233,7 @@ internal class SavedRuns {
                 error is UnauthorizedAccessException {
                 Skipped++
 
-                if SkippedEntries.Count < 128 {
+                if SkippedEntries.Count < SummaryCountLimit {
                     SkippedEntries.Add(map[string, Object?]{"run": root, "reason": "Unsafe or unreadable run storage."})
                 } else {
                     Truncated = true

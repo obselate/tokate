@@ -69,7 +69,7 @@ internal class ContributionStatus {
         let row = map[string, Object?]{
             "issue": issue,
             "title": Output.Prose(J.Text(task, "title"), ref Truncated),
-            "url": "https://github.com/" + Repo + "/issues/" + issue.ToString(),
+            "url": GitHub.WebUrl + Repo + "/issues/" + issue.ToString(),
             "approval_status": "unknown",
             "eligibility_status": "unknown",
             "coordination_status": "unknown",
@@ -291,7 +291,7 @@ internal class ContributionStatus {
         let donor = reservation?.Donor ?? ""
 
         if numbers[0] == 0 && donor != "" {
-            let branch = "tokate/v2-" + (reservation?.Reservation ?? "")
+            let branch = GitHub.ContributionBranchPrefix + (reservation?.Reservation ?? "")
             RepositoryIdentity.Login(donor)
             RepositoryIdentity.Branch(branch)
 
@@ -974,7 +974,7 @@ internal class ContributionStatus {
 
                 Result["repository_status"] = "observed"
                 GratisRepo = GitHub.Api(
-                    "repos/" + Repo + "/contents/.github/tokate.json?ref=" + J.Text(Info, "default_branch"),
+                    "repos/" + Repo + "/contents/" + Policy.FilePath + "?ref=" + J.Text(Info, "default_branch"),
                     missing: true
                 )
                     .ValueKind == JsonValueKind.Undefined

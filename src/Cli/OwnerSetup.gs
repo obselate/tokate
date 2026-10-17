@@ -38,7 +38,7 @@ internal class OwnerSetup {
 
         private func Tools(requested string) Object {
             if requested.TrimStart().StartsWith("[", StringComparison.Ordinal) {
-                return RequestData.Parse(requested)
+                return RequestData.Parse(requested, RequestData.RequestByteLimit)
             }
 
             let tools = List[Object]()
@@ -62,7 +62,7 @@ internal class OwnerSetup {
             let fields = map[string, Object?]{}
 
             if upstream != "" {
-                let value = RequestData.Parse(upstream, 1024 * 1024)
+                let value = RequestData.Parse(upstream, Policy.FileByteLimit)
                 for field in value.EnumerateObject() {
                     fields[field.Name] = field.Value
                 }
@@ -101,7 +101,7 @@ internal class OwnerSetup {
                 } else if key == "seconds" || key == "reservation-seconds" {
                     fields[field] = Int32.Parse(answer)
                 } else if key == "verification" || key == "required-checks" {
-                    fields[field] = RequestData.Parse(answer)
+                    fields[field] = RequestData.Parse(answer, RequestData.RequestByteLimit)
                 } else {
                     fields[field] = answer
                 }
@@ -119,7 +119,7 @@ internal class OwnerSetup {
 
             let main = J.Text(info, "default_branch")
             let head = GitHub.Branch(repo, main)
-            let upstream = GitHub.FileAt(repo, ".github/tokate.json", head, missing: true)
+            let upstream = GitHub.FileAt(repo, Policy.FilePath, head, missing: true)
             let fields = Fields(upstream)
             let existing Policy? = upstream == "" ? nil: Policy(J.Write(fields))
 
@@ -171,7 +171,7 @@ internal class OwnerSetup {
             let rebuild = files.Count > 0 && !Prepared(repo, setup, head, files)
 
             if rebuild && text != upstream {
-                Change(changes, ".github/tokate.json", upstream, text)
+                Change(changes, Policy.FilePath, upstream, text)
             }
 
             if rebuild && workflow != current {
@@ -179,7 +179,7 @@ internal class OwnerSetup {
 
                 if oldPin != "" {
                     Console.Error.WriteLine(
-                        "Compare shared workflows: https://github.com/obselate/tokate/compare/" + oldPin + "..." + pin
+                        "Compare shared workflows: " + GitHub.WebUrl + "obselate/tokate/compare/" + oldPin + "..." + pin
                     )
                 }
             }
@@ -284,12 +284,7 @@ internal class OwnerSetup {
 
             if text != upstream {
                 files.Add(
-                    map[string, Object?]{
-                        "path": ".github/tokate.json",
-                        "mode": "100644",
-                        "type": "blob",
-                        "content": text
-                    }
+                    map[string, Object?]{"path": Policy.FilePath, "mode": "100644", "type": "blob", "content": text}
                 )
             }
 
@@ -348,7 +343,9 @@ internal class OwnerSetup {
 
             PublicOutput.ResultData = result
             Terminal.Message(
-                "Tokate keeps its state in the tokate/access and tokate/contributions/N branches. Do not delete them or open pull requests from them.",
+                "Tokate keeps its state in the tokate/access and " +
+                    GitHub.ContributionStateRefPrefix +
+                    "N branches. Do not delete them or open pull requests from them.",
                 "cyan",
                 true
             )
@@ -425,11 +422,11 @@ internal class OwnerSetup {
             if setup == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": "refs/heads/tokate-setup", "sha": next}
+                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + "tokate-setup", "sha": next}
                 )
             } else {
                 GitHub.Api(
-                    "repos/" + repo + "/git/refs/heads/tokate-setup",
+                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + "tokate-setup",
                     map[string, Object?]{"sha": next, "force": false},
                     "PATCH"
                 )
@@ -480,7 +477,12 @@ internal class OwnerSetup {
             var page = 1
             while true {
                 let issues = GitHub.Api(
-                    "repos/" + repo + "/issues?state=open&labels=tokate%3Aapproved&per_page=100&page=" + page.ToString()
+                    "repos/" +
+                        repo +
+                        "/issues?state=open&labels=tokate%3Aapproved&" +
+                        GitHub.PageSizeParameter +
+                        "&page=" +
+                        page.ToString()
                 )
                 if issues.ValueKind != JsonValueKind.Array {
                     throw Exception("Cannot list approved issues before policy setup")
@@ -499,7 +501,7 @@ internal class OwnerSetup {
                     }
                 }
 
-                if issues.GetArrayLength() < 100 {
+                if issues.GetArrayLength() < GitHub.PageSize {
                     break
                 }
 
