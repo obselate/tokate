@@ -10,6 +10,14 @@ internal class PrBody {
     shared {
         private const AmendmentVerification string = "Donor-reported: all original owner checks passed locally; coordinator did not observe execution."
 
+        internal const ReceiptPrefix string = "<!-- tokate-receipt:"
+
+        private const ReceiptSuffix string = " -->"
+
+        private const ReportPrefix string = "<!-- tokate-report:start -->"
+
+        private const ReportSuffix string = "<!-- tokate-report:end -->"
+
         internal func Coordinated(
             record JsonElement,
             metadata JsonElement,
@@ -17,7 +25,7 @@ internal class PrBody {
             receipt ContributionReceipt.Record,
             marker string
         ) string {
-            let values = Dictionary[string, string]()
+            let values = map[string, string]{}
             values["issue"] = J.Number(J.Get(record, "issue"), "number").ToString()
             values["report"] = PrBody.Report(PrBody.PublicReport(metadata))
             values["donor"] = donor
@@ -27,7 +35,7 @@ internal class PrBody {
             values["base"] = J.Text(record, "base")
             values["policy"] = OwnerApproval.Record.Parse(J.Get(record, "approval")).PolicyHash
             values["usage"] = "per-tool donor declaration; not independently attested"
-            values["receipt"] = marker + "\n<!-- tokate-receipt:" + receipt.ToText() + " -->"
+            values["receipt"] = marker + "\n" + ReceiptPrefix + receipt.ToText() + ReceiptSuffix
 
             return PrBody.Render(J.Text(record, "template"), values, J.Get(record, "policy"))
         }
@@ -179,15 +187,14 @@ internal class PrBody {
             ambiguity string = "Missing or ambiguous Tokate-owned report/receipt region",
             malformed string = "Malformed Tokate receipt"
         ) string {
-            let prefix = "<!-- tokate-receipt:"
-            let start = Unique(body, prefix, ambiguity)
-            let end = body.IndexOf(" -->", start, StringComparison.Ordinal)
+            let start = Unique(body, ReceiptPrefix, ambiguity)
+            let end = body.IndexOf(ReceiptSuffix, start, StringComparison.Ordinal)
 
             if end < 0 {
                 throw CliFailure("invalid_state", malformed)
             }
 
-            return body.Substring(start + prefix.Length, end - start - prefix.Length)
+            return body.Substring(start + ReceiptPrefix.Length, end - start - ReceiptPrefix.Length)
         }
 
         private func Unique(
@@ -204,15 +211,11 @@ internal class PrBody {
             return start
         }
 
-        internal func Report(text string) string -> "<!-- tokate-report:start -->\n" +
-            text +
-            "\n<!-- tokate-report:end -->"
+        internal func Report(text string) string -> ReportPrefix + "\n" + text + "\n" + ReportSuffix
 
         internal func ReportText(body string) string {
-            let prefix = "<!-- tokate-report:start -->"
-            let suffix = "<!-- tokate-report:end -->"
-            let start = Unique(body, prefix) + prefix.Length
-            let end = Unique(body, suffix)
+            let start = Unique(body, ReportPrefix) + ReportPrefix.Length
+            let end = Unique(body, ReportSuffix)
 
             if end < start {
                 throw CliFailure("invalid_state", "Malformed Tokate report region")
@@ -226,27 +229,25 @@ internal class PrBody {
         )
 
         internal func ReplaceBody(body string, report string, receipt JsonElement) string {
-            let prefix = "<!-- tokate-report:start -->"
-            let suffix = "<!-- tokate-report:end -->"
-            let start = Unique(body, prefix)
-            let end = Unique(body, suffix)
+            let start = Unique(body, ReportPrefix)
+            let end = Unique(body, ReportSuffix)
 
             if end <= start {
                 throw CliFailure("invalid_state", "Malformed Tokate report region")
             }
 
-            let length = end + suffix.Length - start
+            let length = end + ReportSuffix.Length - start
             let updated = body.Remove(start, length).Insert(start, Report(report))
-            let receiptStart = Unique(updated, "<!-- tokate-receipt:")
-            let receiptEnd = updated.IndexOf(" -->", receiptStart, StringComparison.Ordinal)
+            let receiptStart = Unique(updated, ReceiptPrefix)
+            let receiptEnd = updated.IndexOf(ReceiptSuffix, receiptStart, StringComparison.Ordinal)
 
             if receiptEnd < 0 {
                 throw CliFailure("invalid_state", "Malformed Tokate receipt")
             }
 
-            return updated.Remove(receiptStart, receiptEnd + 4 - receiptStart).Insert(
+            return updated.Remove(receiptStart, receiptEnd + ReceiptSuffix.Length - receiptStart).Insert(
                 receiptStart,
-                "<!-- tokate-receipt:" + ContributionReceipt.Record.Parse(receipt).ToText() + " -->"
+                ReceiptPrefix + ContributionReceipt.Record.Parse(receipt).ToText() + ReceiptSuffix
             )
         }
     }

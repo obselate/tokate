@@ -26,15 +26,13 @@ internal class ContributionReceipt {
         internal let Attempt JsonElement = J.Get(value, "attempt")
         internal let Amendment JsonElement = J.Get(value, "amendment")
 
-        internal func Write(writer Utf8JsonWriter) -> source.WriteTo(writer)
-
         internal func ToJson() JsonElement -> source
 
         internal func ToText() string {
             using let bytes = MemoryStream()
             using let writer = Utf8JsonWriter(bytes)
 
-            Write(writer)
+            source.WriteTo(writer)
             writer.Flush()
 
             return Encoding.UTF8.GetString(bytes.ToArray())
