@@ -208,7 +208,8 @@ Execution keeps saved failure stages, interruption evidence and verification res
 | Code | Symptom (message text or failure) | Do |
 | --- | --- | --- |
 | `invalid_state` | `This destination attempt already started execution`, changed saved runtime, malformed installation metadata or invalid external history | Inspect `tokate status --run DIR --json`. Keep the original runtime and saved evidence. Do not start inference again in that attempt. |
-| `invalid_state` | `No changes returned. No PR will be opened.`, changed candidate, unsafe saved paths or protected owner content changes | Inspect the checkout and saved evidence before explicit recovery or fresh preparation. |
+| `invalid_state` | `No changes returned. No PR will be opened.`, changed candidate or unsafe saved paths | Inspect the checkout and saved evidence before explicit recovery or fresh preparation. |
+| `protected_path` | Contribution changes a protected owner path. The message names the path. | Restore the named path to its approved state. Inspect saved work before explicit recovery. Protected paths are listed in the task context. |
 | `invalid_arguments` | `Runtime overrides require bounded absolute paths` or `Invalid runtime path` | Supply a valid absolute runtime path before starting work. |
 | `missing_tools` | Missing executable, unsupported native runtime or failed native capability checks | Repair the selected installation, then run `tokate doctor managed`. No inference has started. |
 | `authentication_required` | Codex login or Claude native authentication did not confirm the required account | Sign in with the selected harness and original account before work. |

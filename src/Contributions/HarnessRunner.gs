@@ -84,6 +84,10 @@ internal class HarnessRunner {
                 }
             }
 
+            if error is CliFailure failure && failure.Code == "protected_path" {
+                run.FailureReason = failure.Code
+            }
+
             run.Transition("failed")
             run.Error = error.Message
 

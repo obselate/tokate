@@ -34,6 +34,7 @@ internal class CliFailure : Exception {
             case "authentication_required": "Authentication is required with the appropriate account."
             case "stale_approval": "Owner approval is absent or changed. Fresh owner approval is required."
             case "invalid_state": "The saved run or command state does not permit this operation. Inspect its artifacts."
+            case "protected_path": "Contribution changes a protected owner path. Restore the path named in the saved error before recovery."
             case "verification_failed": "Independent verification failed. Inspect the private verification artifact."
             case "inference_failed": "Inference did not complete successfully. Inspect private events and report artifacts and read saved status for recovery."
             case "endpoint_unavailable": "Selected local endpoint did not provide valid bounded metadata advertising the exact model ID. No inference started."

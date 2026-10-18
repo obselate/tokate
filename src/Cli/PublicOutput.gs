@@ -103,6 +103,7 @@ internal class PublicOutput {
                 "authentication_required",
                 "stale_approval",
                 "invalid_state",
+                "protected_path",
                 "verification_failed",
                 "inference_failed",
                 "endpoint_unavailable",
@@ -332,7 +333,7 @@ internal class PublicOutput {
                 result["failure_reason"] = run.FailureReason == "inference_interrupted" ? "inference_interrupted": code
                 result["error"] = map[string, Object?]{
                     "code": code,
-                    "message": code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": CliFailure.Message(
+                    "message": code == "protected_path" ? run.Error: code == "stale_approval" ? "Saved attempt authority is absent or changed. Inspect current authority before fresh preparation.": CliFailure.Message(
                         code
                     )
                 }
