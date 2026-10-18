@@ -1398,7 +1398,8 @@ internal partial class Fixture {
         let call = calls[calls.Count - 1] ?? throw Exception("Missing mutation")
         call["permission"] = JsonValue.Create(comment ? "issues or pull-requests": permission)
         Save()
-        return (!ownerOnly || String.Equals(actor, repo.Split('/')[0], StringComparison.OrdinalIgnoreCase)) &&
+        let login = actor == "donor" ? Check.Text(State["viewer_login"] ?? JsonValue.Create(actor)): actor
+        return (!ownerOnly || String.Equals(login, repo.Split('/')[0], StringComparison.OrdinalIgnoreCase)) &&
             (
             State["token_permissions"] == nil || Check.Text(State["token_permissions"]?[permission]) == "write" ||
                 (comment && Check.Text(State["token_permissions"]?["pull-requests"]) == "write")

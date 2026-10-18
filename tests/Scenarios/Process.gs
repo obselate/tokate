@@ -200,6 +200,7 @@ internal class ProcessChecks {
             flow.Initialize()
             flow.Approve()
             let run = flow.Claim()
+            flow.ResetTraffic()
             flow.Mode("capture_write_failure")
             let result = TestProcess.Run(
                 "/bin/bash",
