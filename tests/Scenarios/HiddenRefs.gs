@@ -38,7 +38,7 @@ internal partial class CoordinationFlow {
                 "Legacy status did not observe current authority"
             )
             let path = test.Event(request)
-            flow.Faults("repos/owner/project/git/refs", JsonArray(Check.Map("status", 500)))
+            flow.Faults("graphql", JsonArray(Check.Map("status", 500)))
             test.Coordinate(path, 1)
             Check.That(
                 flow.Git("-C", flow.Upstream, "for-each-ref", "refs/tokate/") == "" && flow.Git(
@@ -50,8 +50,10 @@ internal partial class CoordinationFlow {
                 "Failed migration changed state refs"
             )
             flow.Faults("", JsonArray())
+            approved["sha"] = JsonValue.Create(LegacyRefConflict(test, path, Check.Text(approved["sha"])))
             flow.Mode("lost_state_response")
-            test.Coordinate(path)
+            request["expected"] = JsonValue.Create(Check.Text(approved["sha"]))
+            test.Coordinate(test.Event(request))
             let migrated = test.State()
             Check.That(
                 Check.Text(migrated["state"]?["approval_id"]) == Check.Text(approved["state"]?["approval_id"]),
@@ -97,6 +99,41 @@ internal partial class CoordinationFlow {
             Check.That(test.State()["state"]?["reservation"] == nil, "Owner reapproval did not use hidden state")
             flow.NoInference()
             flow.NoPr()
+        }
+
+        private func LegacyRefConflict(test CoordinationFixture, path string, previous string) string {
+            let flow = test.Flow
+            let legacy = "refs/heads/tokate/contributions/1"
+            let newer = flow.Git(
+                "-C",
+                flow.Upstream,
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit-tree",
+                flow.Git("-C", flow.Upstream, "rev-parse", legacy + "^{tree}"),
+                "-p",
+                previous,
+                "-m",
+                "Concurrent legacy write"
+            )
+            flow.Reload()
+            flow.State["ref_conflict_sha"] = JsonValue.Create(newer)
+            flow.Save()
+
+            Check.Contains(test.Coordinate(path, 1).Error, "Coordination changed")
+            Check.That(
+                flow.Git("-C", flow.Upstream, "rev-parse", legacy) == newer && flow.Git(
+                    "-C",
+                    flow.Upstream,
+                    "for-each-ref",
+                    "refs/tokate/contributions/"
+                ) == "",
+                "Migration lost a concurrent legacy write"
+            )
+
+            return newer
         }
 
         internal func HiddenRefConflicts(binary string) {

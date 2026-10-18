@@ -570,29 +570,28 @@ internal class CoordinationState {
         let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
 
         try {
-            if Sha == "" || Legacy {
+            if Sha == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
                     map[string, Object?]{"ref": "refs/" + Ref(issue), "sha": next},
                     expires: expires
                 )
             } else {
-                StateRefs.Update(repo, Ref(issue), Sha, next, expires)
+                StateRefs.Update(repo, Ref(issue), Sha, next, expires, Legacy)
             }
         } catch (error Exception) {
-            let current = J.Text(J.Get(StateRefs.Read(repo, Ref(issue)), "object"), "sha")
+            let reference = Legacy ? GitHub.Api("repos/" + repo + "/git/ref/" + Ref(issue), missing: true):
+            StateRefs.Read(repo, Ref(issue))
+            let current = J.Text(J.Get(reference, "object"), "sha")
             if current != next {
-                if current != Sha {
+                if Legacy || current != Sha {
                     throw CliFailure("stale_approval", "Coordination changed before reservation update")
                 }
                 throw error
             }
         }
 
-        if Legacy {
-            StateRefs.RemoveLegacy(repo, Ref(issue))
-            Legacy = false
-        }
+        Legacy = false
 
         Sha = next
     }

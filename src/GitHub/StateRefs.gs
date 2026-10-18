@@ -33,7 +33,34 @@ internal class StateRefs {
             return result
         }
 
-        internal func Update(repo string, name string, expected string, next string, expires int64 = 0) {
+        internal func Update(
+            repo string,
+            name string,
+            expected string,
+            next string,
+            expires int64 = 0,
+            legacy bool = false
+        ) {
+            const zero string = "0000000000000000000000000000000000000000"
+            let updates = List[Object]{
+                map[string, Object?]{
+                    "name": "refs/" + name,
+                    "beforeOid": legacy ? zero: expected,
+                    "afterOid": next,
+                    "force": false
+                }
+            }
+            if legacy {
+                updates.Add(
+                    map[string, Object?]{
+                        "name": GitHub.HeadsRefPrefix + name,
+                        "beforeOid": expected,
+                        "afterOid": zero,
+                        "force": false
+                    }
+                )
+            }
+
             let repositoryId = J.Text(GitHub.Api("repos/" + repo), "node_id")
             if repositoryId == "" {
                 throw Exception("Missing repository node identity")
@@ -43,17 +70,7 @@ internal class StateRefs {
                 map[string, Object?]{
                     "query": "mutation($$input:UpdateRefsInput!){updateRefs(input:$$input){clientMutationId}}",
                     "variables": map[string, Object?]{
-                        "input": map[string, Object?]{
-                            "repositoryId": repositoryId,
-                            "refUpdates": []Object{
-                                map[string, Object?]{
-                                    "name": "refs/" + name,
-                                    "beforeOid": expected,
-                                    "afterOid": next,
-                                    "force": false
-                                }
-                            }
-                        }
+                        "input": map[string, Object?]{"repositoryId": repositoryId, "refUpdates": updates.ToArray()}
                     }
                 },
                 expires: expires
@@ -61,10 +78,6 @@ internal class StateRefs {
             if J.Get(J.Get(result, "data"), "updateRefs").ValueKind != JsonValueKind.Object {
                 throw CliFailure("command_failed", "GitHub state ref update failed. No automatic retry was made.")
             }
-        }
-
-        internal func RemoveLegacy(repo string, name string) {
-            GitHub.Api("repos/" + repo + "/git/refs/heads/" + name, method: "DELETE", missing: true)
         }
     }
 }

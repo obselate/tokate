@@ -113,18 +113,20 @@ internal class AccessState {
         let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
 
         try {
-            if Sha == "" || Legacy {
+            if Sha == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
                     map[string, Object?]{"ref": "refs/" + AccessState.Reference, "sha": next}
                 )
             } else {
-                StateRefs.Update(repo, Reference, Sha, next)
+                StateRefs.Update(repo, Reference, Sha, next, legacy: Legacy)
             }
         } catch (error Exception) {
             var live string
             try {
-                live = J.Text(J.Get(StateRefs.Read(repo, Reference), "object"), "sha")
+                let reference = Legacy ? GitHub.Api("repos/" + repo + "/git/ref/" + Reference, missing: true):
+                StateRefs.Read(repo, Reference)
+                live = J.Text(J.Get(reference, "object"), "sha")
             } catch (inspection Exception) {
                 throw CliFailure(
                     "invalid_state",
@@ -133,7 +135,7 @@ internal class AccessState {
             }
 
             if live != next {
-                if live != Sha {
+                if Legacy || live != Sha {
                     if (Sha == "" || Legacy) &&
                         live != "" &&
                         error is CliFailure transport &&
@@ -149,10 +151,7 @@ internal class AccessState {
             }
         }
 
-        if Legacy {
-            StateRefs.RemoveLegacy(repo, Reference)
-            Legacy = false
-        }
+        Legacy = false
 
         Sha = next
         return true

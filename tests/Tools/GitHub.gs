@@ -1408,18 +1408,32 @@ internal partial class Fixture {
     private func UpdateRefs(body JsonNode) int32 {
         let input = body["variables"]?["input"] ?? throw Exception("Missing mutation input")
         let updates = input["refUpdates"]?.AsArray() ?? throw Exception("Missing ref updates")
-        Check.That(updates.Count == 1, "Expected one state ref update")
         let update = updates[0] ?? throw Exception("Missing ref update")
         let reference = Check.Text(update["name"])
         let repo = Check.Text(input["repositoryId"]).Substring(2).ToLowerInvariant()
         let folder = State["repository_folders"]?[repo] is JsonNode selected ? Check.Text(
             selected
         ): repo == "owner/project" ? "upstream": "fork"
-        Check.That(reference.StartsWith("refs/tokate/", StringComparison.Ordinal), "Expected hidden state ref")
-        Check.That(
-            Check.Text(update["beforeOid"]).Length == 40 && Check.Text(update["force"]) == "false",
-            "Expected conditional state update"
-        )
+        var transaction = "start\n"
+        for item in updates {
+            let change = item ?? throw Exception("Missing ref update")
+            let name = Check.Text(change["name"])
+            Check.That(
+                name.StartsWith("refs/tokate/", StringComparison.Ordinal) || name.StartsWith(
+                    "refs/heads/tokate/",
+                    StringComparison.Ordinal
+                ),
+                "Expected state ref"
+            )
+            Check.That(
+                Check.Text(change["beforeOid"]).Length == 40 && Check.Text(change["force"]) == "false",
+                "Expected conditional state update"
+            )
+            transaction += "update " + name + " " + Check.Text(change["afterOid"]) + " " + Check.Text(
+                change["beforeOid"]
+            ) +
+                "\n"
+        }
         if Check.Text(State["mode"]) == "interrupted_state_write" && reference.StartsWith(
             "refs/tokate/contributions/"
         ) {
@@ -1430,14 +1444,12 @@ internal partial class Fixture {
             State["mode"] = JsonValue.Create("")
         }
         if State["ref_conflict_sha"] != nil {
-            Git(folder, []string{"update-ref", reference, Check.Text(State["ref_conflict_sha"])})
+            let conflictRef = updates.Count == 2 ? Check.Text(updates[1]?["name"]): reference
+            Git(folder, []string{"update-ref", conflictRef, Check.Text(State["ref_conflict_sha"])})
             State["ref_conflict_sha"] = nil
         }
         try {
-            Git(
-                folder,
-                []string{"update-ref", reference, Check.Text(update["afterOid"]), Check.Text(update["beforeOid"])}
-            )
+            Git(folder, []string{"update-ref", "--stdin"}, transaction + "prepare\ncommit\n")
         } catch (error Exception) {
             let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic")
             let call = calls[calls.Count - 1] ?? throw Exception("Missing mutation")
