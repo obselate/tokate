@@ -6,7 +6,59 @@ import System.Text.Json.Nodes
 
 internal class ProtectedPathChecks {
     shared {
+        private func Managed(binary string) {
+            using let flow = NativeFlow(binary)
+            flow.Initialize()
+            flow.ProtectedPolicy()
+            flow.Approve()
+            let run = flow.Claim()
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
+            for mode in[]string{"protected_entrypoint", "workflow", "replacement"} {
+                baseline.Restore()
+                flow.Mode(mode)
+                let path = mode == "protected_entrypoint" ? "scripts/verify.sh":
+                mode == "workflow" ? ".github/workflows/verify.yml": ".github/tokate-pr.md"
+                let result = flow.Call([]string{"work", "--yes", "--run", run, "--json"}, 1)
+                let failure = Check.Envelope(result, "work", "error", "protected_path")
+                Check.Contains(Check.Text(failure["error"]?["message"]), path)
+                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+                Check.That(Check.Text(saved["state"]) == "failed", "Protected edit did not fail the run")
+                Check.That(
+                    Check.Text(saved["failure_stage"]) == "candidate_validation" && Check.Text(
+                        saved["failure_reason"]
+                    ) == "protected_path",
+                    "Protected edit lost its failure stage or code"
+                )
+                Check.Contains(Check.Text(saved["error"]), path)
+                let status = Check.Envelope(flow.Call([]string{"status", "--run", run, "--json"}), "status", "ok")
+                Check.That(
+                    Check.Text(status["data"]?["error"]?["code"]) == "protected_path",
+                    "Status lost protected_path"
+                )
+                Check.Contains(Check.Text(status["data"]?["error"]?["message"]), path)
+                flow.Reload()
+                let prompt = Check.Text(flow.State["prompts"]?[0])
+                for text in[]string{
+                    "## Protected paths",
+                    "Do not add, edit, delete or rename",
+                    ".github/workflows/",
+                    "Every path starting with .github/tokate",
+                    "Root DECREE.md",
+                    "scripts/verify.sh",
+                    "scripts/checks/",
+                    "A trailing slash protects the directory and all descendants"
+                } {
+                    Check.Contains(prompt, text)
+                }
+                Check.That(!File.Exists(Path.Combine(run, "verification.json")), "Protected edit reached verification")
+                Check.That(Check.Text(flow.State["exec_count"]) == "1", "Protected edit retried inference")
+                flow.NoPr()
+            }
+            Console.WriteLine("PASS managed protected paths reach the prompt and retain failure codes and paths")
+        }
+
         internal func All(binary string) {
+            Managed(binary)
             using let test = CoordinationFixture(binary)
             test.Initialize(approve: false)
             let flow = test.Flow

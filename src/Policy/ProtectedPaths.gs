@@ -75,16 +75,19 @@ internal class ProtectedPaths {
 
         private func Check(configured List[JsonElement], decree bool, path string) {
             if decree && (path == "DECREE.md" || path.StartsWith("DECREE.md/")) {
-                throw Exception("Contribution changes approved root DECREE.md")
+                throw CliFailure("protected_path", "Contribution changes approved root DECREE.md: " + J.Write(path))
             }
 
             if Matches(".github/workflows/", path) || path.StartsWith(".github/tokate", StringComparison.Ordinal) {
-                throw Exception("Contribution changes protected owner configuration: " + J.Write(path))
+                throw CliFailure(
+                    "protected_path",
+                    "Contribution changes protected owner configuration: " + J.Write(path)
+                )
             }
 
             for entry in configured {
                 if Matches(entry.GetString() ?? "", path) {
-                    throw Exception("Contribution changes protected owner path: " + J.Write(path))
+                    throw CliFailure("protected_path", "Contribution changes protected owner path: " + J.Write(path))
                 }
             }
         }

@@ -29,6 +29,17 @@ internal class TaskContext {
             let snapshot = gratis ? JsonElement{}: Decree.Validate(OwnerApproval.Record.Parse(approval).Decree)
             let issue = J.Get(record, "issue")
             let verification = gratis ? List[JsonElement](): J.Items(Policy.Parse(J.Get(record, "policy")).Verification)
+            let protectedPaths = "## Protected paths\n" +
+                "Do not add, edit, delete or rename these owner paths. Candidate validation rejects changes to them.\n" +
+                "- .github/workflows/ and all descendants.\n" +
+                "- Every path starting with .github/tokate.\n" +
+                (Decree.HasSnapshot(approval) ? "- Root DECREE.md and all descendants, even when absent.\n": "") +
+                (
+                gratis ? "": "- Owner protected_paths: " +
+                    Escape(J.Write(J.Items(Policy.Parse(J.Get(record, "policy")).ProtectedPaths))) +
+                    ". A trailing slash protects the directory and all descendants. Other entries protect the exact path.\n"
+            ) +
+                "\n"
             let imported = AttemptContinuation.Has(run) ? "This is a fresh v" + run.Version.ToString() +
                 " attempt seeded from unpublished interrupted work. " +
                 "Predecessor evidence: " +
@@ -81,6 +92,7 @@ internal class TaskContext {
                 ".\n" +
                 time +
                 "\n" +
+                protectedPaths +
                 "## tokate-public-summary.json format\n" +
                 "One JSON object with exactly three arrays: `changes` (1 to 8 items), `verification` (0 to 8) and `limitations` (0 to 4). Write [] for an empty list. Do not include `head` or other keys. Keep it at most 4046 bytes as compact JSON. Each ' and + counts as 6 bytes. Tokate publishes this file in the PR, so do not include private details.\n" +
                 "Verification lists only final results for the final diff, not intermediate failures or fixes.\n" +
