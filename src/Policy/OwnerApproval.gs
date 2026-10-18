@@ -150,10 +150,8 @@ internal class OwnerApproval {
             }
             let approval = Capture(args, info, issue)
             approval.Approver = RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
-            let firstApproval = !Output.Sink.Enabled && GitHub.Api(
-                "repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix
-            )
-                .GetArrayLength() == 0
+            let firstApproval = !Output.Sink.Enabled && StateRefs.Matching(repo, GitHub.ContributionStateRefPrefix)
+                .Count == 0
 
             let label = GitHub.Api("repos/" + repo + "/labels/" + GitHub.EncodedApprovedLabel, missing: true)
 
@@ -187,7 +185,7 @@ internal class OwnerApproval {
 
             if firstApproval {
                 Output.Sink.Message(
-                    "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+                    "Tokate keeps its state in hidden refs outside the branch list. Legacy tokate/ state branches migrate on the next write."
                 )
             }
         }

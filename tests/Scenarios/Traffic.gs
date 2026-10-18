@@ -357,7 +357,7 @@ internal class CommandTrafficChecks {
                 Check.Map("object", Check.Map("sha", Check.Text(flow.State()["sha"])))
             )
             flow.Coordinate(flow.Event(request))
-            flow.Flow.Faults("repos/owner/project/git/ref/heads/tokate/contributions/1", JsonArray(pending))
+            flow.Flow.Faults("repos/owner/project/git/ref/tokate/contributions/1", JsonArray(pending))
             let observed = flow.Flow.Call([]string{"submit", "--yes", "--run", run})
             Check.Contains(observed.Output, "Draft PR: https://github.com/owner/project/pull/10")
             Check.That(!observed.Output.Contains("{\"pr\""), "Submit printed raw JSON")
@@ -642,7 +642,7 @@ internal class CommandTrafficChecks {
             }
             baseline.Restore()
             flow.Faults(
-                "repos/owner/project/git/ref/heads/tokate/access",
+                "repos/owner/project/git/ref/tokate/access",
                 Check.Json("[{\"passthrough\":true},{\"passthrough\":true},{\"status\":200,\"pause_ms\":6000}]")
             )
             let pending = Check.Envelope(

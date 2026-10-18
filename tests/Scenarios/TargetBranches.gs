@@ -21,7 +21,7 @@ internal class TargetBranches {
 
         private func Approve(flow NativeFixture, branch string) JsonNode {
             flow.Call([]string{"approve", "--yes", "owner/project#1", "--base-branch", branch}, owner: true)
-            let state = flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json")
+            let state = flow.Git("-C", flow.Upstream, "show", "refs/tokate/contributions/1:state.json")
             return Check.Json(state)["approval"] ?? throw Exception("Missing approval")
         }
 

@@ -478,8 +478,15 @@ internal class ApiTransport {
         ) JsonElement {
             let timer = Stopwatch.StartNew()
             let verb = (method == "" ? (body == nil ? "GET": "POST"): method).ToUpperInvariant()
-            let read = verb == "GET" || path == "graphql"
             let input string? = body == nil ? nil: J.Write(body)
+            let read = verb == "GET" ||
+                (
+                path == "graphql" &&
+                    J
+                    .Text(J.Parse(input ?? "{}"), "query")
+                    .TrimStart()
+                    .StartsWith("query", StringComparison.Ordinal)
+            )
             let key = path + "\n" + input
 
             for attempt in 0 ... (read ? ReadAttemptLimit: 1) {
@@ -554,6 +561,10 @@ internal class ApiTransport {
                         value = response.Body.Trim() == "" ? JsonElement{}: J.Parse(response.Body)
                     } catch {
                         throw Failure(0, read, 0.0)
+                    }
+
+                    if !read && path == "graphql" && J.Items(J.Get(value, "errors")).Count > 0 {
+                        throw Failure(response.Status, read, 0.0, response.FailureReason())
                     }
 
                     if read {

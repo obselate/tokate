@@ -8,6 +8,7 @@ import System.Text.Json
 
 internal class AccessState {
     internal var Sha string = ""
+    private var Legacy bool
     internal var RepoId int64
     internal let Members List[Member] = List[Member]()
 
@@ -115,19 +116,17 @@ internal class AccessState {
             if Sha == "" {
                 GitHub.Api(
                     "repos/" + repo + "/git/refs",
-                    map[string, Object?]{"ref": GitHub.HeadsRefPrefix + AccessState.Reference, "sha": next}
+                    map[string, Object?]{"ref": "refs/" + AccessState.Reference, "sha": next}
                 )
             } else {
-                GitHub.Api(
-                    "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + AccessState.Reference,
-                    map[string, Object?]{"sha": next, "force": false},
-                    "PATCH"
-                )
+                StateRefs.Update(repo, Reference, Sha, next, legacy: Legacy)
             }
         } catch (error Exception) {
-            var live AccessState
+            var live string
             try {
-                live = Load(repo, RepoId)
+                let reference = Legacy ? GitHub.Api("repos/" + repo + "/git/ref/" + Reference, missing: true):
+                StateRefs.Read(repo, Reference)
+                live = J.Text(J.Get(reference, "object"), "sha")
             } catch (inspection Exception) {
                 throw CliFailure(
                     "invalid_state",
@@ -135,20 +134,24 @@ internal class AccessState {
                 )
             }
 
-            if live.Sha != next || RequestData.Canonical(live.Value()) != RequestData.Canonical(Value()) {
-                if Sha == "" &&
-                    live.Sha != "" &&
-                    error is CliFailure transport &&
-                    (transport.HttpStatus == 409 || transport.HttpStatus == 422) {
-                    return false
+            if live != next {
+                if Legacy || live != Sha {
+                    if (Sha == "" || Legacy) &&
+                        live != "" &&
+                        error is CliFailure transport &&
+                        (transport.HttpStatus == 409 || transport.HttpStatus == 422) {
+                        return false
+                    }
+                    throw CliFailure(
+                        "invalid_state",
+                        "Access write lost a concurrent update. Inspect current access before an explicit new operation; no write was repeated."
+                    )
                 }
-
-                throw CliFailure(
-                    "invalid_state",
-                    "Access write is uncertain or lost a concurrent update. Inspect current access before an explicit new operation; no write was repeated."
-                )
+                throw error
             }
         }
+
+        Legacy = false
 
         Sha = next
         return true
@@ -271,7 +274,7 @@ internal class AccessState {
         }
 
         internal func Load(repo string, repoId int64) AccessState {
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + AccessState.Reference, missing: true)
+            let reference = StateRefs.Read(repo, Reference)
 
             if reference.ValueKind == JsonValueKind.Undefined {
                 return AccessState{RepoId: repoId}
@@ -289,6 +292,7 @@ internal class AccessState {
             }
 
             result.Sha = sha
+            result.Legacy = J.Text(reference, "ref") == GitHub.HeadsRefPrefix + Reference
             return result
         }
 
@@ -781,7 +785,7 @@ internal class AccessState {
 
                 if operation == "init" {
                     Output.Sink.Message(
-                        "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+                        "Tokate keeps its state in hidden refs outside the branch list. Legacy tokate/ state branches migrate on the next write."
                     )
                 }
             }

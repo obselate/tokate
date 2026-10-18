@@ -197,10 +197,7 @@ internal class ContributionStatus {
             row,
             "remote",
             async () -> {
-                let latest = GitHub.Api(
-                    "repos/" + Repo + "/git/ref/heads/" + CoordinationState.Ref(issue),
-                    missing: true
-                )
+                let latest = StateRefs.Read(Repo, CoordinationState.Ref(issue))
 
                 if J.Text(J.Get(latest, "object"), "sha") != state.Sha {
                     row["remote_status"] = "stale"
@@ -1132,10 +1129,7 @@ internal class ContributionStatus {
                 Result,
                 "access",
                 async () -> {
-                    let reference = GitHub.Api(
-                        "repos/" + Repo + "/git/ref/heads/" + AccessState.Reference,
-                        missing: true
-                    )
+                    let reference = StateRefs.Read(Repo, AccessState.Reference)
                     if J.Text(J.Get(reference, "object"), "sha") != Access?.Sha {
                         Result["access_status"] = "stale"
                         Result["requests_status"] = "stale"

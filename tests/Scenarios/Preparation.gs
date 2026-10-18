@@ -1326,7 +1326,7 @@ internal class PreparationChecks {
                 } else if gate == "revoked" {
                     flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                 } else {
-                    flow.Git("-C", flow.Upstream, "update-ref", "-d", "refs/heads/tokate/contributions/1")
+                    flow.Git("-C", flow.Upstream, "update-ref", "-d", "refs/tokate/contributions/1")
                 }
                 flow.Call(args.ToArray(), 1)
                 flow.Reload()

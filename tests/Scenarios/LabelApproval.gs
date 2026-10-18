@@ -31,6 +31,7 @@ internal partial class CoordinationFlow {
                 baseline.Restore()
                 test.Flow.Reload()
                 test.Flow.State["repo_permissions"] = Check.Json("{}")
+                test.Flow.State["token_permissions"] = Check.Map("contents", "write", "issues", "write")
                 test.Flow.State["collaborator_permissions"] = Check.Map(
                     "donor",
                     Check.Map("permission", level, "role_name", "admin", "user", Check.Map("id", 123, "login", "donor"))
@@ -52,12 +53,7 @@ internal partial class CoordinationFlow {
                     test.Claim()
                 } else {
                     Check.That(
-                        test.Flow.Git(
-                            "-C",
-                            test.Flow.Upstream,
-                            "for-each-ref",
-                            "refs/heads/tokate/contributions/"
-                        ) == "",
+                        test.Flow.Git("-C", test.Flow.Upstream, "for-each-ref", "refs/tokate/contributions/") == "",
                         "Rejected label created approval state"
                     )
                     Check.That(
@@ -291,7 +287,7 @@ internal partial class CoordinationFlow {
                 test.Flow.Reload()
                 Check.That(test.Flow.State["request_count"] == nil, "Invalid event posted a comment")
                 Check.That(
-                    test.Flow.Git("-C", test.Flow.Upstream, "for-each-ref", "refs/heads/tokate/contributions/") == "",
+                    test.Flow.Git("-C", test.Flow.Upstream, "for-each-ref", "refs/tokate/contributions/") == "",
                     "Invalid event created approval state"
                 )
                 for call in test.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
@@ -301,7 +297,7 @@ internal partial class CoordinationFlow {
                 test.Flow.NoInference()
             }
             baseline.Restore()
-            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/tokate/access")
             test.Coordinate(test.LabelEvent())
             Check.That(test.State()["state"]?["approval"] != nil, "Missing access ref blocked label approval")
         }

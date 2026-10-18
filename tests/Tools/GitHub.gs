@@ -157,6 +157,7 @@ internal partial class Fixture {
         let header = Array.IndexOf(args, "-H")
         Conditional = header >= 0 ? args[header + 1]: ""
         let calls = State["api_calls"]?.AsArray() ?? JsonArray()
+        let update = body["variables"]?["input"]?["refUpdates"]?[0]
         let call = Check.Map(
             "method",
             method,
@@ -167,12 +168,17 @@ internal partial class Fixture {
             "validator",
             Conditional,
             "sha",
-            Check.Text(body["sha"])
+            Check.Text(body["sha"] ?? update?["afterOid"]),
+            "ref",
+            Check.Text(body["ref"] ?? update?["name"])
         )
         call["start"] = JsonValue.Create(Stopwatch.GetTimestamp())
         calls.Add(call)
         State["api_calls"] = calls
         Save()
+        if !MutationAllowed(path, method, body, actor) {
+            return Response(403, Check.Map("message", "Resource not accessible by integration"))
+        }
         if method == "GET" && path == Check.Text(State["access_revoke_after_path"]) {
             let reads = State["access_downstream_reads"] == nil ? 1:
             Int32.Parse(Check.Text(State["access_downstream_reads"])) + 1
@@ -211,6 +217,9 @@ internal partial class Fixture {
                     )
                 }
             }
+        }
+        if path == "graphql" && Check.Text(body["query"]).StartsWith("mutation", StringComparison.Ordinal) {
+            return UpdateRefs(body)
         }
         if path == "graphql" && Check.Text(body["query"]).Contains("pullRequest(number:") {
             let data = JsonObject()
@@ -449,6 +458,8 @@ internal partial class Fixture {
             }
             return Answer(
                 Check.Map(
+                    "node_id",
+                    "R_" + repo,
                     "default_branch",
                     State["default_branch"] == nil ? "main": Check.Text(State["default_branch"]),
                     "id",
@@ -698,7 +709,12 @@ internal partial class Fixture {
             if move != nil {
                 Git(
                     "upstream",
-                    []string{"update-ref", "refs/heads/" + Check.Text(move["branch"]), Check.Text(move["sha"])}
+                    []string{
+                        "update-ref",
+                        Check.Text(move["branch"]).StartsWith("refs/") ? Check.Text(move["branch"]): "refs/heads/" +
+                            Check.Text(move["branch"]),
+                        Check.Text(move["sha"])
+                    }
                 )
                 State["overlap_move_target"] = nil
             }
@@ -966,11 +982,11 @@ internal partial class Fixture {
         if tail.StartsWith("labels") {
             return Answer(Check.Map("name", "tokate:approved"))
         }
-        if tail == "git/matching-refs/heads/tokate/contributions/" {
+        if tail.StartsWith("git/matching-refs/") {
             let refs = JsonArray()
             for row in Git(
                 folder,
-                []string{"for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/tokate/contributions/"}
+                []string{"for-each-ref", "--format=%(refname) %(objectname)", "refs/" + tail.Substring(18)}
             )
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries) {
                 let fields = row.Split(' ')
@@ -978,8 +994,9 @@ internal partial class Fixture {
             }
             return Answer(refs)
         }
-        if tail.StartsWith("git/ref/heads/") {
-            if tail == "git/ref/heads/tokate/access" && State["access_revoke_at"] != nil {
+        if tail.StartsWith("git/ref/") {
+            let reference = "refs/" + Uri.UnescapeDataString(tail.Substring(8))
+            if reference == "refs/tokate/access" && State["access_revoke_at"] != nil {
                 let count = State["access_reads"] == nil ? 1: Int32.Parse(Check.Text(State["access_reads"])) + 1
                 State["access_reads"] = JsonValue.Create(count)
                 if count == Int32.Parse(Check.Text(State["access_revoke_at"])) {
@@ -988,14 +1005,18 @@ internal partial class Fixture {
             }
             var sha string
             try {
-                sha = Git(
-                    folder,
-                    []string{"rev-parse", "--verify", "refs/heads/" + Uri.UnescapeDataString(tail.Substring(14))}
-                )
+                sha = Git(folder, []string{"rev-parse", "--verify", reference})
             } catch (error Exception) {
                 return Response(404)
             }
-            return Answer(Check.Map("object", Check.Map("sha", sha, "type", "commit")))
+            return Answer(
+                Check.Map(
+                    "ref",
+                    reference,
+                    "object",
+                    Check.Map("sha", sha, "type", Git(folder, []string{"cat-file", "-t", sha}))
+                )
+            )
         }
         if tail.StartsWith("git/commits/") {
             let parents = JsonArray()
@@ -1113,13 +1134,10 @@ internal partial class Fixture {
             return Answer(Check.Map("sha", sha))
         }
         if tail == "git/refs" {
-            if Check.Text(body["ref"]) == "refs/heads/tokate/access" && Check.Text(
+            if Check.Text(body["ref"]) == "refs/tokate/access" && Check.Text(
                 State["mode"]
             ) == "access_create_conflict" {
-                Git(
-                    folder,
-                    []string{"update-ref", "refs/heads/tokate/access", Check.Text(body["sha"]), String('0', 40)}
-                )
+                Git(folder, []string{"update-ref", "refs/tokate/access", Check.Text(body["sha"]), String('0', 40)})
                 DenyAccess()
                 State["mode"] = JsonValue.Create("")
                 Save()
@@ -1140,40 +1158,31 @@ internal partial class Fixture {
                 Save()
                 return Response(500)
             }
+            if LostStateResponse(Check.Text(body["ref"])) {
+                return 1
+            }
             return Answer(Check.Map("ref", Check.Text(body["ref"])))
         }
-        if tail.StartsWith("git/refs/heads/") {
-            let reference = "refs/heads/" + tail.Substring(15)
-            if reference.StartsWith("refs/heads/tokate/contributions/") && Check.Text(
-                State["mode"]
-            ) == "interrupted_state_write" {
-                return Response(500)
+        if tail.StartsWith("git/refs/") {
+            let reference = "refs/" + tail.Substring(9)
+            if method == "DELETE" {
+                if Git(folder, []string{"for-each-ref", "--format=%(refname)", reference}) == "" {
+                    return Response(404)
+                }
+                Git(folder, []string{"update-ref", "-d", reference})
+                return Response(204)
             }
-            if reference == "refs/heads/tokate/access" && Check.Text(State["mode"]) == "access_conflict" {
-                DenyAccess()
-                State["mode"] = JsonValue.Create("")
-            }
+            Check.That(method == "PATCH", "Expected ref update or deletion")
             let previous = Git(folder, []string{"rev-parse", reference})
-            try {
-                Check.That(Check.Text(body["force"]) == "false", "Ref updates must never force")
-                Git(folder, []string{"merge-base", "--is-ancestor", previous, Check.Text(body["sha"])})
-                Git(folder, []string{"update-ref", reference, Check.Text(body["sha"]), previous})
-            } catch (error Exception) {
-                return Response(422)
+            Check.That(Check.Text(body["force"]) == "false", "Ref updates must never force")
+            if reference.StartsWith("refs/heads/", StringComparison.Ordinal) {
+                try {
+                    Git(folder, []string{"merge-base", "--is-ancestor", previous, Check.Text(body["sha"])})
+                } catch (error Exception) {
+                    return Response(422)
+                }
             }
-            if reference == "refs/heads/tokate/access" && Check.Text(State["mode"]) == "lost_access_response" {
-                State["mode"] = JsonValue.Create("")
-                Save()
-                return 1
-            }
-            if reference.StartsWith("refs/heads/tokate/contributions/") && Check.Text(
-                State["mode"]
-            ) == "lost_state_response" {
-                State["mode"] = JsonValue.Create("")
-                Save()
-                Console.Error.WriteLine("Synthetic interrupted state response")
-                return 1
-            }
+            Git(folder, []string{"update-ref", reference, Check.Text(body["sha"]), previous})
             return Answer(Check.Json("{}"))
         }
         if tail.StartsWith("pulls?") {
@@ -1339,8 +1348,136 @@ internal partial class Fixture {
         throw Exception("Unhandled fixture API: " + path)
     }
 
+    private func MutationAllowed(path string, method string, body JsonNode, actor string) bool {
+        if method == "GET" ||
+            (path == "graphql" && Check.Text(body["query"]).StartsWith("query", StringComparison.Ordinal)) {
+            return true
+        }
+        var permission string
+        var ownerOnly bool
+        var comment bool
+        var repo string
+        if path == "graphql" {
+            Check.Contains(Check.Text(body["query"]), "updateRefs(")
+            permission = "contents"
+            ownerOnly = true
+            repo = Check.Text(body["variables"]?["input"]?["repositoryId"]).Substring(2)
+        } else {
+            let parts = path.Split('/')
+            Check.That(parts.Length >= 3 && parts[0] == "repos", "Unknown mutation permission")
+            repo = parts[1] + "/" + parts[2]
+            let tail = String.Join("/", parts, 3, parts.Length - 3)
+            if tail.StartsWith("git/", StringComparison.Ordinal) {
+                Check.That(
+                    (method == "POST" && Array.IndexOf([]string{"git/trees", "git/commits", "git/refs"}, tail) >= 0) ||
+                        ((method == "PATCH" || method == "DELETE") && tail.StartsWith("git/refs/")),
+                    "Unknown Git mutation permission"
+                )
+                permission = "contents"
+                ownerOnly = true
+            } else if tail == "forks" && method == "POST" {
+                return true
+            } else if tail.StartsWith("issues/") && tail.EndsWith("/comments") {
+                permission = "issues"
+                comment = true
+            } else if tail == "issues" {
+                permission = "issues"
+            } else if tail.StartsWith("issues/") || tail == "labels" {
+                permission = "issues"
+                ownerOnly = true
+            } else if tail == "pulls" || tail.StartsWith("pulls/") {
+                permission = "pull-requests"
+            } else if tail.StartsWith("actions/") || tail.StartsWith("branches/") {
+                permission = "administration"
+                ownerOnly = true
+            } else {
+                throw Exception("Unknown mutation permission: " + path)
+            }
+        }
+        let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic")
+        let call = calls[calls.Count - 1] ?? throw Exception("Missing mutation")
+        call["permission"] = JsonValue.Create(comment ? "issues or pull-requests": permission)
+        Save()
+        return (!ownerOnly || String.Equals(actor, repo.Split('/')[0], StringComparison.OrdinalIgnoreCase)) &&
+            (
+            State["token_permissions"] == nil || Check.Text(State["token_permissions"]?[permission]) == "write" ||
+                (comment && Check.Text(State["token_permissions"]?["pull-requests"]) == "write")
+        )
+    }
+
+    private func UpdateRefs(body JsonNode) int32 {
+        let input = body["variables"]?["input"] ?? throw Exception("Missing mutation input")
+        let updates = input["refUpdates"]?.AsArray() ?? throw Exception("Missing ref updates")
+        let update = updates[0] ?? throw Exception("Missing ref update")
+        let reference = Check.Text(update["name"])
+        let repo = Check.Text(input["repositoryId"]).Substring(2).ToLowerInvariant()
+        let folder = State["repository_folders"]?[repo] is JsonNode selected ? Check.Text(
+            selected
+        ): repo == "owner/project" ? "upstream": "fork"
+        var transaction = "start\n"
+        for item in updates {
+            let change = item ?? throw Exception("Missing ref update")
+            let name = Check.Text(change["name"])
+            Check.That(
+                name.StartsWith("refs/tokate/", StringComparison.Ordinal) || name.StartsWith(
+                    "refs/heads/tokate/",
+                    StringComparison.Ordinal
+                ),
+                "Expected state ref"
+            )
+            Check.That(
+                Check.Text(change["beforeOid"]).Length == 40 && Check.Text(change["force"]) == "false",
+                "Expected conditional state update"
+            )
+            transaction += "update " + name + " " + Check.Text(change["afterOid"]) + " " + Check.Text(
+                change["beforeOid"]
+            ) +
+                "\n"
+        }
+        if Check.Text(State["mode"]) == "interrupted_state_write" && reference.StartsWith(
+            "refs/tokate/contributions/"
+        ) {
+            return Response(500)
+        }
+        if reference == "refs/tokate/access" && Check.Text(State["mode"]) == "access_conflict" {
+            DenyAccess()
+            State["mode"] = JsonValue.Create("")
+        }
+        if State["ref_conflict_sha"] != nil {
+            let conflictRef = updates.Count == 2 ? Check.Text(updates[1]?["name"]): reference
+            Git(folder, []string{"update-ref", conflictRef, Check.Text(State["ref_conflict_sha"])})
+            State["ref_conflict_sha"] = nil
+        }
+        try {
+            Git(folder, []string{"update-ref", "--stdin"}, transaction + "prepare\ncommit\n")
+        } catch (error Exception) {
+            let calls = State["api_calls"]?.AsArray() ?? throw Exception("Missing traffic")
+            let call = calls[calls.Count - 1] ?? throw Exception("Missing mutation")
+            call["conflict"] = JsonValue.Create(true)
+            return Response(
+                200,
+                Check.Map("data", nil, "errors", JsonArray(Check.Map("message", "Could not update refs")))
+            )
+        }
+        if LostStateResponse(reference) {
+            return 1
+        }
+        return Answer(Check.Map("data", Check.Map("updateRefs", Check.Map("clientMutationId", nil))))
+    }
+
+    private func LostStateResponse(reference string) bool {
+        if (reference == "refs/tokate/access" && Check.Text(State["mode"]) == "lost_access_response") ||
+            (reference.StartsWith("refs/tokate/contributions/") && Check.Text(State["mode"]) == "lost_state_response") {
+            State["mode"] = JsonValue.Create("")
+            Save()
+            Console.Error.WriteLine("Synthetic interrupted state response")
+            return true
+        }
+        return false
+    }
+
     internal func DenyAccess() {
-        let reference = "refs/heads/tokate/access"
+        let reference = "refs/tokate/access"
         let previous = Git("upstream", []string{"rev-parse", reference})
         let access = Check.Json(Git("upstream", []string{"show", previous + ":access.json"}))
         access["members"] = Check.Json("[{\"actor\":123,\"trusted\":true,\"denied\":true}]")
@@ -1353,17 +1490,20 @@ internal partial class Fixture {
     internal func ClaimRendezvous(args[]string, body JsonNode) {
         let method = Array.IndexOf(args, "--method")
         let config = Path.Combine(Root, "claim-rendezvous.json")
-        if args[0] != "api" ||
-            method < 0 ||
-            args[method + 1] != "PATCH" ||
-            args[method + 2] != "repos/owner/project/git/refs/heads/tokate/contributions/1" ||
-            !File.Exists(config) {
+        if args[0] != "api" || method < 0 || args[method + 1] != "POST" || args[method + 2] != "graphql" || !Check.Text(
+            body["query"]
+        )
+            .Contains("updateRefs(") || !File.Exists(config) {
             return
         }
         let rendezvous = Check.Json(File.ReadAllText(config))
-        let sha = Check.Text(body["sha"])
+        let update = body["variables"]?["input"]?["refUpdates"]?[0] ?? throw Exception("Missing ref update")
+        let sha = Check.Text(update["afterOid"])
         let parents = Git("upstream", []string{"rev-list", "--parents", "-n", "1", sha}).Split(' ')
-        Check.That(Check.Text(body["force"]) == "false", "Rendezvous requires a non-forced ref update")
+        Check.That(
+            Check.Text(update["beforeOid"]) == Check.Text(rendezvous["expected"]),
+            "Rendezvous requires the shared expected state"
+        )
         Check.That(
             parents.Length == 2 && parents[1] == Check.Text(rendezvous["expected"]),
             "Rendezvous requires exactly one parent matching the shared expected state"

@@ -23,7 +23,7 @@ internal class RepositoryIdentityChecks {
 
         private func Approve(flow NativeFixture, repo string) {
             flow.Call([]string{"approve", "--yes", repo + "#1"}, owner: true)
-            let approval = Check.Json(flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json"))
+            let approval = Check.Json(flow.Git("-C", flow.Upstream, "show", "refs/tokate/contributions/1:state.json"))
             Check.That(Check.Text(approval["approval"]?["repo"]) == repo, "Approval spelling was rewritten")
         }
 
@@ -34,7 +34,9 @@ internal class RepositoryIdentityChecks {
             flow.Save()
             Approve(flow, approvalRepo)
             let approval = Check.Text(
-                Check.Json(flow.Git("-C", flow.Upstream, "show", "tokate/contributions/1:state.json"))["approval_id"]
+                Check.Json(flow.Git("-C", flow.Upstream, "show", "refs/tokate/contributions/1:state.json"))[
+                    "approval_id"
+                ]
             )
             let result = Check.Envelope(flow.Acquire(WorkArgs(flow, workRepo)), "work", "ok")
             let run = Check.Text(result["data"]?["run"])

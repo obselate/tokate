@@ -82,7 +82,8 @@ manual setting. Fix it before donors submit requests.
 | `open` | Authenticated GitHub users who are not denied. |
 
 Denial blocks every donor, including trusted donors and donors named in an approval.
-An absent `tokate/access` ref is an empty record. The first access write creates it.
+If neither the hidden nor legacy access ref exists, access is empty.
+The first write creates `refs/tokate/access`.
 
 Owners do not need a coding tool or an AI subscription. Keep fork CI read-only and without secrets.
 
@@ -169,14 +170,14 @@ Current eligibility still controls claims, work and publication. `tokate init`
 lists affected approved issues and the commands to run after the change is merged.
 `tokate status 42` reports stale task fields and the owner approval command.
 
-Tokate keeps its records in `tokate/` branches of your repository. Init names them. Keep them.
+Tokate keeps its records in hidden refs. They are not in the branch list.
 
-| Branch | Holds |
+| Ref | Holds |
 | --- | --- |
-| `tokate/access` | Donor trust and denials |
-| `tokate/contributions/N` | Reservation and publication record for issue N |
+| `refs/tokate/access` | Donor trust and denials |
+| `refs/tokate/contributions/N` | Reservation and publication record for issue N |
 
-Do not delete these branches, open PRs from them or merge them. Exclude them from branch cleanup. Deleting `tokate/access` removes all trust and deny entries. Deleting a contribution branch removes that issue's record.
+Legacy `tokate/` state branches are read when the hidden ref is absent. The next successful write creates the hidden ref and deletes the legacy branch.
 
 Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are not records.
 

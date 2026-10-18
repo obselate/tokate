@@ -164,7 +164,7 @@ internal open class NativeFixture : IDisposable {
     }
 
     internal func OwnerAccess() {
-        if Git("-C", Upstream, "for-each-ref", "--format=%(refname)", "refs/heads/tokate/access") != "" {
+        if Git("-C", Upstream, "for-each-ref", "--format=%(refname)", "refs/tokate/access") != "" {
             return
         }
         Call([]string{"access", "--yes", "init", "owner/project"}, owner: true)

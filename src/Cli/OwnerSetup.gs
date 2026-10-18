@@ -359,11 +359,7 @@ internal class OwnerSetup {
 
             PublicOutput.ResultData = result
             Terminal.Message(
-                "Tokate keeps its state in the " +
-                    AccessState.Reference +
-                    " and " +
-                    GitHub.ContributionStateRefPrefix +
-                    "N branches. Do not delete them or open pull requests from them.",
+                "Tokate keeps its state in hidden refs outside the branch list. Legacy tokate/ state branches migrate on the next write.",
                 "cyan",
                 true
             )

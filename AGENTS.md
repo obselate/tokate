@@ -90,7 +90,8 @@ In `trusted` eligibility, trust the donor or name the donor in the approval with
 `tokate approve N LOGIN`. In `open`, anyone not denied may claim. Deny always wins.
 Maintainer edits default to true. Set `"maintainer_edits": false` in the policy to opt out.
 Access requests are plain comments and grant no access.
-An absent `tokate/access` ref is an empty record. The first access write creates it.
+If neither the hidden nor legacy access ref exists, access is empty.
+The first write creates `refs/tokate/access`.
 
 A change to task fields or the PR template revokes existing approvals. Task fields
 cover verification, required checks, protected paths, tool models, runtime,
@@ -101,9 +102,9 @@ Old whole-text approvals become stale once after upgrading to current main.
 Status names the owner command when task fields no longer match. After a coordinator
 pin change, confirm that Actions permits
 `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
-Otherwise every request stays pending. Tokate keeps its records in `tokate/`
-branches such as `tokate/access` and `tokate/contributions/N`. Never delete them or
-open PRs from them. Deleting `tokate/access` removes all trust and denials.
+Otherwise every request stays pending. Tokate keeps its records in hidden refs
+`refs/tokate/access` and `refs/tokate/contributions/N`. They are not in the branch
+list. Legacy `tokate/` state branches are migrated on the next write.
 
 Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
