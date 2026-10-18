@@ -23,20 +23,19 @@ internal class FeedbackRevision {
             if same && args.Get("provider") == "" {
                 args.Values["--provider"] = run.Provider
             }
-            for key in[]string{"model", "effort"} {
-                if args.Get(key) == "" {
-                    args.Values["--" + key] = J.Text(run.Element(), key)
+            for (option, value) in map[string, string]{"model": run.Model, "effort": run.Effort} {
+                if args.Get(option) == "" {
+                    args.Values["--" + option] = value
                 }
             }
             if same {
-                for (option, field) in map[string, string]{
-                    "harness-path": "harness_path",
-                    "claude-profile": "claude_profile",
-                    "endpoint": "pi_endpoint",
-                    "pi-root": "pi_root",
-                    "node": "pi_node"
+                for (option, value) in map[string, string]{
+                    "harness-path": run.HarnessPath,
+                    "claude-profile": run.ClaudeProfile,
+                    "endpoint": run.PiEndpoint,
+                    "pi-root": run.PiRoot,
+                    "node": run.PiNode
                 } {
-                    let value = J.Text(run.Element(), field)
                     if args.Get(option) == "" && value != "" {
                         args.Values["--" + option] = value
                     }
@@ -62,13 +61,10 @@ internal class FeedbackRevision {
             round.ToString(CultureInfo.InvariantCulture)
         )
 
-        internal func Pending(run Data) bool {
-            let rounds = J.Items(run.FeedbackRuns)
-            return rounds.Count > 0 && J.Text(rounds[rounds.Count - 1], "state") != "published" && J.Text(
-                rounds[rounds.Count - 1],
-                "state"
-            ) != "failed"
-        }
+        internal func Pending(directory string, run Data) bool -> run.FeedbackRound > 0 && Data.Load(
+            Location(directory, run.FeedbackRound)
+        )
+            .State == "generated"
 
         private func Record(run Data, harness string, provider string) JsonElement {
             let record = run.Gratis ? run.GratisContext: J.Get(Amendment.Authority(run, nil), "record")
@@ -111,19 +107,27 @@ internal class FeedbackRevision {
             "created_at"
         ): J.Text(item, "submitted_at")
 
-        private func Feedback(run Data) string {
+        private func Feedback(directory string, run Data, authors List[string]) string {
             var published DateTimeOffset
-            var stamp = run.PublishedAt
-            if stamp == "" {
-                let commit = GitHub.Api("repos/" + run.Repo + "/commits/" + run.Commit)
-                stamp = J.Text(J.Get(J.Get(commit, "commit"), "committer"), "date")
+            if run.PublishedAt == "" || run.PublishedHead != run.Commit {
+                Publication.ObserveHead(run, Amendment.Pull(run, run.Pr, run.Commit, ""), run.Commit)
+                run.Save(directory)
             }
+            let stamp = run.PublishedAt
             Publication.Require(
                 DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out published),
                 "Published head time is unavailable"
             )
+            var approver int64
+            if !run.Gratis {
+                let authority = Amendment.Authority(run, nil)
+                approver = CoordinationState.Parse(J.Get(authority, "state")).Approval?.Approver ?? 0
+                if approver <= 0 {
+                    throw CoordinationState.ApprovalFailure(run.Repo, run.Issue, "Approval has no approver identity.")
+                }
+            }
             let items = List[JsonElement]()
-            let permissions = map[string, bool]{}
+            let counted = HashSet[string](StringComparer.OrdinalIgnoreCase)
             let prefix = "repos/" + run.Repo + "/"
             let number = run.Pr.ToString()
             for source in[]string{
@@ -152,17 +156,19 @@ internal class FeedbackRevision {
                         if author == "" {
                             continue
                         }
-                        if !permissions.ContainsKey(author) {
-                            let access = GitHub.Api(
-                                prefix + "collaborators/" + Uri.EscapeDataString(author) + "/permission",
-                                missing: true
-                            )
-                            let permission = J.Text(access, "permission")
-                            permissions[author] = permission == "write" ||
-                                permission == "maintain" ||
-                                permission == "admin"
-                        }
-                        if permissions[author] {
+                        let association = J.Text(item, "author_association")
+                        let allowed = run.Gratis ? association == "OWNER" ||
+                            association == "MEMBER" ||
+                            association == "COLLABORATOR": JsonFields.OptionalInt64(
+                            J.Get(item, "user"),
+                            "Feedback author",
+                            "id",
+                            0
+                        ) == approver
+                        if allowed {
+                            if counted.Add(author) {
+                                authors.Add(author)
+                            }
                             items.Add(item.Clone())
                         }
                     }
@@ -173,7 +179,7 @@ internal class FeedbackRevision {
                 }
             }
             if items.Count == 0 {
-                throw CliFailure("no_feedback", "No new write-access feedback on PR " + run.PrUrl)
+                throw CliFailure("no_feedback", "No new qualifying feedback on PR " + run.PrUrl)
             }
             items.Sort((left, right) -> String.CompareOrdinal(Timestamp(left), Timestamp(right)))
             var text = ""
@@ -182,9 +188,9 @@ internal class FeedbackRevision {
                     "Author: " + J.Text(J.Get(item, "user"), "login") + "\nURL: " + J.Text(item, "html_url") +
                         "\n" +
                         J.Text(item, "body") + "\n\n"
-                ).Replace("</tokate-", "<\\/tokate-")
+                )
                 if Encoding.UTF8.GetByteCount(text) > TextByteLimit {
-                    let notice = "\nFeedback truncated at 16 KiB.\n"
+                    let notice = "\nFeedback truncated at " + TextByteLimit.ToString() + " bytes.\n"
                     return Cut(text, TextByteLimit - Encoding.UTF8.GetByteCount(notice)) + notice
                 }
             }
@@ -197,9 +203,15 @@ internal class FeedbackRevision {
             Published(run)
             let rounds = J.Items(run.FeedbackRuns)
             if rounds.Count >= RoundLimit {
-                throw CliFailure("feedback_limit", "PR " + run.PrUrl + " has reached the limit of 3 feedback runs")
+                throw CliFailure(
+                    "feedback_limit",
+                    "PR " + run.PrUrl + " has reached the limit of " + RoundLimit.ToString() + " feedback runs"
+                )
             }
-            Publication.Require(!Pending(run), "Submit the saved feedback revision before another feedback run")
+            Publication.Require(
+                !Pending(directory, run),
+                "Submit the saved feedback revision before another feedback run"
+            )
             for key in[]string{"unlimited", "continue-from", "total", "prompt", "fork"} {
                 if args.Get(key) != "" {
                     throw CliFailure("invalid_arguments", "--feedback cannot use --" + key)
@@ -208,7 +220,8 @@ internal class FeedbackRevision {
             if !run.Gratis && args.Get("review") == "true" {
                 throw CliFailure("invalid_arguments", "--review requires gratis work")
             }
-            let feedback = Feedback(run)
+            let authors = List[string]()
+            let feedback = Feedback(directory, run, authors)
             await check()
             let record = Record(run, args.Need("harness"), args.Need("provider"))
             let policy = Policy(J.Get(record, "policy"))
@@ -229,6 +242,7 @@ internal class FeedbackRevision {
             revision.State = "claimed"
             revision.FeedbackPrevious = run.Commit
             revision.FeedbackText = feedback
+            revision.FeedbackAuthors = String.Join(", ", authors)
             revision.FeedbackRound = rounds.Count + 1
             revision.Seconds = seconds
             if args.Get("verification-reserve") != "" {
@@ -249,6 +263,46 @@ internal class FeedbackRevision {
             revision.PiNode = args.Get("node")
             RuntimeBudget.Validate(revision)
             Output.Sink.ConfirmSelection(args, selection, revision)
+            let location = Start(directory, run, revision, rounds)
+            try {
+                Commands.Git(
+                    directory,
+                    "-c",
+                    "protocol.file.allow=always",
+                    "clone",
+                    "--quiet",
+                    "--no-hardlinks",
+                    "--",
+                    Path.Combine(directory, "checkout"),
+                    Path.Combine(location, "checkout")
+                )
+                HarnessRunner.Execute(location, args)
+            } catch (error Exception) when ExecutionFailure.Handled(error) {
+                let failed = Data.Load(location)
+                if failed.State == "claimed" {
+                    failed.Transition("failed")
+                    failed.Error = error.Message
+                    failed.Save(location)
+                }
+                throw error
+            } finally {
+                let finished = Data.Load(location)
+                if finished.State == "failed" {
+                    Fail(directory, run, finished)
+                } else {
+                    Update(directory, run, finished)
+                }
+            }
+            if args.Get("review") != "true" {
+                Publish(directory, Data.Load(directory))
+            }
+            if Pending(directory, Data.Load(directory)) {
+                Output.Sink.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
+                Output.Sink.Message("Feedback revision saved. Inspect status, then use tokate submit to publish it.")
+            }
+        }
+
+        private func Start(directory string, run Data, revision Data, rounds List[JsonElement]) string {
             let checkout = Verification.Candidate(Path.Combine(directory, "checkout"))
             Publication.Require(
                 Commands.Git(checkout, "rev-parse", "HEAD") == run.Commit && Commands.Git(
@@ -274,37 +328,7 @@ internal class FeedbackRevision {
             rounds.Add(Row(revision))
             run.FeedbackRuns = J.Parse(J.Write(rounds))
             run.Save(directory)
-            try {
-                Commands.Git(
-                    directory,
-                    "-c",
-                    "protocol.file.allow=always",
-                    "clone",
-                    "--quiet",
-                    "--no-hardlinks",
-                    "--",
-                    checkout,
-                    Path.Combine(location, "checkout")
-                )
-                HarnessRunner.Execute(location, args)
-            } catch (error Exception) when ExecutionFailure.Handled(error) {
-                let failed = Data.Load(location)
-                if failed.State == "claimed" {
-                    failed.Transition("failed")
-                    failed.Error = error.Message
-                    failed.Save(location)
-                }
-                throw error
-            } finally {
-                Update(directory, run, Data.Load(location))
-            }
-            if args.Get("review") != "true" {
-                Publish(directory, Data.Load(directory))
-            }
-            if Pending(Data.Load(directory)) {
-                Output.Sink.Actions.Add([]string{"tokate", "submit", "--run", directory, "--yes"})
-                Output.Sink.Message("Feedback revision saved. Inspect status, then use tokate submit to publish it.")
-            }
+            return location
         }
 
         private func Row(run Data, state string = "") JsonElement {
@@ -326,6 +350,13 @@ internal class FeedbackRevision {
             rounds[revision.FeedbackRound - 1] = Row(revision)
             run.FeedbackRuns = J.Parse(J.Write(rounds))
             run.Save(directory)
+        }
+
+        private func Fail(directory string, run Data, revision Data) {
+            revision.Transition("failed")
+            revision.Save(Location(directory, revision.FeedbackRound))
+            Update(directory, run, revision)
+            Commands.Git(Path.Combine(directory, "checkout"), "checkout", "--quiet", "--detach", run.Commit)
         }
 
         internal func Recheck(location string, revision Data) JsonElement {
@@ -405,7 +436,7 @@ internal class FeedbackRevision {
             run Data,
             confirm Func[Dictionary[string, Object?], string, bool]? = nil
         ) {
-            Publication.Require(Pending(run), "No saved feedback revision is ready")
+            Publication.Require(Pending(directory, run), "No saved feedback revision is ready")
             let location = Location(directory, run.FeedbackRound)
             let revision = Data.Load(location)
             Publication.Require(revision.State == "generated", "Feedback inference did not complete successfully")
@@ -464,7 +495,12 @@ internal class FeedbackRevision {
                 if File.Exists(Path.Combine(location, "summary.json")) {
                     args.AddRange([]string{"--summary", Path.Combine(location, "summary.json")})
                 }
-                Amendment.AmendSaved(Args(args.ToArray()), directory, run)
+                try {
+                    Amendment.AmendSaved(Args(args.ToArray()), directory, run)
+                } catch (error CliFailure) when error.Code == "verification_failed" {
+                    Fail(directory, Data.Load(directory), revision)
+                    throw error
+                }
                 if Data.Load(directory).Commit != revision.Commit {
                     return
                 }
@@ -483,6 +519,10 @@ internal class FeedbackRevision {
         ) bool {
             ContributionAuthority.Recheck(run)
             let pull = Amendment.Pull(run, run.Pr, revision.FeedbackPrevious, revision.Commit)
+            if J.Text(J.Get(pull, "head"), "sha") == revision.Commit {
+                Publication.ObserveHead(run, pull, revision.Commit)
+                run.Save(directory)
+            }
             let remote = GitHub.Branch(run.HeadRepo, run.Branch)
             Publication.Require(
                 remote == revision.FeedbackPrevious || remote == revision.Commit,
@@ -541,18 +581,20 @@ internal class FeedbackRevision {
                 Publication.Push(Path.Combine(location, "checkout"), run, revision.Commit)
             }
             ContributionAuthority.Recheck(run)
-            Amendment.Pull(run, run.Pr, revision.FeedbackPrevious, revision.Commit)
+            let observed = Amendment.Pull(run, run.Pr, revision.Commit, "")
+            Publication.ObserveHead(run, observed, revision.Commit)
+            run.Save(directory)
             Publication.Require(
                 GitHub.Branch(run.HeadRepo, run.Branch) == revision.Commit,
                 "Gratis feedback head was not published"
             )
-            let result = GitHub.Api(
+            GitHub.Api(
                 "repos/" + run.Repo + "/pulls/" + run.Pr.ToString(),
                 map[string, Object?]{"body": body},
                 method: "PATCH"
             )
             run.Commit = revision.Commit
-            Publication.SavePr(directory, run, result)
+            Publication.SavePr(directory, run, observed)
             let target = Verification.Candidate(Path.Combine(directory, "checkout"))
             Publication.Require(Commands.Git(target, "status", "--porcelain") == "", "Published checkout changed")
             Commands.Git(

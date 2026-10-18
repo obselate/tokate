@@ -476,7 +476,7 @@ private func SubmitSaved(args Args) {
         using let lease = RunStorage.Lease(directory)
         let run = Data.Load(directory)
 
-        if FeedbackRevision.Pending(run) {
+        if FeedbackRevision.Pending(directory, run) {
             if !run.Gratis && args.Get("yes") != "true" {
                 PreviewCommand(args, "Publish the saved feedback revision", run)
                 if !OwnerSetup.Confirm(args) {
@@ -533,7 +533,7 @@ private func SubmitCommand(options Args) int32? {
     let directory = Path.GetFullPath(options.Need("run"))
     var run = Data.Load(directory)
 
-    if FeedbackRevision.Pending(run) {
+    if FeedbackRevision.Pending(directory, run) {
         return run.Gratis ? 0: Output.PendingExitCode
     }
 
@@ -594,7 +594,7 @@ private func WorkCommand(options Args) int32? {
     if options.Get("feedback") == "true" {
         let directory = Path.GetFullPath(options.Need("run"))
         FeedbackRevision.Work(directory, options, async () -> Startup.Check(options))
-        return FeedbackRevision.Pending(Data.Load(directory)) && options.Get(
+        return FeedbackRevision.Pending(directory, Data.Load(directory)) && options.Get(
             "review"
         ) != "true" ? Output.PendingExitCode: 0
     }

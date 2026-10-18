@@ -9,6 +9,11 @@ import System.Text.RegularExpressions
 internal class Data {
     private let Stored Dictionary[string, Object?] = map[string, Object?]{}
 
+    internal prop FeedbackAuthors string {
+        get -> Text("feedback_authors")
+        set -> Put("feedback_authors", value)
+    }
+
     internal prop Amendment string {
         get -> Text("amendment")
         set -> Put("amendment", value)
@@ -847,7 +852,7 @@ internal class Data {
             case "verified": next == "publishing" || next == "published"
             case "publishing": next == "requested" || next == "published"
             case "requested": next == "published"
-            case "generated": next == "published"
+            case "generated": next == "published" || next == "failed" && FeedbackPrevious != ""
             case "incomplete_generated": next == "published" || next == "generated"
             case "skipped": next == "published"
             default: false

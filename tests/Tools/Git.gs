@@ -249,6 +249,7 @@ internal partial class Fixture {
                     let target = Check.Text(head["repo"]?["full_name"]) == "owner/project" ? "upstream": "fork"
                     if command[push + 1] == Path.Combine(Root, target) {
                         head["sha"] = JsonValue.Create(Git(target, []string{"rev-parse", Check.Text(head["ref"])}))
+                        pull["updated_at"] = JsonValue.Create(DateTimeOffset.UtcNow.ToString("O"))
                     }
                 }
             }

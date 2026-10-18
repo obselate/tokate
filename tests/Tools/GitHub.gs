@@ -739,17 +739,7 @@ internal partial class Fixture {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))
         }
         if tail.StartsWith("commits/") {
-            return Answer(
-                Check.Map(
-                    "sha",
-                    Git(folder, []string{"rev-parse", tail.Substring(8)}),
-                    "commit",
-                    Check.Map(
-                        "committer",
-                        Check.Map("date", Git(folder, []string{"show", "-s", "--format=%cI", tail.Substring(8)}))
-                    )
-                )
-            )
+            return Answer(Check.Map("sha", Git(folder, []string{"rev-parse", tail.Substring(8)})))
         }
         if tail.StartsWith("contents/") {
             let split = tail.IndexOf("?ref=")
@@ -1307,6 +1297,7 @@ internal partial class Fixture {
             body["number"] = JsonValue.Create(number)
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())
             body["state"] = JsonValue.Create("open")
+            body["updated_at"] = JsonValue.Create(DateTimeOffset.UtcNow.ToString("O"))
             body["user"] = Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
             body["head"] = Check.Map(
                 "sha",

@@ -25,16 +25,14 @@ internal class PublishedContribution : IDisposable {
             binary string,
             external bool = false,
             baseBranch string = "",
-            mutating bool = false,
-            additionalModel bool = false
+            mutating bool = false
         ) PublishedContribution {
             let coordination = CoordinationFixture(binary)
             try {
                 let run = external ? PublishRun(coordination, baseBranch: baseBranch): Original(
                     coordination.Flow,
                     mutating: mutating,
-                    baseBranch: baseBranch,
-                    additionalModel: additionalModel
+                    baseBranch: baseBranch
                 )
                 coordination.Flow.Receipt("owner/project#10", owner: true)
                 return PublishedContribution(coordination, run)
@@ -49,8 +47,7 @@ internal class PublishedContribution : IDisposable {
             owner bool = false,
             mutating bool = false,
             interruptible bool = false,
-            baseBranch string = "",
-            additionalModel bool = false
+            baseBranch string = ""
         ) string {
             flow.Initialize()
             let policyPath = Path.Combine(flow.Upstream, ".github/tokate.json")
@@ -58,11 +55,6 @@ internal class PublishedContribution : IDisposable {
             policy["verification"] = Check.Json(
                 "[[\"/bin/sh\",\"-c\",\"test -f result.txt\"],[\"/bin/sh\",\"-c\",\"test -s result.txt\"]]"
             )
-            if additionalModel {
-                (policy["allowed_tools"]?[0]?["models"] ?? throw Exception("Missing model policy"))[
-                    "gpt-6-sol"
-                ] = Check.Json("[\"high\"]")
-            }
             if interruptible {
                 policy["verification"] = Check.Json(
                     "[[\"/bin/sh\",\"-c\",\"printf 'synthetic-%s-prior' amendment; test -f result.txt\"],[\"/bin/sh\",\"-c\",\"if test -f slow; then printf 'synthetic-%s-prefix' amendment; printf 'synthetic-%s-error' amendment >&2; sleep 3; fi; test -s result.txt\"]]"

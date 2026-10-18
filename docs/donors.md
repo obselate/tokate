@@ -67,7 +67,7 @@ Submit creates a draft PR with your GitHub account, then asks the coordinator to
 Fork PRs use the owner's maintainer edits policy. Repeated submit reuses the exact saved draft.
 The coordinator restores the canonical PR title and body before it records the draft.
 
-`tokate work RUN --feedback --time 30m` revises a published PR from new write, maintain or admin feedback.
+`tokate work RUN --feedback --time 30m` revises a published PR from new feedback by the owner account that approved the issue.
 It uses the saved harness, model and effort unless overridden and asks once for consent. Each saved run allows three feedback runs.
 Managed revisions use owner verification and a new amendment receipt. For pending publication, inspect status, then use `tokate submit RUN --yes`.
 

@@ -91,6 +91,7 @@ internal class Coordinator {
             }
 
             let approval = OwnerApproval.Capture(args, info, issue)
+            approval.Approver = actor
 
             if let current = active {
                 approval.AllowedActorIds = current.AllowedActorIds

@@ -76,7 +76,9 @@ internal class CleanupEligibility {
         }
 
         private func Unpublished(row SavedRun, head string) bool {
-            if FeedbackRevision.Pending(row.Run) || File.Exists(Path.Combine(row.Location, "correction.json")) {
+            if FeedbackRevision.Pending(row.Location, row.Run) || File.Exists(
+                Path.Combine(row.Location, "correction.json")
+            ) {
                 return true
             }
 
