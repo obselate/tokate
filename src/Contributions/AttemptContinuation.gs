@@ -45,7 +45,7 @@ internal class AttemptContinuation {
                 let record = state.CheckApproval(run.Repo, run.Issue, quiet: true)
                 LeaseLifecycle.Owner(state, J.Get(viewer, "id"))
 
-                if !RepositoryIdentity.SameDonor(viewer, run) ||
+                if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) ||
                     state.ApprovalId != run.Approval ||
                     (state.Identity?.Id ?? "") != run.Id {
                     return next
@@ -370,7 +370,11 @@ internal class AttemptContinuation {
 
             let viewer = GitHub.Api("user")
 
-            if !RepositoryIdentity.SameDonor(viewer, source) || !RepositoryIdentity.SameDonor(viewer, run) ||
+            if !RepositoryIdentity.SameDonor(viewer, source.Donor, source.DonorId) || !RepositoryIdentity.SameDonor(
+                viewer,
+                run.Donor,
+                run.DonorId
+            ) ||
                 !RepositoryIdentity.SameRepo(source.Repo, run.Repo) || source.Issue != run.Issue {
                 throw CliFailure(
                     "invalid_state",

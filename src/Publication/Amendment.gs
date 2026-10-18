@@ -65,7 +65,7 @@ internal class Amendment {
         internal func Authority(run Data, amendment Data?, resume bool = false, directory string = "") JsonElement {
             let viewer = GitHub.Api("user")
 
-            if !RepositoryIdentity.SameDonor(viewer, run) {
+            if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) {
                 throw CliFailure("authentication_required", "Use the same donor account and numeric identity")
             }
 
@@ -73,7 +73,7 @@ internal class Amendment {
                 throw CliFailure("invalid_state", "Amend requires a current contribution")
             }
 
-            RepositoryAccess.ValidateRun(run)
+            ContributionAuthority.ValidateRepositories(run)
             let state = CoordinationState.Load(run.Repo, run.Issue)
             let reservation = state.Lease
 

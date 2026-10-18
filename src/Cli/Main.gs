@@ -8,6 +8,15 @@ import System.Text.Json
 private func Initialize(args[]string) {
     Output.Sink = CliOutput()
     Args.Parse = Cli.Parse
+    ApiTransport.Run = async (arguments, input, milliseconds) -> {
+        let result = Commands.Run("gh", arguments, input: input, github: true, milliseconds: milliseconds)
+        return ApiCommandResult{
+            Code: result.Code,
+            Output: result.Output,
+            Truncated: result.Truncated,
+            ReadFailed: result.ReadFailed
+        }
+    }
     Terminal.Initialize()
 
     for argument in args {

@@ -10,7 +10,7 @@ internal class ReservationRequest {
             let run = Data.Load(directory)
             let viewer = GitHub.Api("user")
 
-            if !RepositoryIdentity.SameDonor(viewer, run) {
+            if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) {
                 throw CliFailure("authentication_required", "Active GitHub account differs from the saved donor")
             }
 
@@ -87,7 +87,7 @@ internal class ReservationRequest {
 
             let viewer = GitHub.Api("user")
 
-            if !RepositoryIdentity.SameDonor(viewer, run) {
+            if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) {
                 throw CliFailure("authentication_required", "Active GitHub account differs from the saved donor")
             }
 

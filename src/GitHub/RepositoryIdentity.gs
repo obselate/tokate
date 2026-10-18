@@ -74,9 +74,9 @@ internal class RepositoryIdentity {
             return value
         }
 
-        internal func SameDonor(viewer JsonElement, run Data) bool ->
-        String.Equals(J.Text(viewer, "login"), run.Donor, StringComparison.OrdinalIgnoreCase) && J.Get(viewer, "id")
-            .ToString() == run.DonorId.ToString()
+        internal func SameDonor(viewer JsonElement, donor string, donorId int64) bool ->
+        String.Equals(J.Text(viewer, "login"), donor, StringComparison.OrdinalIgnoreCase) && J.Get(viewer, "id")
+            .ToString() == donorId.ToString()
 
         internal func Email(id JsonElement, login string) string -> Email(PositiveId(id), login)
 
