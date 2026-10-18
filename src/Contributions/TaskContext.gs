@@ -1,6 +1,7 @@
 package Tokate
 
 import System
+import System.Collections.Generic
 import System.Globalization
 import System.Text.Json
 
@@ -27,6 +28,7 @@ internal class TaskContext {
             let approval = J.Get(record, "approval")
             let snapshot = gratis ? JsonElement{}: Decree.Validate(OwnerApproval.Record.Parse(approval).Decree)
             let issue = J.Get(record, "issue")
+            let verification = gratis ? List[JsonElement](): J.Items(Policy.Parse(J.Get(record, "policy")).Verification)
             let imported = AttemptContinuation.Has(run) ? "This is a fresh v" + run.Version.ToString() +
                 " attempt seeded from unpublished interrupted work. " +
                 "Predecessor evidence: " +
@@ -93,7 +95,12 @@ internal class TaskContext {
                 "1. Read the repository guidance: AGENTS.md, CONTRIBUTING.md and the owner instructions below.\n2. Read the task.\n"
             ) +
                 "3. Make the change. Do only what the task asks.\n" +
-                "4. Run the checks that apply to your change. Record each command and its result.\n" +
+                (
+                gratis ||
+                    verification.Count == 0 ? "4. Run the checks that apply to your change. Record each command and its result.\n":
+                "4. Tokate runs these owner verification commands after you finish: " + J.Write(verification) +
+                    ". Do not run them or report them in any field of tokate-public-summary.json. Run the other checks that apply to your change. Record each command and its result.\n"
+            ) +
                 "5. Write tokate-public-summary.json in the checkout root, in the format above.\n" +
                 "6. Leave your edits uncommitted.\n" +
                 "7. Finish with a report: Changes, Acceptance criteria met, Checks and results, Limitations.\n   Report failures as they are. Tokate does not retry.\n\n" +
