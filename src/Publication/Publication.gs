@@ -196,7 +196,21 @@ internal class Publication {
             return J.Parse(updated.ToJson())
         }
 
+        internal func ObserveHead(run Data, pull JsonElement, commit string, original bool = false) {
+            Require(J.Text(J.Get(pull, "head"), "sha") == commit, "Published PR head is unavailable")
+            if run.PublishedAt == "" || run.PublishedHead != commit {
+                let stamp = J.Text(pull, original ? "created_at": "updated_at")
+                var parsed DateTimeOffset
+                Require(DateTimeOffset.TryParse(stamp, out parsed), "Published PR head time is unavailable")
+                run.PublishedAt = stamp
+                run.PublishedHead = commit
+            }
+        }
+
         internal func SavePr(directory string, run Data, pull JsonElement) {
+            if J.Text(J.Get(pull, "head"), "sha") == run.Commit {
+                ObserveHead(run, pull, run.Commit, original: J.Items(run.Amendments).Count == 0)
+            }
             run.Pr = J.Number(pull, "number")
             run.PrUrl = J.Text(pull, "html_url")
             run.Transition("published")

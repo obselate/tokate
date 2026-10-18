@@ -229,6 +229,18 @@ internal class ToolDeclaration(
 
 internal class RequestUsage {
     shared {
+        internal func Counts(value JsonElement) Dictionary[string, Object?] {
+            let usage = map[string, Object?]{}
+            for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
+                let item = J.Get(value, key)
+                var count int64
+                if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
+                    usage[key] = count
+                }
+            }
+            return usage
+        }
+
         internal func Validate(value JsonElement) {
             RequestData.Keys(value, "input_tokens,cached_input_tokens,output_tokens")
 

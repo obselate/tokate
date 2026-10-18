@@ -178,6 +178,7 @@ internal class Cli {
             "help: Show help (-h); no tools, network or inference",
             "prompt URL|FILE: Gratis task instruction from a bounded file or HTTPS URL",
             "review: Gratis work stops each task before publication",
+            "feedback: Revise the saved run PR from new maintainer feedback, at most three runs",
             "traffic: Print Tokate API counts on stderr; default: off",
             "json: Emit one schema-version-1 result on stdout; diagnostics on stderr",
             "plain: Plain human output without color, ornament or animation; --json takes precedence",
@@ -216,8 +217,8 @@ internal class Cli {
             CliCommand(
                 "work donate local_read,local_write,github_read,github_write,inference repo",
                 "[ISSUE|OWNER/REPO|RUN] [NAME] [--time PER_TASK] [--total TOTAL] [--prompt URL|FILE] [options]\nOWNER/REPO stop [--yes]",
-                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,review,unlimited,fork,runs,run,continue-from",
-                "Code an approved issue with your harness and verify it. Without a Tokate policy, OWNER/REPO lets the harness choose tasks until stopped, OWNER/REPO#N runs one issue, and OWNER/REPO#12,15,40 runs those issues in order. Gratis work publishes each task after start consent. Use --review to stop each task before publication, then tokate submit to preview its exact PR text and --yes to publish. Issue lists and --review require gratis mode. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Consent asks once in a terminal unless --yes is set. With --json, --non-interactive or no terminal, work and stop preview without changes and require --yes.",
+                "harness,provider,model,effort,endpoint,pi-root,node,harness-path,claude-profile,availability,non-interactive,yes,time,verify-time,total,prompt,review,feedback,unlimited,fork,runs,run,continue-from",
+                "Code an approved issue with your harness and verify it. Use work RUN --feedback --time TIME to revise a published PR from new maintainer feedback with the saved tool or explicit overrides. Without a Tokate policy, OWNER/REPO lets the harness choose tasks until stopped, OWNER/REPO#N runs one issue, and OWNER/REPO#12,15,40 runs those issues in order. Gratis work publishes each task after start consent. Use --review to stop each task before publication, then tokate submit to preview its exact PR text and --yes to publish. Issue lists and --review require gratis mode. Bare work uses the local GitHub remote. ISSUE alone continues its newest saved claim. Consent asks once in a terminal unless --yes is set. With --json, --non-interactive or no terminal, work and stop preview without changes and require --yes.",
                 "work 42 --model MODEL --effort high"
             ),
             CliCommand(
@@ -886,6 +887,10 @@ internal class Cli {
         }
 
         private func ValidateWork(args Args) {
+            if args.Get("feedback") == "true" && !args.Help && args.Get("run") == "" && args.Get("issue") == "" &&
+                args.Run == "" {
+                args.Need("run")
+            }
             if RepositoryWork(args) && !args.Help {
                 if args.Get("repo") == "" {
                     args.Values["--repo"] = RepositoryInput.Local()
@@ -920,6 +925,11 @@ internal class Cli {
 
             if !args.Help {
                 RunReference.Resolve(args)
+            }
+
+            if args.Get("feedback") == "true" && !args.Help {
+                args.Need("run")
+                args.Need("seconds")
             }
 
             if args.Get("from-pr") != "" &&
@@ -994,7 +1004,7 @@ internal class Cli {
                 throw Exception("--run conflicts with a repository or task argument")
             }
 
-            if args.Get("run") != "" && command.SupportsSavedRun {
+            if args.Get("run") != "" && command.SupportsSavedRun && args.Get("feedback") != "true" {
                 for key in args.Values.Keys {
                     if command.ConflictsWithRun(key.Substring(2)) {
                         throw Exception(

@@ -299,7 +299,7 @@ internal class Amendment {
             }
         }
 
-        private func AmendSaved(args Args, directory string, run Data) {
+        internal func AmendSaved(args Args, directory string, run Data) {
             let live = CoordinationState.Load(run.Repo, run.Issue)
             live.Reservation(J.Parse(J.Write(run.DonorId)))
             let savedCorrection = run.Amendment != ""
@@ -837,6 +837,10 @@ internal class Amendment {
             let checkout = Path.Combine(directory, "checkout")
             let published = amendment.Previous
             let pull = Pull(run, amendment.Pr, published, amendment.Commit)
+            if J.Text(J.Get(pull, "head"), "sha") == amendment.Commit {
+                Publication.ObserveHead(run, pull, amendment.Commit)
+                run.Save(directory)
+            }
             let remote = Remote(run, published, amendment.Commit)
 
             if J.Text(J.Get(pull, "head"), "sha") != remote {
@@ -894,6 +898,8 @@ internal class Amendment {
             Remote(run, amendment.Commit, "")
 
             let latest = Pull(run, amendment.Pr, amendment.Commit, "")
+            Publication.ObserveHead(run, latest, amendment.Commit)
+            run.Save(directory)
 
             GitHubPathEvidence.Amendment(
                 run.Repo,

@@ -23,6 +23,8 @@ internal partial class CoordinationFlow {
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             test.Flow.Approve()
             let expected = test.State()["state"]?["approval"] ?? throw Exception("Missing CLI approval")
+            Check.That(Check.Text(expected["approver"]) == "1", "CLI approval lost the owner identity")
+            expected["approver"] = JsonValue.Create(123)
             expected.AsObject().Remove("nonce")
 
             for level in[]string{"write", "maintain", "admin", "triage", "read", "none", "unknown", ""} {

@@ -131,6 +131,14 @@ internal class HarnessRunner {
             return evidence
         }
 
+        private func Ready(directory string, run Data, feedback bool) {
+            if feedback {
+                FeedbackRevision.Ready(directory, run)
+            } else {
+                WorkspacePreparation.Ready(directory, run)
+            }
+        }
+
         internal func Execute(directory string, options Args) {
             try {
                 using let lease = RunStorage.Lease(directory)
@@ -138,7 +146,8 @@ internal class HarnessRunner {
 
                 ValidateUnexecuted(directory, run)
 
-                let record = ContributionAuthority.Recheck(run)
+                let feedback = run.FeedbackPrevious != ""
+                let record = feedback ? FeedbackRevision.Recheck(directory, run): ContributionAuthority.Recheck(run)
                 let policy = Policy(J.Write(J.Get(record, "policy")))
                 policy.Digest = run.PolicyHash
                 let harness = run.Harness
@@ -152,10 +161,14 @@ internal class HarnessRunner {
                 let coding = RuntimeBudget(timer, seconds - reserve)
                 let checkout = Path.Combine(directory, "checkout")
 
-                WorkspacePreparation.Ready(directory, run)
+                Ready(directory, run, feedback)
                 let prepared = adapter.Prepare.Invoke(directory, run, record, coding, policy.AllowedModels)
-                ContributionAuthority.Recheck(run)
-                WorkspacePreparation.Ready(directory, run)
+                if feedback {
+                    FeedbackRevision.Recheck(directory, run)
+                } else {
+                    ContributionAuthority.Recheck(run)
+                }
+                Ready(directory, run, feedback)
 
                 var inferenceStarted = false
 
@@ -219,7 +232,11 @@ internal class HarnessRunner {
                     let evidence = SaveEvidence(directory, run, record, policy, adapter, result, timer)
 
                     Output.Sink.FailureCode = "invalid_state"
-                    Contribution.Finish(directory, run, record, evidence.Usage, timer, seconds, reserve)
+                    if feedback {
+                        FeedbackRevision.Finish(directory, run, record, timer)
+                    } else {
+                        Contribution.Finish(directory, run, record, evidence.Usage, timer, seconds, reserve)
+                    }
                 } catch (error Exception) when ExecutionFailure.Handled(error) {
                     if codex && !inferenceStarted {
                         throw error

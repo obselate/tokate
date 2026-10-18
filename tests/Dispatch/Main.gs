@@ -146,6 +146,9 @@ func Main(args[]string) int32 {
             case "--correction" when(args.Length == 1 || args.Length == 2) {
                 AmendmentFlow.All(binary, args.Length == 2 ? args[1]: "")
             }
+            case "--feedback" when(args.Length == 1 || args.Length == 2) {
+                FeedbackChecks.All(binary, args.Length == 2 ? args[1]: "")
+            }
             case "--amendments" when(args.Length == 1 || args.Length == 2) {
                 AmendmentFlow.All(binary, args.Length == 2 ? args[1]: "")
             }

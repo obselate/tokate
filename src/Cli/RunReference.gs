@@ -230,7 +230,7 @@ internal class RunReference {
                 return
             }
 
-            if args.Command == "work" && !named {
+            if args.Command == "work" && !named && args.Get("feedback") != "true" {
                 for key in args.Values.Keys {
                     if key != "--repo" && key != "--issue" && key != "--runs" && command.ConflictsWithRun(
                         key.Substring(2)

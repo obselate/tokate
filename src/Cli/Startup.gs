@@ -189,7 +189,7 @@ internal class Startup {
 
                 if command == "work" || command == "claim" {
                     catalog = run.Source != "external"
-                    harness = run.Harness
+                    harness = options.Get("feedback") == "true" ? options.Get("harness"): run.Harness
                 }
             }
 
@@ -333,7 +333,9 @@ internal class Startup {
         }
 
         internal func Inspect(options Args) List[ToolCheck] {
-            let harnessPath = options.Get("run") != "" && options.Command == "work" ?
+            let harnessPath = options.Get("run") != "" && options.Command == "work" && options.Get(
+                "feedback"
+            ) != "true" ?
             Data.Load(Path.GetFullPath(options.Need("run"))).HarnessPath: options.Get("harness-path")
             let tools = Scan(Requirements(options), harnessPath)
             ExecuteChecks(tools)

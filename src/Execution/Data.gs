@@ -9,6 +9,11 @@ import System.Text.RegularExpressions
 internal class Data {
     private let Stored Dictionary[string, Object?] = map[string, Object?]{}
 
+    internal prop FeedbackAuthors string {
+        get -> Text("feedback_authors")
+        set -> Put("feedback_authors", value)
+    }
+
     internal prop Amendment string {
         get -> Text("amendment")
         set -> Put("amendment", value)
@@ -644,6 +649,36 @@ internal class Data {
         set -> Put("wall_seconds", value)
     }
 
+    internal prop FeedbackPrevious string {
+        get -> Text("feedback_previous")
+        set -> Put("feedback_previous", value)
+    }
+
+    internal prop FeedbackText string {
+        get -> Text("feedback_text")
+        set -> Put("feedback_text", value)
+    }
+
+    internal prop FeedbackRound int32 {
+        get -> Number("feedback_round")
+        set -> Put("feedback_round", value)
+    }
+
+    internal prop FeedbackRuns JsonElement {
+        get -> Element("feedback_runs")
+        set -> Put("feedback_runs", value)
+    }
+
+    internal prop PublishedHead string {
+        get -> Text("published_head")
+        set -> Put("published_head", value)
+    }
+
+    internal prop PublishedAt string {
+        get -> Text("published_at")
+        set -> Put("published_at", value)
+    }
+
     internal prop HasAttempt bool -> Stored.ContainsKey("attempt")
 
     internal prop HasBase bool -> Stored.ContainsKey("base")
@@ -817,7 +852,7 @@ internal class Data {
             case "verified": next == "publishing" || next == "published"
             case "publishing": next == "requested" || next == "published"
             case "requested": next == "published"
-            case "generated": next == "published"
+            case "generated": next == "published" || next == "failed" && FeedbackPrevious != ""
             case "incomplete_generated": next == "published" || next == "generated"
             case "skipped": next == "published"
             default: false

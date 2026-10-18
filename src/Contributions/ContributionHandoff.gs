@@ -7,7 +7,10 @@ internal class ContributionHandoff {
     shared {
         internal func Has(run Data) bool -> run.Handoff.ValueKind != JsonValueKind.Undefined
 
-        internal func StartHead(run Data) string -> Has(run) ? HandoffRequestMetadata.Parse(run.Handoff).Head: run.Base
+        internal func StartHead(run Data) string -> run.FeedbackPrevious != "" ? run.FeedbackPrevious: Has(
+            run
+        ) ? HandoffRequestMetadata
+            .Parse(run.Handoff).Head: run.Base
 
         internal func Declaration(value JsonElement) HandoffRequestMetadata? {
             if value.ValueKind == JsonValueKind.Undefined {

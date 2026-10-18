@@ -55,7 +55,9 @@ internal class EligibilityChecks {
             )
             let approval = test.State()["state"]?["approval"] ?? throw Exception("Missing approval")
             Check.That(
-                approval["donor"] == nil && Check.Text(approval["repo_id"]) == "1",
+                approval["donor"] == nil && Check.Text(approval["repo_id"]) == "1" && Check.Text(
+                    approval["approver"]
+                ) == "1",
                 "Task approval assigned a donor or lacks numeric identity"
             )
             let state = test.State()["state"] ?? throw Exception("Missing state")
@@ -68,7 +70,7 @@ internal class EligibilityChecks {
                 keys += (keys == "" ? "": ",") + field.Key
             }
             Check.That(
-                keys == "version,repo,repo_id,issue,approval_scope,eligibility,allowed_actor_ids,issue_hash,policy_hash,template_hash,base,base_branch,decree,authority_branch,nonce",
+                keys == "version,repo,repo_id,issue,approval_scope,eligibility,allowed_actor_ids,issue_hash,policy_hash,template_hash,base,base_branch,decree,authority_branch,nonce,approver",
                 "Approval writer changed stored field order"
             )
             test.Flow.Reload()

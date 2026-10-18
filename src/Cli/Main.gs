@@ -201,6 +201,11 @@ func Dispatch(options Args) int32 {
 
     ConfirmCommand(options)
 
+    if options.Command == "work" && options.Get("feedback") == "true" {
+        FeedbackRevision.Options(options)
+        return WorkCommand(options) ?? 0
+    }
+
     if (options.Command != "doctor" || options.Subject == "repo") &&
         (options.Command != "defaults" || options.Subject == "check") {
         DonorSelection.ApplyDefaults(options)
@@ -471,6 +476,28 @@ private func SubmitSaved(args Args) {
         using let lease = RunStorage.Lease(directory)
         let run = Data.Load(directory)
 
+        if FeedbackRevision.Pending(directory, run) {
+            if !run.Gratis && args.Get("yes") != "true" {
+                PreviewCommand(args, "Publish the saved feedback revision", run)
+                if !OwnerSetup.Confirm(args) {
+                    throw CliFailure(
+                        "confirmation_required",
+                        "Pass --yes to publish the saved revision. Nothing changed."
+                    )
+                }
+            }
+            if run.Gratis {
+                FeedbackRevision.Publish(
+                    directory,
+                    run,
+                    (preview, consent) -> Gratis.ConfirmPublish(directory, args, preview, consent)
+                )
+            } else {
+                FeedbackRevision.Publish(directory, run)
+            }
+            return
+        }
+
         if run.Gratis {
             Publication.PublishGratis(
                 directory,
@@ -505,6 +532,10 @@ private func SubmitCommand(options Args) int32? {
 
     let directory = Path.GetFullPath(options.Need("run"))
     var run = Data.Load(directory)
+
+    if FeedbackRevision.Pending(directory, run) {
+        return run.Gratis ? 0: Output.PendingExitCode
+    }
 
     if run.Gratis {
         return 0
@@ -560,6 +591,14 @@ private func SubmitCommand(options Args) int32? {
 }
 
 private func WorkCommand(options Args) int32? {
+    if options.Get("feedback") == "true" {
+        let directory = Path.GetFullPath(options.Need("run"))
+        FeedbackRevision.Work(directory, options, async () -> Startup.Check(options))
+        return FeedbackRevision.Pending(directory, Data.Load(directory)) && options.Get(
+            "review"
+        ) != "true" ? Output.PendingExitCode: 0
+    }
+
     if Cli.RepositoryWork(options) ||
         (
         options.Command == "work" && options.Get("run") == "" &&

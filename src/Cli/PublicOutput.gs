@@ -216,6 +216,9 @@ internal class PublicOutput {
                 result["verification_reserve"] = run.VerificationReserve
             }
 
+            if run.FeedbackRuns.ValueKind == JsonValueKind.Array {
+                result["feedback_runs"] = J.Items(run.FeedbackRuns)
+            }
             result["run"] = directory
 
             if run.State == "claim_pending" {
@@ -243,16 +246,7 @@ internal class PublicOutput {
                 result["continuation_phase"] = run.ContinuationPhase
             }
 
-            let usage = map[string, Object?]{}
-
-            for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                let item = J.Get(run.Usage, key)
-                var count int64
-
-                if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
-                    usage[key] = count
-                }
-            }
+            let usage = RequestUsage.Counts(run.Usage)
 
             if usage.Count > 0 {
                 result["usage"] = usage

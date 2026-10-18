@@ -22,6 +22,7 @@ internal class OwnerApproval {
         internal var Base string
         internal var BaseBranch string
         internal var AuthorityBranch string
+        internal var Approver int64
         internal var Nonce string
         internal var Decree JsonElement
         internal var Donor JsonElement
@@ -42,6 +43,7 @@ internal class OwnerApproval {
                 let baseBranch = J.Text(value, "base_branch")
                 let authorityBranch = J.Text(value, "authority_branch")
                 let nonce = J.Text(value, "nonce")
+                let approver = JsonFields.OptionalInt64(value, "Approval record", "approver", 0)
 
                 let allowed = List[int64]()
                 let actors = J.Get(value, "allowed_actor_ids")
@@ -78,6 +80,7 @@ internal class OwnerApproval {
                     Base: base,
                     BaseBranch: baseBranch,
                     AuthorityBranch: authorityBranch,
+                    Approver: approver,
                     Nonce: nonce,
                     Decree: decree,
                     Donor: donor,
@@ -115,6 +118,9 @@ internal class OwnerApproval {
             }
             writer.WriteString("authority_branch", AuthorityBranch)
             writer.WriteString("nonce", Nonce)
+            if Approver > 0 {
+                writer.WriteNumber("approver", Approver)
+            }
             writer.WriteEndObject()
         }
 
@@ -143,6 +149,7 @@ internal class OwnerApproval {
                 throw CliFailure("invalid_arguments", error.Message + " Choose an existing open issue reference.")
             }
             let approval = Capture(args, info, issue)
+            approval.Approver = RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
             let firstApproval = !Output.Sink.Enabled && GitHub.Api(
                 "repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix
             )

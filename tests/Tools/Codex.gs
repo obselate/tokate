@@ -296,7 +296,10 @@ internal partial class Fixture {
         if mode == "verification_fail" {
             File.WriteAllText(Path.Combine(checkout, "other.txt"), "False success")
         } else if mode != "empty" {
-            File.WriteAllText(Path.Combine(checkout, "result.txt"), "Implemented acceptance criteria\n")
+            File.WriteAllText(
+                Path.Combine(checkout, "result.txt"),
+                Check.Text(State["feedback_result"] ?? JsonValue.Create("Implemented acceptance criteria\n"))
+            )
         }
         if State["gratis_title"] != nil {
             File.WriteAllText(Path.Combine(checkout, "tokate-title.txt"), Check.Text(State["gratis_title"]))

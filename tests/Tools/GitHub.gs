@@ -535,6 +535,10 @@ internal partial class Fixture {
                 )
             )
         }
+        if tail.StartsWith("issues/") && tail.Contains("/comments?") &&
+            State["pr_comments"]?[tail.Split('/')[1]] != nil {
+            return Answer(CommentPage((State["pr_comments"]?[tail.Split('/')[1]] ?? JsonArray()).AsArray()))
+        }
         if tail.StartsWith("issues/comments/") {
             let comment = State["canonical_comment_override"] ?? State["comments"]?[tail.Substring(16)]
             return Answer(comment ?? throw Exception("Missing canonical comment"))
@@ -1214,6 +1218,9 @@ internal partial class Fixture {
         }
         if tail.StartsWith("pulls/") {
             let number = tail.Split('/')[1]
+            if tail.Contains("/comments?") {
+                return Answer(CommentPage((State["review_comments"]?[number] ?? JsonArray()).AsArray()))
+            }
             if tail.Contains("/reviews?") {
                 return Answer(State["reviews"]?[number] ?? JsonArray())
             }
@@ -1290,6 +1297,8 @@ internal partial class Fixture {
             body["number"] = JsonValue.Create(number)
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())
             body["state"] = JsonValue.Create("open")
+            body["updated_at"] = JsonValue.Create(DateTimeOffset.UtcNow.ToString("O"))
+            body["created_at"] = body["updated_at"]?.DeepClone()
             body["user"] = Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
             body["head"] = Check.Map(
                 "sha",
