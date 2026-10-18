@@ -16,6 +16,7 @@ else
     status=$?
     test "$status" -eq 1 || exit "$status"
 fi
+python3 scripts/check-layers.py
 bash scripts/build.sh
 runtime="${TOKATE_RUNTIME_IDENTIFIER:-linux-x64}"
 tests=artifacts/tests/tokate-tests
