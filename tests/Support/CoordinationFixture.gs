@@ -47,7 +47,7 @@ internal open class CoordinationFixture : IDisposable {
     public func Dispose() -> Flow.Dispose()
 
     internal func State() JsonNode {
-        let reference = "tokate/contributions/" + Issue.ToString()
+        let reference = "refs/tokate/contributions/" + Issue.ToString()
         return Check.Map(
             "sha",
             Flow.Git("-C", Flow.Upstream, "rev-parse", reference),
@@ -184,7 +184,7 @@ internal open class CoordinationFixture : IDisposable {
             "-m",
             "Trusted test clock transition"
         )
-        Flow.Git("-C", Flow.Upstream, "update-ref", "refs/heads/tokate/contributions/1", next, previous)
+        Flow.Git("-C", Flow.Upstream, "update-ref", "refs/tokate/contributions/1", next, previous)
     }
 
     internal func PublishRequest(claim JsonNode, commit string, createPr bool = true) JsonNode {

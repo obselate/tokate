@@ -8,6 +8,7 @@ import System.Text.Json
 
 internal class CoordinationState {
     internal var Sha string = ""
+    private var Legacy bool
     internal var Version int64 = StateVersion
     internal var Repo string = ""
     internal var Issue int32
@@ -566,53 +567,31 @@ internal class CoordinationState {
             expires: expires
         )
 
-        let next = J.Text(commit, "sha")
+        let next = RepositoryIdentity.CommitSha(J.Text(commit, "sha"))
 
-        if Sha == "" {
-            GitHub.Api(
-                "repos/" + repo + "/git/refs",
-                map[string, Object?]{"ref": GitHub.HeadsRefPrefix + Ref(issue), "sha": next},
-                expires: expires
-            )
-        } else {
-            for attempt in 0 ... RefUpdateAttemptLimit {
-                try {
-                    GitHub.Api(
-                        "repos/" + repo + "/git/" + GitHub.HeadsRefPrefix + Ref(issue),
-                        map[string, Object?]{"sha": next, "force": false},
-                        "PATCH",
-                        expires: expires
-                    )
-                    break
-                } catch (error CliFailure) {
-                    if attempt > 0 {
-                        throw CliFailure(
-                            error.Code,
-                            error.Message.Replace(
-                                "No automatic retry was made.",
-                                "One conditional ref retry was made after re-reading current state."
-                            ),
-                            httpStatus: error.HttpStatus
-                        )
-                    }
-
-                    if error.HttpStatus < ApiResponse.ServerErrorStatusMinimum ||
-                        error.HttpStatus > ApiResponse.ServerErrorStatusMaximum {
-                        throw error
-                    }
-
-                    ApiTransport.Settle()
-                    let current = Load(repo, issue)
-
-                    if current.Sha == next {
-                        break
-                    }
-
-                    if current.Sha != expected {
-                        throw error
-                    }
-                }
+        try {
+            if Sha == "" || Legacy {
+                GitHub.Api(
+                    "repos/" + repo + "/git/refs",
+                    map[string, Object?]{"ref": "refs/" + Ref(issue), "sha": next},
+                    expires: expires
+                )
+            } else {
+                StateRefs.Update(repo, Ref(issue), Sha, next, expires)
             }
+        } catch (error Exception) {
+            let current = J.Text(J.Get(StateRefs.Read(repo, Ref(issue)), "object"), "sha")
+            if current != next {
+                if current != Sha {
+                    throw CliFailure("stale_approval", "Coordination changed before reservation update")
+                }
+                throw error
+            }
+        }
+
+        if Legacy {
+            StateRefs.RemoveLegacy(repo, Ref(issue))
+            Legacy = false
         }
 
         Sha = next
@@ -679,8 +658,6 @@ internal class CoordinationState {
         private const StateByteLimit int32 = 1024 * 1024
         private const InvalidStateMessage string = "Invalid version-2 coordination state"
 
-        private const RefUpdateAttemptLimit int32 = 2
-
         internal func ApprovalFailure(repo string, issue int32, reason string) CliFailure {
             let task = repo + "#" + issue.ToString()
             return CliFailure(
@@ -694,7 +671,7 @@ internal class CoordinationState {
 
         internal func Load(repo string, issue int32, missing bool = false) CoordinationState {
             let result = CoordinationState()
-            let reference = GitHub.Api("repos/" + repo + "/git/ref/heads/" + Ref(issue), missing: true)
+            let reference = StateRefs.Read(repo, Ref(issue))
 
             if reference.ValueKind == JsonValueKind.Undefined {
                 if !missing {
@@ -703,7 +680,9 @@ internal class CoordinationState {
                 return result
             }
 
-            return At(repo, issue, J.Text(J.Get(reference, "object"), "sha"))
+            let state = At(repo, issue, J.Text(J.Get(reference, "object"), "sha"))
+            state.Legacy = J.Text(reference, "ref") == GitHub.HeadsRefPrefix + Ref(issue)
+            return state
         }
 
         internal func At(repo string, issue int32, sha string) CoordinationState {

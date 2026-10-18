@@ -231,7 +231,7 @@ internal class CliDiscovery {
                     ".github/workflows/tokate-coordinator.yml",
                     "Branch tokate-setup",
                     "Setup PR",
-                    "Do not delete them",
+                    "hidden refs outside the branch list",
                     "--yes"
                 } {
                     Check.Contains(preview.Error, change)
@@ -278,7 +278,7 @@ internal class CliDiscovery {
                 "Setup PR has the wrong branches"
             )
             Check.That(
-                flow.Git("-C", flow.Upstream, "branch", "--list", "tokate/access") == "",
+                flow.Git("-C", flow.Upstream, "for-each-ref", "refs/tokate/access") == "",
                 "Setup created an access ref"
             )
             Check.That(

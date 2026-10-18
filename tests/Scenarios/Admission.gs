@@ -82,8 +82,20 @@ internal class AdmissionChecks {
             )
             test.Flow.Temp.Env["GITHUB_EVENT_NAME"] = "pull_request_target"
             test.Flow.ResetTraffic()
+            let permissions = test.Flow.State["token_permissions"]?.DeepClone()
+            test.Flow.State["token_permissions"] = Check.Map(
+                "contents",
+                "read",
+                "issues",
+                "read",
+                "pull-requests",
+                "write"
+            )
+            test.Flow.Save()
             test.Flow.Call([]string{"admit", "owner/project", "--event", path}, code, owner: true)
             test.Flow.Reload()
+            test.Flow.State["token_permissions"] = permissions
+            test.Flow.Save()
             Check.That(
                 Check.Text(test.Flow.State["pulls"]?[0]?["state"]) == expected,
                 "Admission state after " + action + ": expected " + expected + ", got " + Check.Text(
@@ -98,7 +110,7 @@ internal class AdmissionChecks {
                         if Check.Text(call["path"]) == "repos/owner/project/pulls/10" {
                             reads++
                         }
-                        if Check.Text(call["path"]) == "repos/owner/project/git/ref/heads/tokate/access" {
+                        if Check.Text(call["path"]) == "repos/owner/project/git/ref/tokate/access" {
                             authority++
                         }
                     } else if Check.Text(call["method"]) == "PATCH" && Check.Text(
@@ -179,6 +191,19 @@ internal class AdmissionChecks {
             Admit(test, "open")
             Check.That(test.State()["state"]?["contribution"] == nil, "Admission recorded an unadopted donor draft")
             Pull(test, "", "github-actions[bot]", 41898282, branch, head, bot: true)
+            Admit(test, "open")
+            let legacy = Check.Text(test.State()["sha"])
+            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/heads/tokate/contributions/1", legacy)
+            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/tokate/contributions/1")
+            Admit(test, "open")
+            test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/tokate/contributions/1", legacy)
+            test.Flow.Git(
+                "-C",
+                test.Flow.Upstream,
+                "update-ref",
+                "refs/heads/tokate/contributions/1",
+                test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "main")
+            )
             Admit(test, "open")
             let value = test.State()["state"] ?? throw Exception("Missing state")
             let reservation = value["reservation"] ?? throw Exception("Missing reservation")
@@ -333,7 +358,7 @@ internal class AdmissionChecks {
                 Pull(test, "Fixes #1\n<!-- tokate-receipt:invalid -->", "outsider", 124)
                 if fault == "api" {
                     test.Flow.Reload()
-                    test.Flow.State["fault_path"] = JsonValue.Create("repos/owner/project/git/ref/heads/tokate/access")
+                    test.Flow.State["fault_path"] = JsonValue.Create("repos/owner/project/git/ref/tokate/access")
                     test.Flow.State["faults"] = Check.Json("[{\"status\":403}]")
                     test.Flow.Save()
                 } else if fault == "malformed" {
@@ -341,11 +366,11 @@ internal class AdmissionChecks {
                         "-C",
                         test.Flow.Upstream,
                         "update-ref",
-                        "refs/heads/tokate/access",
+                        "refs/tokate/access",
                         test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
                     )
                 } else if fault == "missing" {
-                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/tokate/access")
                 } else if fault == "coordination" {
                     let value = test.State()["state"] ?? throw Exception("Missing state")
                     let approval = value["approval"] ?? throw Exception("Missing approval")

@@ -66,10 +66,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             }
             using let baseline = FixtureSnapshot(test.Flow.Temp.Root)
             test.Flow.Temp.Env["GITHUB_ACTIONS"] = "true"
-            test.Flow.Faults(
-                "repos/owner/project/git/refs/heads/tokate/contributions/1",
-                Check.Json("[{\"status\":403}]")
-            )
+            test.Flow.Faults("graphql", Check.Json("[{\"status\":403}]"))
             let failure = test.Coordinate(path, 1)
             Check.That(failure.Error.Split("::error::").Length == 2, "Coordinator did not emit one annotation")
             test.Flow.Temp.Env.Remove("GITHUB_ACTIONS")
@@ -83,6 +80,31 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Check.That(Check.Text(test.Flow.State["fault_index"]) == "1", "Denied state write was retried")
             baseline.Restore()
             test.Flow.Reload()
+            test.Flow.State["token_permissions"] = Check.Map(
+                "contents",
+                "read",
+                "issues",
+                "read",
+                "pull-requests",
+                "write"
+            )
+            test.Flow.Save()
+            Check.Contains(test.Coordinate(path, 1).Error, "HTTP 403")
+            Check.That(
+                Check.Text(test.State()["sha"]) == Check.Text(initial["sha"]),
+                "Read-only contents authorized a state write"
+            )
+            baseline.Restore()
+            test.Flow.Reload()
+            test.Flow.State["token_permissions"] = Check.Map(
+                "contents",
+                "write",
+                "issues",
+                "read",
+                "pull-requests",
+                "write"
+            )
+            test.Flow.Save()
             test.Coordinate(path)
             let state = test.State()
             Check.That(
@@ -510,8 +532,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
             Flow.Reload()
             for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
                 Check.That(
-                    Check.Text(call["method"]) != "PATCH" || Check.Text(call["path"]) !=
-                    "repos/owner/project/git/refs/heads/tokate/contributions/1",
+                    Check.Text(call["path"]) != "graphql" || Check.Text(call["ref"]) != "refs/tokate/contributions/1",
                     "Timed-out rendezvous reached the shared API-state lock"
                 )
             }
@@ -569,20 +590,19 @@ internal partial class CoordinationFlow : CoordinationFixture {
         var rejected int32
         let proposed = HashSet[string](StringComparer.Ordinal)
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
-            if Check.Text(call["method"]) == "PATCH" && Check.Text(
-                call["path"]
-            ) == "repos/owner/project/git/refs/heads/tokate/contributions/1" {
+            if Check.Text(call["path"]) == "graphql" && Check.Text(call["ref"]) == "refs/tokate/contributions/1" {
                 attempts++
                 proposed.Add(Check.Text(call["sha"]))
-                if Check.Text(call["status"]) == "422" {
+                if Check.Text(call["conflict"]) == "true" {
                     rejected++
                 }
             }
         }
         Check.That(
             attempts == 2 && proposed.Count == 2 && rejected == 1,
-            "Concurrent claims did not exercise distinct non-forced competing ref updates: PATCH attempts=" +
-                attempts.ToString() + ", 422 rejections=" + rejected.ToString()
+            "Concurrent claims did not exercise distinct conditional ref updates: attempts=" + attempts.ToString() +
+                ", conflicts=" +
+                rejected.ToString()
         )
         Coordinate(Event(ClaimRequest(), 124, "other"), 1)
         Flow.NoInference()
@@ -1440,16 +1460,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Mode("interrupted_state_write")
         Flow.ResetTraffic()
         let failure = Coordinate(path, 1)
-        Check.Contains(failure.Error, "One conditional ref retry was made")
+        Check.Contains(failure.Error, "No automatic retry was made")
         Check.Contains(failure.Error, "reruns the failed coordinator workflow run in Actions")
         Flow.Reload()
         var attempts int32
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
-            if Check.Text(call["method"]) == "PATCH" {
+            if Check.Text(call["path"]) == "graphql" {
                 attempts++
             }
         }
-        Check.That(attempts == 2, "Failed ref update did not stop after one retry")
+        Check.That(attempts == 1, "Failed ref update was retried")
         Check.That(State()["state"]?["reservation"] == nil, "Interrupted write acquired a claim")
         Flow.Mode("")
         let changed = Check.Json(File.ReadAllText(path))["comment"] ?? throw Exception("Missing comment")
@@ -1462,29 +1482,32 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Flow.Reload()
         Flow.State.AsObject().Remove("canonical_comment_override")
         Flow.Save()
-        Flow.Faults("repos/owner/project/git/refs/heads/tokate/contributions/1", Check.Json("[{\"status\":500}]"))
-        let recovered = Coordinate(later)
-        Check.That(
-            recovered.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1,
-            "Retried event did not return its own request outcome"
-        )
+        Flow.Faults("graphql", Check.Json("[{\"status\":500}]"))
+        Flow.ResetTraffic()
+        Check.Contains(Coordinate(later, 1).Error, "No automatic retry was made")
         Flow.Reload()
         attempts = 0
         var inspected bool
         for call in Flow.State["api_calls"]?.AsArray() ?? throw Exception("Missing API evidence") {
+            if Check.Text(call["path"]) == "graphql" {
+                attempts++
+            }
             if Check.Text(call["method"]) == "GET" && Check.Text(call["path"]) ==
-            "repos/owner/project/git/ref/heads/tokate/contributions/1" && attempts == 1 {
+            "repos/owner/project/git/ref/tokate/contributions/1" && attempts == 1 {
                 inspected = true
             }
-            if Check.Text(call["method"]) == "PATCH" {
-                attempts++
-                Check.That(attempts == 1 || inspected, "Ref retry did not re-read current state")
-            }
         }
-        Check.That(attempts == 2, "Transient ref failure did not retry once")
+        Check.That(attempts == 1 && inspected, "Failed mutation was retried or not inspected")
+        Check.That(State()["state"]?["reservation"] == nil, "Failed write acquired a claim")
+        Flow.Faults("", JsonArray())
+        let recovered = Coordinate(later)
+        Check.That(
+            recovered.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length == 1,
+            "Redelivered event did not return its own request outcome"
+        )
         Check.That(
             Check.Text(State()["state"]?["reservation"]?["reservation"]) == Check.Text(request["uuid"]),
-            "Transient ref retry did not acquire the exact claim"
+            "Explicit redelivery did not acquire the exact claim"
         )
         let revision = Check.Text(State()["sha"])
         Coordinate(path)
@@ -1756,7 +1779,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 .Contains("supported effort control"),
             "Receipt did not reach shared declaration validation: " + failure.Error
         )
-        Flow.Git("-C", Flow.Upstream, "update-ref", "refs/heads/tokate/contributions/1", previous, forged)
+        Flow.Git("-C", Flow.Upstream, "update-ref", "refs/tokate/contributions/1", previous, forged)
         Flow.Reload()
         let restored = Flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
         restored["body"] = JsonValue.Create(body)
@@ -1849,7 +1872,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         let marker = Path.Combine(stateDir, "stop")
         File.WriteAllText(marker, "stale")
         Coordinate(Event(ClaimRequest(), actor: 1, login: "owner"))
-        let reserved = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
+        let reserved = Flow.Git("-C", Flow.Upstream, "rev-parse", "refs/tokate/contributions/1")
         Flow.Reload()
         let second = Flow.State["issue"]?.DeepClone() ?? throw Exception("Missing issue")
         second["number"] = JsonValue.Create(2)
@@ -1924,7 +1947,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
         Check.That(JsonNode.DeepEquals(fallback?["tasks"], summary["tasks"]), "Missing run changed saved tasks")
         File.WriteAllText(missingRun, runRecord)
         Check.That(!File.Exists(marker), "Stop marker was not removed")
-        let current = Flow.Git("-C", Flow.Upstream, "rev-parse", "tokate/contributions/1")
+        let current = Flow.Git("-C", Flow.Upstream, "rev-parse", "refs/tokate/contributions/1")
         Check.That(current == reserved, "Reservation changed")
         Flow.Reload()
         Check.That(Check.Text(Flow.State["exec_count"]) == "1", "Donation repeated inference")

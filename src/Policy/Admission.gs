@@ -477,17 +477,17 @@ internal class Admission {
         }
 
         private func BoundState(repo string, pull JsonElement) CoordinationState {
-            let refs = GitHub.Api("repos/" + repo + "/git/matching-refs/heads/" + GitHub.ContributionStateRefPrefix)
-            if refs.ValueKind != JsonValueKind.Array || refs.GetArrayLength() > BindingRefCountLimit {
+            let refs = StateRefs.Matching(repo, GitHub.ContributionStateRefPrefix)
+            if refs.Count > BindingRefCountLimit {
                 throw Exception("Cannot inspect bounded canonical contribution bindings")
             }
 
             var result = CoordinationState()
 
-            for reference in J.Items(refs) {
+            for reference in refs {
                 let name = Regex.Match(
                     J.Text(reference, "ref"),
-                    "^" + GitHub.HeadsRefPrefix + GitHub.ContributionStateRefPrefix + "([0-9]+)$"
+                    "^refs/(?:heads/)?" + GitHub.ContributionStateRefPrefix + "([0-9]+)$"
                 )
                 var issue int32
 

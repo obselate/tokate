@@ -93,7 +93,7 @@ internal class EligibilityChecks {
                 using let test = CoordinationFixture(binary)
                 test.Initialize(approve: false)
                 Setup(test, mode, version)
-                test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+                test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/tokate/access")
                 let state = test.State()["state"] ?? throw Exception("Missing state")
                 let approval = state["approval"] ?? throw Exception("Missing approval")
                 Check.That(
@@ -283,7 +283,7 @@ internal class EligibilityChecks {
                 baseline.Restore()
                 test.Flow.Reload()
                 if fault == "approval_missing" {
-                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/contributions/1")
+                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "-d", "refs/tokate/contributions/1")
                 } else if fault == "revoked" {
                     test.Flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
                 } else if fault == "template" {
@@ -291,7 +291,7 @@ internal class EligibilityChecks {
                     test.Flow.Commit("Owner changes PR template")
                 } else if fault == "malformed" {
                     let blob = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "HEAD")
-                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/heads/tokate/access", blob)
+                    test.Flow.Git("-C", test.Flow.Upstream, "update-ref", "refs/tokate/access", blob)
                 } else if fault == "policy" {
                     Policy(test, "trusted")
                     let status = Check.Envelope(
@@ -308,9 +308,7 @@ internal class EligibilityChecks {
                 } else {
                     test.Flow.Reload()
                     if fault == "unavailable" {
-                        test.Flow.State["fault_path"] = JsonValue.Create(
-                            "repos/owner/project/git/ref/heads/tokate/access"
-                        )
+                        test.Flow.State["fault_path"] = JsonValue.Create("repos/owner/project/git/ref/tokate/access")
                         test.Flow.State["faults"] = Check.Json("[{\"status\":403}]")
                     } else if fault == "repo" {
                         test.Flow.State["repo_id"] = JsonValue.Create(99)
@@ -370,8 +368,8 @@ internal class EligibilityChecks {
             test.Flow.Mode("lost_access_response")
             test.Flow.ResetTraffic()
             let mutation = Access(test, "trust", traffic: true)
-            test.Flow.Traffic(7, 3, 0, mutation)
-            let reference = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "refs/heads/tokate/access")
+            test.Flow.Traffic(8, 3, 0, mutation)
+            let reference = test.Flow.Git("-C", test.Flow.Upstream, "rev-parse", "refs/tokate/access")
             let parents = test.Flow.Git("-C", test.Flow.Upstream, "rev-list", "--parents", "-n", "1", reference)
             Check.That(parents.Split(' ').Length == 2, "Access write lacks single parent")
             test.Flow.ResetTraffic()
@@ -420,12 +418,12 @@ internal class EligibilityChecks {
             Setup(test, "trusted")
             test.Flow.ResetTraffic()
             let trusted = Access(test, "trust", traffic: true)
-            test.Flow.Traffic(5, 3, 0, trusted)
+            test.Flow.Traffic(6, 3, 0, trusted)
             let claim = test.ClaimRequest()
             let path = test.Event(claim)
             test.Flow.ResetTraffic()
             let acquired = test.Coordinate(path, traffic: true)
-            test.Flow.Traffic(35, 3, 0, acquired)
+            test.Flow.Traffic(36, 3, 0, acquired)
             let run = test.Prepare("tokate")
             test.Flow.Call([]string{"work", "--yes", "--run", run})
             test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)
@@ -592,7 +590,7 @@ internal class EligibilityChecks {
             conflict.Flow.Reload()
             var patches int32
             for call in conflict.Flow.State["api_calls"]?.AsArray() ?? JsonArray() {
-                if Check.Text(call["path"]) == "repos/owner/project/git/refs/heads/tokate/access" {
+                if Check.Text(call["path"]) == "graphql" {
                     patches++
                 }
             }
@@ -601,7 +599,7 @@ internal class EligibilityChecks {
             using let creation = CoordinationFixture(binary)
             creation.Initialize(approve: false)
             Setup(creation, "trusted")
-            creation.Flow.Git("-C", creation.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            creation.Flow.Git("-C", creation.Flow.Upstream, "update-ref", "-d", "refs/tokate/access")
             creation.Flow.Mode("access_create_conflict")
             creation.Flow.ResetTraffic()
             Access(creation, "trust", donor: "other")
@@ -612,16 +610,14 @@ internal class EligibilityChecks {
                 if Check.Text(call["method"]) == "POST" && Check.Text(call["path"]) == "repos/owner/project/git/refs" {
                     creates++
                 }
-                if Check.Text(call["method"]) == "PATCH" && Check.Text(
-                    call["path"]
-                ) == "repos/owner/project/git/refs/heads/tokate/access" {
+                if Check.Text(call["path"]) == "graphql" {
                     updates++
                 }
             }
             Check.That(creates == 1 && updates == 1, "First access write did not retry creation as one update")
             Access(creation, "check", issue: "1", code: 1, owner: false)
             let current = Check.Json(
-                creation.Flow.Git("-C", creation.Flow.Upstream, "show", "refs/heads/tokate/access:access.json")
+                creation.Flow.Git("-C", creation.Flow.Upstream, "show", "refs/tokate/access:access.json")
             )
             Check.That(current["members"]?.AsArray().Count == 2, "Creation retry lost concurrent donor access")
         }
@@ -654,7 +650,7 @@ internal class EligibilityChecks {
             Access(test, "trust")
 
             Check.That(
-                test.Flow.Git("-C", test.Flow.Upstream, "show", "tokate/access:access.json").TrimEnd() ==
+                test.Flow.Git("-C", test.Flow.Upstream, "show", "refs/tokate/access:access.json").TrimEnd() ==
                 "{\"version\":1,\"repo_id\":1,\"members\":[{\"denied\":false,\"trusted\":true,\"actor\":9007199254740993},{\"actor\":124,\"trusted\":true,\"denied\":false},{\"actor\":123,\"trusted\":true,\"denied\":false}]}",
                 "Access record rewrite changed stored bytes or legacy membership migration"
             )
@@ -730,7 +726,7 @@ internal class EligibilityChecks {
             test.Flow.Save()
             Access(test, "check", issue: "1", code: 1, owner: false)
             Access(test, "trust")
-            let migrated = Check.Json(test.Flow.Git("-C", test.Flow.Upstream, "show", "tokate/access:access.json"))
+            let migrated = Check.Json(test.Flow.Git("-C", test.Flow.Upstream, "show", "refs/tokate/access:access.json"))
             Check.That(
                 migrated["members"]?.AsArray().Count == 3 && !migrated.ToJsonString().Contains("\"issues\""),
                 "Access write did not preserve trust and denial while removing old issue grants"
@@ -859,7 +855,7 @@ internal class EligibilityChecks {
             changedPolicy["max_seconds"] = JsonValue.Create(3601)
             File.WriteAllText(policyPath, changedPolicy.ToJsonString())
             health.Flow.Commit("Change approved task fields")
-            health.Flow.Git("-C", health.Flow.Upstream, "update-ref", "-d", "refs/heads/tokate/access")
+            health.Flow.Git("-C", health.Flow.Upstream, "update-ref", "-d", "refs/tokate/access")
             let broken = Check.Envelope(health.Flow.Call(healthArgs, owner: true), "doctor", "ok")
             Check.Contains(broken.ToJsonString(), "startup_failure")
             for row in broken["data"]?["checks"]?.AsArray() ?? JsonArray() {
@@ -910,7 +906,7 @@ internal class EligibilityChecks {
             health.Flow.NoInference()
             using let empty = CoordinationFixture(binary)
             empty.Initialize(approve: false)
-            let notice = "Tokate keeps its state in tokate/ branches; do not open or merge pull requests from them."
+            let notice = "Tokate keeps its state in hidden refs outside the branch list. Legacy tokate/ state branches migrate on the next write."
             Check.That(
                 Access(empty, "init").Output.Trim() == "Initialized donor access for owner/project.\n" + notice,
                 "Access initialization did not explain the change"
@@ -928,7 +924,7 @@ internal class EligibilityChecks {
                     "Approved https://github.com/owner/project/issues/1. Donors start with: tokate work owner/project#1 --harness HARNESS --model MODEL --effort EFFORT --time TIME\n" +
                         notice
                 ),
-                "First repository approval did not explain state branches"
+                "First repository approval did not explain hidden state refs"
             )
             let repeatedApproval = empty.Flow.Call([]string{"approve", "--yes", "owner/project#1"}, owner: true)
             Check.That(!repeatedApproval.Output.Contains(notice), "Repeated approval repeated the state notice")

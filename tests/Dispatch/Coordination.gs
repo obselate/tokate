@@ -47,6 +47,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 "ExpiryAndRevocation",
                 "InvalidEvents",
                 "CoordinatorPermissions",
+                "HiddenStateRefs",
+                "HiddenRefConflicts",
                 "LabelApprovalPermissions",
                 "LabelApprovalLifecycle",
                 "LabelApprovalSafety",
@@ -113,6 +115,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     }
                     case "LabelApprovalSafety" {
                         LabelApprovalSafety(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "HiddenStateRefs" {
+                        HiddenStateRefs(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "HiddenRefConflicts" {
+                        HiddenRefConflicts(binary)
                         Console.WriteLine("PASS V2 " + name)
                         continue
                     }

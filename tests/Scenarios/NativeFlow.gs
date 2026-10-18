@@ -954,7 +954,7 @@ internal partial class NativeFlow : NativeFixture {
             if verb != "POST" {
                 Approve()
             }
-            let path = verb == "PATCH" ? "repos/owner/project/git/refs/heads/tokate/contributions/1":
+            let path = verb == "PATCH" ? "graphql":
             (
                 verb == "DELETE" ? "repos/owner/project/issues/1/labels/tokate%3Aapproved": "repos/owner/project/git/trees"
             )
