@@ -522,16 +522,7 @@ internal class Submission {
 
             if run.Source == "tokate" && run.TurnCompleted {
                 let tool = J.Select(J.Items(run.Tools)[0], "harness,provider,model,effort")
-                let usage = map[string, Object?]{}
-
-                for key in[]string{"input_tokens", "cached_input_tokens", "output_tokens"} {
-                    let item = J.Get(run.Usage, key)
-                    var count int64
-
-                    if item.ValueKind == JsonValueKind.Number && item.TryGetInt64(out count) && count >= 0 {
-                        usage[key] = count
-                    }
-                }
+                let usage = RequestUsage.Counts(run.Usage)
 
                 tool["usage"] = usage
                 tool["coding_seconds"] = run.ExecutionSeconds

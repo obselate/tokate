@@ -535,6 +535,10 @@ internal partial class Fixture {
                 )
             )
         }
+        if tail.StartsWith("issues/") && tail.Contains("/comments?") &&
+            State["pr_comments"]?[tail.Split('/')[1]] != nil {
+            return Answer(CommentPage((State["pr_comments"]?[tail.Split('/')[1]] ?? JsonArray()).AsArray()))
+        }
         if tail.StartsWith("issues/comments/") {
             let comment = State["canonical_comment_override"] ?? State["comments"]?[tail.Substring(16)]
             return Answer(comment ?? throw Exception("Missing canonical comment"))
@@ -735,7 +739,17 @@ internal partial class Fixture {
             return Answer(Check.Map("statuses", State["statuses"] ?? JsonArray()))
         }
         if tail.StartsWith("commits/") {
-            return Answer(Check.Map("sha", Git(folder, []string{"rev-parse", tail.Substring(8)})))
+            return Answer(
+                Check.Map(
+                    "sha",
+                    Git(folder, []string{"rev-parse", tail.Substring(8)}),
+                    "commit",
+                    Check.Map(
+                        "committer",
+                        Check.Map("date", Git(folder, []string{"show", "-s", "--format=%cI", tail.Substring(8)}))
+                    )
+                )
+            )
         }
         if tail.StartsWith("contents/") {
             let split = tail.IndexOf("?ref=")
@@ -1214,6 +1228,9 @@ internal partial class Fixture {
         }
         if tail.StartsWith("pulls/") {
             let number = tail.Split('/')[1]
+            if tail.Contains("/comments?") {
+                return Answer(CommentPage((State["review_comments"]?[number] ?? JsonArray()).AsArray()))
+            }
             if tail.Contains("/reviews?") {
                 return Answer(State["reviews"]?[number] ?? JsonArray())
             }

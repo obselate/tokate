@@ -28,6 +28,10 @@ tokate submit OWNER/REPO#42 --yes
 tokate work OWNER/REPO#42 --harness HARNESS --model MODEL --effort EFFORT --time 1h --prompt hints.md --yes
 ```
 
+`tokate work RUN --feedback --time 30m` revises the same PR from new write, maintain or admin feedback.
+It keeps the saved harness, model and effort unless overridden and allows three feedback runs.
+Add `--review` to stop before the push and PR body update, then use `tokate submit RUN --yes`. Tokate posts no reply comment.
+
 Pi also needs `--endpoint http://127.0.0.1:PORT/v1` or a saved profile. See [local inference with Pi](donors.md#local-inference-with-pi).
 
 ## How it works

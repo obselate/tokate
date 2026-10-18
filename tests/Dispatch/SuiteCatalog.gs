@@ -64,6 +64,7 @@ internal class SuiteCatalog {
                 }
                 case "AmendmentSecond" {
                     AmendmentFlow.All(binary, partition: 2)
+                    FeedbackChecks.All(binary)
                 }
                 case "Decree" {
                     DecreeFlow.All(binary)

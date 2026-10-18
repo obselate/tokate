@@ -197,6 +197,11 @@ internal class Publication {
         }
 
         internal func SavePr(directory string, run Data, pull JsonElement) {
+            let head = J.Text(J.Get(pull, "head"), "sha")
+            if run.PublishedAt == "" || run.PublishedHead != head {
+                run.PublishedAt = DateTimeOffset.UtcNow.ToString("O")
+                run.PublishedHead = head
+            }
             run.Pr = J.Number(pull, "number")
             run.PrUrl = J.Text(pull, "html_url")
             run.Transition("published")

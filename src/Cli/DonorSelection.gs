@@ -68,14 +68,17 @@ internal class DonorSelection {
 
             let reserve = args.Get("verification-reserve", (run?.VerificationReserve ?? 0).ToString())
             Terminal.Message(
-                "Task: " + args.Get("repo", run?.Repo ?? "") + " #" + args.Get("issue", (run?.Issue ?? 0).ToString()) +
-                    "\nTool: " +
-                    J.Text(selection, "harness") + " / " + J.Text(selection, "provider") + "\nModel: " + J.Text(
-                    selection,
-                    "model"
+                (args.Get("feedback") == "true" ? "PR: " + (run?.PrUrl ?? "") + "\n": "") + "Task: " + args.Get(
+                    "repo",
+                    run?.Repo ?? ""
                 ) +
-                    "\nEffort: " +
-                    J.Text(selection, "effort") +
+                    " #" +
+                    args.Get("issue", (run?.Issue ?? 0).ToString()) + "\nTool: " + J.Text(selection, "harness") +
+                    " / " +
+                    J.Text(selection, "provider") + "\nModel: " + J.Text(selection, "model") + "\nEffort: " + J.Text(
+                    selection,
+                    "effort"
+                ) +
                     "\nBudget: " +
                     (
                     args.Get("unlimited") == "true" || run?.Unlimited == true ? "Unlimited coding":

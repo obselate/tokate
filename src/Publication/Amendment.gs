@@ -299,7 +299,7 @@ internal class Amendment {
             }
         }
 
-        private func AmendSaved(args Args, directory string, run Data) {
+        internal func AmendSaved(args Args, directory string, run Data) {
             let live = CoordinationState.Load(run.Repo, run.Issue)
             live.Reservation(J.Parse(J.Write(run.DonorId)))
             let savedCorrection = run.Amendment != ""
