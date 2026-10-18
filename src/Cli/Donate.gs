@@ -214,6 +214,21 @@ internal class Donate {
                 missing: true
             )
             let gratis = policyFile.ValueKind == JsonValueKind.Undefined
+            if gratis {
+                let fork = options.Get("fork")
+                if RepositoryIdentity.SameRepo(repo, fork) ||
+                    (
+                    fork == "" && RepositoryIdentity.PositiveId(J.Get(J.Get(info, "owner"), "id")) ==
+                    RepositoryIdentity.PositiveId(J.Get(GitHub.Api("user"), "id"))
+                ) {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Gratis work requires a fork and cannot use the target repository as its head. Run tokate init " +
+                            repo +
+                            " to use the approved flow on your own repository."
+                    )
+                }
+            }
             if !gratis && options.Get("review") == "true" {
                 throw CliFailure("invalid_arguments", "--review requires a repository without a Tokate policy")
             }

@@ -43,6 +43,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 "CanonicalExternal",
                 "CanonicalSubmit",
                 "RepositoryDonation",
+                "GratisOwnRepository",
                 "ExpiryAndRevocation",
                 "InvalidEvents",
                 "CoordinatorPermissions",
@@ -173,6 +174,7 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     case "ReceiptEvidence": async (value CoordinationFlow) -> value.ReceiptEvidence()
                     case "CanonicalExternal": async (value CoordinationFlow) -> value.CanonicalExternal()
                     case "RepositoryDonation": async (value CoordinationFlow) -> value.RepositoryDonation()
+                    case "GratisOwnRepository": async (value CoordinationFlow) -> value.GratisOwnRepository()
                     case "CanonicalSubmit": async (value CoordinationFlow) -> value.CanonicalSubmit()
                     case "ExpiryAndRevocation": async (value CoordinationFlow) -> value.ExpiryAndRevocation()
                     case "InvalidEvents": async (value CoordinationFlow) -> value.InvalidEvents()

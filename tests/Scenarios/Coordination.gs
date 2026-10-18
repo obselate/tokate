@@ -1767,7 +1767,50 @@ internal partial class CoordinationFlow : CoordinationFixture {
         output <- TestProcess.Run(Flow.Binary, args, env)
     }
 
+    internal func GratisOwnRepository() {
+        using let gratisFlow = NativeFixture(Flow.Binary)
+        gratisFlow.Initialize(access: false)
+        gratisFlow.Git("-C", gratisFlow.Upstream, "rm", ".github/tokate.json")
+        gratisFlow.Commit("Accept gratis work")
+        for target in[]string{"owner/project", "OwNeR/PrOjEcT#1"} {
+            for confirmed in[]bool{false, true} {
+                let rejectedArgs = List[string]{
+                    "work",
+                    target,
+                    "--harness",
+                    "codex",
+                    "--model",
+                    "gpt-6.1-sol",
+                    "--effort",
+                    "high",
+                    "--time",
+                    "30s",
+                    "--review",
+                    "--json"
+                }
+                if confirmed {
+                    rejectedArgs.Add("--yes")
+                }
+                let rejected = gratisFlow.Call(rejectedArgs.ToArray(), 1, owner: true)
+                let failure = Check.Envelope(rejected, "work", "error", "invalid_state")
+                Check.Contains(Check.Text(failure["error"]?["message"]), "requires a fork")
+                Check.Contains(Check.Text(failure["error"]?["message"]), "Run tokate init " + target.Split('#')[0])
+                Check.That(!rejected.Error.Contains("Gratis mode."), "Own repository reached gratis consent")
+            }
+        }
+        let explicitHead = gratisFlow.Call([]string{"work", "owner/project#1", "--fork", "OWNER/PROJECT", "--json"}, 1)
+        Check.Envelope(explicitHead, "work", "error", "invalid_state")
+        Check.Contains(explicitHead.Error, "requires a fork")
+        Check.That(!explicitHead.Error.Contains("Gratis mode."), "Explicit target head reached gratis consent")
+        gratisFlow.NoInference()
+        Check.That(
+            !Directory.Exists(Path.Combine(gratisFlow.Temp.Env["HOME"], ".local/state/tokate")),
+            "Rejected own repository saved donation state"
+        )
+    }
+
     internal func RepositoryDonation() {
+        GratisOwnRepository()
         let start = []string{"work", "owner/project", "--json"}
         let stop = []string{"work", "owner/project", "stop", "--yes", "--json"}
         let missing = Check.Envelope(Flow.Call(start, 1), "work", "error", "invalid_arguments")
