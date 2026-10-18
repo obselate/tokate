@@ -35,26 +35,6 @@ internal class RepositoryAccess {
             return info
         }
 
-        internal func ValidateRun(run Data) {
-            let repo = RepositoryIdentity.Repo(run.Repo)
-            let head = RepositoryIdentity.Repo(run.HeadRepo)
-            let upstream = GitHub.Api("repos/" + repo)
-            let info = RepositoryIdentity.SameRepo(repo, head) ? upstream: GitHub.Api("repos/" + head)
-
-            ValidateRepository(repo, head, run.DonorId, info, upstream: upstream)
-
-            if (
-                run.HasPreparationRepoId && RepositoryIdentity.PositiveId(run.PreparationRepoId) !=
-                RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
-            ) ||
-                (
-                run.HasPreparationHeadId && RepositoryIdentity.PositiveId(run.PreparationHeadId) !=
-                RepositoryIdentity.PositiveId(J.Get(info, "id"))
-            ) {
-                throw Exception("Saved contribution repository identity changed")
-            }
-        }
-
         internal func RequireOwner(repo string) JsonElement {
             let info = GitHub.Api("repos/" + repo)
 

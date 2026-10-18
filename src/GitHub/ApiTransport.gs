@@ -8,6 +8,13 @@ import System.Globalization
 import System.Text.Json
 import System.Text.RegularExpressions
 
+internal class ApiCommandResult {
+    internal var Code int32? = 1
+    internal var Output string = ""
+    internal var Truncated bool
+    internal var ReadFailed bool
+}
+
 internal class ApiResponse {
     internal var Status int32
     internal var Body string = ""
@@ -210,6 +217,8 @@ internal class ApiDeadlineException : Exception {
 
 internal class ApiTransport {
     shared {
+        internal var Run async ([]string, string?, int32) -> ApiCommandResult
+
         internal const DefaultDeadlineSeconds int32 = 30
 
         internal const MutationRecovery string = "A rerun repeats the same coordinator version. If that version caused the failure, the owner must update the coordinator. After fixing the cause, the owner reruns the failed coordinator workflow run in Actions. Each event processes only its triggering comment. Recorded UUIDs replay their outcome."
@@ -498,14 +507,12 @@ internal class ApiTransport {
                     Mutations++
                 }
 
-                var result CommandResult = CommandResult{Code: 1}
+                var result = ApiCommandResult()
                 try {
-                    result = Commands.Run(
-                        "gh",
+                    result = await Run(
                         args.ToArray(),
-                        input: input,
-                        github: true,
-                        milliseconds: Math.Max(1, Convert.ToInt32(Math.Floor(remaining * 1000.0)))
+                        input,
+                        Math.Max(1, Convert.ToInt32(Math.Floor(remaining * 1000.0)))
                     )
                 } catch { }
 

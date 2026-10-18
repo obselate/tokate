@@ -346,7 +346,7 @@ internal class ContributionPreparation {
                 run.State != "claim_pending" ||
                 (run.Source != "tokate" && run.Source != "external") ||
                 declaration.Action != "claim" ||
-                !RepositoryIdentity.SameDonor(viewer, run) ||
+                !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) ||
                 run.HasId ||
                 run.HasAttempt ||
                 run.HasPreparationIdentity {
@@ -438,7 +438,7 @@ internal class ContributionPreparation {
             let request = run.ClaimRequest
             let declaration = CoordinatorRequest.Parse(request)
 
-            if !RepositoryIdentity.SameDonor(viewer, run) {
+            if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) {
                 throw CliFailure(
                     "authentication_required",
                     "Active GitHub account differs from the saved pending donor; no request posted"

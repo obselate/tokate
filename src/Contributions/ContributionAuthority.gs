@@ -5,6 +5,26 @@ import System.Text.Json
 
 internal class ContributionAuthority {
     shared {
+        internal func ValidateRepositories(run Data) {
+            let repo = RepositoryIdentity.Repo(run.Repo)
+            let head = RepositoryIdentity.Repo(run.HeadRepo)
+            let upstream = GitHub.Api("repos/" + repo)
+            let info = RepositoryIdentity.SameRepo(repo, head) ? upstream: GitHub.Api("repos/" + head)
+
+            RepositoryAccess.ValidateRepository(repo, head, run.DonorId, info, upstream: upstream)
+
+            if (
+                run.HasPreparationRepoId && RepositoryIdentity.PositiveId(run.PreparationRepoId) !=
+                RepositoryIdentity.PositiveId(J.Get(upstream, "id"))
+            ) ||
+                (
+                run.HasPreparationHeadId && RepositoryIdentity.PositiveId(run.PreparationHeadId) !=
+                RepositoryIdentity.PositiveId(J.Get(info, "id"))
+            ) {
+                throw Exception("Saved contribution repository identity changed")
+            }
+        }
+
         internal func Recheck(run Data) JsonElement {
             if run.Version != Data.FormatVersion {
                 throw CliFailure("invalid_state", "Unsupported run protocol; start a current contribution")
@@ -16,7 +36,11 @@ internal class ContributionAuthority {
             let repo = RepositoryIdentity.Repo(run.Repo)
             var record JsonElement
             if run.Gratis {
-                if RepositoryIdentity.SameRepo(repo, run.HeadRepo) || !RepositoryIdentity.SameDonor(viewer, run) ||
+                if RepositoryIdentity.SameRepo(repo, run.HeadRepo) || !RepositoryIdentity.SameDonor(
+                    viewer,
+                    run.Donor,
+                    run.DonorId
+                ) ||
                     GitHub
                     .Api(
                     "repos/" + repo + "/contents/" + Policy.FilePath + "?ref=" + Uri.EscapeDataString(run.BaseBranch),
@@ -37,7 +61,7 @@ internal class ContributionAuthority {
                 let state = CoordinationState.Load(repo, run.Issue)
                 let reservation = state.Lease
 
-                if !RepositoryIdentity.SameDonor(viewer, run) ||
+                if !RepositoryIdentity.SameDonor(viewer, run.Donor, run.DonorId) ||
                     state.ApprovalId != run.Approval ||
                     (reservation?.Reservation ?? "") != run.Id {
                     throw CliFailure("stale_approval", "Saved run has stale coordination authority")
@@ -96,7 +120,7 @@ internal class ContributionAuthority {
             RepositoryIdentity.Repo(run.HeadRepo)
 
             if run.State != "preparing" {
-                RepositoryAccess.ValidateRun(run)
+                ValidateRepositories(run)
             }
 
             RuntimeBudget.Validate(run)
