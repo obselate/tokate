@@ -93,7 +93,13 @@ internal class TaskContext {
                 "1. Read the repository guidance: AGENTS.md, CONTRIBUTING.md and the owner instructions below.\n2. Read the task.\n"
             ) +
                 "3. Make the change. Do only what the task asks.\n" +
-                "4. Run the checks that apply to your change. Record each command and its result.\n" +
+                (
+                gratis ? "4. Run the checks that apply to your change. Record each command and its result.\n":
+                "4. Tokate runs these owner verification commands after you finish: " + J.Write(
+                    J.Items(J.Get(J.Get(record, "policy"), "verification"))
+                ) +
+                    ". Do not run them or report them in any field of tokate-public-summary.json. Run the other checks that apply to your change. Record each command and its result.\n"
+            ) +
                 "5. Write tokate-public-summary.json in the checkout root, in the format above.\n" +
                 "6. Leave your edits uncommitted.\n" +
                 "7. Finish with a report: Changes, Acceptance criteria met, Checks and results, Limitations.\n   Report failures as they are. Tokate does not retry.\n\n" +
