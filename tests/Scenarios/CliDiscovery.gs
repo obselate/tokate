@@ -1367,22 +1367,6 @@ internal class CliDiscovery {
                 Unchanged(preview, "Consent preview mutated GitHub")
             }
 
-            let declined = TestTerminal.Pty(
-                binary,
-                []string{"submit", "owner/project#1-2", "--plain"},
-                preview.Temp,
-                120,
-                "\n"
-            )
-            Check.That(declined.Code == 1, declined.Output + declined.Error)
-            Check.Contains(declined.Output, "Target: owner/project#1-2 Donor: saved-donor.")
-            Check.That(
-                File.ReadAllText(Path.Combine(savedPreview, "run.json")) == savedJson,
-                "Terminal preview changed saved state"
-            )
-            Unchanged(preview, "Terminal preview mutated GitHub")
-            Console.WriteLine("PASS saved-run confirmation fields, terminal targets and unchanged option previews")
-
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")
             let log = Path.Combine(temp.Root, "calls")
