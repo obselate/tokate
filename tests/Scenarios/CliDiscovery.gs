@@ -1294,12 +1294,29 @@ internal class CliDiscovery {
             Check.That(shell == "bash" || shell == "zsh" || shell == "fish", "Choose bash, zsh or fish")
             using let preview = NativeFixture(binary)
             preview.Initialize(access: false)
-            let savedPreview = Path.Combine(preview.Temp.Root, "saved")
+            let savedPreview = Path.Combine(preview.Temp.Env["HOME"], ".local/state/tokate/runs/owner-project-1-2")
             Directory.CreateDirectory(savedPreview)
-            let savedJson = "{\"version\":2,\"state\":\"claimed\",\"source\":\"external\",\"repo\":\"owner/project\",\"issue\":1}"
+            let savedJson = Check.Map(
+                "version",
+                2,
+                "state",
+                "claimed",
+                "source",
+                "external",
+                "repo",
+                "owner/project",
+                "issue",
+                1,
+                "donor",
+                "saved-donor",
+                "base_branch",
+                "saved-base"
+            )
+                .ToJsonString()
             File.WriteAllText(Path.Combine(savedPreview, "run.json"), savedJson)
             for argv in[][]string{
                 []string{"approve", "owner/project#1"},
+                []string{"approve", "owner/project#1", "option-donor", "--base-branch", "option-base"},
                 []string{"revoke", "owner/project#1"},
                 []string{"access", "init", "owner/project"},
                 []string{"access", "trust", "donor", "owner/project"},
@@ -1318,22 +1335,53 @@ internal class CliDiscovery {
                 []string{"submit", "--run", savedPreview},
                 []string{"amend", "--run", savedPreview},
                 []string{"external", "--run", savedPreview},
-                []string{"checks", "--run", savedPreview}
+                []string{"checks", "--run", savedPreview},
+                []string{"submit", "owner/project#1-2"},
+                []string{"amend", "owner/project#1-2"},
+                []string{"release", "owner/project#1-2"}
             } {
-                let envelope = Check.Envelope(
-                    preview.Call(Plus(argv, "--json"), 1),
-                    argv[0],
-                    "error",
-                    "confirmation_required"
-                )
+                let result = preview.Call(Plus(argv, "--json"), 1)
+                let envelope = Check.Envelope(result, argv[0], "error", "confirmation_required")
                 Check.That(Check.Text(envelope["data"]?["applied"]) == "false", "Preview claims a mutation")
                 Check.That(envelope["data"]?["changes"]?.AsArray().Count > 0, "Preview has no changes")
+                let data = envelope["data"] ?? throw Exception("Missing confirmation preview")
+                let saved = Array.IndexOf(argv, "--run") >= 0 || argv[1] == "owner/project#1-2"
+                Check.That(Check.Text(data["repo"]) == "owner/project", "Preview lost repository")
+                if saved {
+                    Check.That(Check.Text(data["subject"]) == "owner/project#1-2", "Preview lost run name")
+                    Check.That(Check.Text(data["issue"]) == "1", "Preview lost saved issue")
+                    Check.That(Check.Text(data["donor"]) == "saved-donor", "Preview lost saved donor")
+                    Check.That(Check.Text(data["base_branch"]) == "saved-base", "Preview lost saved base branch")
+                    Check.Contains(result.Error, "Target: owner/project#1-2 Donor: saved-donor.")
+                } else if argv.Length > 2 && argv[2] == "option-donor" {
+                    Check.That(Check.Text(data["subject"]) == "", "Option preview subject changed")
+                    Check.That(Check.Text(data["issue"]) == "1", "Option preview lost issue")
+                    Check.That(Check.Text(data["donor"]) == "option-donor", "Option preview donor changed")
+                    Check.That(Check.Text(data["base_branch"]) == "option-base", "Option preview branch changed")
+                    Check.Contains(result.Error, "Target: owner/project#1 Donor: option-donor.")
+                }
                 Check.That(
                     File.ReadAllText(Path.Combine(savedPreview, "run.json")) == savedJson,
                     "Consent preview changed saved donor state"
                 )
                 Unchanged(preview, "Consent preview mutated GitHub")
             }
+
+            let declined = TestTerminal.Pty(
+                binary,
+                []string{"submit", "owner/project#1-2", "--plain"},
+                preview.Temp,
+                120,
+                "\n"
+            )
+            Check.That(declined.Code == 1, declined.Output + declined.Error)
+            Check.Contains(declined.Output, "Target: owner/project#1-2 Donor: saved-donor.")
+            Check.That(
+                File.ReadAllText(Path.Combine(savedPreview, "run.json")) == savedJson,
+                "Terminal preview changed saved state"
+            )
+            Unchanged(preview, "Terminal preview mutated GitHub")
+            Console.WriteLine("PASS saved-run confirmation fields, terminal targets and unchanged option previews")
 
             using let temp = Temp()
             let bin = Path.Combine(temp.Root, "bin")

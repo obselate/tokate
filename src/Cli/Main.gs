@@ -208,6 +208,40 @@ func Dispatch(options Args) int32 {
     return RunCommand(options)
 }
 
+private func PreviewCommand(options Args, change string, saved Data? = nil) {
+    let directory = options.Get("run")
+    let data = map[string, Object?]{
+        "operation": options.Command,
+        "subject": options.Subject,
+        "repo": options.Get("repo"),
+        "issue": options.Get("issue"),
+        "donor": options.Get("donor"),
+        "base_branch": options.Get("base-branch"),
+        "changes": []string{change},
+        "run_directory": directory,
+        "applied": false
+    }
+    var target = options.Get("repo") + "#" + options.Get("issue")
+
+    if directory != "" {
+        let path = Path.GetFullPath(directory)
+        let run = saved ?? Data.Load(path)
+        let row = SavedRuns([]string{Path.GetDirectoryName(path) ?? ""}).Rows.Find(row -> row.Location == path)
+        target = row?.Name ?? run.Repo + "#" + run.Issue.ToString()
+        data["subject"] = target
+        data["repo"] = run.Repo
+        data["issue"] = run.Issue.ToString()
+        data["donor"] = run.Donor
+        data["base_branch"] = run.BaseBranch
+    } else if options.Subject != "" {
+        target += " (" + options.Subject + ")"
+    }
+
+    PublicOutput.ResultData = data
+    let donor = data["donor"]?.ToString() ?? ""
+    Terminal.Message(change + ". Target: " + target + (donor == "" ? "": " Donor: " + donor) + ".", error: true)
+}
+
 private func ConfirmCommand(options Args) {
     let consent = options.Get("yes") != "true" &&
         (
@@ -250,26 +284,7 @@ private func ConfirmCommand(options Args) {
             }
         }
 
-        PublicOutput.ResultData = map[string, Object?]{
-            "operation": options.Command,
-            "subject": options.Subject,
-            "repo": options.Get("repo"),
-            "issue": options.Get("issue"),
-            "donor": options.Get("donor"),
-            "base_branch": options.Get("base-branch"),
-            "changes": []string{change},
-            "run_directory": options.Get("run"),
-            "applied": false
-        }
-        Terminal.Message(
-            change +
-                ". Target: " +
-                (options.Get("run") != "" ? options.Get("run"): options.Get("repo") + "#" + options.Get("issue")) +
-                (options.Subject == "" ? "": " (" + options.Subject + ")") +
-                (options.Get("donor") == "" ? "": " Donor: " + options.Get("donor")) +
-                ".",
-            error: true
-        )
+        PreviewCommand(options, change)
 
         if !OwnerSetup.Confirm(options, question) {
             throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
@@ -457,19 +472,7 @@ private func SubmitSaved(args Args) {
         }
 
         if args.Get("yes") != "true" {
-            let change = Cli.Find("submit").Brief
-            PublicOutput.ResultData = map[string, Object?]{
-                "operation": "submit",
-                "subject": args.Subject,
-                "repo": args.Get("repo"),
-                "issue": args.Get("issue"),
-                "donor": args.Get("donor"),
-                "base_branch": args.Get("base-branch"),
-                "changes": []string{change},
-                "run_directory": directory,
-                "applied": false
-            }
-            Terminal.Message(change + ". Target: " + directory + ".", error: true)
+            PreviewCommand(args, Cli.Find("submit").Brief, run)
 
             if !OwnerSetup.Confirm(args) {
                 throw CliFailure("confirmation_required", "Pass --yes to apply the preview. Nothing changed.")
