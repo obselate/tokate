@@ -108,9 +108,24 @@ internal class FeedbackRevision {
         ): J.Text(item, "submitted_at")
 
         private func Feedback(directory string, run Data, authors List[string]) string {
+            var approver int64
+            if !run.Gratis {
+                let authority = Amendment.Authority(run, nil)
+                approver = CoordinationState.Parse(J.Get(authority, "state")).Approval?.Approver ?? 0
+                if approver <= 0 {
+                    throw CliFailure(
+                        "invalid_state",
+                        "Approval predates approver identity. Feedback revisions are not available for this run."
+                    )
+                }
+            }
             var published DateTimeOffset
             if run.PublishedAt == "" || run.PublishedHead != run.Commit {
-                Publication.ObserveHead(run, Amendment.Pull(run, run.Pr, run.Commit, ""), run.Commit)
+                Publication.Require(
+                    J.Items(run.Amendments).Count == 0,
+                    "Published head time is unavailable for this amended run"
+                )
+                Publication.ObserveHead(run, Amendment.Pull(run, run.Pr, run.Commit, ""), run.Commit, original: true)
                 run.Save(directory)
             }
             let stamp = run.PublishedAt
@@ -118,14 +133,6 @@ internal class FeedbackRevision {
                 DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out published),
                 "Published head time is unavailable"
             )
-            var approver int64
-            if !run.Gratis {
-                let authority = Amendment.Authority(run, nil)
-                approver = CoordinationState.Parse(J.Get(authority, "state")).Approval?.Approver ?? 0
-                if approver <= 0 {
-                    throw CoordinationState.ApprovalFailure(run.Repo, run.Issue, "Approval has no approver identity.")
-                }
-            }
             let items = List[JsonElement]()
             let counted = HashSet[string](StringComparer.OrdinalIgnoreCase)
             let prefix = "repos/" + run.Repo + "/"
@@ -439,7 +446,6 @@ internal class FeedbackRevision {
             Publication.Require(Pending(directory, run), "No saved feedback revision is ready")
             let location = Location(directory, run.FeedbackRound)
             let revision = Data.Load(location)
-            Publication.Require(revision.State == "generated", "Feedback inference did not complete successfully")
             let checkout = Verification.Candidate(Path.Combine(location, "checkout"))
             Publication.Require(
                 Commands.Git(checkout, "rev-parse", "HEAD") == revision.Commit && Commands.Git(

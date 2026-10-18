@@ -1298,6 +1298,7 @@ internal partial class Fixture {
             body["html_url"] = JsonValue.Create("https://github.com/owner/project/pull/" + number.ToString())
             body["state"] = JsonValue.Create("open")
             body["updated_at"] = JsonValue.Create(DateTimeOffset.UtcNow.ToString("O"))
+            body["created_at"] = body["updated_at"]?.DeepClone()
             body["user"] = Check.Map("login", State["viewer_login"] ?? JsonValue.Create(actor), "id", actorId)
             body["head"] = Check.Map(
                 "sha",

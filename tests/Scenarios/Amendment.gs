@@ -2358,6 +2358,52 @@ internal class AmendmentFlow {
             Once(test.Flow, 1)
         }
 
+        private func RestoreMerged(binary string) {
+            using let test = PublishedContribution.Create(binary)
+            let flow = test.Coordination.Flow
+            let run = test.Run
+            let path = Path.Combine(run, "run.json")
+            let saved = Saved(run)
+            let commit = Check.Text(saved["commit"])
+            saved["state"] = JsonValue.Create("generated")
+            saved.AsObject().Remove("published_at")
+            saved.AsObject().Remove("published_head")
+            File.WriteAllText(path, saved.ToJsonString())
+            flow.Reload()
+            let pull = flow.State["pulls"]?[0] ?? throw Exception("Missing PR")
+            pull["updated_at"] = JsonValue.Create("2099-01-01T00:00:00Z")
+            flow.Save()
+            flow.Call([]string{"submit", "--run", run, "--yes"})
+            Check.That(
+                Check.Text(Saved(run)["published_at"]) == Check.Text(pull["created_at"]),
+                "Restored original head used a late cutoff"
+            )
+
+            File.WriteAllText(Path.Combine(flow.Upstream, "target-update.txt"), "Owner target update\n")
+            flow.Commit("Advance target for receipt restore")
+            let checkout = Path.Combine(run, "checkout")
+            flow.Git("-C", checkout, "fetch", flow.Upstream, "main")
+            flow.DonorGit(checkout, "merge", "--no-ff", "--no-edit", "FETCH_HEAD")
+            let merged = flow.Git("-C", checkout, "rev-parse", "HEAD")
+            let fork = Path.Combine(flow.Bin, "fork")
+            flow.Git("-C", fork, "fetch", checkout, merged)
+            flow.Git("-C", flow.Upstream, "fetch", checkout, merged)
+            flow.Git("-C", fork, "update-ref", "refs/heads/" + Check.Text(saved["branch"]), merged)
+            flow.Reload()
+            let head = flow.State["pulls"]?[0]?["head"] ?? throw Exception("Missing PR head")
+            head["sha"] = JsonValue.Create(merged)
+            flow.Save()
+            flow.Receipt("owner/project#10", owner: true)
+            File.WriteAllText(path, saved.ToJsonString())
+            flow.Call([]string{"submit", "--run", run, "--yes"})
+            let restored = Saved(run)
+            Check.That(
+                Check.Text(restored["state"]) == "published" && Check.Text(restored["commit"]) == commit,
+                "Clean merge prevented publication restore"
+            )
+            Check.That(Check.Text(restored["published_head"]) == "", "Receipt restore stamped an unrecorded merge head")
+        }
+
         internal func All(binary string, only string = "", partition int32 = 0) {
             var matched bool
             var index int32
@@ -2391,7 +2437,8 @@ internal class AmendmentFlow {
                     "V2Recovery",
                     async (value string) -> V2(value, "recovery", native: true, modelPolicy: "unrestricted")
                 ),
-                TestCase[string]("V2Stale", async (value string) -> V2Stale(value))
+                TestCase[string]("V2Stale", async (value string) -> V2Stale(value)),
+                TestCase[string]("RestoreMerged", async (value string) -> RestoreMerged(value))
             } {
                 index++
                 if (partition == 1 && index > 16) || (partition == 2 && index <= 16) {

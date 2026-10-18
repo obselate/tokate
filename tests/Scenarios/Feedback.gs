@@ -101,9 +101,28 @@ internal class FeedbackChecks {
             let previous = Check.Text(original["commit"])
             Feedback(flow, run)
             flow.Reload()
+            let legacy = Saved(run)
+            legacy.AsObject().Remove("published_at")
+            legacy.AsObject().Remove("published_head")
+            File.WriteAllText(Path.Combine(run, "run.json"), legacy.ToJsonString())
+            let originalPull = flow.State["pulls"]?[0] ?? throw Exception("Missing pull")
+            Check.That(
+                Check.Text(original["published_at"]) == Check.Text(originalPull["created_at"]),
+                "Original head used a late publication cutoff"
+            )
+            originalPull["updated_at"] = JsonValue.Create(
+                DateTimeOffset
+                    .Parse(Check.Text(original["published_at"]), CultureInfo.InvariantCulture)
+                    .AddHours(1)
+                    .ToString("O")
+            )
             flow.State["feedback_result"] = JsonValue.Create("")
             flow.Save()
             Check.Envelope(Work(flow, run, 1), "work", "error", "verification_failed")
+            Check.That(
+                Check.Text(Saved(run)["published_at"]) == Check.Text(original["published_at"]),
+                "Legacy feedback did not use PR creation time"
+            )
             Check.That(
                 Check.Text(Saved(Path.Combine(run, "feedback", "1"))["state"]) == "failed",
                 "Rejected feedback stayed pending"
@@ -173,6 +192,15 @@ internal class FeedbackChecks {
                     "Feedback replaced original attribution: " + field
                 )
             }
+            published.AsObject().Remove("published_at")
+            published.AsObject().Remove("published_head")
+            File.WriteAllText(Path.Combine(run, "run.json"), published.ToJsonString())
+            let unstamped = File.ReadAllText(Path.Combine(run, "run.json"))
+            Check.Envelope(Work(flow, run, 1), "work", "error", "invalid_state")
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "run.json")) == unstamped,
+                "Amended legacy feedback fabricated a publication time"
+            )
             Console.WriteLine(
                 "PASS managed feedback filters numeric authors, bounds untrusted text and recovers from owner rejection"
             )
