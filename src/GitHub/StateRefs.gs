@@ -3,9 +3,14 @@ package Tokate
 import System
 import System.Collections.Generic
 import System.Text.Json
+import System.Text.RegularExpressions
 
 internal class StateRefs {
     shared {
+        private const ZeroOid string = "0000000000000000000000000000000000000000"
+
+        private const LegacyMigrationLimit int32 = 20
+
         internal func Read(repo string, name string) JsonElement {
             let reference = GitHub.Api("repos/" + repo + "/git/ref/" + name, missing: true)
             return reference.ValueKind != JsonValueKind.Undefined ? reference:
@@ -41,11 +46,10 @@ internal class StateRefs {
             expires int64 = 0,
             legacy bool = false
         ) {
-            const zero string = "0000000000000000000000000000000000000000"
             let updates = List[Object]{
                 map[string, Object?]{
                     "name": "refs/" + name,
-                    "beforeOid": legacy ? zero: expected,
+                    "beforeOid": legacy ? ZeroOid: expected,
                     "afterOid": next,
                     "force": false
                 }
@@ -55,13 +59,49 @@ internal class StateRefs {
                     map[string, Object?]{
                         "name": GitHub.HeadsRefPrefix + name,
                         "beforeOid": expected,
-                        "afterOid": zero,
+                        "afterOid": ZeroOid,
                         "force": false
                     }
                 )
             }
 
-            let repositoryId = J.Text(GitHub.Api("repos/" + repo), "node_id")
+            Write(J.Text(GitHub.Api("repos/" + repo), "node_id"), updates, expires)
+        }
+
+        internal func MigrateLegacy(repo string) {
+            let branches = GitHub.Api("repos/" + repo + "/git/matching-refs/heads/tokate/")
+            var count int32
+            var repositoryId string = ""
+            for branch in J.Items(branches) {
+                let name = J.Text(branch, "ref")
+                if !Regex.IsMatch(name, "\\Arefs/heads/tokate/(access|contributions/[0-9]+)\\z") {
+                    continue
+                }
+                if count++ == LegacyMigrationLimit {
+                    break
+                }
+                try {
+                    if repositoryId == "" {
+                        repositoryId = J.Text(GitHub.Api("repos/" + repo), "node_id")
+                    }
+                    let hidden = name.Replace(GitHub.HeadsRefPrefix, "refs/")
+                    let sha = RepositoryIdentity.CommitSha(J.Text(J.Get(branch, "object"), "sha"))
+                    let updates = List[Object]()
+                    let reference = GitHub.Api("repos/" + repo + "/git/ref/" + hidden.Substring(5), missing: true)
+                    if reference.ValueKind == JsonValueKind.Undefined {
+                        updates.Add(
+                            map[string, Object?]{"name": hidden, "beforeOid": ZeroOid, "afterOid": sha, "force": false}
+                        )
+                    }
+                    updates.Add(
+                        map[string, Object?]{"name": name, "beforeOid": sha, "afterOid": ZeroOid, "force": false}
+                    )
+                    Write(repositoryId, updates)
+                } catch { }
+            }
+        }
+
+        private func Write(repositoryId string, updates List[Object], expires int64 = 0) {
             if repositoryId == "" {
                 throw Exception("Missing repository node identity")
             }

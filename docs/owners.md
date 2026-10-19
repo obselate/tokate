@@ -177,7 +177,7 @@ Tokate keeps its records in hidden refs. They are not in the branch list.
 | `refs/tokate/access` | Donor trust and denials |
 | `refs/tokate/contributions/N` | Reservation and publication record for issue N |
 
-Legacy `tokate/` state branches are read when the hidden ref is absent. The next successful write creates the hidden ref and deletes the legacy branch.
+Legacy `tokate/` state branches are read when the hidden ref is absent. The coordinator moves them to hidden refs automatically.
 
 Donor PR head branches, such as `tokate/v2-...`, are in donor forks. They are not records.
 

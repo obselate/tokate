@@ -49,6 +49,8 @@ internal partial class CoordinationFlow : CoordinationFixture {
                 "CoordinatorPermissions",
                 "HiddenStateRefs",
                 "HiddenRefConflicts",
+                "LegacyRefCleanup",
+                "LegacyRefCleanupFailures",
                 "LabelApprovalPermissions",
                 "LabelApprovalLifecycle",
                 "LabelApprovalSafety",
@@ -125,6 +127,16 @@ internal partial class CoordinationFlow : CoordinationFixture {
                     }
                     case "HiddenRefConflicts" {
                         HiddenRefConflicts(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "LegacyRefCleanup" {
+                        LegacyRefCleanup(binary)
+                        Console.WriteLine("PASS V2 " + name)
+                        continue
+                    }
+                    case "LegacyRefCleanupFailures" {
+                        LegacyRefCleanupFailures(binary)
                         Console.WriteLine("PASS V2 " + name)
                         continue
                     }

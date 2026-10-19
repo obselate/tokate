@@ -104,7 +104,7 @@ pin change, confirm that Actions permits
 `obselate/tokate/.github/workflows/tokate-shared.yml` at the new commit.
 Otherwise every request stays pending. Tokate keeps its records in hidden refs
 `refs/tokate/access` and `refs/tokate/contributions/N`. They are not in the branch
-list. Legacy `tokate/` state branches are migrated on the next write.
+list. The coordinator moves legacy `tokate/` state branches automatically.
 
 Before acceptance, inspect the diff and run `tokate checks PR`. It checks the receipt and CI.
 Require green CI on the exact reviewed head. Inspect fork changes before authorizing
