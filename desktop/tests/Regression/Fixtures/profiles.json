@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"defaults","status":"ok","exit_code":0,"data":{"default":null,"profiles":{"local":{"harness":"pi","provider":"local-chat-completions","model":"flash","effort":"low"},"omp-flash":{"harness":"omp","provider":"openrouter","model":"~deepseek/deepseek-flash-latest","effort":"low"}}},"error":null,"next_actions":[],"truncated":false}

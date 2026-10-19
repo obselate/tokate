@@ -1,0 +1,1 @@
+{"schema_version":1,"command":"work","status":"error","exit_code":1,"data":{"repo":"obselate/tokate-practice","issue":"","donor":"","pr":""},"error":{"code":"confirmation_required","message":"Donation stop requires --yes. Nothing changed."},"next_actions":[],"truncated":false}

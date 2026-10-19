@@ -1,0 +1,8 @@
+obselate/tokate-practice
+Harness: codex
+Model: gpt-6.1-sol
+Effort: high
+Per task: 1800 seconds
+Total: until stopped
+Preview only; use --yes to apply these changes.
+tokate: Repository work requires --yes. No claim or inference started.

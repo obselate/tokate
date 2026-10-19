@@ -1,0 +1,105 @@
+package TokateDesktop
+
+import System
+
+data struct Run {
+    var Path string
+    var Repo string
+    var Issue int32
+    var State string
+    var FailureReason string
+    var ErrorMessage string
+    var Pr int32
+    var Harness string
+    var Provider string
+    var Model string
+    var Effort string
+    var CodingSeconds int32
+    var VerificationReserve int32
+    var Seconds int32
+    var Unlimited bool
+    var Approval string
+    var DonorId string
+    /// The published candidate commit.
+    var Commit string
+    /// The directory of the saved checkout.
+    var Checkout string
+    /// The donor does the work without a managed donation.
+    var External bool
+    var Gratis bool
+    /// The commit of an amendment that waits for the coordinator, or "".
+    var Amending string
+    /// The command that Tokate gives to finish that amendment.
+    var Finish []string
+    var Guidance string
+    var Warning string
+    var OwnerRecovery bool
+
+    prop Identity string -> Repo + " #" + Issue.ToString()
+
+    /// True when the run names the whole tool of the donation, which a tool declaration needs.
+    prop DeclaresTool bool -> Harness != "" && Provider != "" && Model != "" && Effort != ""
+
+    prop Readable bool -> Repo != "" && Issue >= 1
+
+    prop CodingTime string -> Unlimited ? "Unlimited": Run.Minutes(CodingSeconds)
+
+    prop VerificationTime string -> Run.Minutes(VerificationReserve)
+
+    /// The donor's name for the local state.
+    prop Status string -> switch State {
+        case "claim_pending": "Awaiting reservation"
+        case "claimed": "Claimed, not started"
+        case "preparing": "Preparing workspace"
+        case "running": "Donation in progress"
+        case "failed": FailureReason == "inference_interrupted" ? "Interrupted": FailureReason == "verification_failed" ? "Verification failed": "Initial donation failed"
+        case "inference_interrupted": "Interrupted"
+        case "generated": "Ready to submit"
+        case "published": "Awaiting review"
+        default: State.Replace('_', ' ')
+    }
+
+    shared {
+        func Minutes(seconds int32) string -> (seconds / 60).ToString() + (seconds / 60 == 1 ? " minute": " minutes")
+
+        let Empty Run = Run{
+            Path: "",
+            Repo: "",
+            State: "",
+            FailureReason: "",
+            ErrorMessage: "",
+            Harness: "",
+            Provider: "",
+            Model: "",
+            Effort: "",
+            Approval: "",
+            DonorId: "",
+            Commit: "",
+            Checkout: "",
+            Amending: "",
+            Finish: []string{},
+            Guidance: "",
+            Warning: "",
+        }
+    }
+}
+
+data struct Reservation {
+    var ApprovalId string
+    var Revoked bool?
+    var Lease string
+    var Attempt string
+    var Actor string
+    var Status string
+    var Expires int64?
+
+    func IsReadyFor(run Run, claimId string, now int64) bool ->
+    ApprovalId == run.Approval &&
+        Revoked == false &&
+        Lease == claimId &&
+        Attempt == claimId &&
+        Actor == run.DonorId &&
+        Status == "active" &&
+        Expires != nil &&
+        Expires!! > now
+}

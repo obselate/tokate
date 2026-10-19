@@ -1,0 +1,18 @@
+<Project Sdk="Gsharp.NET.Sdk/0.4.1150">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Regression/**/*.gs" />
+    <Compile Include="../DesktopApp.gs;../Models/**/*.gs;../Services/**/*.gs;../Components/**/*.gs;../Views/**/*.gs" />
+    <PackageReference Include="Goo" Version="0.7.27" />
+    <PackageReference Include="Goo.Svg" Version="0.7.27" />
+    <PackageReference Include="Goo.Widgets" Version="0.2.15" />
+    <PackageReference Include="Goo.Animations" Version="0.2.5" />
+    <GooShaderEffect Include="../Shaders/fresco.slang" TargetPath="Shaders/fresco.goo-effect" />
+    <Content Include="../Assets/*" Link="Assets/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Regression/Fixtures/donation-gratis-preview.*" Link="Fixtures/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

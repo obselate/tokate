@@ -6,7 +6,6 @@ __pycache__/
 bin/
 obj/
 artifacts/
-/branding/
 .tokate/
 .tokate-scratch/
 .env
@@ -18,4 +17,5 @@ artifacts/
 /CONVENTIONS.md
 /.codex/hooks.json
 /.codex/load_constitution.py
+/branding/
 /.omp/

@@ -1,0 +1,89 @@
+package TokateDesktop
+
+import Goo
+import System
+import System.Collections.Generic
+
+/// Who may claim approved issues. `Stacked` gives each choice its own line.
+data struct EligibilityPicker {
+    var Selected string
+    var Disabled bool
+    var Stacked bool
+    var OnChoose Action[string]?
+
+    func Build() Blob {
+        let choose = OnChoose
+        let cards = List[Blob]()
+        for mode in Eligibility.All {
+            let value = mode
+            let card = ChoiceCard{
+                Title: Eligibility.Label(mode),
+                Detail: Eligibility.Detail(mode),
+                Icon: mode == "open" ? "public": "verified_user",
+                Selected: Selected == mode,
+                OnChoose: () -> choose?.Invoke(value),
+                Disabled: Disabled,
+            }.Build()
+            cards.Add(Stacked ? Container{FlexDirection: FlexDirection.Row, Width: Percent(100), card}: card)
+        }
+        return Panel{
+            Children: []Blob{
+                IconHeading{Icon: "group", Content: "Who can contribute", Detail: "Access to approved issues"}.Build(),
+                Row{Children: cards.ToArray()}.Build(),
+            },
+        }.Build()
+    }
+}
+
+/// All supported models, or only the selected ones.
+data struct ModelPolicyPicker {
+    var Policy string
+    var Disabled bool
+    var OnChoose Action[string]?
+
+    func Build() Blob {
+        let choose = OnChoose
+        return Row{
+            Children: []Blob{
+                ChoiceCard{
+                    Title: "All supported",
+                    Detail: "Each model that a harness accepts",
+                    Icon: "apps",
+                    Selected: Policy == "unrestricted",
+                    OnChoose: () -> choose?.Invoke("unrestricted"),
+                    Disabled: Disabled,
+                }.Build(),
+                ChoiceCard{
+                    Title: "Selected models",
+                    Detail: "Only the models in your list",
+                    Icon: "checklist",
+                    Selected: Policy != "unrestricted",
+                    OnChoose: () -> choose?.Invoke("whitelist"),
+                    Disabled: Disabled,
+                }.Build(),
+            },
+        }.Build()
+    }
+}
+
+/// The donation time limit.
+data struct LimitsEditor {
+    var Minutes string
+    var Placeholder string
+    var Disabled bool
+    var OnMinutes Action[string]?
+
+    func Build() Blob -> Panel{
+        Children: []Blob{
+            IconHeading{Icon: "schedule", Content: "Time limit", Detail: "Maximum time per donation"}.Build(),
+            InputField{
+                Label: "Maximum minutes per donation",
+                Value: Minutes,
+                OnChange: OnMinutes,
+                Placeholder: Placeholder,
+                Width: AppTheme.FieldWidth,
+                Disabled: Disabled,
+            }.Build(),
+        },
+    }.Build()
+}

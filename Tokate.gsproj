@@ -14,6 +14,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="tests/**/*.gs" />
+    <Compile Remove="desktop/**/*.gs" />
     <EmbeddedResource Include="templates/*" />
     <EmbeddedResource Include=".github/workflows/tokate-shared.yml" LogicalName="Tokate.templates.coordinator.yml" />
     <EmbeddedResource Include="site/install.sh" LogicalName="Tokate.templates.install.sh" />
