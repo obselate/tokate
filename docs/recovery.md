@@ -46,6 +46,11 @@ It uses the completed work without new inference. Do not start another run.
 
 ## Correct completed work before publication
 
+For `verification_failed` after successful inference, inspect the saved verification
+results, then edit and commit the correction in the checkout. You can run
+`tokate amend 42 --time 5m` directly. Tokate preserves the original failed evidence
+and verifies the corrected commit with the separate budget, without new inference.
+
 1. Archive the completed evidence before editing.
 
    ```sh

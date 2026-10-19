@@ -389,6 +389,10 @@ internal class Amendment {
                 Publication.Find(run, default(JsonElement), newIntent: state.Contribution == nil)
             }
 
+            if !continuing && !savedCorrection && run.FailureReason == "verification_failed" {
+                OriginalEvidence.Capture(directory, run, record)
+            }
+
             if !continuing || existing != nil {
                 OriginalEvidence.Load(directory, run)
             }
