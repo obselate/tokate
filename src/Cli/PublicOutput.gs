@@ -552,6 +552,10 @@ internal class PublicOutput {
                         Actions.Add(command)
                     }
 
+                    if Command == "release" {
+                        Actions.RemoveAll(action -> action[1] == "work")
+                    }
+
                     if Flag("busy") {
                         Actions.RemoveAll(action -> action[1] != "status")
                     } else if code != "stale_approval" && code != "invalid_state" && !Flag("finished") {

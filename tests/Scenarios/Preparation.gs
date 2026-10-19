@@ -392,6 +392,110 @@ internal class PreparationChecks {
             }
         }
 
+        private func ClaimRelease(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize()
+            let flow = test.Flow
+            flow.Call(AcquisitionArgs(flow, "claim"), 8)
+            let run = RunPath(flow)
+            let path = Path.Combine(run, "run.json")
+            let original = File.ReadAllText(path)
+            let args = []string{"release", "--yes", "--run", run, "--json"}
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
+            for mode in[]string{
+                "pending",
+                "accepted",
+                "revoked",
+                "actor",
+                "unrecorded",
+                "expired",
+                "replaced",
+                "invalid"
+            } {
+                baseline.Restore()
+                flow.Reload()
+                let claim = flow.State["request_comments"]?[0] ?? throw Exception("Missing claim")
+                if mode == "pending" {
+                    for repeat in 0 ... 2 {
+                        let pending = Check.Envelope(flow.Call(args, 8), "release", "pending")
+                        Check.Contains(pending["next_actions"]?.ToJsonString() ?? "", "release")
+                        Check.That(
+                            !(pending["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
+                            "Pending release recommends inference"
+                        )
+                    }
+                    Check.That(File.ReadAllText(path) == original, "Pending release changed saved claim")
+                }
+                if mode == "unrecorded" {
+                    test.Claim()
+                } else if mode == "invalid" {
+                    let saved = Check.Json(original)
+                    saved["state"] = JsonValue.Create("validating")
+                    File.WriteAllText(path, saved.ToJsonString())
+                } else {
+                    test.Coordinate(PostedEvent(test, claim))
+                    if mode == "revoked" {
+                        flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
+                    } else if mode == "actor" {
+                        flow.Reload()
+                        flow.State["viewer_id"] = JsonValue.Create(999)
+                        flow.Save()
+                    } else if mode == "expired" {
+                        test.Expire()
+                    } else if mode == "replaced" {
+                        let release = test.ClaimRequest()
+                        release["action"] = JsonValue.Create("release")
+                        test.Coordinate(test.Event(release))
+                        test.Claim()
+                    }
+                }
+                if mode == "pending" || mode == "accepted" || mode == "revoked" {
+                    Check.Envelope(
+                        flow.Call([]string{"release", "--run", run, "--json"}, 1),
+                        "release",
+                        "error",
+                        "confirmation_required"
+                    )
+                    Check.That(File.ReadAllText(path) == original, "Release preview changed saved claim")
+                    flow.Call(args, 8)
+                    let saved = File.ReadAllText(path)
+                    flow.Call(args, 8)
+                    Check.That(File.ReadAllText(path) == saved, "Release retry changed its request")
+                    flow.Reload()
+                    Check.That(Check.Text(flow.State["request_count"]) == "2", "Release duplicated a request")
+                    let release = flow.State["request_comments"]?[1] ?? throw Exception("Missing release")
+                    test.Coordinate(PostedEvent(test, release))
+                    let complete = Check.Envelope(flow.Call(args), "release", "ok")
+                    Check.That(
+                        !(complete["next_actions"]?.ToJsonString() ?? "").Contains("\"work\""),
+                        "Accepted release recommends inference"
+                    )
+                    Check.That(
+                        Check.Text(test.State()["state"]?["reservation"]?["status"]) == "released",
+                        "Unprepared claim was not released"
+                    )
+                    Check.That(File.ReadAllText(path) == original, "Release prepared saved claim")
+                    flow.Call([]string{"work", "--yes", "--run", run}, 1)
+                } else {
+                    let saved = File.ReadAllText(path)
+                    let failure = flow.Call(args, 1)
+                    if mode == "invalid" {
+                        Check.Contains(failure.Output, "validating")
+                        Check.Contains(failure.Output, "tokate status")
+                    }
+                    Check.That(File.ReadAllText(path) == saved, "Rejected release changed saved claim")
+                    flow.Reload()
+                    Check.That(Check.Text(flow.State["request_count"]) == "1", "Rejected release posted a request")
+                }
+                Check.That(
+                    !Directory.Exists(Path.Combine(run, "checkout")) && !Directory.Exists(Path.Combine(run, "coding")),
+                    "Release prepared a workspace"
+                )
+                flow.NoInference()
+                flow.NoPr()
+            }
+        }
+
         private func Partial(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
@@ -1420,6 +1524,7 @@ internal class PreparationChecks {
             for test in[]TestCase[string]{
                 TestCase[string]("ExternalClaim", async (value string) -> ExternalClaim(value)),
                 TestCase[string]("Reservation", async (value string) -> Reservation(value)),
+                TestCase[string]("ClaimRelease", async (value string) -> ClaimRelease(value)),
                 TestCase[string]("Partial", async (value string) -> Partial(value)),
                 TestCase[string]("Handoff", async (value string) -> Handoff(value)),
                 TestCase[string]("HandoffExternal", async (value string) -> Handoff(value, true)),

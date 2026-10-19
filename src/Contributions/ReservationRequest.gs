@@ -74,6 +74,47 @@ internal class ReservationRequest {
             return 0
         }
 
+        private func InvalidState(directory string, run Data, action string) CliFailure -> CliFailure(
+            "invalid_state",
+            "Cannot " +
+                action +
+                " saved run in state " +
+                run.State +
+                ". Inspect it with tokate status --run " +
+                directory
+        )
+
+        private func Claim(directory string, run Data, state CoordinationState) string {
+            let request = run.ClaimRequest
+            let declaration = RequestMetadata.Request(request)
+            if declaration.Action != "claim" ||
+                declaration.Approval != run.Approval ||
+                run.Gratis ||
+                (run.Source != "tokate" && run.Source != "external") ||
+                run.HasId ||
+                run.HasAttempt ||
+                run.HasPreparationIdentity {
+                throw InvalidState(directory, run, "release")
+            }
+
+            let outcome = RequestMetadata.Recorded(state, run.DonorId, request)
+            if outcome == nil {
+                if state.Sha != declaration.Expected {
+                    throw InvalidState(directory, run, "release")
+                }
+                return ""
+            }
+
+            if (outcome.Lease?.Lease ?? "") != declaration.Uuid ||
+                (outcome.Lease?.Attempt ?? "") != declaration.Uuid ||
+                (state.Lease?.Lease ?? "") != declaration.Uuid ||
+                outcome.Reservation == "" ||
+                outcome.Reservation != (state.Lease?.Reservation ?? "") {
+                throw InvalidState(directory, run, "release")
+            }
+            return outcome.Reservation
+        }
+
         internal func Run(args Args) int32 {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
@@ -81,8 +122,10 @@ internal class ReservationRequest {
             Output.Sink.RunDirectory = directory
             let action = args.Command
 
-            if !LeaseLifecycle.Transition(action) || run.Version != Data.FormatVersion || run.Id == "" {
-                throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")
+            if !LeaseLifecycle.Transition(action) ||
+                run.Version != Data.FormatVersion ||
+                (run.Id == "" && !(action == "release" && run.State == "claim_pending")) {
+                throw InvalidState(directory, run, action)
             }
 
             let viewer = GitHub.Api("user")
@@ -127,7 +170,26 @@ internal class ReservationRequest {
                 }
             }
 
-            if (state.Identity?.Id ?? "") != run.Id {
+            let contribution = action == "release" &&
+                run.State == "claim_pending" ? Claim(directory, run, state): run.Id
+            if contribution == "" {
+                Output
+                    .Sink
+                    .ResultData = map[string, Object?]{
+                    "run_directory": directory,
+                    "operation": action,
+                    "pending": true,
+                    "state": run.State,
+                    "state_sha": state.Sha
+                }
+                Output.Sink.Actions.Add([]string{"tokate", "release", "--run", directory, "--json"})
+                Output.Sink.Message(
+                    "Claim pending. Check release again after coordinator acceptance. Saved work: " + directory
+                )
+                return Output.PendingExitCode
+            }
+
+            if (state.Identity?.Id ?? "") != contribution {
                 throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
             }
 
