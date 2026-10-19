@@ -1353,6 +1353,34 @@ internal class PreparationChecks {
             flow.NoPr()
         }
 
+        private func AcceptedClaim(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize()
+            let flow = test.Flow
+            let args = List[string](AcquisitionArgs(flow, "work"))
+            args.AddRange([]string{"--harness", "codex", "--provider", "openai", "--json"})
+            Check.Envelope(flow.Call(args.ToArray(), 8), "work", "pending")
+            let run = RunPath(flow)
+            let uuid = Check.Text(Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["claim_request"]?["uuid"])
+            flow.CoordinatePosted()
+            flow.NoInference()
+            Check.Envelope(flow.Call(args.ToArray()), "work", "ok")
+            let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            Check.That(
+                RunPath(flow) == run && Check.Text(saved["attempt"]) == uuid && Check.Text(
+                    saved["state"]
+                ) == "generated",
+                "Repeated work did not finish the original accepted attempt"
+            )
+            flow.Reload()
+            Check.That(
+                Check.Text(flow.State["request_count"]) == "1" && Check.Text(flow.State["exec_count"]) == "1",
+                "Repeated work duplicated the claim or inference"
+            )
+            Check.That(File.Exists(Path.Combine(run, "claim.posting.json")), "Resume lost the posting journal")
+            flow.NoPr()
+        }
+
         private func ClaimGates(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
@@ -1484,6 +1512,7 @@ internal class PreparationChecks {
                 TestCase[string]("HandoffExternal", async (value string) -> Handoff(value, true)),
                 TestCase[string]("Acquisition", async (value string) -> Acquisition(value)),
                 TestCase[string]("PendingClaim", async (value string) -> PendingClaim(value)),
+                TestCase[string]("AcceptedClaim", async (value string) -> AcceptedClaim(value)),
                 TestCase[string]("ClaimGates", async (value string) -> ClaimGates(value)),
                 TestCase[string]("PendingAuthority", async (value string) -> PendingAuthority(value)),
                 TestCase[string]("ClaimRecovery", async (value string) -> ClaimRecovery(value)),

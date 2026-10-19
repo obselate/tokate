@@ -24,6 +24,24 @@ internal class ContributionPreparation {
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
             Bind(run, state)
 
+            if args.Command == "work" && args.Get("continue-from") == "" && run.Attempt != "" {
+                if let saved = RunStorage.Saved(RunStorage.Store(args), run.Attempt) {
+                    if !AttemptContinuation.Stopped(saved.Run) {
+                        if run.Seconds != saved.Run.Seconds || !RequestData.Same(run.Tools, saved.Run.Tools) {
+                            throw CliFailure(
+                                "invalid_state",
+                                "Selection or budget conflicts with the saved claim; use " + Output.Sink.Command(
+                                    []string{"tokate", "work", "--run", saved.Location}
+                                )
+                            )
+                        }
+
+                        args.Values["--run"] = saved.Location
+                        return Resume(saved.Location, args)
+                    }
+                }
+            }
+
             let directory = Allocate(
                 args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
                 run,
