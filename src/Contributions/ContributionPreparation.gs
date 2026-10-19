@@ -399,12 +399,8 @@ internal class ContributionPreparation {
             Overlaps.RequireDependencies(run.Repo, run.Issue)
         }
 
-        private func Accepted(
-            run Data,
-            viewer JsonElement,
-            state CoordinationState,
-            outcome CoordinationState.ResultRecord?
-        ) {
+        internal func ClaimReservation(run Data, viewer JsonElement, state CoordinationState) string {
+            let outcome = RequestMetadata.Recorded(state, run.DonorId, run.ClaimRequest)
             let request = run.ClaimRequest
             let uuid = CoordinatorRequest.Parse(request).Uuid
             let reservation = state.Lease
@@ -420,6 +416,13 @@ internal class ContributionPreparation {
                 (reservation?.Attempt ?? "") != uuid {
                 throw CliFailure("stale_approval", "Exact claim outcome no longer owns the active lease or attempt")
             }
+
+            return reservation?.Reservation ?? ""
+        }
+
+        private func Accepted(run Data, viewer JsonElement, state CoordinationState) {
+            ClaimReservation(run, viewer, state)
+            let uuid = CoordinatorRequest.Parse(run.ClaimRequest).Uuid
 
             state.Reservation(J.Get(viewer, "id"))
             LeaseLifecycle.Fence(state, uuid)
@@ -501,12 +504,7 @@ internal class ContributionPreparation {
             }
 
             if let state = accepted {
-                let outcome = RequestMetadata.Recorded(
-                    state,
-                    RepositoryIdentity.PositiveId(J.Get(viewer, "id")),
-                    request
-                )
-                Accepted(run, viewer, state, outcome)
+                Accepted(run, viewer, state)
 
                 Bind(run, state)
 

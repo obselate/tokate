@@ -392,6 +392,64 @@ internal class PreparationChecks {
             }
         }
 
+        private func ClaimRelease(binary string) {
+            using let test = CoordinationFixture(binary)
+            test.Initialize()
+            let flow = test.Flow
+            flow.Call(AcquisitionArgs(flow, "claim"), 8)
+            let run = RunPath(flow)
+            let args = []string{"release", "--yes", "--run", run, "--json"}
+            using let baseline = FixtureSnapshot(flow.Temp.Root)
+            for mode in[]string{"pending", "revoked", "unrecorded", "replaced"} {
+                baseline.Restore()
+                flow.Reload()
+                let claim = flow.State["request_comments"]?[0] ?? throw Exception("Missing claim")
+                if mode == "pending" {
+                    let pending = Check.Envelope(flow.Call(args, 8), "release", "pending")
+                    Check.Contains(pending["next_actions"]?.ToJsonString() ?? "", "release")
+                }
+                if mode == "unrecorded" {
+                    test.Claim()
+                } else {
+                    test.Coordinate(PostedEvent(test, claim))
+                    if mode == "revoked" {
+                        flow.Call([]string{"revoke", "--yes", "owner/project#1"}, owner: true)
+                    } else if mode == "replaced" {
+                        let release = test.ClaimRequest()
+                        release["action"] = JsonValue.Create("release")
+                        test.Coordinate(test.Event(release))
+                        test.Claim()
+                    }
+                }
+                if mode == "pending" || mode == "revoked" {
+                    flow.Call(args, 8)
+                    flow.Reload()
+                    let release = flow.State["request_comments"]?[1] ?? throw Exception("Missing release")
+                    test.Coordinate(PostedEvent(test, release))
+                    Check.Envelope(flow.Call(args), "release", "ok")
+                    Check.That(
+                        Check.Text(test.State()["state"]?["reservation"]?["status"]) == "released",
+                        "Unprepared claim was not released"
+                    )
+                } else {
+                    Check.Envelope(
+                        flow.Call(args, 1),
+                        "release",
+                        "error",
+                        mode == "replaced" ? "stale_approval": "invalid_state"
+                    )
+                    flow.Reload()
+                    Check.That(Check.Text(flow.State["request_count"]) == "1", "Rejected release posted a request")
+                }
+                Check.That(
+                    !Directory.Exists(Path.Combine(run, "checkout")) && !Directory.Exists(Path.Combine(run, "coding")),
+                    "Release prepared a workspace"
+                )
+                flow.NoInference()
+                flow.NoPr()
+            }
+        }
+
         private func Partial(binary string) {
             using let test = CoordinationFixture(binary)
             test.Initialize()
@@ -1420,6 +1478,7 @@ internal class PreparationChecks {
             for test in[]TestCase[string]{
                 TestCase[string]("ExternalClaim", async (value string) -> ExternalClaim(value)),
                 TestCase[string]("Reservation", async (value string) -> Reservation(value)),
+                TestCase[string]("ClaimRelease", async (value string) -> ClaimRelease(value)),
                 TestCase[string]("Partial", async (value string) -> Partial(value)),
                 TestCase[string]("Handoff", async (value string) -> Handoff(value)),
                 TestCase[string]("HandoffExternal", async (value string) -> Handoff(value, true)),

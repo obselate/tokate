@@ -74,6 +74,16 @@ internal class ReservationRequest {
             return 0
         }
 
+        private func InvalidState(directory string, run Data, action string) CliFailure -> CliFailure(
+            "invalid_state",
+            "Cannot " +
+                action +
+                " saved run in state " +
+                run.State +
+                ". Inspect it with tokate status --run " +
+                directory
+        )
+
         internal func Run(args Args) int32 {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
@@ -81,8 +91,10 @@ internal class ReservationRequest {
             Output.Sink.RunDirectory = directory
             let action = args.Command
 
-            if !LeaseLifecycle.Transition(action) || run.Version != Data.FormatVersion || run.Id == "" {
-                throw CliFailure("invalid_state", "Choose pause, resume, renew or release for a prepared version 2 run")
+            if !LeaseLifecycle.Transition(action) ||
+                run.Version != Data.FormatVersion ||
+                (run.Id == "" && !(action == "release" && run.State == "claim_pending")) {
+                throw InvalidState(directory, run, action)
             }
 
             let viewer = GitHub.Api("user")
@@ -127,7 +139,36 @@ internal class ReservationRequest {
                 }
             }
 
-            if (state.Identity?.Id ?? "") != run.Id {
+            var contribution = run.Id
+            if contribution == "" {
+                if RequestMetadata.Recorded(state, run.DonorId, run.ClaimRequest) == nil {
+                    if state.Sha != CoordinatorRequest.Parse(run.ClaimRequest).Expected {
+                        throw InvalidState(directory, run, action)
+                    }
+
+                    Output
+                        .Sink
+                        .ResultData = map[string, Object?]{
+                        "run_directory": directory,
+                        "operation": action,
+                        "pending": true,
+                        "state": run.State,
+                        "state_sha": state.Sha
+                    }
+                    Output.Sink.Actions.Add([]string{"tokate", "release", "--run", directory, "--json"})
+                    Output.Sink.Message(
+                        "Claim pending. Check release again after coordinator acceptance. Saved work: " +
+                            directory +
+                            " If the Tokate workflow failed: " +
+                            ApiTransport.MutationRecovery
+                    )
+                    return Output.PendingExitCode
+                }
+
+                contribution = ContributionPreparation.ClaimReservation(run, viewer, state)
+            }
+
+            if (state.Identity?.Id ?? "") != contribution {
                 throw CliFailure("stale_approval", "Saved contribution ownership was replaced")
             }
 
