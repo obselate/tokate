@@ -9,6 +9,8 @@ internal class StateRefs {
     shared {
         private const ZeroOid string = "0000000000000000000000000000000000000000"
 
+        private const LegacyMigrationLimit int32 = 20
+
         internal func Read(repo string, name string) JsonElement {
             let reference = GitHub.Api("repos/" + repo + "/git/ref/" + name, missing: true)
             return reference.ValueKind != JsonValueKind.Undefined ? reference:
@@ -75,7 +77,7 @@ internal class StateRefs {
                 if !Regex.IsMatch(name, "\\Arefs/heads/tokate/(access|contributions/[0-9]+)\\z") {
                     continue
                 }
-                if count++ == 20 {
+                if count++ == LegacyMigrationLimit {
                     break
                 }
                 try {
