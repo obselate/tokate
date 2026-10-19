@@ -112,13 +112,19 @@ internal class Coordinator {
 
         internal func Run(args Args) ValueTuple[JsonElement, string] {
             let repo = RepositoryIdentity.Repo(args.Need("repo"))
-            let event = RequestData.FileData(args.Need("event"), EventByteLimit)
-            if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
-                ApproveLabel(repo, event)
-                return ValueTuple[JsonElement, string](JsonElement{}, "")
-            }
+            try {
+                let event = RequestData.FileData(args.Need("event"), EventByteLimit)
+                if Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") == "issues" {
+                    ApproveLabel(repo, event)
+                    return ValueTuple[JsonElement, string](JsonElement{}, "")
+                }
 
-            return Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
+                return Process(repo, event, Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "")
+            } finally {
+                try {
+                    StateRefs.MigrateLegacy(repo)
+                } catch { }
+            }
         }
 
         private func Replay(

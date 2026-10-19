@@ -423,7 +423,7 @@ internal class EligibilityChecks {
             let path = test.Event(claim)
             test.Flow.ResetTraffic()
             let acquired = test.Coordinate(path, traffic: true)
-            test.Flow.Traffic(36, 3, 0, acquired)
+            test.Flow.Traffic(37, 3, 0, acquired)
             let run = test.Prepare("tokate")
             test.Flow.Call([]string{"work", "--yes", "--run", run})
             test.Flow.Call([]string{"submit", "--yes", "--run", run}, 8)

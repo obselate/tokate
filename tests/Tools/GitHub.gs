@@ -172,6 +172,7 @@ internal partial class Fixture {
             "ref",
             Check.Text(body["ref"] ?? update?["name"])
         )
+        call["updates"] = body["variables"]?["input"]?["refUpdates"]?.DeepClone()
         call["start"] = JsonValue.Create(Stopwatch.GetTimestamp())
         calls.Add(call)
         State["api_calls"] = calls
