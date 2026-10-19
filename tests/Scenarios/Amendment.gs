@@ -1196,6 +1196,47 @@ internal class AmendmentFlow {
             Once(flow, 1)
         }
 
+        private func VerificationRecovery(binary string) {
+            using let flow = NativeFixture(binary)
+            flow.Initialize()
+            flow.Approve()
+            let run = flow.Claim("60")
+            flow.Mode("verification_fail")
+            Check.Envelope(
+                flow.Call([]string{"work", "--yes", "--run", run, "--json"}, 1),
+                "work",
+                "error",
+                "verification_failed"
+            )
+            let original = File.ReadAllText(Path.Combine(run, "run.json"))
+            let failed = Read(run)
+            Check.That(
+                Check.Text(failed["turn_completed"]) == "true" && Check.Text(failed["inference_exit_code"]) == "0",
+                "Verification failure did not follow successful inference"
+            )
+            Check.That(!Directory.Exists(Path.Combine(run, "original-evidence")), "Original evidence already archived")
+            let commit = Correct(flow, run)
+            Amend(flow, run, commit, head: true, json: true)
+            flow.Publish(run)
+            let correction = Read(run, "amendments/" + commit + "/run.json")
+            Check.That(Check.Text(correction["seconds"]) == "30", "Correction reused the inference budget")
+            Check.That(
+                Check.Text(correction["verification"]?[0]?["exit_code"]) == "0",
+                "Correction skipped owner checks"
+            )
+            Check.That(Check.Text(Read(run)["commit"]) == commit, "Correction published another commit")
+            Check.That(
+                File.ReadAllText(Path.Combine(run, "original-evidence/run.json")) == original,
+                "Correction changed original failed run evidence"
+            )
+            Check.That(
+                Check.Text(Read(run, "original-evidence/verification.json")[0]?["exit_code"]) == "1",
+                "Correction lost the original failed owner check"
+            )
+            flow.Receipt("owner/project#10", owner: true)
+            Once(flow, 1)
+        }
+
         private func FirstVerification(binary string) {
             using let flow = NativeFixture(binary)
             flow.Initialize()
@@ -1511,6 +1552,10 @@ internal class AmendmentFlow {
                 flow.Call([]string{"work", "--yes", "--run", run}, 1)
                 let original = File.ReadAllText(Path.Combine(run, "run.json"))
                 Check.Contains(flow.Call([]string{"amend", "--yes", "--run", run}, 1).Error, "incomplete_turn")
+                Check.Contains(
+                    flow.Call([]string{"amend", "--yes", "--run", run, "--time", "30s"}, 1).Error,
+                    "incomplete_turn"
+                )
                 Check.That(
                     !Directory.Exists(Path.Combine(run, "original-evidence")),
                     "Incomplete turn archived evidence"
@@ -2412,6 +2457,7 @@ internal class AmendmentFlow {
                 TestCase[string]("Whitespace", async (value string) -> Whitespace(value)),
                 TestCase[string]("BinaryRename", async (value string) -> BinaryRename(value)),
                 TestCase[string]("FirstVerification", async (value string) -> FirstVerification(value)),
+                TestCase[string]("VerificationRecovery", async (value string) -> VerificationRecovery(value)),
                 TestCase[string]("OriginalTimeout", async (value string) -> OriginalTimeout(value)),
                 TestCase[string]("WrongTarget", async (value string) -> WrongTarget(value)),
                 TestCase[string]("Tools", async (value string) -> Tools(value)),
