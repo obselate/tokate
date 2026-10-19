@@ -84,37 +84,6 @@ internal class ReservationRequest {
                 directory
         )
 
-        private func Claim(directory string, run Data, state CoordinationState) string {
-            let request = run.ClaimRequest
-            let declaration = RequestMetadata.Request(request)
-            if declaration.Action != "claim" ||
-                declaration.Approval != run.Approval ||
-                run.Gratis ||
-                (run.Source != "tokate" && run.Source != "external") ||
-                run.HasId ||
-                run.HasAttempt ||
-                run.HasPreparationIdentity {
-                throw InvalidState(directory, run, "release")
-            }
-
-            let outcome = RequestMetadata.Recorded(state, run.DonorId, request)
-            if outcome == nil {
-                if state.Sha != declaration.Expected {
-                    throw InvalidState(directory, run, "release")
-                }
-                return ""
-            }
-
-            if (outcome.Lease?.Lease ?? "") != declaration.Uuid ||
-                (outcome.Lease?.Attempt ?? "") != declaration.Uuid ||
-                (state.Lease?.Lease ?? "") != declaration.Uuid ||
-                outcome.Reservation == "" ||
-                outcome.Reservation != (state.Lease?.Reservation ?? "") {
-                throw InvalidState(directory, run, "release")
-            }
-            return outcome.Reservation
-        }
-
         internal func Run(args Args) int32 {
             let directory = Path.GetFullPath(args.Need("run"))
             using let lease = RunStorage.Lease(directory)
@@ -170,23 +139,33 @@ internal class ReservationRequest {
                 }
             }
 
-            let contribution = action == "release" &&
-                run.State == "claim_pending" ? Claim(directory, run, state): run.Id
+            var contribution = run.Id
             if contribution == "" {
-                Output
-                    .Sink
-                    .ResultData = map[string, Object?]{
-                    "run_directory": directory,
-                    "operation": action,
-                    "pending": true,
-                    "state": run.State,
-                    "state_sha": state.Sha
+                if RequestMetadata.Recorded(state, run.DonorId, run.ClaimRequest) == nil {
+                    if state.Sha != CoordinatorRequest.Parse(run.ClaimRequest).Expected {
+                        throw InvalidState(directory, run, action)
+                    }
+
+                    Output
+                        .Sink
+                        .ResultData = map[string, Object?]{
+                        "run_directory": directory,
+                        "operation": action,
+                        "pending": true,
+                        "state": run.State,
+                        "state_sha": state.Sha
+                    }
+                    Output.Sink.Actions.Add([]string{"tokate", "release", "--run", directory, "--json"})
+                    Output.Sink.Message(
+                        "Claim pending. Check release again after coordinator acceptance. Saved work: " +
+                            directory +
+                            " If the Tokate workflow failed: " +
+                            ApiTransport.MutationRecovery
+                    )
+                    return Output.PendingExitCode
                 }
-                Output.Sink.Actions.Add([]string{"tokate", "release", "--run", directory, "--json"})
-                Output.Sink.Message(
-                    "Claim pending. Check release again after coordinator acceptance. Saved work: " + directory
-                )
-                return Output.PendingExitCode
+
+                contribution = ContributionPreparation.ClaimReservation(run, viewer, state)
             }
 
             if (state.Identity?.Id ?? "") != contribution {
