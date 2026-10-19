@@ -115,37 +115,44 @@ internal class RunStorage {
                 Int32.TryParse(name.Substring(prefix.Length), out number) ? number: 0
         }
 
-        internal func Allocate(root string, repo string, issue int32, id string, stopped Func[Data, bool]) string {
-            let prefix = Prefix(repo, issue)
-            var number int32
+        internal func Saved(root string, id string) SavedRun? {
             let roots = List[string](Roots())
             roots.Add(root)
 
-            for row in SavedRuns(roots.ToArray()).Rows {
-                if row.Run.Attempt == id || J.Text(row.Run.ClaimRequest, "uuid") == id {
-                    Output.Sink.RunDirectory = row.Location
-                    if stopped(row.Run) {
-                        throw ExecutionFailure.Create(
-                            "invalid_state",
-                            "Saved contribution already exists: " + row.Location + ". Run " + Output.Sink.Command(
-                                []string{"tokate", "pause", "--run", row.Location}
-                            ) +
-                                ", then " +
-                                Output
-                                .Sink
-                                .Command([]string{"tokate", "resume", "--run", row.Location}) +
-                                ". Wait for each coordinator acceptance, then run " +
-                                Output
-                                .Sink
-                                .Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
-                                " for the continuation command. No files were overwritten."
-                        )
-                    }
+            return SavedRuns(roots.ToArray()).Rows.Find(
+                row -> row.Run.Attempt == id || J.Text(row.Run.ClaimRequest, "uuid") == id
+            )
+        }
+
+        internal func Allocate(root string, repo string, issue int32, id string, stopped Func[Data, bool]) string {
+            let prefix = Prefix(repo, issue)
+            var number int32
+
+            if let row = Saved(root, id) {
+                Output.Sink.RunDirectory = row.Location
+
+                if stopped(row.Run) {
                     throw ExecutionFailure.Create(
                         "invalid_state",
-                        "Saved contribution already exists; inspect it instead of overwriting"
+                        "Saved contribution already exists: " + row.Location + ". Run " + Output.Sink.Command(
+                            []string{"tokate", "pause", "--run", row.Location}
+                        ) +
+                            ", then " +
+                            Output
+                            .Sink
+                            .Command([]string{"tokate", "resume", "--run", row.Location}) +
+                            ". Wait for each coordinator acceptance, then run " +
+                            Output
+                            .Sink
+                            .Command([]string{"tokate", "status", "--run", row.Location, "--json"}) +
+                            " for the continuation command. No files were overwritten."
                     )
                 }
+
+                throw ExecutionFailure.Create(
+                    "invalid_state",
+                    "Saved contribution already exists; inspect it instead of overwriting"
+                )
             }
 
             if Directory.Exists(root) {

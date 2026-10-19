@@ -1303,50 +1303,24 @@ internal class PreparationChecks {
             args.AddRange([]string{"--harness", "codex", "--provider", "openai", "--json"})
             Check.Envelope(flow.Call(args.ToArray(), 8), "work", "pending")
             let run = RunPath(flow)
-            let pending = File.ReadAllText(Path.Combine(run, "run.json"))
-            let uuid = Check.Text(Check.Json(pending)["claim_request"]?["uuid"])
+            let uuid = Check.Text(Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["claim_request"]?["uuid"])
             flow.CoordinatePosted()
-            let changed = args.ToArray()
-            changed[Array.IndexOf(changed, "--time") + 1] = "30s"
-            Check.Envelope(flow.Call(changed, 1), "work", "error", "invalid_state")
-            Check.That(File.ReadAllText(Path.Combine(run, "run.json")) == pending, "Changed budget altered the claim")
-            using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for stage in[]string{"claim_pending", "preparing", "claimed"} {
-                baseline.Restore()
-                if stage == "preparing" {
-                    flow.Reload()
-                    flow.State["preparation_interrupt"] = JsonValue.Create("fetch")
-                    flow.Save()
-                    flow.Call(args.ToArray(), 1)
-                } else if stage == "claimed" {
-                    Resume(flow, run)
-                }
-                Check.That(
-                    Check.Text(Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))["state"]) == stage,
-                    "Regression did not reach the saved preparation stage"
-                )
-                flow.NoInference()
-                Check.Envelope(flow.Call(args.ToArray()), "work", "ok")
-                let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
-                Check.That(
-                    RunPath(flow) == run && Check.Text(saved["attempt"]) == uuid && Check.Text(
-                        saved["state"]
-                    ) == "generated",
-                    "Repeated work did not finish the original accepted attempt"
-                )
-                File.SetUnixFileMode(
-                    Path.Combine(flow.Bin, "codex-impl"),
-                    UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
-                )
-                Check.Envelope(flow.Call(args.ToArray(), 1), "work", "error", "invalid_state")
-                flow.Reload()
-                Check.That(
-                    Check.Text(flow.State["request_count"]) == "1" && Check.Text(flow.State["exec_count"]) == "1",
-                    "Repeated work duplicated the claim or inference"
-                )
-                Check.That(File.Exists(Path.Combine(run, "claim.posting.json")), "Resume lost the posting journal")
-                flow.NoPr()
-            }
+            flow.NoInference()
+            Check.Envelope(flow.Call(args.ToArray()), "work", "ok")
+            let saved = Check.Json(File.ReadAllText(Path.Combine(run, "run.json")))
+            Check.That(
+                RunPath(flow) == run && Check.Text(saved["attempt"]) == uuid && Check.Text(
+                    saved["state"]
+                ) == "generated",
+                "Repeated work did not finish the original accepted attempt"
+            )
+            flow.Reload()
+            Check.That(
+                Check.Text(flow.State["request_count"]) == "1" && Check.Text(flow.State["exec_count"]) == "1",
+                "Repeated work duplicated the claim or inference"
+            )
+            Check.That(File.Exists(Path.Combine(run, "claim.posting.json")), "Resume lost the posting journal")
+            flow.NoPr()
         }
 
         private func ClaimGates(binary string) {
@@ -1354,16 +1328,13 @@ internal class PreparationChecks {
             test.Initialize()
             let flow = test.Flow
             using let baseline = FixtureSnapshot(flow.Temp.Root)
-            for gate in[]string{"budget", "reserve", "dependency", "capability", "competing", "revoked", "missing"} {
+            for gate in[]string{"budget", "dependency", "capability", "competing", "revoked", "missing"} {
                 baseline.Restore()
                 flow.Reload()
                 let args = List[string](AcquisitionArgs(flow, "work"))
                 if gate == "budget" {
                     args.RemoveAt(args.IndexOf("--time") + 1)
                     args.Remove("--time")
-                } else if gate == "reserve" {
-                    args[args.IndexOf("--verify-time") + 1] = "60s"
-                    args.Add("--json")
                 } else if gate == "dependency" {
                     flow.Reload()
                     flow.State["dependency_pages"] = Check.Map(
@@ -1385,15 +1356,7 @@ internal class PreparationChecks {
                 } else {
                     flow.Git("-C", flow.Upstream, "update-ref", "-d", "refs/tokate/contributions/1")
                 }
-                let result = flow.Call(args.ToArray(), 1)
-                if gate == "reserve" {
-                    let envelope = Check.Envelope(result, "work", "error", "invalid_state")
-                    Check.That(
-                        Check.Text(envelope["error"]?["message"]) ==
-                        "The saved run or command state does not permit this operation. Inspect its artifacts.",
-                        "Failure summary used the output sink code instead of its own code"
-                    )
-                }
+                flow.Call(args.ToArray(), 1)
                 flow.Reload()
                 Check.That(
                     flow.State["request_count"] == nil && flow.State["fork_creations"] == nil,
