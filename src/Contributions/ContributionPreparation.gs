@@ -24,6 +24,25 @@ internal class ContributionPreparation {
             let run = Plan(args, repo, issue, viewer, state, record, args.Get("source", "tokate"))
             Bind(run, state)
 
+            if args.Command == "work" && args.Get("continue-from") == "" && run.Attempt != "" {
+                let roots = List[string](RunStorage.Roots())
+                let store = Path.TrimEndingDirectorySeparator(RunStorage.Store(args))
+                if !roots.Contains(store) {
+                    roots.Add(store)
+                }
+                let saved = SavedRuns(roots.ToArray()).Rows.FindAll(
+                    row -> row.Matches(repo, issue) &&
+                        (row.Run.Attempt == run.Attempt || J.Text(row.Run.ClaimRequest, "uuid") == run.Attempt)
+                )
+                if saved.Count > 1 {
+                    throw CliFailure("invalid_state", "Multiple saved runs own this attempt; use --run DIR")
+                }
+                if saved.Count == 1 && !AttemptContinuation.Stopped(saved[0].Run) {
+                    args.Values["--run"] = saved[0].Location
+                    return Resume(saved[0].Location, args, run)
+                }
+            }
+
             let directory = Allocate(
                 args.Get("continue-from") != "" ? AttemptContinuation.Store(args): RunStorage.Store(args),
                 run,
@@ -322,10 +341,27 @@ internal class ContributionPreparation {
             return Pending(directory, run, args)
         }
 
-        internal func Resume(directory string, args Args) string {
+        internal func Resume(directory string, args Args, planned Data? = nil) string {
             Output.Sink.RunDirectory = directory
             using let lease = RunStorage.Lease(directory)
             let run = Data.Load(directory)
+
+            if planned != nil {
+                let candidate = planned.Element()
+                let saved = run.Element()
+                for key in "source,tools,seconds,verification_reserve,unlimited,harness,harness_path,provider,model,effort,pi_endpoint,pi_root,pi_node,claude_profile,handoff"
+                    .Split(',') {
+                    if !RequestData.Same(J.Get(candidate, key), J.Get(saved, key)) {
+                        throw CliFailure(
+                            "invalid_state",
+                            "Selection or budget conflicts with the saved claim; inspect it with status, or use work --run DIR"
+                        )
+                    }
+                }
+                if args.Get("fork") != "" && args.Get("fork") != run.RequestedFork {
+                    throw CliFailure("invalid_state", "Fork conflicts with the saved claim; use work --run DIR")
+                }
+            }
 
             if args.Command == "work" && run.PreparationComplete {
                 return directory
